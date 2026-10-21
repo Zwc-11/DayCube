@@ -110,9 +110,14 @@ export default defineConfig(({ mode }) => ({
   build: {
     rollupOptions: {
       output: {
-        manualChunks: {
-          'vendor-react': ['react', 'react-dom', 'framer-motion'],
-          'vendor-three': ['three', '@react-three/fiber', '@react-three/drei'],
+        // By path, not by entry name: with entry lists, React itself landed in the three.js chunk,
+        // so the calendar downloaded the whole 3D stack before it could paint.
+        manualChunks(id) {
+          // Vite's dynamic-import helper is shared by the entry and drei; left alone it lands in
+          // the three.js chunk and drags that chunk into the entry.
+          if (id.includes('vite/preload-helper')) return 'vendor-react';
+          if (/[\\/]node_modules[\\/](three|@react-three)[\\/]/.test(id)) return 'vendor-three';
+          if (/[\\/]node_modules[\\/](react|react-dom|scheduler|framer-motion)[\\/]/.test(id)) return 'vendor-react';
         },
       },
     },

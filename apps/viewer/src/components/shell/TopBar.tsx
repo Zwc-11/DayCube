@@ -19,6 +19,7 @@ export const BrandMark: React.FC<{ size?: number }> = ({ size = 18 }) => (
 
 interface TopBarProps {
   dateLabel: string;
+  onHome: () => void;
   viewMode: ViewMode;
   onViewModeChange: (mode: ViewMode) => void;
   onOpenAsk: () => void;
@@ -34,6 +35,7 @@ interface TopBarProps {
 
 export const TopBar = React.memo(function TopBar({
   dateLabel,
+  onHome,
   viewMode,
   onViewModeChange,
   onOpenAsk,
@@ -59,10 +61,10 @@ export const TopBar = React.memo(function TopBar({
         >
           <PanelLeft size={17} />
         </button>
-        <span className="brand">
+        <button type="button" className="brand brand--btn" onClick={onHome} aria-label="All days">
           <BrandMark />
           <span className="brand__name">DayCube</span>
-        </span>
+        </button>
         <span className="topbar__date">{dateLabel}</span>
       </div>
 
@@ -84,7 +86,7 @@ export const TopBar = React.memo(function TopBar({
       <div className="topbar__right">
         <button type="button" className="search-trigger" onClick={onOpenAsk} aria-label="Ask about your day">
           <Search size={15} aria-hidden />
-          <span className="search-trigger__text">Ask about your day</span>
+          <span className="search-trigger__text">Ask</span>
           <span className="kbd">{isMac ? '⌘K' : 'Ctrl K'}</span>
         </button>
         <button
@@ -108,9 +110,8 @@ export const TopBar = React.memo(function TopBar({
           }
         >
           <span className="capture__dot" aria-hidden />
-          <span className="capture__label">
-            {capture === 'off' ? 'Capture off' : capture === 'paused' ? 'Paused' : 'Capturing'}
-          </span>
+          {/* Words only while recording: the one state a person must never miss. */}
+          {capture === 'on' && <span className="capture__label">Capturing</span>}
         </button>
         <button
           type="button"
