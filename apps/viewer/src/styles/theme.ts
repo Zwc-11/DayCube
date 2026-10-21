@@ -30,9 +30,7 @@ export const FONTS = {
 };
 
 export const glassPanelStyle = (extra?: React.CSSProperties): React.CSSProperties => ({
-  background: COLORS.bgPanel,
-  backdropFilter: 'blur(18px)',
-  WebkitBackdropFilter: 'blur(18px)',
+  background: 'rgba(14, 18, 28, 0.96)',
   border: `1px solid ${COLORS.borderSubtle}`,
   borderRadius: 16,
   boxShadow: '0 20px 50px rgba(0, 0, 0, 0.55)',

@@ -30,6 +30,7 @@ import { DioramaCanvas2D } from './components/diorama/DioramaCanvas2D';
 import { EvidenceCardPanel } from './components/panels/EvidenceCardPanel';
 import type { StudioTab } from './components/modals/SystemStudioModal';
 import { ApiCallLog, backendBridge } from './lib/backendBridge';
+import { usePageVisible } from './lib/usePageVisible';
 import {
   AnimatedPillTabs,
   CountUpNumber,
@@ -64,6 +65,7 @@ const SystemStudioModal = lazy(() =>
 type ViewportTab = 'layer' | 'stack' | 'shelf' | 'canvas2d';
 
 export const App: React.FC = () => {
+  const pageVisible = usePageVisible();
   const [layers, setLayers] = useState<Layer[]>(SAMPLE_DAY_LAYERS);
   // Start at Layer 4 (Home · Evening at 17:48, matching the user's diorama reference!)
   const [activeLayerIndex, setActiveLayerIndex] = useState<number>(4);
@@ -81,8 +83,8 @@ export const App: React.FC = () => {
   const [cutawayWalls, setCutawayWalls] = useState<boolean>(false);
   const [showVenueTelemetry, setShowVenueTelemetry] = useState<boolean>(true);
   const [followCharacter, setFollowCharacter] = useState<boolean>(false);
-  const [headParallax, setHeadParallax] = useState<boolean>(true);
-  const [tiltShift, setTiltShift] = useState<boolean>(true);
+  const [headParallax, setHeadParallax] = useState<boolean>(false);
+  const [tiltShift, setTiltShift] = useState<boolean>(false);
 
   // Selected Pin & Active Modals
   const [selectedPin, setSelectedPin] = useState<EventPin | null>(
@@ -180,10 +182,10 @@ export const App: React.FC = () => {
 
   // Playback loop
   useEffect(() => {
-    if (!playing) return;
+    if (!playing || !pageVisible || askOpen || activeMomentId || activeScreenShotId || studioTab) return;
     const interval = setInterval(() => {
       setTod((prev) => {
-        const next = prev + 0.015 * playSpeed;
+        const next = prev + 0.0375 * playSpeed;
         if (next > 22.0) {
           return 8.0;
         }
@@ -193,9 +195,9 @@ export const App: React.FC = () => {
         }
         return next;
       });
-    }, 40);
+    }, 100);
     return () => clearInterval(interval);
-  }, [playing, playSpeed, layers]);
+  }, [playing, playSpeed, layers, pageVisible, askOpen, activeMomentId, activeScreenShotId, studioTab]);
 
   const handleSelectLayer = (idx: number) => {
     const target = layers[idx];
@@ -322,6 +324,8 @@ export const App: React.FC = () => {
       <div style={{ position: 'absolute', inset: 0, zIndex: 1 }}>
         {engineMode === 'three' ? (
           <DioramaCanvas3D
+            playing={playing}
+            suspended={!pageVisible || askOpen || !!activeMomentId || !!activeScreenShotId || !!studioTab}
             layers={layers}
             transits={SAMPLE_TRANSITS}
             activeLayerIndex={activeLayerIndex}
@@ -344,6 +348,7 @@ export const App: React.FC = () => {
           />
         ) : (
           <DioramaCanvas2D
+            suspended={!pageVisible || askOpen || !!activeMomentId || !!activeScreenShotId || !!studioTab}
             layer={activeLayer}
             tod={tod}
             azimuth={azimuth2D}
@@ -1014,6 +1019,7 @@ export const App: React.FC = () => {
           <button
             type="button"
             onClick={() => setPlaying((p) => !p)}
+            aria-label={playing ? 'Pause day playback' : 'Play day playback'}
             style={{
               width: 32,
               height: 32,

@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useEffect, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { OrbitControls, Html, Line, ContactShadows } from '@react-three/drei';
+import { OrbitControls, Html, Line } from '@react-three/drei';
 import * as THREE from 'three';
 import {
   DayShelfCube,
@@ -22,6 +22,8 @@ export interface GpuTelemetry {
 }
 
 interface DioramaCanvas3DProps {
+  playing: boolean;
+  suspended: boolean;
   layers: Layer[];
   transits: TransitSegment[];
   activeLayerIndex: number;
@@ -112,6 +114,7 @@ function interpolatePath(path: PathPoint[], tod: number): {
 // GPU INSTANCED LAYER PLATE (1 InstancedMesh for architecture, 1 for lamps, 1 for path)
 // ============================================================================
 const InstancedLayerDiorama: React.FC<{
+  playing: boolean;
   layer: Layer;
   yOffset: number;
   isActive: boolean;
@@ -125,6 +128,7 @@ const InstancedLayerDiorama: React.FC<{
   onOpenMoment: (momentId: string) => void;
   onSelectLayer: () => void;
 }> = ({
+  playing,
   layer,
   yOffset,
   isActive,
@@ -142,6 +146,7 @@ const InstancedLayerDiorama: React.FC<{
   const lampMeshRef = useRef<THREE.InstancedMesh>(null);
   const pathMeshRef = useRef<THREE.InstancedMesh>(null);
   const charMeshRef = useRef<THREE.InstancedMesh>(null);
+  const lastCharacterRef = useRef<{ tod: number; yOffset: number; path: PathPoint[] | null }>({ tod: NaN, yOffset: NaN, path: null });
 
   const nightFactor = tod < 17.5 ? 0 : tod > 20 ? 1 : (tod - 17.5) / 2.5;
 
@@ -238,8 +243,8 @@ const InstancedLayerDiorama: React.FC<{
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
   }, [pathBreadcrumbs, yOffset]);
 
-  // Zero-allocation 60/120 FPS frame update for path visibility & 10-box Voxel Character walk cycle
-  useFrame(({ clock }) => {
+  // Update the static pose once; schedule further frames only during playback.
+  useFrame(({ clock, invalidate }) => {
     // Update visible path count up to `tod`
     if (pathMeshRef.current) {
       let visibleCount = 0;
@@ -257,9 +262,12 @@ const InstancedLayerDiorama: React.FC<{
       charMesh.count = 0;
       return;
     }
+    if (!playing && charMesh.count === 10 && lastCharacterRef.current.tod === tod && lastCharacterRef.current.yOffset === yOffset && lastCharacterRef.current.path === layer.path) return;
+    lastCharacterRef.current = { tod, yOffset, path: layer.path };
+    if (playing) invalidate();
     const pos = interpolatePath(layer.path, tod);
     const zBase = (pos.floor > 0 ? 4.48 : 0.3) + yOffset;
-    const ph = pos.walking ? Math.sin(clock.getElapsedTime() * 11) : 0;
+    const ph = pos.walking && playing ? Math.sin(clock.getElapsedTime() * 11) : 0;
     const bob = pos.walking ? Math.abs(ph) * 0.12 : 0;
     const legL = pos.walking ? 0.35 + 0.22 * Math.max(0, ph) : 0.35;
     const legR = pos.walking ? 0.35 + 0.22 * Math.max(0, -ph) : 0.35;
@@ -348,7 +356,6 @@ const InstancedLayerDiorama: React.FC<{
       <Html
         position={[-PW / 2 + 2.2, yOffset - 0.45, PD / 2 + 0.2]}
         center
-        distanceFactor={28}
         style={{ pointerEvents: 'none', opacity }}
       >
         <div
@@ -680,8 +687,9 @@ const ShelfCubeMesh: React.FC<{
   const spacing = 4.2;
   const xPos = (index - (total - 1) / 2) * spacing;
 
-  useFrame(({ clock }) => {
+  useFrame(({ clock, invalidate }) => {
     if (!meshRef.current) return;
+    if (hovered) invalidate();
     const t = clock.getElapsedTime();
     meshRef.current.position.y =
       (cube.isCurrent ? 0.6 : 0) +
@@ -767,6 +775,8 @@ const ShelfCubeMesh: React.FC<{
 // SCENE CONTROLLER: SUN LIGHTING, CAMERA LERP, HEAD PARALLAX & GPU TELEMETRY
 // ============================================================================
 const SceneController: React.FC<{
+  cutawayWalls: boolean;
+  activeFloorFilter: 'all' | number;
   tod: number;
   viewMode: 'layer' | 'stack' | 'shelf';
   activeLayer: Layer;
@@ -777,6 +787,8 @@ const SceneController: React.FC<{
   controlsRef: React.MutableRefObject<any>;
   onGpuTelemetry?: (stats: GpuTelemetry) => void;
 }> = ({
+  cutawayWalls,
+  activeFloorFilter,
   tod,
   viewMode,
   activeLayer,
@@ -787,10 +799,17 @@ const SceneController: React.FC<{
   controlsRef,
   onGpuTelemetry,
 }) => {
-  const { gl, camera } = useThree();
+  const { gl, invalidate } = useThree();
   const dirLightRef = useRef<THREE.DirectionalLight>(null);
   const frameCountRef = useRef(0);
   const lastTimeRef = useRef(performance.now());
+  const previousFrameRef = useRef(performance.now());
+
+  useEffect(() => {
+    gl.shadowMap.autoUpdate = false;
+    gl.shadowMap.needsUpdate = true;
+    invalidate();
+  }, [gl, invalidate, activeLayer, tod, cutawayWalls, activeFloorFilter]);
 
   // Calculate sun direction & color temperature from `tod` (East at 06:00, West at 20:00)
   const sunState = useMemo(() => {
@@ -843,19 +862,26 @@ const SceneController: React.FC<{
         TARGET_VEC.z += mouseNormRef.current.y * 1.2;
       }
 
-      controlsRef.current.target.lerp(TARGET_VEC, 0.08);
-      controlsRef.current.update();
+      if (controlsRef.current.target.distanceToSquared(TARGET_VEC) > 0.0001) {
+        controlsRef.current.target.lerp(TARGET_VEC, 0.16);
+        invalidate();
+      }
     }
 
     // 3. Emit real WebGL GPU Telemetry every 25 frames (minimal overhead)
-    frameCountRef.current++;
     const now = performance.now();
+    if (now - previousFrameRef.current > 250) {
+      frameCountRef.current = 0;
+      lastTimeRef.current = now;
+    }
+    previousFrameRef.current = now;
+    frameCountRef.current++;
     if (now - lastTimeRef.current >= 500 && onGpuTelemetry) {
       const fps = Math.round((frameCountRef.current * 1000) / (now - lastTimeRef.current));
       frameCountRef.current = 0;
       lastTimeRef.current = now;
       onGpuTelemetry({
-        fps: Math.min(120, Math.max(30, fps)),
+        fps,
         drawCalls: gl.info.render.calls,
         triangles: gl.info.render.triangles,
         instances: activeLayer.boxes.length + 10,
@@ -877,8 +903,8 @@ const SceneController: React.FC<{
         intensity={sunState.intensity}
         color={sunState.color}
         castShadow
-        shadow-mapSize-width={1024}
-        shadow-mapSize-height={1024}
+        shadow-mapSize-width={512}
+        shadow-mapSize-height={512}
         shadow-camera-near={1}
         shadow-camera-far={80}
         shadow-camera-left={-18}
@@ -894,6 +920,8 @@ const SceneController: React.FC<{
 // MAIN THREE.JS DIORAMA CANVAS EXPORT
 // ============================================================================
 export const DioramaCanvas3D: React.FC<DioramaCanvas3DProps> = ({
+  playing,
+  suspended,
   layers,
   transits,
   activeLayerIndex,
@@ -913,6 +941,7 @@ export const DioramaCanvas3D: React.FC<DioramaCanvas3DProps> = ({
 }) => {
   const controlsRef = useRef<any>(null);
   const mouseNormRef = useRef({ x: 0, y: 0 });
+  const invalidateRef = useRef<() => void>(() => {});
   const activeLayer = layers[activeLayerIndex] || layers[0];
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -922,6 +951,7 @@ export const DioramaCanvas3D: React.FC<DioramaCanvas3DProps> = ({
       x: ((e.clientX - rect.left) / rect.width - 0.5) * 2,
       y: ((e.clientY - rect.top) / rect.height - 0.5) * 2,
     };
+    invalidateRef.current();
   };
 
   return (
@@ -940,9 +970,11 @@ export const DioramaCanvas3D: React.FC<DioramaCanvas3DProps> = ({
       }}
     >
       <Canvas
+        frameloop={suspended ? 'never' : 'demand'}
         shadows
         orthographic
-        dpr={[1, 1.75]}
+        dpr={1}
+        onCreated={({ invalidate }) => { invalidateRef.current = invalidate; }}
         camera={{
           position: [22, 20, 22],
           zoom: viewMode === 'stack' ? 14 : viewMode === 'shelf' ? 24 : 26,
@@ -956,6 +988,8 @@ export const DioramaCanvas3D: React.FC<DioramaCanvas3DProps> = ({
         }}
       >
         <SceneController
+          cutawayWalls={cutawayWalls}
+          activeFloorFilter={activeFloorFilter}
           tod={tod}
           viewMode={viewMode}
           activeLayer={activeLayer}
@@ -981,6 +1015,7 @@ export const DioramaCanvas3D: React.FC<DioramaCanvas3DProps> = ({
         {viewMode === 'layer' && (
           <>
             <InstancedLayerDiorama
+              playing={playing}
               layer={activeLayer}
               yOffset={0}
               isActive={true}
@@ -994,13 +1029,6 @@ export const DioramaCanvas3D: React.FC<DioramaCanvas3DProps> = ({
               onOpenMoment={onOpenMoment}
               onSelectLayer={() => {}}
             />
-            <ContactShadows
-              position={[0, -0.95, 0]}
-              opacity={0.45}
-              scale={36}
-              blur={2.2}
-              far={6}
-            />
           </>
         )}
 
@@ -1012,6 +1040,7 @@ export const DioramaCanvas3D: React.FC<DioramaCanvas3DProps> = ({
               const isAct = idx === activeLayerIndex;
               return (
                 <InstancedLayerDiorama
+                  playing={playing}
                   key={lyr.placeId}
                   layer={lyr}
                   yOffset={yOff}

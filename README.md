@@ -95,3 +95,7 @@ stops them. Seed first with `npm run demo:seed`. Demo does not start capture, ca
 
 Optional libraries, account configuration and the remaining system dependencies are documented
 in [dependencies](docs/dependencies.md) and [the runbook](docs/runbook.md).
+
+The viewer stops rendering when idle. See [performance notes](docs/performance.md) for measured
+results and regression checks. Refresh the browser after performance updates so the less costly
+visual defaults take effect in an existing hot-reload session.

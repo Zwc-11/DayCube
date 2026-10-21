@@ -3,6 +3,7 @@ import { EventPin, Layer } from '../../types/daycube';
 import { PALETTE } from '../../data/sampleDay';
 
 interface DioramaCanvas2DProps {
+  suspended: boolean;
   layer: Layer;
   tod: number;
   azimuth: number;
@@ -31,6 +32,7 @@ function shade(hex: string, k: number, n: number): string {
 }
 
 export const DioramaCanvas2D: React.FC<DioramaCanvas2DProps> = ({
+  suspended,
   layer,
   tod,
   azimuth,
@@ -44,8 +46,10 @@ export const DioramaCanvas2D: React.FC<DioramaCanvas2DProps> = ({
   const offRef = useRef<HTMLCanvasElement | null>(null);
   const dragRef = useRef<{ x: number; az: number } | null>(null);
   const pinHitboxesRef = useRef<{ x: number; y: number; r: number; pin: EventPin }[]>([]);
+  const requestRenderRef = useRef<() => void>(() => {});
 
   const stateRef = useRef({
+    suspended,
     layer,
     tod,
     azimuth,
@@ -53,7 +57,7 @@ export const DioramaCanvas2D: React.FC<DioramaCanvas2DProps> = ({
     cutawayWalls,
     selectedPinId,
   });
-  stateRef.current = { layer, tod, azimuth, tiltShift, cutawayWalls, selectedPinId };
+  stateRef.current = { suspended, layer, tod, azimuth, tiltShift, cutawayWalls, selectedPinId };
 
   useEffect(() => {
     if (!offRef.current) {
@@ -62,6 +66,8 @@ export const DioramaCanvas2D: React.FC<DioramaCanvas2DProps> = ({
     let animId = 0;
 
     const render = () => {
+      animId = 0;
+      if (document.visibilityState === 'hidden' || stateRef.current.suspended) return;
       const cv = cvRef.current;
       const off = offRef.current;
       if (!cv || !off) return;
@@ -80,10 +86,10 @@ export const DioramaCanvas2D: React.FC<DioramaCanvas2DProps> = ({
 
       const cw = cv.clientWidth || 800;
       const ch = cv.clientHeight || 600;
-      const dpr = window.devicePixelRatio || 1;
-      if (cv.width !== cw * dpr || cv.height !== ch * dpr) {
-        cv.width = off.width = cw * dpr;
-        cv.height = off.height = ch * dpr;
+      const dpr = Math.min(window.devicePixelRatio || 1, 1.25);
+      if (cv.width !== Math.round(cw * dpr) || cv.height !== Math.round(ch * dpr)) {
+        cv.width = off.width = Math.round(cw * dpr);
+        cv.height = off.height = Math.round(ch * dpr);
       }
 
       const c = octx;
@@ -386,12 +392,27 @@ export const DioramaCanvas2D: React.FC<DioramaCanvas2DProps> = ({
       ctx.fillStyle = vg;
       ctx.fillRect(0, 0, cw, ch);
 
-      animId = requestAnimationFrame(render);
     };
 
-    animId = requestAnimationFrame(render);
-    return () => cancelAnimationFrame(animId);
+    const requestRender = () => {
+      if (!animId) animId = requestAnimationFrame(render);
+    };
+    requestRenderRef.current = requestRender;
+    const observer = new ResizeObserver(requestRender);
+    if (cvRef.current) observer.observe(cvRef.current);
+    document.addEventListener('visibilitychange', requestRender);
+    requestRender();
+    return () => {
+      cancelAnimationFrame(animId);
+      observer.disconnect();
+      document.removeEventListener('visibilitychange', requestRender);
+      requestRenderRef.current = () => {};
+    };
   }, []);
+
+  useEffect(() => {
+    requestRenderRef.current();
+  }, [layer, tod, azimuth, tiltShift, cutawayWalls, selectedPinId, suspended]);
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();

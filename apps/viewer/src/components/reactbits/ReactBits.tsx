@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useMotionValue, useSpring } from 'framer-motion';
 import { COLORS, FONTS } from '../../styles/theme';
 import type { ApiCallLog } from '../../lib/backendBridge';
 
@@ -145,13 +145,13 @@ export const SpotlightCard: React.FC<SpotlightCardProps> = ({
   onClick,
 }) => {
   const divRef = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState({ x: 0, y: 0 });
   const [opacity, setOpacity] = useState(0);
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!divRef.current) return;
     const rect = divRef.current.getBoundingClientRect();
-    setPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+    divRef.current.style.setProperty('--spotlight-x', `${e.clientX - rect.left}px`);
+    divRef.current.style.setProperty('--spotlight-y', `${e.clientY - rect.top}px`);
   };
 
   return (
@@ -197,7 +197,7 @@ export const SpotlightCard: React.FC<SpotlightCardProps> = ({
           inset: -1,
           opacity,
           transition: 'opacity 0.25s ease',
-          background: `radial-gradient(360px circle at ${pos.x}px ${pos.y}px, ${spotlightColor}, transparent 48%)`,
+          background: `radial-gradient(360px circle at var(--spotlight-x, 0px) var(--spotlight-y, 0px), ${spotlightColor}, transparent 48%)`,
         }}
       />
       <div style={{ position: 'relative', zIndex: 2 }}>{children}</div>
@@ -290,17 +290,18 @@ export const MagneticButton: React.FC<MagneticButtonProps> = ({
   disabled = false,
 }) => {
   const btnRef = useRef<HTMLButtonElement>(null);
-  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const targetX = useMotionValue(0);
+  const targetY = useMotionValue(0);
+  const x = useSpring(targetX, { stiffness: 280, damping: 19, mass: 0.45 });
+  const y = useSpring(targetY, { stiffness: 280, damping: 19, mass: 0.45 });
 
   const handleMouseMove = (e: React.MouseEvent<HTMLButtonElement>) => {
     if (disabled || !btnRef.current) return;
     const rect = btnRef.current.getBoundingClientRect();
     const cx = rect.left + rect.width / 2;
     const cy = rect.top + rect.height / 2;
-    setOffset({
-      x: (e.clientX - cx) * strength,
-      y: (e.clientY - cy) * strength,
-    });
+    targetX.set((e.clientX - cx) * strength);
+    targetY.set((e.clientY - cy) * strength);
   };
 
   return (
@@ -310,11 +311,9 @@ export const MagneticButton: React.FC<MagneticButtonProps> = ({
       title={title}
       disabled={disabled}
       onMouseMove={handleMouseMove}
-      onMouseLeave={() => setOffset({ x: 0, y: 0 })}
+      onMouseLeave={() => { targetX.set(0); targetY.set(0); }}
       onClick={onClick}
-      animate={{ x: offset.x, y: offset.y }}
-      transition={{ type: 'spring', stiffness: 280, damping: 19, mass: 0.45 }}
-      style={style}
+      style={{ ...style, x, y }}
     >
       {children}
     </motion.button>
