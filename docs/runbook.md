@@ -16,6 +16,7 @@ runtime data; do not commit them. Setup generates a token and retains it on late
 The demo never overwrites an existing day. To regenerate fixture source files for development,
 run `uv run python scripts/build-fixture.py`; this changes only checked-in fictional fixture files.
 
+The viewer opens on a calendar of recorded days; `/?date=YYYY-MM-DD` opens one day directly.
 Run API and viewer separately with `npm run api` and `npm run dev`. Ports are 7701 and 3000;
 both bind to `127.0.0.1`. A port conflict is an error, not a silent move to another port.
 The raw browser receiver is a separate explicit command, paused by default; see its README.
@@ -39,8 +40,9 @@ The four-question evaluation tests fictional evidence retrieval only, not genera
 
 ## Sync the frontend
 
-Open port 3000, click **API Contract**, and bind the token from `vault/.token`. Use the GET
-health/day button to re-read file changes and the POST ingest/index button to rebuild search.
+Open port 3000, open **Settings › Vault connection** (gear icon, top right) and paste the token
+from `vault/.token`. **Connect** binds it and re-reads the day; **Check again** re-reads file
+changes; **Rebuild search index** runs the index job.
 The token is in page memory, so repeat binding after a reload. The API reads the existing day;
 this does not start phone imports, screenshots, gaze or GPU processing. Frontend code edits hot
 reload automatically. API code edits hot reload when started with `npm run api`.
@@ -51,6 +53,8 @@ reload automatically. API code edits hot reload when started with `npm run api`.
 - No days listed: run `npm run demo:seed`. Existing days are preserved.
 - Invalid vault: run `uv run daycube validate --date YYYY-MM-DD` for the exact contract failure.
 - Invalid/stale index: run `uv run daycube index --date YYYY-MM-DD`; it is rebuilt from files.
+- Disk filling up: `uv run daycube compact` compresses the large logs of every day before today.
+  Reads stay transparent, and the next append to a compacted log expands it again.
 - Ask is unauthorized: use the current local `vault/.token`; provider API keys are unrelated.
 - Capture forwarding returns 503: the optional receiver is not running.
 - An ingest step returns 501: that stage is planned, not a failed background process.

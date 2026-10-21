@@ -21,17 +21,17 @@ npm run demo
 
 The frontend loads the vault day through `/api` on startup. To enable authenticated actions:
 
-1. Open the viewer and click **API Contract** in the bottom bar.
+1. Open the viewer, click the gear icon (top right), then **Vault connection**.
 2. Copy your token in PowerShell: `Get-Content -Raw .\vault\.token | Set-Clipboard`.
-3. Paste it into the vault-token field and click **Bind Token**.
-4. Click **GET /api/health & /api/day/2026-10-20** to reload the vault day.
-5. Use **POST /api/ingest/2026-10-20** to rebuild the search index, then Ask Memory.
+3. Paste it into the token field and click **Connect**. This also reloads the vault day.
+4. Click **Rebuild search index**, then ask a question from the search field (Ctrl K).
 
 Try “Where was I when we decided the demo order?”. Live answers quote source evidence and
 select its place/time. The token is held only in page memory, so bind it again after a browser
 reload. Without a bound token, Ask runs the frontend's standalone demo engine. Decorative scenes,
-the moment/OCR inspectors, graph and evaluation panels still contain prototype data; they do not
-mean that capture, reconstruction or the volunteer study has run.
+the moment and screen viewers, and the graph, pipeline and recall-study pages in Settings still
+contain prototype data and are labelled as such in the UI; they do not mean that capture,
+reconstruction or the volunteer study has run.
 
 ## Structure
 

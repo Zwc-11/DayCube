@@ -9,8 +9,8 @@ The default render resolution is capped at one device pixel per CSS pixel. Direc
 use a cached 512px map refreshed for scene, light/time, cutaway and floor changes. The separate
 contact-shadow pass was removed. Large backdrop blurs were replaced with opaque panels; tilt-shift
 and mouse parallax remain opt-in. Hover motion values avoid React updates on every pointer move.
-The orthographic nameplate uses fixed pixel sizing rather than a distance factor that magnified
-its DOM surface hundreds of times. The FPS readout no longer clamps low measurements to 30.
+Scene labels and pins use fixed pixel sizing rather than a distance factor that magnified
+their DOM surface hundreds of times on the orthographic camera. The FPS readout no longer clamps low measurements to 30.
 
 ## Measured idle sample
 
@@ -40,7 +40,7 @@ npm run test:e2e:viewer
 ```
 
 Those checks verify that idle WebGL/Canvas2D draws stop, orbiting and timeline scrubbing redraw,
-playback renders, modal background rendering stops, the nameplate remains normal sized, and API
+playback renders, modal background rendering stops, scene labels stay label-sized, and API
 token binding/search/reindex still work. GPU tests run one browser at a time.
 
 Implementation references: [React Three Fiber demand rendering](https://r3f.docs.pmnd.rs/advanced/scaling-performance)
@@ -86,3 +86,84 @@ result drift and only writes a completed report after all selected workloads suc
 CPU/storage measurements for the named synthetic workloads; they do not measure browser frame
 rate, HTTP latency or DeepInfer throughput. The [reference review](deepinfer-review.md) and
 [engineering standard](engineering.md) describe the applicable patterns and remaining work.
+
+## Second pass measurements
+
+These numbers come from the DeepInfer second pass described in the [reference review](deepinfer-review.md#second-pass-algorithm-level-patterns).
+They were taken on a Linux x86-64 container, not the Windows workstation used above, so compare
+rows within this section only. Before is revision `265444c` with the UI redesign applied. After
+is the current tree. Each operation was run once as warmup, then five times; the tables show
+medians. The large workload is the same one used above.
+
+### Service
+
+| Large workload | Before | After |
+| --- | ---: | ---: |
+| Full index rebuild, new `Vault` (parse, validate, collect, write) | 3,495 ms | 239 ms |
+| Full index rebuild, warm snapshot | 3,495 ms | 79 ms |
+| Assemble viewer day | 107 ms | 35 ms |
+| Collect index evidence | 69 ms | 18 ms |
+| Events overlapping a 15-minute window | — | 0.17 ms |
+| Serialized `/day` payload, first request after a change | — | 191 ms |
+| Serialized `/day` payload, unchanged day | — | 0.63 ms |
+| Warm retrieval | 0.72 ms | 0.59 ms |
+
+On the original revision, the rebuild had no warm state: every call parsed and validated again.
+Retrieval was left as it was; sub-millisecond differences are noise. Assembling the day now
+round-trips through the cached payload so callers never share objects with the cache. The benchmark ran with
+`--compare`, so day, evidence, build and retrieval output hashes matched the before run. Raw
+samples and source hashes are in [before](../eval/results/core-snapshot-before.json) and
+[after](../eval/results/core-snapshot-after.json).
+
+The same workloads went through FastAPI's `TestClient`; each figure is the median of five requests
+on the large day:
+
+| Endpoint | Before | After |
+| --- | ---: | ---: |
+| `GET /day/{date}` | 549 ms | 2.7 ms |
+| `GET /day/{date}/events`, 30-minute window | 55 ms | 3.7 ms |
+| `POST /ask` | 4.0 ms | 4.0 ms |
+
+About 2.5 ms of each "after" figure is the test client's own overhead.
+
+### Viewer playback
+
+Four seconds of 1× playback on the sample day, 1600×1000 at device scale factor 1. Headless
+Chromium used SwiftShader, its software renderer. Three runs; the figures are medians:
+
+| Measurement | Before | After |
+| --- | ---: | ---: |
+| Main-thread script time | 3,782 ms | 171 ms |
+| Main-thread task time | 3,824 ms | 234 ms |
+| Tasks longer than 50 ms | 9 | 0 |
+| Shader programs linked during 3 s of playback | 8 | 0 |
+| Buffer allocations (`bufferData`) during 3 s of playback | 120 | 0 |
+| WebGL draw calls per rendered frame | 13.6 | 10.1 |
+
+The draw-call row counts every pass. It includes the shadow map, about two draws, which
+refreshes as the sun moves. three.js counts only the main pass, and that count fell from 12–13 to
+8, which is the budget shown in Settings › Performance. The software renderer caps the frame rate
+at about 6 fps whichever version runs. The main thread was saturated before and is now 94% idle,
+so the gain shows up as headroom rather than frames in this setup. Real GPUs still need their own
+traces.
+
+Collect the same playback sample with the dev server running:
+
+```powershell
+node scripts/profile-viewer.mjs current playback
+```
+
+The viewer e2e suite asserts zero shader links and buffer allocations during playback. It also
+checks the 8-call budget.
+
+## Storage and caching pass
+
+Storage per day at spec capture rates, the cache design and the measurements for appends,
+conditional day loads, path simplification, OCR runs and compaction are in
+[storage and caching](storage.md). Two benchmark outputs change on purpose in that pass:
+- the viewer day, because paths are simplified to 10 cm and reduced to the viewer's fields;
+- the index, because a block repeated on consecutive screenshots is one unit.
+
+Every other output hash matches. Use [core-storage.json](../eval/results/core-storage.json) as the
+`--compare` baseline from here on.
+

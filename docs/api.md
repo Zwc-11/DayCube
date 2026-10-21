@@ -7,8 +7,8 @@ for actions. Do not paste external provider keys there.
 | Method | Route | Current behavior |
 | --- | --- | --- |
 | GET | `/health` | Health and honest capability flags |
-| GET | `/days` | Available local day summaries |
-| GET | `/day/{date}` | Validated-file data with derived `layers[]` |
+| GET | `/days` | Day summaries, newest first: `date`, `stats`, place `kinds` in visit order |
+| GET | `/day/{date}` | Validated-file data with derived `layers[]`; `ETag`, `304` on `If-None-Match` |
 | GET | `/day/{date}/events?t0=...&t1=...&type=...` | Event slice; both offset timestamps or neither |
 | GET | `/day/{date}/skeleton` | GeoJSON fixes |
 | GET | `/day/{date}/graph` | Evidence graph |
@@ -29,6 +29,12 @@ All POST/DELETE routes require `Authorization: Bearer <vault-token>`. Event inge
 from port 7700's raw browser metadata receiver. The two payloads are intentionally different.
 Moment lookup requires a date so two days can safely both contain `mo_001`.
 
+`/day/{date}` is serialized once per change of its input files. It carries an `ETag` and
+`Cache-Control: no-cache`, so a client sending `If-None-Match` with the current tag gets an empty
+`304`. In `layers[].path`, each visit's fixes are reduced to the fields the viewer reads and
+simplified so the interpolated position at every fix time is within 10 cm of the fix.
+`/day/{date}/skeleton` still returns every fix with every field.
+
 The starter's `/ask` is lexical retrieval with verbatim extraction, not the full rewrite/vector/
 LLM/verification pipeline. An unknown question returns empty `sentences` and `evidence`, null
 location fields and an explanatory message. Unknown x/y/floor values remain null.
@@ -42,6 +48,6 @@ events or the graph. Unsupported ingest stages return 501 instead of reporting s
 to `/api`, which Vite proxies to loopback port 7701. It validates day/event/moment/search payloads
 using shared contracts. A token callback keeps token acquisition in the caller's UI.
 
-The frontend's API Contract panel binds the token in memory, reloads the day and runs index jobs.
+The frontend's Settings › Vault connection page binds the token in memory, reloads the day and runs index jobs.
 `apps/viewer/src/lib/backendBridge.ts` converts seconds to renderer hours and polls job completion.
 Live empty search results stay empty; they do not substitute prototype evidence.
