@@ -1,0 +1,137 @@
+{
+  "schema": "daycube.day/1",
+  "date": "2026-10-20",
+  "tz": "America/Toronto",
+  "places": [
+    {
+      "id": "home1",
+      "name": "Home · morning",
+      "kind": "house",
+      "t0": "2026-10-20T08:00:00-04:00",
+      "t1": "2026-10-20T08:45:00-04:00",
+      "lat": 43.66,
+      "lon": -79.39,
+      "osm_id": null,
+      "venue": null,
+      "floors_visited": [
+        0
+      ],
+      "conf": 0.7,
+      "layer_index": 0
+    },
+    {
+      "id": "cafe1",
+      "name": "Maple Café",
+      "kind": "cafe",
+      "t0": "2026-10-20T09:00:00-04:00",
+      "t1": "2026-10-20T09:30:00-04:00",
+      "lat": 43.660999999999994,
+      "lon": -79.389,
+      "osm_id": null,
+      "venue": null,
+      "floors_visited": [
+        0
+      ],
+      "conf": 0.7,
+      "layer_index": 1
+    },
+    {
+      "id": "hall",
+      "name": "Engineering Hall",
+      "kind": "venue",
+      "t0": "2026-10-20T10:00:00-04:00",
+      "t1": "2026-10-20T12:00:00-04:00",
+      "lat": 43.662,
+      "lon": -79.388,
+      "osm_id": null,
+      "venue": "venues/engineering-hall.json",
+      "floors_visited": [
+        0,
+        2
+      ],
+      "conf": 0.7,
+      "layer_index": 2
+    },
+    {
+      "id": "cafe2",
+      "name": "Maple Café · lunch",
+      "kind": "cafe",
+      "t0": "2026-10-20T12:30:00-04:00",
+      "t1": "2026-10-20T13:15:00-04:00",
+      "lat": 43.663,
+      "lon": -79.387,
+      "osm_id": null,
+      "venue": null,
+      "floors_visited": [
+        0
+      ],
+      "conf": 0.7,
+      "layer_index": 3
+    },
+    {
+      "id": "home2",
+      "name": "Home · evening",
+      "kind": "house",
+      "t0": "2026-10-20T14:00:00-04:00",
+      "t1": "2026-10-20T18:00:00-04:00",
+      "lat": 43.663999999999994,
+      "lon": -79.386,
+      "osm_id": null,
+      "venue": null,
+      "floors_visited": [
+        0
+      ],
+      "conf": 0.7,
+      "layer_index": 4
+    }
+  ],
+  "transits": [
+    {
+      "from": "home1",
+      "to": "cafe1",
+      "t0": "2026-10-20T08:45:00-04:00",
+      "t1": "2026-10-20T09:00:00-04:00",
+      "mode": "walk",
+      "conf": 0.5
+    },
+    {
+      "from": "cafe1",
+      "to": "hall",
+      "t0": "2026-10-20T09:30:00-04:00",
+      "t1": "2026-10-20T10:00:00-04:00",
+      "mode": "walk",
+      "conf": 0.5
+    },
+    {
+      "from": "hall",
+      "to": "cafe2",
+      "t0": "2026-10-20T12:00:00-04:00",
+      "t1": "2026-10-20T12:30:00-04:00",
+      "mode": "walk",
+      "conf": 0.5
+    },
+    {
+      "from": "cafe2",
+      "to": "home2",
+      "t0": "2026-10-20T13:15:00-04:00",
+      "t1": "2026-10-20T14:00:00-04:00",
+      "mode": "walk",
+      "conf": 0.5
+    }
+  ],
+  "cube_faces": [
+    "ev_001",
+    "ev_004",
+    "ev_007",
+    "mo_001",
+    "ev_quote_0",
+    "ev_011"
+  ],
+  "stats": {
+    "events": 14,
+    "moments": 1,
+    "places": 5,
+    "floor_changes": 1
+  },
+  "summary": "Synthetic demonstration data. No personal activity was captured."
+}

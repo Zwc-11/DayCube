@@ -1,0 +1,16 @@
+{
+  "id": "mo_001",
+  "title": "Demo planning",
+  "t0": "2026-10-20T12:40:00-04:00",
+  "duration_s": 20,
+  "place": "cafe2",
+  "floor": 0,
+  "lat": null,
+  "lon": null,
+  "camera": {
+    "fov_deg": 62
+  },
+  "fidelity": "illustrative",
+  "media_available": false,
+  "consented_people": []
+}

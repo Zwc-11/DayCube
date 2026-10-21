@@ -1,0 +1,26 @@
+{
+  "segments": [
+    {
+      "start": 5,
+      "end": 10,
+      "text": "We decided the demo order: open the cube, ask a question, then enter the moment.",
+      "speaker": "SPEAKER_00",
+      "words": []
+    },
+    {
+      "start": 11,
+      "end": 14,
+      "text": "Sam will show the evidence card after the question.",
+      "speaker": "SPEAKER_01",
+      "words": []
+    },
+    {
+      "start": 15,
+      "end": 19,
+      "text": "Use the fixture day if the live capture is unavailable.",
+      "speaker": "SPEAKER_00",
+      "words": []
+    }
+  ],
+  "speaker_map": {}
+}

@@ -1,0 +1,47 @@
+{
+  "nodes": [
+    {
+      "id": "mo_001",
+      "kind": "moment",
+      "label": "Demo planning"
+    },
+    {
+      "id": "person:sam",
+      "kind": "person",
+      "label": "Sam (fictional)"
+    },
+    {
+      "id": "place:cafe2",
+      "kind": "place",
+      "label": "Maple Café"
+    },
+    {
+      "id": "topic:demo",
+      "kind": "topic",
+      "label": "Demo"
+    },
+    {
+      "id": "ev_007",
+      "kind": "event",
+      "label": "Read pull request"
+    }
+  ],
+  "edges": [
+    {
+      "from": "mo_001",
+      "to": "topic:demo",
+      "rel": "about",
+      "evidence": [
+        "transcript:mo_001:0"
+      ]
+    },
+    {
+      "from": "mo_001",
+      "to": "place:cafe2",
+      "rel": "at",
+      "evidence": [
+        "ev_009"
+      ]
+    }
+  ]
+}
