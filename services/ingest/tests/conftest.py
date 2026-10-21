@@ -1,4 +1,6 @@
 import sys
+from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -10,7 +12,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "services/capture-win"))
 
 
 @pytest.fixture
-def vault(tmp_path):
+def vault(tmp_path: Path) -> Vault:
     store = Vault(tmp_path / "vault")
     store.initialize()
     store.seed()
@@ -18,12 +20,12 @@ def vault(tmp_path):
 
 
 @pytest.fixture
-def client(vault):
+def client(vault: Vault) -> Iterator[TestClient]:
     settings = Settings(vault_root=vault.root, _env_file=None)
     with TestClient(create_app(settings)) as connection:
         yield connection
 
 
 @pytest.fixture
-def auth(vault):
+def auth(vault: Vault) -> dict[str, str]:
     return {"Authorization": f"Bearer {vault.token}"}

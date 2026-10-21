@@ -1,8 +1,11 @@
+from typing import Any
+
+
 class ModalAdapter:
-    def __init__(self, app_name: str = "daycube"):
+    def __init__(self, app_name: str = "daycube") -> None:
         self.app_name = app_name
 
-    def run(self, function: str, *args):
+    def run(self, function: str, *args: Any) -> Any:
         if function not in {"transcribe", "depth"}:
             raise ValueError("Unknown DAYCUBE GPU function")
         try:

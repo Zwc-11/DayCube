@@ -14,7 +14,7 @@ class Fix:
     heading: float | None = None
     source: str = "unknown"
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if self.t.utcoffset() is None:
             raise ValueError("Fix timestamps must have an offset")
         if not -90 <= self.lat <= 90 or not -180 <= self.lon <= 180:

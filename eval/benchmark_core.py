@@ -14,7 +14,7 @@ import sys
 from collections.abc import Callable
 from contextlib import closing
 from dataclasses import asdict, dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from time import perf_counter
@@ -115,6 +115,12 @@ def create_vault(root: Path, workload: Workload) -> Vault:
     return vault
 
 
+def timestamp_at(fraction: float) -> str:
+    """An instant ``fraction`` of the way through the synthetic 12-hour day."""
+    start = instant(read_json(PROJECT_ROOT / "fixtures/sample-day/day.json")["places"][0]["t0"])
+    return (start + timedelta(seconds=12 * 3600 * fraction)).isoformat()
+
+
 def digest(value: Any) -> str:
     return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
 
@@ -138,6 +144,22 @@ def measure(operation: Callable[[], Any], repeats: int) -> dict:
     }
 
 
+def operations(vault: Vault) -> list[tuple[str, Callable[[], Any]]]:
+    window = (timestamp_at(0.5), timestamp_at(0.5 + 1 / 48))  # 15 minutes at midday
+    return [
+        ("load_day", lambda: vault.load_day(DAY)),
+        ("collect_units", lambda: collect_units(vault, DAY)),
+        # Unchanged files: validation and parsing are reused from the previous build.
+        ("build_index", lambda: build_index(vault, DAY)),
+        # A fresh Vault has no caches: parse, schema-check and index from scratch.
+        ("build_index_cold", lambda: build_index(Vault(vault.root), DAY)),
+        ("retrieve_warm", lambda: retrieve(vault, DAY, "needlebenchmark")),
+        ("events_window", lambda: vault.events_in(DAY, *window, None)),
+        ("day_payload_cold", lambda: Vault(vault.root).day_payload(DAY).decode()),
+        ("day_payload_warm", lambda: vault.day_payload(DAY).decode()),
+    ]
+
+
 def git_output(*args: str) -> str:
     return subprocess.check_output(["git", *args], cwd=PROJECT_ROOT, text=True).strip()
 
@@ -147,15 +169,13 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--repeats", type=int, default=5)
     parser.add_argument("--case", choices=["all", *WORKLOADS], default="all")
-    parser.add_argument(
-        "--compare", type=Path, help="Require identical workloads and result hashes"
-    )
+    parser.add_argument("--compare", type=Path, help="Require identical workloads and result hashes")
     args = parser.parse_args()
     if args.repeats < 1:
         parser.error("--repeats must be positive")
     report = {
         "kind": "synthetic-cpu-warm-filesystem",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "environment": {
             "platform": platform.platform(),
             "machine": platform.machine(),
@@ -168,9 +188,11 @@ def main() -> None:
                 relative: hashlib.sha256((PROJECT_ROOT / relative).read_bytes()).hexdigest()
                 for relative in [
                     "services/ingest/ingest/vault.py",
+                    "services/ingest/ingest/contracts.py",
                     "services/ingest/ingest/index/build.py",
-                    "eval/benchmark_core.py",
                     "services/ingest/ingest/index/timeline.py",
+                    "services/ingest/ingest/ask/retrieve.py",
+                    "eval/benchmark_core.py",
                 ]
                 if (PROJECT_ROOT / relative).is_file()
             },
@@ -184,12 +206,7 @@ def main() -> None:
         with TemporaryDirectory(prefix="daycube-benchmark-") as temporary:
             vault = create_vault(Path(temporary) / "vault", workload)
             metrics = {}
-            for label, operation in [
-                ("load_day", lambda: vault.load_day(DAY)),
-                ("collect_units", lambda: collect_units(vault, DAY)),
-                ("build_index", lambda: build_index(vault, DAY)),
-                ("retrieve_warm", lambda: retrieve(vault, DAY, "needlebenchmark")),
-            ]:
+            for label, operation in operations(vault):
                 metrics[label] = measure(operation, args.repeats)
                 print(f"{name}/{label}: {metrics[label]['median_ms']:.2f} ms median", flush=True)
             hits = retrieve(vault, DAY, "needlebenchmark")
@@ -199,10 +216,7 @@ def main() -> None:
             with closing(sqlite3.connect(vault.day_path(DAY) / "index.sqlite")) as db:
                 db.row_factory = sqlite3.Row
                 rows = [dict(row) for row in db.execute("SELECT * FROM units ORDER BY id")]
-                expected = [
-                    dict(unit, id=index)
-                    for index, unit in enumerate(collect_units(vault, DAY), start=1)
-                ]
+                expected = [dict(unit, id=index) for index, unit in enumerate(collect_units(vault, DAY), start=1)]
                 if rows != expected:
                     raise RuntimeError("Stored index differs from collected evidence")
                 db.execute("INSERT INTO units_fts(units_fts,rank) VALUES ('integrity-check',1)")
@@ -218,7 +232,9 @@ def main() -> None:
             if case["workload"] != previous["workload"]:
                 raise RuntimeError(f"{name}: workloads differ")
             for label, metric in case["metrics"].items():
-                old = previous["metrics"][label]
+                old = previous["metrics"].get(label)
+                if old is None:
+                    continue  # Measurement added after the baseline was recorded.
                 if metric["output_sha256"] != old["output_sha256"]:
                     raise RuntimeError(f"{name}/{label}: output differs from baseline")
                 metric["baseline_median_ms"] = old["median_ms"]

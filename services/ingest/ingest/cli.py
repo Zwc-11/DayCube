@@ -1,6 +1,8 @@
 import argparse
 import json
 import sys
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from .config import Settings
 from .index.build import build_index
@@ -16,6 +18,8 @@ def main() -> None:
     for name in ("validate", "index"):
         child = commands.add_parser(name)
         child.add_argument("--date", required=True)
+    compact = commands.add_parser("compact", help="Compress large logs of finished days; reads stay transparent")
+    compact.add_argument("--before", help="Compact every day before this date (default: today)")
     args = parser.parse_args()
     settings = Settings()
     vault = Vault(settings.vault_root)
@@ -31,6 +35,9 @@ def main() -> None:
         result = vault.validate(args.date)
     elif args.command == "index":
         result = build_index(vault, args.date)
+    elif args.command == "compact":
+        before = args.before or datetime.now(ZoneInfo(settings.timezone)).date().isoformat()
+        result = {d["date"]: vault.compact_day(d["date"]) for d in vault.list_days() if d["date"] < before}
     else:
         import importlib.util
         import shutil
@@ -39,11 +46,18 @@ def main() -> None:
 
         with closing(sqlite3.connect(":memory:")) as db:
             db.execute("CREATE VIRTUAL TABLE test USING fts5(text)")
-        result = {"python": sys.version.split()[0], "sqlite": sqlite3.sqlite_version,
-                  "fts5": True, "ffmpeg": bool(shutil.which("ffmpeg")),
-                  "vault": str(vault.root), "days": len(vault.list_days()),
-                  "optional_libraries": {name: importlib.util.find_spec(name) is not None
-                                         for name in ("anthropic", "modal", "fastembed", "sqlite_vec")}}
+        result = {
+            "python": sys.version.split()[0],
+            "sqlite": sqlite3.sqlite_version,
+            "fts5": True,
+            "ffmpeg": bool(shutil.which("ffmpeg")),
+            "vault": str(vault.root),
+            "days": len(vault.list_days()),
+            "optional_libraries": {
+                name: importlib.util.find_spec(name) is not None
+                for name in ("anthropic", "modal", "fastembed", "sqlite_vec")
+            },
+        }
     print(json.dumps(result, indent=2))
 
 

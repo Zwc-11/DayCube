@@ -10,7 +10,7 @@ from ..vault import atomic_text, read_json
 class OverpassAdapter:
     """Explicit, cached OSM building lookup. Location is sent to the chosen endpoint."""
 
-    def __init__(self, cache: Path, url: str = "https://overpass-api.de/api/interpreter"):
+    def __init__(self, cache: Path, url: str = "https://overpass-api.de/api/interpreter") -> None:
         self.cache = cache
         self.url = url
 
@@ -22,8 +22,9 @@ class OverpassAdapter:
         if path.exists():
             return read_json(path)
         query = f'[out:json][timeout:25];way(around:40,{lat:.5f},{lon:.5f})["building"];out geom tags;'
-        response = httpx.post(self.url, data={"data": query}, timeout=30,
-                              headers={"User-Agent": "DAYCUBE/0.1 local-development"})
+        response = httpx.post(
+            self.url, data={"data": query}, timeout=30, headers={"User-Agent": "DAYCUBE/0.1 local-development"}
+        )
         response.raise_for_status()
         data = response.json()
         if not isinstance(data.get("elements"), list):

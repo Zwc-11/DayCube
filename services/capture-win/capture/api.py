@@ -6,7 +6,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from ingest.config import Settings
-from ingest.vault import Vault, read_lines
+from ingest.vault import Vault
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, HttpUrl
 
 
@@ -27,8 +27,12 @@ def create_capture_app(settings: Settings | None = None, *, receive: bool = Fals
     app = FastAPI(title="DAYCUBE browser receiver", version="0.1.0")
     bearer = HTTPBearer(auto_error=False)
     origins = [f"chrome-extension://{settings.extension_id}"] if settings.extension_id else []
-    app.add_middleware(CORSMiddleware, allow_origins=origins, allow_methods=["GET", "POST"],
-                       allow_headers=["Authorization", "Content-Type"])
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_methods=["GET", "POST"],
+        allow_headers=["Authorization", "Content-Type"],
+    )
 
     def authorize(credentials: HTTPAuthorizationCredentials | None = Depends(bearer)):
         if credentials is None or not secrets.compare_digest(credentials.credentials, vault.token):
@@ -36,8 +40,13 @@ def create_capture_app(settings: Settings | None = None, *, receive: bool = Fals
 
     @app.get("/status")
     def status():
-        return {"paused": paused, "capabilities": ["browser_metadata_receiver"],
-                "screenshots": False, "webcam": False, "native_sampler": False}
+        return {
+            "paused": paused,
+            "capabilities": ["browser_metadata_receiver"],
+            "screenshots": False,
+            "webcam": False,
+            "native_sampler": False,
+        }
 
     @app.post("/pause", dependencies=[Depends(authorize)])
     def pause():
@@ -66,8 +75,8 @@ def create_capture_app(settings: Settings | None = None, *, receive: bool = Fals
                 day = event.t.astimezone(ZoneInfo(settings.timezone)).date().isoformat()
                 groups.setdefault(day, []).append(event.model_dump(mode="json"))
             for day, records in groups.items():
-                path = vault.root / "capture" / day / "browser.jsonl"
-                vault.write_lines(path, read_lines(path) + records)
+                # Appending costs the batch, not the day: rewriting the log made capture O(n^2).
+                vault.append_lines(vault.root / "capture" / day / "browser.jsonl", records)
         return {"accepted": len(batch)}
 
     return app

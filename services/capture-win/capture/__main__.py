@@ -5,7 +5,7 @@ import uvicorn
 from .api import create_capture_app
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="Start the opt-in browser metadata receiver")
     parser.add_argument("--receive", action="store_true", help="Allow incoming browser metadata; paused otherwise")
     args = parser.parse_args()

@@ -1,12 +1,15 @@
+from __future__ import annotations
+
 import os
 import sqlite3
 import tempfile
+from collections.abc import Sequence
 from contextlib import closing
 from datetime import timedelta
 from pathlib import Path
 
 from ..time import instant
-from ..vault import Vault, read_json, read_lines
+from ..vault import Record, Vault, read_json, stored
 from .timeline import EventTimeline
 
 UNIT_COLUMNS = (
@@ -27,9 +30,7 @@ UNIT_COLUMNS = (
     "moment_id",
     "offset_s",
 )
-INSERT_UNIT = (
-    f"INSERT INTO units({','.join(UNIT_COLUMNS)}) VALUES ({','.join('?' for _ in UNIT_COLUMNS)})"
-)
+INSERT_UNIT = f"INSERT INTO units({','.join(UNIT_COLUMNS)}) VALUES ({','.join('?' for _ in UNIT_COLUMNS)})"
 
 DDL = """
 CREATE TABLE units (
@@ -44,27 +45,67 @@ CREATE TABLE deletions (t0 TEXT, t1 TEXT, reason TEXT, applied_at TEXT);
 """
 
 
-def source_stamp(path: Path) -> dict:
+def source_stamp(path: Path) -> dict[str, list[int]]:
+    """Mtime, size and inode of every file the index is built from; a mismatch forces a rebuild."""
     files = [path / "day.json", path / "events.jsonl", path / "screens/ocr.jsonl"]
     files += sorted((path / "moments").glob("*/meta.json"))
     files += sorted((path / "moments").glob("*/transcript.json"))
-    stamp = {
-        str(p.relative_to(path)): [p.stat().st_mtime_ns, p.stat().st_size]
-        for p in files
-        if p.exists()
-    }
+    stamp = {}
+    for file in files:
+        source = stored(file)  # a compacted log counts as the same input under a new stamp
+        if source.exists():
+            stat = source.stat()
+            stamp[str(file.relative_to(path))] = [stat.st_mtime_ns, stat.st_size, stat.st_ino]
     names = path.parent / "places.json"
     if names.exists():
-        stamp["@place_names"] = [names.stat().st_mtime_ns, names.stat().st_size]
+        stat = names.stat()
+        stamp["@place_names"] = [stat.st_mtime_ns, stat.st_size, stat.st_ino]
     return stamp
 
 
-def collect_units(vault: Vault, day: str) -> list[dict]:
-    path = vault.day_path(day)
-    units = []
-    events = vault.events(day)
-    timeline = EventTimeline(events)
-    for event in events:
+def ocr_runs(shots: Sequence[Record]) -> list[tuple[Record, Record, str]]:
+    """Blocks that stay on screen across consecutive shots of one window, one entry per run.
+
+    A screenshot every 30 s repeats most of a static page, so indexing every copy multiplies
+    units, full-text postings and embeddings about fivefold for no new text. A run continues while
+    the next shot shows the same text under the same title; any gap starts a new run. Each run
+    keeps the shot where attention peaked (the first, without gaze) and when it was last seen.
+    Returns ``(shot, block, last_seen)`` in order of first appearance.
+    """
+    runs: list[list] = []
+    open_runs: dict[tuple[str, str], list] = {}
+    for shot in sorted(shots, key=lambda r: instant(r["t"])):
+        seen: dict[tuple[str, str], list] = {}
+        for block in shot["blocks"]:
+            key = (shot["title"], block["text"])
+            run = seen.get(key) or open_runs.get(key)
+            if run is None:
+                run = [shot, block, shot["t"]]
+                runs.append(run)
+            else:
+                run[2] = shot["t"]
+                if _attention(block) > _attention(run[1]):
+                    run[0], run[1] = shot, block
+            seen[key] = run
+        open_runs = seen
+    return [(shot, block, last) for shot, block, last in runs]
+
+
+def _attention(block: Record) -> float:
+    return -1.0 if block["attention"] is None else block["attention"]
+
+
+def collect_units(vault: Vault, day: str) -> list[Record]:
+    """Every searchable unit of a day, in a stable order, from a single snapshot parse."""
+    snapshot = vault.snapshot(day)
+    series = snapshot.events
+    moments = snapshot.moments
+    units: list[Record] = []
+    timeline = EventTimeline.from_series(series)
+    for event, start in zip(series.records, series.starts, strict=True):
+        moment = moments.get(event["moment_id"]) if event.get("moment_id") else None
+        # Store the offset into the moment now, so retrieval never opens meta.json per hit.
+        offset = max(0.0, (start - instant(moment.meta["t0"])).total_seconds()) if moment else None
         units.append(
             {
                 "day": day,
@@ -82,14 +123,13 @@ def collect_units(vault: Vault, day: str) -> list[dict]:
                 "fidelity": event["fidelity"],
                 "confidence": event["confidence"],
                 "moment_id": event.get("moment_id"),
-                "offset_s": None,
+                "offset_s": offset,
             }
         )
-    for meta_path in sorted((path / "moments").glob("*/meta.json")):
-        meta = read_json(meta_path)
+    for moment in moments.values():
+        meta = moment.meta
         start = instant(meta["t0"])
-        transcript = read_json(meta_path.parent / "transcript.json")
-        for index, segment in enumerate(transcript["segments"]):
+        for index, segment in enumerate(moment.transcript["segments"]):
             evidence = f"transcript:{meta['id']}:{index}"
             units.append(
                 {
@@ -111,34 +151,33 @@ def collect_units(vault: Vault, day: str) -> list[dict]:
                     "offset_s": segment["start"],
                 }
             )
-    for record in read_lines(path / "screens/ocr.jsonl"):
+    for record, block, last_seen in ocr_runs(snapshot.ocr):
+        if block["attention"] is not None and block["attention"] < 0.3:
+            continue
         nearest = timeline.nearest(record["t"])
-        for block in record["blocks"]:
-            if block["attention"] is not None and block["attention"] < 0.3:
-                continue
-            evidence = f"ocr:{record['shot']}:{block['id']}"
-            units.append(
-                {
-                    "day": day,
-                    "t": record["t"],
-                    "t_end": None,
-                    "type": "ocr.block",
-                    "text": f"{record['title']}: {block['text']}",
-                    "place": nearest.get("place") if nearest else None,
-                    "floor": nearest.get("floor") if nearest else None,
-                    "x": None,
-                    "y": None,
-                    "evidence_id": evidence,
-                    "source_ref": f"screens/{record['shot']}.svg",
-                    "attention": block["attention"],
-                    "fidelity": nearest["fidelity"] if nearest else "estimated",
-                    "confidence": block["conf"],
-                    "moment_id": None,
-                    "offset_s": None,
-                }
-            )
-    names = read_json(vault.root / "places.json")
-    for place in read_json(path / "day.json")["places"]:
+        evidence = f"ocr:{record['shot']}:{block['id']}"
+        units.append(
+            {
+                "day": day,
+                "t": record["t"],
+                "t_end": last_seen if last_seen != record["t"] else None,
+                "type": "ocr.block",
+                "text": f"{record['title']}: {block['text']}",
+                "place": nearest.get("place") if nearest else None,
+                "floor": nearest.get("floor") if nearest else None,
+                "x": None,
+                "y": None,
+                "evidence_id": evidence,
+                "source_ref": f"screens/{record['shot']}.svg",
+                "attention": block["attention"],
+                "fidelity": nearest["fidelity"] if nearest else "estimated",
+                "confidence": block["conf"],
+                "moment_id": None,
+                "offset_s": None,
+            }
+        )
+    names = vault.place_names()
+    for place in snapshot.day["places"]:
         units.append(
             {
                 "day": day,
@@ -162,7 +201,7 @@ def collect_units(vault: Vault, day: str) -> list[dict]:
     return units
 
 
-def build_index(vault: Vault, day: str) -> dict:
+def build_index(vault: Vault, day: str) -> Record:
     with vault.lock:
         vault.validate(day)
         path = vault.day_path(day)
@@ -173,9 +212,7 @@ def build_index(vault: Vault, day: str) -> dict:
         try:
             with closing(sqlite3.connect(temporary)) as db, db:
                 db.executescript(DDL)
-                db.executemany(
-                    INSERT_UNIT, (tuple(unit[column] for column in UNIT_COLUMNS) for unit in units)
-                )
+                db.executemany(INSERT_UNIT, (tuple(unit[column] for column in UNIT_COLUMNS) for unit in units))
                 db.execute("INSERT INTO units_fts(units_fts) VALUES ('rebuild')")
             os.replace(temporary, path / "index.sqlite")
             vault.write_json(path / "index.stamp.json", source_stamp(path))
@@ -185,11 +222,13 @@ def build_index(vault: Vault, day: str) -> dict:
 
 
 def ensure_index(vault: Vault, day: str) -> None:
+    """Rebuild the index if any input changed. A repeat call with unchanged inputs costs stats."""
     path = vault.day_path(day)
+    key = (vault.snapshot_key(day), vault.stamp(vault.root / "places.json"), vault.stamp(path / "index.sqlite"))
+    if vault.fresh_index.get(day) == key:
+        return
     stamp = path / "index.stamp.json"
-    if (
-        not (path / "index.sqlite").exists()
-        or not stamp.exists()
-        or read_json(stamp) != source_stamp(path)
-    ):
+    if not (path / "index.sqlite").exists() or not stamp.exists() or read_json(stamp) != source_stamp(path):
         build_index(vault, day)
+        key = (key[0], key[1], vault.stamp(path / "index.sqlite"))
+    vault.fresh_index[day] = key

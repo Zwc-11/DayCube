@@ -62,7 +62,34 @@ The backend changes motivated by this review target repeated scans and row-at-a-
   temporary database before atomic replacement, including on failure.
 - Add correctness tests and an isolated scale benchmark with source hashes and output fingerprints.
 
+## Second pass: algorithm-level patterns
+
+A closer read of the scheduler, input preparation and tests turned up six concrete techniques.
+Each one is applied below where a profile showed the matching cost in DAYCUBE.
+
+| Reference evidence | Technique | DAYCUBE change |
+| --- | --- | --- |
+| [`zos.cpp` sizes `total_q`](https://github.com/deepseek-ai/DeepInfer/blob/774ce244b87cc0eb8d4b94ab9f5de2ab22049f01/csrc/engine/zos.cpp#L213-L233), [allocates once](https://github.com/deepseek-ai/DeepInfer/blob/774ce244b87cc0eb8d4b94ab9f5de2ab22049f01/csrc/engine/zos.cpp#L51) and [checks the fill](https://github.com/deepseek-ai/DeepInfer/blob/774ce244b87cc0eb8d4b94ab9f5de2ab22049f01/csrc/engine/zos.cpp#L80) | Count, allocate exactly, fill, assert the count | Pin stems, transit arcs and venue edges are built into exactly sized `Float32Array`s, one `lineSegments` each. Discs and venue nodes are one `InstancedMesh` each |
+| [Scheduler constructor](https://github.com/deepseek-ai/DeepInfer/blob/774ce244b87cc0eb8d4b94ab9f5de2ab22049f01/csrc/engine/scheduler.hpp#L121-L131), [object pool](https://github.com/deepseek-ai/DeepInfer/blob/774ce244b87cc0eb8d4b94ab9f5de2ab22049f01/csrc/utils/object_pool.hpp) | Reserve capacity up front and reuse storage in place | The 3D frame loop allocates nothing: `samplePath` writes into a caller-owned sample, as RMSNorm accepts `out=`. Geometry is rebuilt only when its inputs change, and disposed by the scope that built it |
+| [Checkpoint queue](https://github.com/deepseek-ai/DeepInfer/blob/774ce244b87cc0eb8d4b94ab9f5de2ab22049f01/csrc/engine/scheduler.hpp#L478-L481) | Use the ordering invariant and look only at the head | `EventSeries` keeps events sorted by start time and records the longest span. A window query bisects to `t0 - max_span`, so it never scans the whole day. The viewer looks up layers, path samples and breadcrumbs by binary search |
+| [Decode perf cache key](https://github.com/deepseek-ai/DeepInfer/blob/774ce244b87cc0eb8d4b94ab9f5de2ab22049f01/deepinfer/worker/decode_perf_cache.py#L40-L52) and [atomic write](https://github.com/deepseek-ai/DeepInfer/blob/774ce244b87cc0eb8d4b94ab9f5de2ab22049f01/deepinfer/worker/decode_perf_cache.py#L146-L161) | A cache key built from every input; replacement is atomic | `DaySnapshot` keys on `(mtime_ns, size, inode)` for every file it reads, plus a per-path write counter. The counter stops a same-size rewrite within one coarse clock tick from serving stale data. `/day` bytes, validation results and index freshness are all memoized on that key |
+| [`TORCH_CHECK` at construction](https://github.com/deepseek-ai/DeepInfer/blob/774ce244b87cc0eb8d4b94ab9f5de2ab22049f01/csrc/engine/scheduler.hpp#L115-L120) | Fail at the boundary with the exact cause | Each snapshot section is schema-checked when it loads. `ContractError` carries the contract name and JSON path, and the API returns it as a 422 |
+| [Sync-guard tests](https://github.com/deepseek-ai/DeepInfer/blob/774ce244b87cc0eb8d4b94ab9f5de2ab22049f01/tests/test_cuda_sync_guards.py) | Fakes and adversarial interleavings instead of the real device | The `test_snapshot.py` tests cover several cases. A property test checks the window query against a full scan, and another rewrites files behind the cache to simulate an outside editor. Others cover a same-size rewrite and carrying validation through an append |
+
+Two more changes came out of profiling rather than from the reference:
+
+- **Native validation on the hot path.** On a 5,000-event day, pure-Python `jsonschema` took
+  96% of an index rebuild. `jsonschema-rs` compiles the same Draft 2020-12 schemas once per
+  process, with `format` checking on. The schemas stay canonical.
+- **Viewer playback.** drei `<Line>` disposes its material when the identity of `points` changes.
+  Recomputing points on each playhead tick therefore relinked shader programs mid-playback. A
+  memoized geometry per batch, plus stable callbacks across `React.memo` boundaries, removes both
+  the relinks and the re-renders.
+
+The lint configuration now matches the reference rule families: `E`, `F`, `UP`, `B`, `SIM`, `I` and
+`ANN`, without its CUDA-specific ignores. Measurements are in [performance notes](performance.md#second-pass-measurements).
+
 The [engineering standard](engineering.md) defines the ongoing expectations and remaining gaps.
 The earlier viewer fixes and idle measurements are documented separately in
-[performance notes](performance.md). Neither set of changes establishes general performance parity
+[performance notes](performance.md). Neither pass establishes general performance parity
 with DeepInfer or finishes the remaining live-mode and capture work.

@@ -6,7 +6,14 @@ import {
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message); this.name = 'ApiError'; }
+
+  static async from(response: Response): Promise<ApiError> {
+    const error = await response.json().catch(() => ({ detail: response.statusText }));
+    return new ApiError(response.status, typeof error.detail === 'string' ? error.detail : JSON.stringify(error.detail));
+  }
 }
+
+export interface DaySummary { date: string; stats: Day['stats']; kinds?: string[] }
 
 export interface ClientOptions {
   baseUrl?: string;
@@ -34,17 +41,22 @@ export class DaycubeClient {
       headers.set('Authorization', `Bearer ${token}`);
     }
     const response = await this.transport(`${this.baseUrl}${path}`, { ...init, headers });
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: response.statusText }));
-      throw new ApiError(response.status, typeof error.detail === 'string' ? error.detail : JSON.stringify(error.detail));
-    }
+    if (!response.ok) throw await ApiError.from(response);
     return response.json();
   }
 
   health() { return this.request('/health') as Promise<{ status: string; version: string; capabilities: Record<string, unknown> }>; }
-  days() { return this.request('/days') as Promise<{ date: string; stats: Day['stats'] }[]>; }
+  days() { return this.request('/days') as Promise<DaySummary[]>; }
   async day(date: string): Promise<DayResponse> {
     return dayResponseSchema.parse(await this.request(`/day/${encodeURIComponent(date)}`));
+  }
+  /** Conditional load: resolves to null when the server's copy still matches `etag` (HTTP 304). */
+  async dayIfChanged(date: string, etag?: string | null): Promise<{ etag: string | null; day: DayResponse } | null> {
+    const headers = new Headers(etag ? { 'If-None-Match': etag } : undefined);
+    const response = await this.transport(`${this.baseUrl}/day/${encodeURIComponent(date)}`, { headers });
+    if (response.status === 304) return null;
+    if (!response.ok) throw await ApiError.from(response);
+    return { etag: response.headers.get('ETag'), day: dayResponseSchema.parse(await response.json()) };
   }
   async events(date: string) {
     const data = await this.request(`/day/${encodeURIComponent(date)}/events`);

@@ -4,9 +4,10 @@ from contextlib import closing
 import pytest
 from ingest.ask.retrieve import reciprocal_rank_fusion, retrieve
 from ingest.index.build import build_index, collect_units
+from ingest.vault import Vault
 
 
-def test_index_is_repeatably_rebuildable_on_windows(vault):
+def test_index_is_repeatably_rebuildable_on_windows(vault: Vault) -> None:
     first = build_index(vault, "2026-10-20")
     assert first == build_index(vault, "2026-10-20")
     assert first["units"] == 28
@@ -14,13 +15,13 @@ def test_index_is_repeatably_rebuildable_on_windows(vault):
     assert build_index(vault, "2026-10-20") == first
 
 
-def test_rrf_does_not_count_duplicate_results_twice():
+def test_rrf_does_not_count_duplicate_results_twice() -> None:
     ranking = reciprocal_rank_fusion([["a", "b", "a"], ["b", "c"]])
     assert ranking[0][0] == "b"
     assert dict(ranking)["a"] == 1 / 61
 
 
-def test_batched_index_preserves_evidence_rows_and_fts(vault):
+def test_batched_index_preserves_evidence_rows_and_fts(vault: Vault) -> None:
     day = "2026-10-20"
     expected = collect_units(vault, day)
     build_index(vault, day)
@@ -34,7 +35,7 @@ def test_batched_index_preserves_evidence_rows_and_fts(vault):
     assert {hit["id"] for hit in hits} <= {unit["evidence_id"] for unit in expected}
 
 
-def test_failed_rebuild_keeps_previous_searchable_index(vault, monkeypatch):
+def test_failed_rebuild_keeps_previous_searchable_index(vault: Vault, monkeypatch: pytest.MonkeyPatch) -> None:
     import ingest.index.build as index_build
 
     day = "2026-10-20"

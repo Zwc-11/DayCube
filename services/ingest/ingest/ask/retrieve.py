@@ -1,12 +1,26 @@
+from __future__ import annotations
+
 import re
 import sqlite3
 from contextlib import closing
 
 from ..index.build import ensure_index
 from ..time import instant, tod
-from ..vault import Vault, read_json
+from ..vault import Record, Vault
 
-STOP_WORDS = set("a an the i me my we our you your was were is are am when where what who how why did do does have had with about at in on of to for it that this and or as be been can could tell decided".split())
+# fmt: off
+STOP_WORDS = frozenset((
+    "a", "an", "the", "i", "me", "my", "we", "our", "you", "your", "was", "were", "is", "are", "am",
+    "when", "where", "what", "who", "how", "why", "did", "do", "does", "have", "had", "with", "about",
+    "at", "in", "on", "of", "to", "for", "it", "that", "this", "and", "or", "as", "be", "been", "can",
+    "could", "tell", "decided",
+))
+# fmt: on
+QUERY = """
+    SELECT u.*, bm25(units_fts) AS rank FROM units_fts
+    JOIN units u ON u.id = units_fts.rowid
+    WHERE units_fts MATCH ? ORDER BY rank, u.t LIMIT ?
+"""
 
 
 def terms(question: str) -> list[str]:
@@ -14,43 +28,52 @@ def terms(question: str) -> list[str]:
     return list(dict.fromkeys(w for w in words if len(w) > 1 and w not in STOP_WORDS))[:16]
 
 
-def retrieve(vault: Vault, day: str, question: str, limit: int = 10) -> list[dict]:
+def retrieve(vault: Vault, day: str, question: str, limit: int = 10) -> list[Record]:
     query_terms = terms(question)
     if not query_terms:
         return []
     with vault.lock:
         ensure_index(vault, day)
-        path = vault.day_path(day)
+        snapshot = vault.snapshot(day)
         # Quote every token: user punctuation can never become an FTS operator.
         expression = " OR ".join(f'"{word}"' for word in query_terms)
-        with closing(sqlite3.connect(path / "index.sqlite")) as db:
+        with closing(sqlite3.connect(snapshot.path / "index.sqlite")) as db:
             db.row_factory = sqlite3.Row
-            rows = db.execute("""
-                SELECT u.*, bm25(units_fts) AS rank FROM units_fts
-                JOIN units u ON u.id = units_fts.rowid
-                WHERE units_fts MATCH ? ORDER BY rank, u.t LIMIT ?
-            """, (expression, limit)).fetchall()
-        data = read_json(path / "day.json")
-        names = read_json(vault.root / "places.json")
-        places = {p["id"]: p for p in data["places"]}
+            rows = db.execute(QUERY, (expression, limit)).fetchall()
+        zone = snapshot.day["tz"]
+        names = vault.place_names()
+        places = snapshot.places
         result = []
         for row in rows:
             unit = dict(row)
             place = places.get(unit["place"])
             offset = unit["offset_s"]
             if unit["moment_id"] and offset is None:
-                meta = read_json(path / "moments" / unit["moment_id"] / "meta.json")
+                # Indexes built before offsets were stored; current builds never reach this.
+                meta = snapshot.moments[unit["moment_id"]].meta
                 offset = max(0, (instant(unit["t"]) - instant(meta["t0"])).total_seconds())
-            result.append({
-                "id": unit["evidence_id"], "unit_id": unit["id"], "type": unit["type"],
-                "t": tod(unit["t"], data["tz"]), "iso_time": unit["t"],
-                "place": unit["place"], "place_name": names.get(place["id"], place["name"]) if place else None,
-                "layer_index": place["layer_index"] if place else None,
-                "floor": unit["floor"], "x": unit["x"], "y": unit["y"],
-                "text": unit["text"], "source_ref": unit["source_ref"],
-                "fidelity": unit["fidelity"], "confidence": unit["confidence"],
-                "attention": unit["attention"], "moment_id": unit["moment_id"], "offset_s": offset,
-            })
+            result.append(
+                {
+                    "id": unit["evidence_id"],
+                    "unit_id": unit["id"],
+                    "type": unit["type"],
+                    "t": tod(unit["t"], zone),
+                    "iso_time": unit["t"],
+                    "place": unit["place"],
+                    "place_name": names.get(place["id"], place["name"]) if place else None,
+                    "layer_index": place["layer_index"] if place else None,
+                    "floor": unit["floor"],
+                    "x": unit["x"],
+                    "y": unit["y"],
+                    "text": unit["text"],
+                    "source_ref": unit["source_ref"],
+                    "fidelity": unit["fidelity"],
+                    "confidence": unit["confidence"],
+                    "attention": unit["attention"],
+                    "moment_id": unit["moment_id"],
+                    "offset_s": offset,
+                }
+            )
         return result
 
 

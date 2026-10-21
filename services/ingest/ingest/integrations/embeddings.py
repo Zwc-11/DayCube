@@ -1,7 +1,7 @@
 class EmbeddingAdapter:
     """Loads/downloads the embedding model only when this adapter is explicitly constructed."""
 
-    def __init__(self, model: str = "BAAI/bge-small-en-v1.5"):
+    def __init__(self, model: str = "BAAI/bge-small-en-v1.5") -> None:
         try:
             from fastembed import TextEmbedding
         except ImportError as error:

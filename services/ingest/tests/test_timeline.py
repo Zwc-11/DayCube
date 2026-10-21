@@ -23,7 +23,7 @@ def event(label: str, timestamp: str) -> dict:
         ("2026-10-20T09:20:00.000001Z", None),
     ],
 )
-def test_nearest_ties_duplicates_offsets_and_cutoff(timestamp, expected):
+def test_nearest_ties_duplicates_offsets_and_cutoff(timestamp: str, expected: str | None) -> None:
     timeline = EventTimeline(
         [
             event("later", "2026-10-20T09:10:00Z"),
@@ -35,11 +35,11 @@ def test_nearest_ties_duplicates_offsets_and_cutoff(timestamp, expected):
     assert (nearest["id"] if nearest else None) == expected
 
 
-def test_no_events_means_no_inferred_location():
+def test_no_events_means_no_inferred_location() -> None:
     assert EventTimeline([]).nearest("2026-10-20T09:00:00Z") is None
 
 
-def test_single_event_at_and_outside_cutoff():
+def test_single_event_at_and_outside_cutoff() -> None:
     record = event("only", "2026-10-20T09:00:00Z")
     timeline = EventTimeline([record])
     assert timeline.nearest("2026-10-20T08:50:00Z") is record
@@ -47,12 +47,11 @@ def test_single_event_at_and_outside_cutoff():
     assert timeline.nearest("2026-10-20T09:10:01Z") is None
 
 
-def test_lookup_matches_exhaustive_search_on_seeded_timeline():
+def test_lookup_matches_exhaustive_search_on_seeded_timeline() -> None:
     rng = random.Random(20261020)
     start = instant("2026-10-20T08:00:00Z")
     events = [
-        event(str(index), (start + timedelta(seconds=rng.randrange(12 * 3600))).isoformat())
-        for index in range(250)
+        event(str(index), (start + timedelta(seconds=rng.randrange(12 * 3600))).isoformat()) for index in range(250)
     ]
     events = sorted(events, key=lambda record: instant(record["t"]))
     timeline = EventTimeline(events)

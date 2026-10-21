@@ -1,0 +1,88 @@
+{
+  "assumptions": {
+    "thumbnail_kb": 28,
+    "static_share_of_shots": 0.6,
+    "moment_video_mb_per_min_1080p_hevc": 60,
+    "keyframe_kb": 90,
+    "depth_png_kb": 450,
+    "splat_ply_mb": 60,
+    "splat_spz_mb": 6
+  },
+  "streams": {
+    "fixes": {
+      "records": 57600,
+      "current": 27205172,
+      "jsonl": 13381118,
+      "jsonl_zstd10": 998690,
+      "jsonl_zstd19": 844143,
+      "parquet_zstd": 1173132
+    },
+    "windows": {
+      "records": 5846,
+      "current": 703942,
+      "jsonl": 703942,
+      "jsonl_zstd10": 12110,
+      "jsonl_zstd19": 11884,
+      "parquet_zstd": 15661
+    },
+    "gaze": {
+      "records": 100800,
+      "current": 10603345,
+      "jsonl": 10603345,
+      "jsonl_zstd10": 1420045,
+      "jsonl_zstd19": 1081276,
+      "parquet_zstd": 861453
+    },
+    "events": {
+      "records": 1500,
+      "current": 729462,
+      "jsonl": 729462,
+      "jsonl_zstd10": 141886,
+      "jsonl_zstd19": 132390
+    },
+    "ocr": {
+      "records": 963,
+      "current": 5990166,
+      "jsonl": 5990166,
+      "jsonl_zstd10": 599492,
+      "jsonl_zstd19": 528687
+    }
+  },
+  "counts": {
+    "shots": 963,
+    "blocks": 24075
+  },
+  "fixes_parse_ms": {
+    "geojson": 300.3,
+    "parquet_columns": 4.2,
+    "parquet_rows": 529.2
+  },
+  "index": {
+    "units_per_block": 25575,
+    "units_deduplicated": 5290,
+    "fts_per_block": 7065600,
+    "fts_deduplicated": 1638400
+  },
+  "embeddings": {
+    "float32": {
+      "per_block": 39283200,
+      "deduplicated": 8125440
+    },
+    "int8": {
+      "per_block": 9820800,
+      "deduplicated": 2031360
+    },
+    "binary": {
+      "per_block": 1227600,
+      "deduplicated": 253920
+    }
+  },
+  "media": {
+    "thumbnails": 27611136,
+    "thumbnails_deduplicated": 11038720,
+    "moment_per_minute_source": 62914560,
+    "moment_per_minute_keyframes": 11059200,
+    "moment_per_minute_depth_all_keyframes": 55296000,
+    "moment_per_minute_depth_scene_keyframe": 460800
+  }
+}

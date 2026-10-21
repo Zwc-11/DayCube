@@ -27,10 +27,20 @@ addopts = "-q"
 
 [tool.ruff]
 target-version = "py311"
-line-length = 100
+line-length = 120
 
 [tool.ruff.lint]
-select = ["E4", "E7", "E9", "F", "I"]
+# The DeepInfer rule set: pycodestyle, Pyflakes, pyupgrade, bugbear, simplify, isort, annotations.
+select = ["E", "F", "UP", "B", "SIM", "I", "ANN"]
+ignore = [
+  "E501",   # line length is the formatter's job
+  "ANN202", # private helpers may infer their return type
+  "ANN401", # JSON records are genuinely Any at the boundary
+]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI declares dependencies and parameters as call defaults by design.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query"]
 
 [tool.ruff.lint.per-file-ignores]
-"services/ingest/ingest/generated/*" = ["I"]
+"services/ingest/ingest/generated/*" = ["I", "UP", "ANN"]
