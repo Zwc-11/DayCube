@@ -1,595 +1,335 @@
-import React, { useState } from 'react';
-import {
-  Search,
-  Sparkles,
-  Navigation,
-  X,
-  Database,
-  Cpu,
-  ShieldCheck,
-  ArrowUpRight,
-  Radio,
-} from 'lucide-react';
-import { AskResult, Layer } from '../../types/daycube';
-import { PRESET_QUESTIONS, runGroundedAsk } from '../../data/askEngine';
+import React, { useMemo, useRef, useState } from 'react';
+import { ArrowRight, ChevronRight, CornerDownLeft, Monitor, Play, Search, X } from 'lucide-react';
+import type { AskResult, Layer } from '../../types/daycube';
+import { PRESET_QUESTIONS } from '../../data/askEngine';
 import { backendBridge } from '../../lib/backendBridge';
-import {
-  BlurText,
-  FidelityBadge,
-  MagneticButton,
-  SpotlightCard,
-} from '../reactbits/ReactBits';
-import { COLORS, FONTS, formatTod, glassPanelStyle, pillButtonStyle } from '../../styles/theme';
+import { formatTod, placeLabel } from '../../styles/theme';
+import { Dialog, FidelityTag } from '../ui';
+
+const SUGGESTIONS = PRESET_QUESTIONS.slice(0, 3);
 
 interface AskBarModalProps {
   isOpen: boolean;
   onClose: () => void;
   layers: Layer[];
+  /** True when answers come from the connected vault rather than the bundled sample. */
+  liveVault: boolean;
   onTeleport: (result: AskResult) => void;
   onOpenMoment: (momentId: string) => void;
   onOpenScreenOcr: (shotId: string) => void;
+  onOpenConnection: () => void;
 }
+
+type Status = 'idle' | 'loading' | 'done' | 'error';
 
 export const AskBarModal: React.FC<AskBarModalProps> = ({
   isOpen,
   onClose,
   layers,
+  liveVault,
   onTeleport,
   onOpenMoment,
   onOpenScreenOcr,
+  onOpenConnection,
 }) => {
-  const [query, setQuery] = useState(PRESET_QUESTIONS[0].q);
-  const [useSse, setUseSse] = useState(true);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [query, setQuery] = useState('');
+  const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState('');
-  const [stage, setStage] = useState<'idle' | 'rewriting' | 'retrieving' | 'phrasing' | 'done'>('done');
-  const [result, setResult] = useState<AskResult>(() =>
-    runGroundedAsk(PRESET_QUESTIONS[0].q, layers)
-  );
+  const [result, setResult] = useState<AskResult | null>(null);
+  const [activeSuggestion, setActiveSuggestion] = useState(0);
+
+  const sourceNumbers = useMemo(() => {
+    const map = new Map<string, number>();
+    result?.evidence.forEach((ev, i) => map.set(ev.id, i + 1));
+    return map;
+  }, [result]);
 
   if (!isOpen) return null;
 
-  const executeQuery = async (qText: string) => {
+  const ask = async (question: string) => {
+    const q = question.trim();
+    if (!q) return;
+    setQuery(q);
     setError('');
+    setStatus('loading');
     try {
-    setQuery(qText);
-    setStage('rewriting');
-    setTimeout(() => setStage('retrieving'), 90);
-    const res = await backendBridge.ask(
-      '2026-10-20',
-      qText,
-      layers,
-      useSse,
-      (earlyLayer, earlyTod) => {
-        setStage('phrasing');
-        onTeleport({
-          ...result,
-          layerIndex: earlyLayer,
-          t: earlyTod,
-        });
-      }
-    );
-    setStage('phrasing');
-    onTeleport(res);
-    setTimeout(() => {
+      const res = await backendBridge.ask('2026-10-20', q, layers, true, (layerIndex, t) => {
+        // The stream reports where the answer is before the sentences arrive.
+        onTeleport({ ...emptyResult(q), layerIndex, t });
+      });
+      onTeleport(res);
       setResult(res);
-      setStage('done');
-    }, 180);
-    } catch (error) {
-      setStage('idle');
-      setError(error instanceof Error ? error.message : 'The backend request failed.');
+      setStatus('done');
+    } catch (err) {
+      setStatus('error');
+      setError(err instanceof Error ? err.message : 'The request to your vault failed.');
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!query.trim()) return;
-    executeQuery(query.trim());
+  const showOnStage = () => {
+    if (!result || result.hasLocation === false) return;
+    onTeleport(result);
+    onClose();
   };
 
-  return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 60,
-        background: 'rgba(6, 8, 13, 0.72)',
-        backdropFilter: 'blur(10px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 20,
-      }}
-      onClick={onClose}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={glassPanelStyle({
-          width: '100%',
-          maxWidth: 840,
-          maxHeight: '86vh',
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden',
-          border: `1px solid ${COLORS.borderStrong}`,
-        })}
-      >
-        {/* Top Search Bar Header */}
-        <form
-          onSubmit={handleSubmit}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
-            padding: '16px 20px',
-            borderBottom: `1px solid ${COLORS.borderSubtle}`,
-            background: 'rgba(255, 180, 84, 0.05)',
-          }}
-        >
-          <Search size={20} color={COLORS.amber} />
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Ask anything about your day (moments, quotes, screen reads, floors)..."
-            style={{
-              flex: 1,
-              background: 'transparent',
-              border: 'none',
-              outline: 'none',
-              color: COLORS.textPrimary,
-              fontSize: 16,
-              fontFamily: FONTS.sans,
-              fontWeight: 500,
-            }}
-          />
-          <button
-            type="button"
-            onClick={() => setUseSse((v) => !v)}
-            style={pillButtonStyle(useSse, COLORS.sky, {
-              padding: '5px 10px',
-              fontSize: 10.5,
-            })}
-            title="Toggle Server-Sent Events streaming (/api/ask?stream=1)"
-          >
-            <Radio size={12} /> {useSse ? 'SSE ?stream=1' : 'REST JSON'}
-          </button>
-          <MagneticButton
-            onClick={() => executeQuery(query)}
-            style={{
-              padding: '8px 16px',
-              borderRadius: 999,
-              background: COLORS.amber,
-              color: '#090b10',
-              border: 'none',
-              fontFamily: FONTS.sans,
-              fontSize: 12.5,
-              fontWeight: 700,
-              cursor: 'pointer',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-            }}
-          >
-            <Navigation size={13} /> Ask & Teleport
-          </MagneticButton>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: COLORS.textSecondary,
-              cursor: 'pointer',
-              padding: 4,
-            }}
-          >
-            <X size={18} />
-          </button>
-        </form>
+  const hasAnswer = status === 'done' && result && result.sentences.length > 0;
+  const noEvidence = status === 'done' && result && result.sentences.length === 0;
+  const place = result ? layers[result.layerIndex] : undefined;
 
-        {/* Preset Benchmark Questions */}
-        <div
-          style={{
-            padding: '10px 20px',
-            borderBottom: `1px solid ${COLORS.borderSubtle}`,
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: 7,
-            background: 'rgba(10, 13, 20, 0.6)',
+  return (
+    <Dialog onClose={onClose} title="Ask about your day" className="ask" placement="top" initialFocusRef={inputRef}>
+      <form
+        className="ask__bar"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (status === 'done' && result && query === result.question) showOnStage();
+          else ask(query || SUGGESTIONS[activeSuggestion].q);
+        }}
+      >
+        <Search size={18} color="var(--fg-3)" aria-hidden />
+        <input
+          ref={inputRef}
+          className="ask__input"
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            if (status !== 'loading') setStatus('idle');
           }}
-        >
-          {PRESET_QUESTIONS.map((item) => {
-            const active = query === item.q;
-            return (
+          onKeyDown={(e) => {
+            if (status !== 'idle' || query) return;
+            if (e.key === 'ArrowDown') {
+              e.preventDefault();
+              setActiveSuggestion((i) => (i + 1) % SUGGESTIONS.length);
+            } else if (e.key === 'ArrowUp') {
+              e.preventDefault();
+              setActiveSuggestion((i) => (i - 1 + SUGGESTIONS.length) % SUGGESTIONS.length);
+            }
+          }}
+          placeholder="Ask about this day"
+          aria-label="Question"
+          autoComplete="off"
+          spellCheck={false}
+        />
+        {query && (
+          <button
+            type="button"
+            className="icon-btn icon-btn--sm"
+            aria-label="Clear"
+            onClick={() => {
+              setQuery('');
+              setStatus('idle');
+              setResult(null);
+              inputRef.current?.focus();
+            }}
+          >
+            <X size={14} />
+          </button>
+        )}
+      </form>
+
+      <div className="ask__body scroll" aria-live="polite">
+        {status === 'idle' && (
+          <div className="ask__group">
+            {SUGGESTIONS.map((item, i) => (
               <button
                 key={item.q}
                 type="button"
-                onClick={() => executeQuery(item.q)}
-                style={{
-                  padding: '5px 11px',
-                  borderRadius: 999,
-                  fontSize: 11.5,
-                  fontFamily: FONTS.sans,
-                  border: `1px solid ${active ? COLORS.amber : COLORS.borderSubtle}`,
-                  background: active ? COLORS.amberSoft : 'rgba(255,255,255,0.03)',
-                  color: active ? COLORS.amber : COLORS.textSecondary,
-                  cursor: 'pointer',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                }}
+                className="ask__suggestion"
+                data-active={!query && i === activeSuggestion}
+                onMouseEnter={() => setActiveSuggestion(i)}
+                onClick={() => ask(item.q)}
               >
-                <span
-                  style={{
-                    fontFamily: FONTS.mono,
-                    fontSize: 9.5,
-                    color: COLORS.sky,
-                    fontWeight: 700,
-                  }}
-                >
-                  [{item.badge}]
-                </span>
-                <span>{item.q}</span>
+                <Search size={14} color="var(--fg-3)" aria-hidden />
+                <span style={{ flex: 1 }}>{item.q}</span>
+                {!query && i === activeSuggestion && <CornerDownLeft size={13} color="var(--fg-3)" aria-hidden />}
               </button>
-            );
-          })}
-        </div>
+            ))}
+          </div>
+        )}
 
-        {/* 4-Stage Pipeline Status Strip (Section 6.2) */}
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(4, 1fr)',
-            gap: 8,
-            padding: '10px 20px',
-            background: 'rgba(8, 10, 16, 0.9)',
-            borderBottom: `1px solid ${COLORS.borderSubtle}`,
-            fontFamily: FONTS.mono,
-            fontSize: 10.5,
-          }}
-        >
-          <div style={{ color: stage !== 'idle' ? COLORS.emerald : COLORS.textMuted }}>
-            1. REWRITE (Haiku 5.5) · {result.latencyMs.rewrite}ms
+        {status === 'loading' && (
+          <div className="answer" aria-label="Searching">
+            <div className="answer__place faint">Searching your day…</div>
+            <div className="loading-line" style={{ width: '92%' }} />
+            <div className="loading-line" style={{ width: '78%' }} />
+            <div className="loading-line" style={{ width: '54%' }} />
           </div>
-          <div
-            style={{
-              color:
-                stage === 'retrieving' || stage === 'phrasing' || stage === 'done'
-                  ? COLORS.sky
-                  : COLORS.textMuted,
-            }}
-          >
-            2. FTS5 + VEC0 RRF · {result.latencyMs.retrieve}ms
-          </div>
-          <div
-            style={{
-              color: stage === 'phrasing' || stage === 'done' ? COLORS.amber : COLORS.textMuted,
-            }}
-          >
-            3. TELEPORT L{result.layerIndex}:F{result.floor} · INSTANT
-          </div>
-          <div style={{ color: stage === 'done' ? COLORS.emerald : COLORS.textMuted }}>
-            4. OPUS + JUDGE VERIFY · {result.latencyMs.verify}ms
-          </div>
-        </div>
+        )}
 
-        {/* Results Body */}
-        <div
-          style={{
-            padding: 20,
-            overflowY: 'auto',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 16,
-          }}
-        >
-          {error && <p role="alert" style={{ color: COLORS.danger }}>{error}</p>}
-          {/* Grounded Answer Card */}
-          <SpotlightCard beamColor={COLORS.amber} style={{ padding: 16 }}>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                marginBottom: 10,
-              }}
-            >
-              <span
-                style={{
-                  fontFamily: FONTS.mono,
-                  fontSize: 11,
-                  color: COLORS.amber,
-                  fontWeight: 700,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                }}
-              >
-                <Sparkles size={14} /> {result.hasLocation === false ? 'NO MATCHING EVIDENCE' :
-                  `GROUNDED ANSWER · LAYER ${result.layerIndex} (${layers[result.layerIndex]?.name}, FLOOR ${result.floor})`}
-              </span>
-              <span
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 5,
-                  padding: '2px 9px',
-                  borderRadius: 999,
-                  background: COLORS.emeraldSoft,
-                  border: `1px solid ${COLORS.emerald}`,
-                  color: COLORS.emerald,
-                  fontFamily: FONTS.mono,
-                  fontSize: 10,
-                  fontWeight: 700,
-                }}
-              >
-                <ShieldCheck size={12} /> {result.verifierAudit.droppedSentences} UNSUPPORTED DROPPED
-              </span>
-            </div>
+        {status === 'error' && (
+          <div className="error-box" role="alert">
+            {error}{' '}
+            <button type="button" className="btn btn--ghost btn--sm" onClick={() => ask(query)}>
+              Try again
+            </button>
+          </div>
+        )}
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {result.message && <p role="status" style={{ color: COLORS.textSecondary }}>{result.message}</p>}
-              {result.sentences.map((s, i) => (
-                <div
-                  key={i}
-                  style={{
-                    fontSize: 14,
-                    lineHeight: 1.55,
-                    color: COLORS.textPrimary,
-                    padding: '10px 12px',
-                    borderRadius: 10,
-                    background: 'rgba(255, 255, 255, 0.03)',
-                    border: `1px solid ${COLORS.borderSubtle}`,
-                  }}
-                >
-                  <BlurText text={s.text} delayStep={0.02} />
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      flexWrap: 'wrap',
-                      gap: 6,
-                      marginTop: 8,
-                    }}
-                  >
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                      {s.evidence.map((evId) => (
-                        <span
-                          key={evId}
-                          style={{
-                            padding: '2px 8px',
-                            borderRadius: 6,
-                            background: COLORS.amberSoft,
-                            border: `1px solid ${COLORS.amber}`,
-                            color: COLORS.amber,
-                            fontFamily: FONTS.mono,
-                            fontSize: 10.5,
-                            fontWeight: 600,
-                          }}
-                        >
-                          cite: {evId}
+        {noEvidence && (
+          <div className="answer">
+            <p className="answer__text" style={{ fontSize: 14 }}>
+              Nothing in this day matches that question.
+            </p>
+            <p className="muted" style={{ margin: '6px 0 16px', fontSize: 13 }}>
+              {result?.message ?? 'Try naming a place, a person, or a time, like “at the café” or “after lunch”.'}
+            </p>
+          </div>
+        )}
+
+        {hasAnswer && result && (
+          <>
+            <div className="answer">
+              {place && result.hasLocation !== false && (
+                <div className="answer__place">
+                  <span className="dot" style={{ background: 'var(--accent)' }} aria-hidden />
+                  <span>
+                    {placeLabel(place.name)}, {formatTod(result.t)}
+                    {place.floors.length > 1 ? `, floor ${result.floor}` : ''}
+                  </span>
+                </div>
+              )}
+              <p className="answer__text">
+                {result.sentences.map((s, i) => (
+                  <React.Fragment key={i}>
+                    {s.text}
+                    {s.evidence.map((id) =>
+                      sourceNumbers.has(id) ? (
+                        <span key={id} className="cite" aria-label={`source ${sourceNumbers.get(id)}`}>
+                          {sourceNumbers.get(id)}
                         </span>
-                      ))}
-                    </div>
-                    <span
-                      style={{
-                        fontFamily: FONTS.mono,
-                        fontSize: 10,
-                        color: COLORS.textSecondary,
-                      }}
-                    >
-                      Verified shared tokens: {s.sharedTokens.slice(0, 5).join(', ')}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Direct Teleport Action Bar */}
-            <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
-              {result.hasLocation !== false && <>
-              <MagneticButton
-                onClick={() => {
-                  onTeleport(result);
-                  onClose();
-                }}
-                style={{
-                  padding: '9px 16px',
-                  borderRadius: 10,
-                  background: COLORS.amber,
-                  color: '#090b10',
-                  border: 'none',
-                  fontWeight: 700,
-                  fontSize: 12.5,
-                  cursor: 'pointer',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                }}
-              >
-                <Navigation size={14} /> View in 3D Diorama ({formatTod(result.t)} · ({result.x}m,{' '}
-                {result.y}m))
-              </MagneticButton>
-
-              </>}
-              {result.momentId && (
-                <MagneticButton
-                  onClick={() => {
-                    onTeleport(result);
-                    onClose();
-                    onOpenMoment(result.momentId!);
-                  }}
-                  style={{
-                    padding: '9px 16px',
-                    borderRadius: 10,
-                    background: COLORS.emeraldSoft,
-                    color: COLORS.emerald,
-                    border: `1px solid ${COLORS.emerald}`,
-                    fontWeight: 700,
-                    fontSize: 12.5,
-                    cursor: 'pointer',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 6,
-                  }}
-                >
-                  <ArrowUpRight size={14} /> Open Moment {result.momentId} @ {result.offsetS}s
-                </MagneticButton>
-              )}
-
-              {result.screenShotId && (
-                <MagneticButton
-                  onClick={() => {
-                    onTeleport(result);
-                    onClose();
-                    onOpenScreenOcr(result.screenShotId!);
-                  }}
-                  style={{
-                    padding: '9px 16px',
-                    borderRadius: 10,
-                    background: COLORS.skySoft,
-                    color: COLORS.sky,
-                    border: `1px solid ${COLORS.sky}`,
-                    fontWeight: 700,
-                    fontSize: 12.5,
-                    cursor: 'pointer',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 6,
-                  }}
-                >
-                  <ArrowUpRight size={14} /> Open Screen OCR ({result.screenShotId})
-                </MagneticButton>
-              )}
-            </div>
-          </SpotlightCard>
-
-          {/* Structured Query Rewrite + Reciprocal Rank Fusion Evidence Table */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr', gap: 14 }}>
-            <div
-              style={{
-                padding: 14,
-                borderRadius: 12,
-                background: 'rgba(14, 18, 28, 0.9)',
-                border: `1px solid ${COLORS.borderSubtle}`,
-              }}
-            >
-              <div
-                style={{
-                  fontFamily: FONTS.mono,
-                  fontSize: 10.5,
-                  color: COLORS.sky,
-                  fontWeight: 700,
-                  marginBottom: 8,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                }}
-              >
-                <Cpu size={13} /> STEP 1: STRUCTURED REWRITE
-              </div>
-              <div
-                style={{
-                  fontFamily: FONTS.mono,
-                  fontSize: 11,
-                  color: COLORS.textPrimary,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 6,
-                }}
-              >
-                <div>
-                  <span style={{ color: COLORS.textSecondary }}>terms: </span>
-                  <span style={{ color: COLORS.amber }}>
-                    [{result.rewrite.terms.map((t) => `"${t}"`).join(', ')}]
-                  </span>
-                </div>
-                <div>
-                  <span style={{ color: COLORS.textSecondary }}>place_hint: </span>
-                  <span style={{ color: COLORS.emerald }}>
-                    {result.rewrite.place_hint || 'null'}
-                  </span>
-                </div>
-                <div>
-                  <span style={{ color: COLORS.textSecondary }}>people: </span>
-                  <span>[{result.rewrite.people.join(', ')}]</span>
-                </div>
-                <div>
-                  <span style={{ color: COLORS.textSecondary }}>wants: </span>
-                  <span style={{ color: COLORS.purple }}>"{result.rewrite.wants}"</span>
-                </div>
-              </div>
-            </div>
-
-            <div
-              style={{
-                padding: 14,
-                borderRadius: 12,
-                background: 'rgba(14, 18, 28, 0.9)',
-                border: `1px solid ${COLORS.borderSubtle}`,
-              }}
-            >
-              <div
-                style={{
-                  fontFamily: FONTS.mono,
-                  fontSize: 10.5,
-                  color: COLORS.emerald,
-                  fontWeight: 700,
-                  marginBottom: 8,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                }}
-              >
-                <Database size={13} /> STEP 2: RECIPROCAL RANK FUSION (FTS5 + VEC0 384-D)
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {result.evidence.map((ev) => (
-                  <div
-                    key={ev.id}
-                    style={{
-                      padding: '7px 10px',
-                      borderRadius: 8,
-                      background: 'rgba(255,255,255,0.03)',
-                      border: `1px solid ${COLORS.borderSubtle}`,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: 10,
+                      ) : null
+                    )}{' '}
+                  </React.Fragment>
+                ))}
+              </p>
+              <div className="answer__actions">
+                {result.hasLocation !== false && (
+                  <button type="button" className="btn btn--primary" onClick={showOnStage}>
+                    Show in scene <ArrowRight size={14} aria-hidden />
+                  </button>
+                )}
+                {result.momentId && (
+                  <button
+                    type="button"
+                    className="btn btn--secondary"
+                    onClick={() => {
+                      onTeleport(result);
+                      onClose();
+                      onOpenMoment(result.momentId!);
                     }}
                   >
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <div
-                        style={{
-                          fontFamily: FONTS.mono,
-                          fontSize: 10,
-                          color: COLORS.amber,
-                          fontWeight: 700,
-                        }}
-                      >
-                        {ev.id} · {ev.placeName} (F{ev.floor}) · RRF {ev.rrfScore}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 11.5,
-                          color: COLORS.textPrimary,
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                        }}
-                      >
-                        {ev.text}
-                      </div>
-                    </div>
-                    <FidelityBadge fidelity={ev.fidelity} confidence={ev.confidence} compact />
-                  </div>
-                ))}
+                    <Play size={13} fill="currentColor" aria-hidden />
+                    Replay moment{result.offsetS !== undefined ? ` at ${Math.round(result.offsetS)} s` : ''}
+                  </button>
+                )}
+                {result.screenShotId && (
+                  <button
+                    type="button"
+                    className="btn btn--secondary"
+                    onClick={() => {
+                      onTeleport(result);
+                      onClose();
+                      onOpenScreenOcr(result.screenShotId!);
+                    }}
+                  >
+                    <Monitor size={14} aria-hidden /> View screen
+                  </button>
+                )}
               </div>
             </div>
-          </div>
-        </div>
+
+            {result.evidence.length > 0 && (
+              <div className="ask__group" style={{ paddingTop: 14 }}>
+                <div className="ask__group-title">Sources</div>
+                <ol className="sources">
+                  {result.evidence.map((ev, i) => (
+                    <li key={ev.id}>
+                      <button
+                        type="button"
+                        className="source"
+                        onClick={() => {
+                          onTeleport({ ...result, layerIndex: ev.layerIndex, t: ev.t, floor: ev.floor, x: ev.x, y: ev.y, evidence: [ev] });
+                          onClose();
+                        }}
+                      >
+                        <span className="source__n">{i + 1}</span>
+                        <span>
+                          <span className="source__meta num">
+                            {formatTod(ev.t)}, {placeLabel(ev.placeName)}
+                            {ev.floor ? `, floor ${ev.floor}` : ''}
+                          </span>
+                          <span className="source__text" style={{ display: 'block' }}>
+                            {ev.text}
+                          </span>
+                        </span>
+                        <FidelityTag fidelity={ev.fidelity} />
+                      </button>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            )}
+
+            <details className="how">
+              <summary>
+                <ChevronRight size={13} aria-hidden /> How this answer was found
+              </summary>
+              <div className="how__body">
+                <ol className="how__steps">
+                  {result.rewrite.terms.length > 0 && (
+                    <li>Looked for: {result.rewrite.terms.join(', ')}</li>
+                  )}
+                  <li>
+                    Ranked {result.evidence.length} matching records by keyword
+                    {result.mode === 'extractive' ? '' : ' and meaning'}.
+                  </li>
+                  <li>
+                    Kept only sentences that quote a source
+                    {result.verifierAudit.droppedSentences > 0
+                      ? `; ${result.verifierAudit.droppedSentences} unsupported sentence${result.verifierAudit.droppedSentences === 1 ? ' was' : 's were'} removed`
+                      : ''}
+                    .
+                  </li>
+                </ol>
+                <span className="faint num">Answered in {Math.max(1, Math.round(result.latencyMs.total))} ms</span>
+              </div>
+            </details>
+          </>
+        )}
       </div>
-    </div>
+
+      {!liveVault && (
+        <div className="dialog__foot">
+          <span className="tag" title="Answers come from the bundled sample day">
+            Sample
+          </span>
+          <button
+            type="button"
+            className="btn btn--ghost btn--sm"
+            style={{ height: 22, padding: '0 6px', color: 'var(--fg-2)' }}
+            onClick={onOpenConnection}
+          >
+            Connect vault
+          </button>
+        </div>
+      )}
+    </Dialog>
   );
 };
+
+function emptyResult(question: string): AskResult {
+  return {
+    question,
+    layerIndex: 0,
+    t: 0,
+    floor: 0,
+    x: 0,
+    y: 0,
+    rewrite: { terms: [], time_window: null, place_hint: null, people: [], wants: 'any' },
+    latencyMs: { rewrite: 0, retrieve: 0, phrase: 0, verify: 0, total: 0 },
+    verifierAudit: { checkedSentences: 0, droppedSentences: 0, judgeModel: '', status: 'VERIFIED_ALL' },
+    sentences: [],
+    evidence: [],
+  };
+}

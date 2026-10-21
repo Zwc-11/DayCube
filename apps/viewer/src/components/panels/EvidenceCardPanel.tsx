@@ -1,713 +1,384 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
+import { Check, ChevronRight, Info, Monitor, Pencil, Play, X } from 'lucide-react';
+import type { EventPin, Layer } from '../../types/daycube';
 import {
-  Eye,
-  Sparkles,
-  Volume2,
-  Compass,
-  Layers,
-  CheckCircle2,
-  AlertTriangle,
-  UserCheck,
-  Edit3,
-  Check,
-} from 'lucide-react';
-import { EventPin, Layer } from '../../types/daycube';
-import {
-  BlurText,
-  DecryptedText,
-  FidelityBadge,
-  MagneticButton,
-  SpotlightCard,
-} from '../reactbits/ReactBits';
-import {
-  COLORS,
-  FONTS,
+  CATEGORY,
+  eventCategory,
+  FIDELITY_LABEL,
+  formatDuration,
+  formatRange,
   formatTod,
-  glassPanelStyle,
-  pillButtonStyle,
+  splitPlaceName,
 } from '../../styles/theme';
+import { CategoryIcon, FidelityTag } from '../ui';
 
-interface EvidenceCardPanelProps {
+interface InspectorProps {
   layer: Layer;
-  tod: number;
   selectedPin: EventPin | null;
   onSelectPin: (pin: EventPin) => void;
   onScrubTo: (t: number) => void;
   onOpenMoment: (momentId: string) => void;
   onOpenScreenOcr: (shotId: string) => void;
-  activeFloorFilter: 'all' | number;
-  onFloorFilterChange: (fl: 'all' | number) => void;
   speakerOverrides: Record<string, string>;
   onConfirmSpeaker: (diarLabel: string, personName: string, momentId?: string) => void;
   onRenamePlace: (placeId: string, newName: string) => void;
 }
 
-export const EvidenceCardPanel: React.FC<EvidenceCardPanelProps> = ({
+const PEOPLE = ['Sam', 'Maya', 'You'];
+
+function initials(name: string): string {
+  const clean = name.replace(/\(.*?\)/g, '').trim();
+  return clean
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? '')
+    .join('');
+}
+
+/** The right-hand panel: what this place was, what's selected, and what was said. */
+export const EvidenceCardPanel = React.memo(function EvidenceCardPanel({
   layer,
-  tod,
   selectedPin,
   onSelectPin,
   onScrubTo,
   onOpenMoment,
   onOpenScreenOcr,
-  activeFloorFilter,
-  onFloorFilterChange,
   speakerOverrides,
   onConfirmSpeaker,
   onRenamePlace,
-}) => {
+}: InspectorProps) {
   const [editingName, setEditingName] = useState(false);
   const [draftName, setDraftName] = useState(layer.name);
+  const [editingSpeaker, setEditingSpeaker] = useState<string | null>(null);
 
-  const handleCitationClick = (evId: string) => {
-    const cleanId = evId.replace('transcript:', '').split(':')[0];
-    const matchPin = layer.events.find(
-      (e) => e.id === evId || e.momentId === cleanId || e.source.includes(evId)
-    );
-    if (matchPin) {
-      onSelectPin(matchPin);
-      onScrubTo(matchPin.t);
+  const events = useMemo(() => layer.events.filter((e) => !e.deleted), [layer.events]);
+  // Citations resolve by event id or moment id in O(1); source refs fall back to a scan.
+  const lookup = useMemo(() => {
+    const byId = new Map<string, EventPin>();
+    const byMoment = new Map<string, EventPin>();
+    for (const e of events) {
+      byId.set(e.id, e);
+      if (e.momentId && !byMoment.has(e.momentId)) byMoment.set(e.momentId, e);
     }
+    return { byId, byMoment };
+  }, [events]);
+  const selected = selectedPin && lookup.byId.has(selectedPin.id) ? selectedPin : null;
+
+  // Number citations in order of first appearance so the summary reads like footnotes.
+  const citeNumbers = useMemo(() => {
+    const map = new Map<string, number>();
+    layer.summary.sentences.forEach((s) =>
+      s.evidence.forEach((id) => {
+        if (!map.has(id)) map.set(id, map.size + 1);
+      })
+    );
+    return map;
+  }, [layer.summary.sentences]);
+
+  const findEvent = (evId: string): EventPin | undefined =>
+    lookup.byId.get(evId) ??
+    lookup.byMoment.get(evId.replace('transcript:', '').split(':')[0]) ??
+    events.find((e) => e.source.includes(evId));
+
+  const openEvent = (ev: EventPin) => {
+    onSelectPin(ev);
+    onScrubTo(ev.t);
   };
 
   const submitRename = () => {
-    if (draftName.trim() && draftName.trim() !== layer.name) {
-      onRenamePlace(layer.placeId, draftName.trim());
-    }
+    const next = draftName.trim();
+    if (next && next !== layer.name) onRenamePlace(layer.placeId, next);
     setEditingName(false);
   };
 
   return (
-    <aside
-      style={glassPanelStyle({
-        width: 386,
-        maxHeight: 'calc(100vh - 175px)',
-        display: 'flex',
-        flexDirection: 'column',
-        overflow: 'hidden',
-      })}
-    >
-      {/* Top Layer Header */}
-      <div
-        style={{
-          padding: '16px 18px 14px',
-          borderBottom: `1px solid ${COLORS.borderSubtle}`,
-          background:
-            'linear-gradient(180deg, rgba(255, 180, 84, 0.08) 0%, rgba(14, 18, 28, 0) 100%)',
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            marginBottom: 6,
-          }}
-        >
-          <span
-            style={{
-              fontFamily: FONTS.mono,
-              fontSize: 10.5,
-              color: COLORS.amber,
-              letterSpacing: '0.08em',
-              fontWeight: 700,
+    <aside className="panel app__insp" aria-label="Details">
+      <div className="insp-head">
+        {editingName ? (
+          <form
+            className="rename"
+            onSubmit={(e) => {
+              e.preventDefault();
+              submitRename();
             }}
           >
-            LAYER 0{layer.index + 1} · {formatTod(layer.t0)}–{formatTod(layer.t1)}
-          </span>
-          <FidelityBadge fidelity={layer.fidelity} confidence={layer.conf} />
-        </div>
-
-        {/* Inline Place Rename (`POST /places/rename`) */}
-        {editingName ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
             <input
-              type="text"
+              className="input"
               value={draftName}
+              aria-label="Place name"
               onChange={(e) => setDraftName(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') submitRename();
-                if (e.key === 'Escape') setEditingName(false);
+                if (e.key === 'Escape') {
+                  e.stopPropagation();
+                  setEditingName(false);
+                }
               }}
               autoFocus
-              style={{
-                flex: 1,
-                padding: '4px 8px',
-                borderRadius: 6,
-                background: 'rgba(8, 10, 16, 0.9)',
-                border: `1px solid ${COLORS.amber}`,
-                color: COLORS.textPrimary,
-                fontSize: 16,
-                fontWeight: 700,
-                fontFamily: FONTS.sans,
-                outline: 'none',
-              }}
             />
-            <button
-              type="button"
-              onClick={submitRename}
-              style={{
-                padding: '5px 8px',
-                borderRadius: 6,
-                background: COLORS.emerald,
-                color: '#090b10',
-                border: 'none',
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-              }}
-            >
-              <Check size={14} />
+            <button type="submit" className="icon-btn" aria-label="Save name" data-tip="Save">
+              <Check size={16} />
             </button>
-          </div>
+            <button type="button" className="icon-btn" aria-label="Cancel" onClick={() => setEditingName(false)}>
+              <X size={16} />
+            </button>
+          </form>
         ) : (
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 8,
-            }}
-          >
-            <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1.2 }}>
-              <BlurText text={layer.name} />
-            </div>
+          <div className="insp-title-row">
+            <h2 className="insp-title">
+              {splitPlaceName(layer.name)[0]}
+              {splitPlaceName(layer.name)[1] && <span className="insp-title__qual"> {splitPlaceName(layer.name)[1]}</span>}
+            </h2>
             <button
               type="button"
-              title="Rename place in vault/places.json (POST /places/rename)"
+              className="icon-btn icon-btn--sm"
+              aria-label="Rename place"
+              data-tip="Rename"
               onClick={() => {
                 setDraftName(layer.name);
                 setEditingName(true);
               }}
-              style={{
-                background: 'rgba(255,255,255,0.04)',
-                border: `1px solid ${COLORS.borderSubtle}`,
-                borderRadius: 6,
-                color: COLORS.textSecondary,
-                padding: '3px 6px',
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 4,
-                fontFamily: FONTS.mono,
-                fontSize: 9.5,
-              }}
             >
-              <Edit3 size={11} /> Rename
+              <Pencil size={13} />
             </button>
           </div>
         )}
-
-        <div
-          style={{
-            fontSize: 12,
-            color: COLORS.textSecondary,
-            marginTop: 3,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-          }}
-        >
-          <span>{layer.subtitle}</span>
-          <span style={{ fontFamily: FONTS.mono, fontSize: 10.5, color: COLORS.textMuted }}>
-            ({layer.frame.lat.toFixed(4)}°N, {Math.abs(layer.frame.lon).toFixed(4)}°W)
-          </span>
+        <div className="insp-meta">
+          <span className="num">{formatRange(layer.t0, layer.t1)}</span>
+          <span className="faint">{formatDuration(layer.t1 - layer.t0)}</span>
+          <FidelityTag fidelity={layer.fidelity} />
         </div>
-
-        {/* Multi-Floor Filter Pills (when layer has multiple floors like Engineering Hall) */}
-        {layer.floors.length > 1 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 11 }}>
-            <span
-              style={{
-                fontFamily: FONTS.mono,
-                fontSize: 10,
-                color: COLORS.textSecondary,
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 4,
-              }}
-            >
-              <Layers size={12} color={COLORS.amber} /> FLOORS:
-            </span>
-            <button
-              type="button"
-              onClick={() => onFloorFilterChange('all')}
-              style={pillButtonStyle(activeFloorFilter === 'all', COLORS.amber, {
-                padding: '3px 9px',
-                fontSize: 10.5,
-              })}
-            >
-              All ({layer.floors.join(' & ')})
-            </button>
-            {layer.floors.map((fl) => (
-              <button
-                key={fl}
-                type="button"
-                onClick={() => onFloorFilterChange(fl)}
-                style={pillButtonStyle(activeFloorFilter === fl, COLORS.sky, {
-                  padding: '3px 9px',
-                  fontSize: 10.5,
-                })}
-              >
-                Floor {fl} ({fl === 0 ? '0.0m' : '+6.4m'})
-              </button>
-            ))}
-          </div>
-        )}
       </div>
 
-      {/* Scrollable Evidence Content */}
-      <div
-        style={{
-          padding: '14px 16px',
-          overflowY: 'auto',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 12,
-        }}
-      >
-        {/* Grounded AI Memory Summary with Citation Pills */}
-        <SpotlightCard beamColor={COLORS.amber} style={{ padding: '12px 14px' }}>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              marginBottom: 8,
-            }}
-          >
-            <span
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6,
-                fontFamily: FONTS.mono,
-                fontSize: 10,
-                fontWeight: 700,
-                color: COLORS.amber,
-                letterSpacing: '0.06em',
-              }}
-            >
-              <Sparkles size={12} /> CLAUDE OPUS 5.5 GROUNDED CARD
-            </span>
-            <span
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 4,
-                fontFamily: FONTS.mono,
-                fontSize: 9.5,
-                color: COLORS.emerald,
-              }}
-            >
-              <CheckCircle2 size={11} /> HAIKU VERIFIED
-            </span>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {layer.summary.sentences.map((s, idx) => (
-              <div
-                key={idx}
-                style={{
-                  fontSize: 12.5,
-                  lineHeight: 1.5,
-                  color: COLORS.textPrimary,
-                }}
-              >
-                <span>{s.text} </span>
-                {s.evidence.map((evId) => (
-                  <button
-                    key={evId}
-                    type="button"
-                    onClick={() => handleCitationClick(evId)}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      marginLeft: 4,
-                      padding: '1px 6px',
-                      borderRadius: 5,
-                      background: 'rgba(255, 180, 84, 0.16)',
-                      border: '1px solid rgba(255, 180, 84, 0.38)',
-                      color: COLORS.amber,
-                      fontFamily: FONTS.mono,
-                      fontSize: 10,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    [{evId}]
-                  </button>
-                ))}
-              </div>
-            ))}
-          </div>
-
-          {layer.summary.failureModeNote && (
-            <div
-              style={{
-                marginTop: 10,
-                padding: '7px 9px',
-                borderRadius: 8,
-                background: 'rgba(56, 189, 248, 0.08)',
-                border: '1px dashed rgba(56, 189, 248, 0.32)',
-                fontSize: 11,
-                color: '#bae6fd',
-                display: 'flex',
-                gap: 7,
-                alignItems: 'flex-start',
-              }}
-            >
-              <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: 2, color: COLORS.sky }} />
-              <span>{layer.summary.failureModeNote}</span>
-            </div>
-          )}
-        </SpotlightCard>
-
-        {/* Active / Selected Pin Inspector */}
-        {selectedPin && (
-          <SpotlightCard
-            spotlightColor="rgba(56, 189, 248, 0.18)"
-            beamColor={COLORS.sky}
-            style={{
-              padding: '13px 14px',
-              border: `1px solid ${COLORS.borderStrong}`,
-            }}
-          >
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                marginBottom: 6,
-              }}
-            >
-              <span
-                style={{
-                  fontFamily: FONTS.mono,
-                  fontSize: 10,
-                  color: COLORS.sky,
-                  fontWeight: 700,
-                }}
-              >
-                <DecryptedText
-                  text={`${selectedPin.id.toUpperCase()} · ${selectedPin.eventType.toUpperCase()}`}
-                />
-              </span>
-              <FidelityBadge
-                fidelity={selectedPin.fidelity}
-                confidence={selectedPin.confidence}
-                compact
-              />
-            </div>
-
-            <div style={{ fontSize: 13.5, fontWeight: 700, lineHeight: 1.35 }}>
-              {selectedPin.label}
-            </div>
-            {selectedPin.subtitle && (
-              <div
-                style={{
-                  fontFamily: FONTS.mono,
-                  fontSize: 10.5,
-                  color: COLORS.textSecondary,
-                  marginTop: 3,
-                }}
-              >
-                {selectedPin.subtitle}
-              </div>
-            )}
-
-            <div
-              style={{
-                marginTop: 8,
-                fontSize: 12,
-                color: '#cbd5e1',
-                lineHeight: 1.45,
-                padding: '8px 10px',
-                borderRadius: 8,
-                background: 'rgba(8, 10, 15, 0.55)',
-              }}
-            >
-              {selectedPin.text}
-            </div>
-
-            {/* Telemetry Metadata Row */}
-            <div
-              style={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                gap: 8,
-                marginTop: 9,
-                fontFamily: FONTS.mono,
-                fontSize: 10,
-                color: COLORS.textSecondary,
-              }}
-            >
-              <span>
-                POS: ({selectedPin.x.toFixed(1)}m, {selectedPin.y.toFixed(1)}m, F{selectedPin.floor})
-              </span>
-              {selectedPin.attention !== undefined && (
-                <span style={{ color: COLORS.emerald }}>
-                  GAZE ATTENTION: {Math.round(selectedPin.attention * 100)}%
-                </span>
-              )}
-            </div>
-
-            {/* Action Buttons: Open 3D Moment Portal or Screen OCR Gaze Inspector */}
-            <div style={{ display: 'flex', gap: 8, marginTop: 11 }}>
-              {selectedPin.momentId && (
-                <MagneticButton
-                  onClick={() => onOpenMoment(selectedPin.momentId!)}
-                  style={{
-                    flex: 1,
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 6,
-                    padding: '8px 12px',
-                    borderRadius: 10,
-                    background: COLORS.amber,
-                    color: '#090b10',
-                    border: 'none',
-                    fontWeight: 700,
-                    fontSize: 12,
-                    cursor: 'pointer',
-                  }}
-                >
-                  <Compass size={14} /> Enter 3D Moment ({selectedPin.momentId})
-                </MagneticButton>
-              )}
-              {selectedPin.screenShotId && (
-                <MagneticButton
-                  onClick={() => onOpenScreenOcr(selectedPin.screenShotId!)}
-                  style={{
-                    flex: 1,
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 6,
-                    padding: '8px 12px',
-                    borderRadius: 10,
-                    background: 'rgba(56, 189, 248, 0.18)',
-                    color: COLORS.sky,
-                    border: `1px solid ${COLORS.sky}`,
-                    fontWeight: 600,
-                    fontSize: 12,
-                    cursor: 'pointer',
-                  }}
-                >
-                  <Eye size={14} /> Inspect OCR & Gaze ({selectedPin.screenShotId})
-                </MagneticButton>
-              )}
-            </div>
-          </SpotlightCard>
+      <div className="panel__body scroll">
+        {layer.summary.sentences.length > 0 && (
+          <section className="section" aria-labelledby="insp-summary">
+            <h3 className="sr-only" id="insp-summary">
+              Summary
+            </h3>
+            <ul className="summary">
+              {layer.summary.sentences.map((s, idx) => (
+                <li key={idx}>
+                  {s.text}
+                  {s.evidence.map((evId) => {
+                    const ev = findEvent(evId);
+                    const n = citeNumbers.get(evId);
+                    return (
+                      <button
+                        key={evId}
+                        type="button"
+                        className="cite"
+                        aria-label={`Source ${n}${ev ? `: ${ev.label}` : ''}`}
+                        aria-current={!!ev && selected?.id === ev.id}
+                        title={ev ? `${formatTod(ev.t)}  ${ev.label}` : evId}
+                        disabled={!ev}
+                        onClick={() => ev && openEvent(ev)}
+                      >
+                        {n}
+                      </button>
+                    );
+                  })}
+                </li>
+              ))}
+            </ul>
+          </section>
         )}
 
-        {/* Layer Event Pins List */}
-        <div>
-          <div
-            style={{
-              fontFamily: FONTS.mono,
-              fontSize: 10,
-              fontWeight: 700,
-              color: COLORS.textSecondary,
-              letterSpacing: '0.08em',
-              marginBottom: 7,
-            }}
-          >
-            SPATIAL EVIDENCE PINS ({layer.events.filter((e) => !e.deleted).length})
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {layer.events
-              .filter((e) => !e.deleted)
-              .map((ev) => {
-                const isSel = selectedPin?.id === ev.id;
-                const isNearTime = Math.abs(ev.t - tod) < 0.25;
-                return (
-                  <div
-                    key={ev.id}
-                    onClick={() => {
-                      onSelectPin(ev);
-                      onScrubTo(ev.t);
-                    }}
-                    style={{
-                      padding: '9px 11px',
-                      borderRadius: 10,
-                      background: isSel
-                        ? 'rgba(255, 180, 84, 0.14)'
-                        : isNearTime
-                        ? 'rgba(255, 255, 255, 0.06)'
-                        : 'rgba(255, 255, 255, 0.025)',
-                      border: `1px solid ${
-                        isSel
-                          ? COLORS.amber
-                          : isNearTime
-                          ? 'rgba(255,255,255,0.18)'
-                          : COLORS.borderSubtle
-                      }`,
-                      cursor: 'pointer',
-                      transition: 'all 0.15s ease',
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: 8,
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontFamily: FONTS.mono,
-                          fontSize: 10,
-                          color:
-                            ev.kind === 'moment'
-                              ? COLORS.amber
-                              : ev.kind === 'quote'
-                              ? COLORS.rose
-                              : COLORS.sky,
-                          fontWeight: 600,
-                        }}
-                      >
-                        {formatTod(ev.t)} · {ev.eventType} · F{ev.floor}
-                      </span>
-                      <FidelityBadge fidelity={ev.fidelity} confidence={ev.confidence} compact />
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 12,
-                        fontWeight: 600,
-                        color: COLORS.textPrimary,
-                        marginTop: 3,
-                      }}
-                    >
-                      {ev.label}
-                    </div>
-                  </div>
-                );
-              })}
-          </div>
-        </div>
+        {selected && (
+          <section className="section" aria-labelledby="insp-selected">
+            <h3 className="sr-only" id="insp-selected">
+              Selected
+            </h3>
+            <EventCard event={selected} onOpenMoment={onOpenMoment} onOpenScreen={onOpenScreenOcr} />
+          </section>
+        )}
 
-        {/* Diarized Quotes & Speaker Confirmation Control (Section 5.3) */}
         {layer.quotes.length > 0 && (
-          <div>
-            <div
-              style={{
-                fontFamily: FONTS.mono,
-                fontSize: 10,
-                fontWeight: 700,
-                color: COLORS.textSecondary,
-                letterSpacing: '0.08em',
-                marginBottom: 7,
-              }}
-            >
-              DIARIZED TRANSCRIPT QUOTES & SPEAKER MAP (`POST /speakers/confirm`)
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-              {layer.quotes.map((q) => {
-                const resolvedSpeaker = speakerOverrides[q.diarLabel] || q.who;
-                return (
-                  <div
-                    key={q.id}
-                    onClick={() => onScrubTo(q.t)}
-                    style={{
-                      padding: '10px 12px',
-                      borderRadius: 10,
-                      background: 'rgba(244, 114, 182, 0.07)',
-                      border: '1px solid rgba(244, 114, 182, 0.25)',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        marginBottom: 4,
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontFamily: FONTS.mono,
-                          fontSize: 10,
-                          color: COLORS.rose,
-                          fontWeight: 700,
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 5,
-                        }}
-                      >
-                        <Volume2 size={12} /> {resolvedSpeaker} ({q.diarLabel} · {q.side.toUpperCase()})
-                      </span>
-                      <span style={{ fontFamily: FONTS.mono, fontSize: 10, color: COLORS.textMuted }}>
-                        {formatTod(q.t)}
-                      </span>
+          <section className="section" aria-labelledby="insp-convo">
+            <h3 className="sr-only" id="insp-convo">
+              Conversation
+            </h3>
+            {layer.quotes.map((q) => {
+              const speaker = speakerOverrides[q.diarLabel] || q.who;
+              const isYou = /^you\b/i.test(speaker);
+              const needsName = !q.confirmed && !speakerOverrides[q.diarLabel];
+              const picking = needsName || editingSpeaker === q.id;
+              return (
+                <div key={q.id} className="quote">
+                  <span className={`avatar${isYou ? ' avatar--you' : ''}`} aria-hidden>
+                    {needsName ? '?' : initials(speaker) || '?'}
+                  </span>
+                  <div>
+                    <div className="quote__head">
+                      <span className="quote__who">{needsName ? 'Unknown' : speaker}</span>
+                      {!picking && (
+                        <button
+                          type="button"
+                          className="icon-btn icon-btn--xs"
+                          aria-label="Change speaker"
+                          data-tip="Change speaker"
+                          onClick={() => setEditingSpeaker(q.id)}
+                        >
+                          <Pencil size={11} />
+                        </button>
+                      )}
+                      <span className="faint num quote__time">{formatTod(q.t)}</span>
                     </div>
-                    <div style={{ fontSize: 12, color: COLORS.textPrimary, fontStyle: 'italic' }}>
+                    <button type="button" className="quote__text quote__text--btn" onClick={() => onScrubTo(q.t)}>
                       “{q.text}”
-                    </div>
-                    {/* Speaker Mapping Picker per Spec Section 5.3 */}
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        marginTop: 7,
-                        paddingTop: 6,
-                        borderTop: '1px solid rgba(255,255,255,0.06)',
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontFamily: FONTS.mono,
-                          fontSize: 9.5,
-                          color: COLORS.textSecondary,
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 4,
-                        }}
-                      >
-                        <UserCheck size={11} color={COLORS.emerald} /> Map {q.diarLabel}:
-                      </span>
-                      <div style={{ display: 'flex', gap: 4 }}>
-                        {['Sam', 'Maya', 'You'].map((person) => (
+                    </button>
+                    {picking ? (
+                      <div className="speaker-pick" role="group" aria-label="Who is speaking?">
+                        {PEOPLE.map((p) => (
                           <button
-                            key={person}
+                            key={p}
                             type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onConfirmSpeaker(q.diarLabel, person, q.momentId);
-                            }}
-                            style={{
-                              padding: '2px 7px',
-                              borderRadius: 5,
-                              fontSize: 9.5,
-                              fontFamily: FONTS.mono,
-                              border:
-                                resolvedSpeaker === person
-                                  ? `1px solid ${COLORS.emerald}`
-                                  : `1px solid ${COLORS.borderSubtle}`,
-                              background:
-                                resolvedSpeaker === person
-                                  ? COLORS.emeraldSoft
-                                  : 'rgba(255,255,255,0.04)',
-                              color:
-                                resolvedSpeaker === person ? COLORS.emerald : COLORS.textSecondary,
-                              cursor: 'pointer',
+                            className="chip"
+                            aria-pressed={speaker === p}
+                            onClick={() => {
+                              onConfirmSpeaker(q.diarLabel, p, q.momentId);
+                              setEditingSpeaker(null);
                             }}
                           >
-                            {person}
+                            {p}
                           </button>
                         ))}
                       </div>
-                    </div>
+                    ) : null}
                   </div>
-                );
-              })}
+                </div>
+              );
+            })}
+          </section>
+        )}
+
+        <details className="details">
+          <summary>
+            <ChevronRight size={13} aria-hidden /> Place details
+          </summary>
+          {layer.summary.failureModeNote && (
+            <div className="note">
+              <Info size={13} aria-hidden />
+              <span>{layer.summary.failureModeNote}</span>
             </div>
+          )}
+          <dl className="kv">
+            <dt>Coordinates</dt>
+            <dd>
+              {layer.frame.lat.toFixed(4)}, {layer.frame.lon.toFixed(4)}
+            </dd>
+            <dt>Floors</dt>
+            <dd>{layer.floors.join(', ')}</dd>
+            <dt>Confidence</dt>
+            <dd>{Math.round(layer.conf * 100)}%</dd>
+            {layer.osmId && (
+              <>
+                <dt>OpenStreetMap</dt>
+                <dd>{layer.osmId}</dd>
+              </>
+            )}
+            {layer.venueId && (
+              <>
+                <dt>Venue pack</dt>
+                <dd>{layer.venueId}</dd>
+              </>
+            )}
+            <dt>Place ID</dt>
+            <dd>{layer.placeId}</dd>
+          </dl>
+        </details>
+      </div>
+    </aside>
+  );
+});
+
+const EventCard: React.FC<{
+  event: EventPin;
+  onOpenMoment: (id: string) => void;
+  onOpenScreen: (id: string) => void;
+}> = ({ event, onOpenMoment, onOpenScreen }) => {
+  const cat = eventCategory(event);
+  const showText = event.text && event.text.trim() !== event.label.trim();
+  return (
+    <article className="event-card">
+      <div className="event-card__body">
+        <div className="event-card__kicker">
+          <span className="event-card__cat" style={{ color: CATEGORY[cat].color }}>
+            <CategoryIcon event={event} size={13} />
+            <span className="sr-only">{CATEGORY[cat].label}</span>
+          </span>
+          <span className="row" style={{ gap: 8 }}>
+            <FidelityTag fidelity={event.fidelity} />
+            <span className="faint num">
+              {formatTod(event.t)}
+              {event.tEnd ? `–${formatTod(event.tEnd)}` : ''}
+            </span>
+          </span>
+        </div>
+        <h4 className="event-card__title">{event.label}</h4>
+        {event.subtitle && <div className="event-card__sub">{event.subtitle}</div>}
+        {showText && <p className="event-card__text">{event.text}</p>}
+        {(event.momentId || event.screenShotId) && (
+          <div className="event-card__actions">
+            {event.momentId && (
+              <button
+                type="button"
+                className="btn btn--primary btn--sm"
+                aria-label="Replay moment"
+                onClick={() => onOpenMoment(event.momentId!)}
+              >
+                <Play size={13} fill="currentColor" aria-hidden /> Replay
+              </button>
+            )}
+            {event.screenShotId && (
+              <button
+                type="button"
+                className="btn btn--secondary btn--sm"
+                aria-label="View screen"
+                onClick={() => onOpenScreen(event.screenShotId!)}
+              >
+                <Monitor size={13} aria-hidden /> Screen
+              </button>
+            )}
           </div>
         )}
       </div>
-    </aside>
+      <details className="details">
+        <summary>
+          <ChevronRight size={13} aria-hidden /> Source
+        </summary>
+        <dl className="kv">
+          <dt>Record</dt>
+          <dd>{event.source}</dd>
+          {event.app && (
+            <>
+              <dt>App</dt>
+              <dd>{event.app}</dd>
+            </>
+          )}
+          {event.url && (
+            <>
+              <dt>Page</dt>
+              <dd>{event.url}</dd>
+            </>
+          )}
+          <dt>Fidelity</dt>
+          <dd>{FIDELITY_LABEL[event.fidelity]}</dd>
+          <dt>Confidence</dt>
+          <dd>{Math.round(event.confidence * 100)}%</dd>
+          {event.attention !== undefined && (
+            <>
+              <dt>Gaze attention</dt>
+              <dd>{Math.round(event.attention * 100)}%</dd>
+            </>
+          )}
+          <dt>Position</dt>
+          <dd>
+            Floor {event.floor}, {event.x.toFixed(1)} m east, {event.y.toFixed(1)} m south
+          </dd>
+          <dt>Event ID</dt>
+          <dd>{event.id}</dd>
+        </dl>
+      </details>
+    </article>
   );
 };

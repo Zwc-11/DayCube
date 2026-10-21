@@ -132,54 +132,52 @@ export class BackendBridge {
     }
   }
 
-  async loadDayLayers(date: string): Promise<{
-    layers: Layer[];
-    fromBackend: boolean;
-    tz: string;
-    stats: { events: number; moments: number; places: number; floor_changes: number };
-  }> {
+  /**
+   * Load a day, or confirm the copy behind `etag` is still current. 'offline' means the API
+   * could not be reached; callers decide whether bundled sample data stands in.
+   */
+  async fetchDay(
+    date: string,
+    etag?: string | null
+  ): Promise<{ status: 'unchanged' } | { status: 'ok'; etag: string | null; layers: Layer[] } | { status: 'offline' }> {
     const t0 = performance.now();
     try {
-      const dayResp: DayResponse = await this.client.day(date);
+      const result = await this.client.dayIfChanged(date, etag);
       const latencyMs = Number((performance.now() - t0).toFixed(2));
+      if (result === null) {
+        this.emitLog({ method: 'GET', endpoint: `/api/day/${date}`, status: 304, latencyMs, mode: 'live-backend', summary: 'Unchanged' });
+        return { status: 'unchanged' };
+      }
       this.emitLog({
         method: 'GET',
         endpoint: `/api/day/${date}`,
         status: 200,
         latencyMs,
         mode: 'live-backend',
-        summary: `Loaded & Zod-validated ${dayResp.layers.length} layers, ${dayResp.stats.events} events`,
+        summary: `${result.day.layers.length} layers, ${result.day.stats.events} events`,
       });
-
-      const adaptedLayers = this.adaptBackendDayToViewerLayers(dayResp);
-      return {
-        layers: adaptedLayers,
-        fromBackend: true,
-        tz: dayResp.tz,
-        stats: dayResp.stats,
-      };
+      return { status: 'ok', etag: result.etag, layers: this.adaptBackendDayToViewerLayers(result.day) };
     } catch {
-      const latencyMs = Number((performance.now() - t0).toFixed(2));
-      this.emitLog({
-        method: 'GET',
-        endpoint: `/api/day/${date}`,
-        status: 200,
-        latencyMs,
-        mode: 'standalone-sim',
-        summary: `Hydrated 5 rich diorama layers from local fixture contract`,
-      });
-      return {
-        layers: SAMPLE_DAY_LAYERS,
-        fromBackend: false,
-        tz: 'America/Los_Angeles',
-        stats: { events: 11, moments: 3, places: 5, floor_changes: 1 },
-      };
+      return { status: 'offline' };
+    }
+  }
+
+  /** Recorded days, oldest first, or null when the API is unreachable. */
+  async listDays(): Promise<{ date: string; places: number; events: number; kinds: string[] }[] | null> {
+    try {
+      const days = await this.client.days();
+      return days
+        .map((d) => ({ date: d.date, places: d.stats.places, events: d.stats.events, kinds: d.kinds ?? [] }))
+        .sort((a, b) => a.date.localeCompare(b.date));
+    } catch {
+      return null;
     }
   }
 
   private adaptBackendDayToViewerLayers(dayResp: DayResponse): Layer[] {
+    const visits = new Map(dayResp.places.map((place) => [place.id, place]));
     return dayResp.layers.map((bLayer, idx) => {
-      const visit = dayResp.places.find(place => place.id === bLayer.placeId);
+      const visit = visits.get(bLayer.placeId);
       const fallback = SAMPLE_DAY_LAYERS[idx] || SAMPLE_DAY_LAYERS[0];
       const t0Hours = Number((bLayer.t0 / 3600).toFixed(3));
       const t1Hours = Number((bLayer.t1 / 3600).toFixed(3));
@@ -366,6 +364,8 @@ export class BackendBridge {
 
     const fallbackRes = runGroundedAsk(question, layers);
     const latencyMs = Number((performance.now() - t0).toFixed(2));
+    // The sample engine runs locally; report what it actually took, not its scripted timings.
+    fallbackRes.latencyMs = { rewrite: 0, retrieve: latencyMs, phrase: 0, verify: 0, total: latencyMs };
     this.emitLog({
       method: 'POST',
       endpoint: '/api/ask (local-rrf)',

@@ -1,51 +1,23 @@
-import React, { useState, useEffect, useCallback, Suspense, lazy } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { AskResult, DeletionAudit, EventPin, Layer } from './types/daycube';
+import { SAMPLE_TRANSITS } from './data/sampleDay';
 import {
-  Play,
-  Pause,
-  Search,
-  Layers,
-  Box,
-  Cpu,
-  Eye,
-  Compass,
-  Network,
-  Shield,
-  Sparkles,
-  Sun,
-  Moon,
-  Activity,
-  Radio,
-  BarChart3,
-  Server,
-} from 'lucide-react';
-import {
-  AskResult,
-  DeletionAudit,
-  EventPin,
-  Layer,
-} from './types/daycube';
-import { SAMPLE_DAY_LAYERS, SAMPLE_TRANSITS } from './data/sampleDay';
-import { DioramaCanvas3D, GpuTelemetry } from './components/diorama/DioramaCanvas3D';
+  DioramaCanvas3D,
+  type GpuTelemetry,
+  type SceneCameraApi,
+} from './components/diorama/DioramaCanvas3D';
 import { DioramaCanvas2D } from './components/diorama/DioramaCanvas2D';
 import { EvidenceCardPanel } from './components/panels/EvidenceCardPanel';
-import type { StudioTab } from './components/modals/SystemStudioModal';
-import { ApiCallLog, backendBridge } from './lib/backendBridge';
+import type { SettingsSection } from './components/modals/SystemStudioModal';
+import { type ApiCallLog, backendBridge } from './lib/backendBridge';
 import { usePageVisible } from './lib/usePageVisible';
-import {
-  AnimatedPillTabs,
-  CountUpNumber,
-  DecryptedText,
-  FloatingMagnifyDock,
-  LiveApiToastFeed,
-  MagneticButton,
-} from './components/reactbits/ReactBits';
-import {
-  COLORS,
-  FONTS,
-  formatTod,
-  glassPanelStyle,
-  pillButtonStyle,
-} from './styles/theme';
+import { makeLayerLookup } from './lib/timeIndex';
+import { type DaySummary, type LoadedDay, SAMPLE_DATE, refreshDay } from './lib/days';
+import { TopBar, type ViewMode } from './components/shell/TopBar';
+import { Itinerary } from './components/shell/Itinerary';
+import { Timeline } from './components/shell/Timeline';
+import { StageControls, type SceneOptions } from './components/shell/StageControls';
+import { formatTod } from './styles/theme';
 
 const AskBarModal = lazy(() =>
   import('./components/modals/AskBarModal').then((m) => ({ default: m.AskBarModal }))
@@ -62,157 +34,230 @@ const SystemStudioModal = lazy(() =>
   import('./components/modals/SystemStudioModal').then((m) => ({ default: m.SystemStudioModal }))
 );
 
-type ViewportTab = 'layer' | 'stack' | 'shelf' | 'canvas2d';
+const SPEEDS = [1, 4, 12];
+const NO_TRANSITS: typeof SAMPLE_TRANSITS = [];
 
-export const App: React.FC = () => {
-  const pageVisible = usePageVisible();
-  const [layers, setLayers] = useState<Layer[]>(SAMPLE_DAY_LAYERS);
-  // Start at Layer 4 (Home · Evening at 17:48, matching the user's diorama reference!)
-  const [activeLayerIndex, setActiveLayerIndex] = useState<number>(4);
-  const [tod, setTod] = useState<number>(17.8);
-  const [playing, setPlaying] = useState<boolean>(false);
-  const [playSpeed, setPlaySpeed] = useState<number>(1);
-
-  // Renderer & 3D View Modes
-  const [engineMode, setEngineMode] = useState<'three' | 'canvas2d'>('three');
-  const [viewMode, setViewMode] = useState<'layer' | 'stack' | 'shelf'>('layer');
-  const [azimuth2D, setAzimuth2D] = useState<number>(Math.PI * 0.22);
-
-  // Diorama visual toggles
-  const [activeFloorFilter, setActiveFloorFilter] = useState<'all' | number>('all');
-  const [cutawayWalls, setCutawayWalls] = useState<boolean>(false);
-  const [showVenueTelemetry, setShowVenueTelemetry] = useState<boolean>(true);
-  const [followCharacter, setFollowCharacter] = useState<boolean>(false);
-  const [headParallax, setHeadParallax] = useState<boolean>(false);
-  const [tiltShift, setTiltShift] = useState<boolean>(false);
-
-  // Selected Pin & Active Modals
-  const [selectedPin, setSelectedPin] = useState<EventPin | null>(
-    SAMPLE_DAY_LAYERS[4].events[0]
+function longDate(iso: string): string {
+  return new Intl.DateTimeFormat('en', { weekday: 'long', month: 'long', day: 'numeric' }).format(
+    new Date(`${iso}T12:00:00`)
   );
-  const [askOpen, setAskOpen] = useState<boolean>(false);
+}
+
+function shortDate(iso: string): string {
+  return new Intl.DateTimeFormat('en', { weekday: 'short', month: 'short', day: 'numeric' }).format(
+    new Date(`${iso}T12:00:00`)
+  );
+}
+
+function shiftDate(iso: string, delta: number): string {
+  const [year, month, day] = iso.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day + delta)).toISOString().slice(0, 10);
+}
+
+/** Where a day opens: golden hour at home for the sample day, else the last place visited. */
+function initialFocus(date: string, layers: Layer[]): { index: number; tod: number; pin: EventPin | null } {
+  if (date === SAMPLE_DATE && layers.length > 4) return { index: 4, tod: 17.8, pin: layers[4].events[0] ?? null };
+  const index = Math.max(0, layers.length - 1);
+  const layer = layers[index];
+  const pin = layer?.events.find((e) => !e.deleted) ?? null;
+  return { index, tod: pin ? pin.t : layer ? (layer.t0 + layer.t1) / 2 : 12, pin };
+}
+
+interface AppProps {
+  date: string;
+  day: LoadedDay;
+  /** Recorded days, oldest first; null while loading. */
+  days: DaySummary[] | null;
+  /** Open another day, or the calendar with null. */
+  onOpenDate: (date: string | null) => void;
+}
+
+function isTypingTarget(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null;
+  if (!el) return false;
+  return el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName);
+}
+
+export const App: React.FC<AppProps> = ({ date, day, days, onOpenDate }) => {
+  const pageVisible = usePageVisible();
+  const [focus] = useState(() => initialFocus(date, day.layers));
+  const [layers, setLayers] = useState<Layer[]>(day.layers);
+  const [dataSource, setDataSource] = useState<'vault' | 'sample'>(day.fromBackend ? 'vault' : 'sample');
+  const [activeLayerIndex, setActiveLayerIndex] = useState<number>(focus.index);
+  const [tod, setTod] = useState<number>(focus.tod);
+  const [playing, setPlaying] = useState(false);
+  const [playSpeed, setPlaySpeed] = useState(1);
+
+  const [engineMode, setEngineMode] = useState<'three' | 'canvas2d'>('three');
+  const [viewMode, setViewMode] = useState<ViewMode>('layer');
+  const [azimuth2D, setAzimuth2D] = useState<number>(Math.PI * 0.22);
+  const [activeFloorFilter, setActiveFloorFilter] = useState<'all' | number>('all');
+  const [sceneOptions, setSceneOptions] = useState<SceneOptions>({
+    cutawayWalls: false,
+    followCharacter: false,
+    indoorPositioning: false,
+    // Off by default: the backdrop blur costs a full-stage composite on every frame.
+    tiltShift: false,
+    parallax: false,
+  });
+
+  const [selectedPin, setSelectedPin] = useState<EventPin | null>(focus.pin);
+  const [askOpen, setAskOpen] = useState(false);
   const [activeMomentId, setActiveMomentId] = useState<string | null>(null);
   const [activeScreenShotId, setActiveScreenShotId] = useState<string | null>(null);
-  const [studioTab, setStudioTab] = useState<StudioTab | null>(null);
+  const [settingsSection, setSettingsSection] = useState<SettingsSection | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
 
-  // Speaker confirmation overrides & Privacy state
   const [speakerOverrides, setSpeakerOverrides] = useState<Record<string, string>>({});
-  const [capturePaused, setCapturePaused] = useState<boolean>(false);
+  const [capturePaused, setCapturePaused] = useState(false);
   const [deletions, setDeletions] = useState<DeletionAudit[]>([]);
 
-  // Backend Connection & Live API Log Stream
-  const [backendOnline, setBackendOnline] = useState<boolean>(false);
+  const [backendOnline, setBackendOnline] = useState(false);
+  const [captureAvailable, setCaptureAvailable] = useState(false);
   const [apiLogs, setApiLogs] = useState<ApiCallLog[]>([]);
 
-  // Live GPU & Node.js Ephemeral API Telemetry
-  const [gpuStats, setGpuStats] = useState<GpuTelemetry>({
-    fps: 60,
-    drawCalls: 5,
-    triangles: 480,
-    instances: 34,
-    geometries: 4,
-    textures: 0,
-  });
-  const [apiMeta, setApiMeta] = useState<{
-    responseTimeMs: number;
-    heapUsedMb: number;
-    cachePolicy: string;
-  }>({
-    responseTimeMs: 0.34,
-    heapUsedMb: 24.6,
-    cachePolicy: 'no-store',
-  });
+  // Renderer stats change twice a second; keep them out of React state so the
+  // whole app doesn't re-render. Settings › Performance reads them on demand.
+  const gpuStatsRef = useRef<GpuTelemetry | null>(null);
+  const cameraApi = useRef<SceneCameraApi | null>(null);
 
-  // Subscribe to BackendBridge real-time transport logs
-  useEffect(() => {
-    const unsub = backendBridge.onLog((log) => {
-      setApiLogs((prev) => [log, ...prev.slice(0, 29)]);
-      setApiMeta((prev) => ({
-        ...prev,
-        responseTimeMs: log.latencyMs,
-      }));
-    });
-    return unsub;
-  }, []);
+  // Stop rendering and playback while the stage is hidden: tab in the background or a dialog
+  // on top. Settings › Performance keeps rendering so its numbers stay live.
+  const suspended =
+    !pageVisible ||
+    askOpen ||
+    Boolean(activeMomentId || activeScreenShotId) ||
+    (settingsSection !== null && settingsSection !== 'performance');
+
+  useEffect(() => backendBridge.onLog((log) => setApiLogs((prev) => [log, ...prev.slice(0, 49)])), []);
 
   const syncWithBackend = useCallback(async () => {
     const health = await backendBridge.checkBackendHealth();
     setBackendOnline(health.online);
-    const dayData = await backendBridge.loadDayLayers('2026-10-20');
-    if (dayData.fromBackend) {
-      setLayers(dayData.layers);
-      setSelectedPin(previous => dayData.layers.flatMap(layer => layer.events).find(event => event.id === previous?.id)
-        ?? dayData.layers[dayData.layers.length - 1]?.events[0] ?? null);
+    setCaptureAvailable(health.capture);
+    // A 304 when nothing changed; only a changed day replaces the scene.
+    const changed = await refreshDay(date);
+    if (changed) {
+      setDataSource(changed.fromBackend ? 'vault' : 'sample');
+      setLayers(changed.layers);
+      setSelectedPin(
+        (previous) =>
+          changed.layers.flatMap((layer) => layer.events).find((event) => event.id === previous?.id) ??
+          changed.layers[changed.layers.length - 1]?.events[0] ??
+          null
+      );
     }
-  }, []);
+  }, [date]);
 
   useEffect(() => {
     syncWithBackend();
   }, [syncWithBackend]);
 
-  // Keyboard shortcuts: Cmd/Ctrl+K for Ask, Ctrl+Alt+P for Capture Pause
+  const dayStart = useMemo(() => Math.floor(Math.min(...layers.map((l) => l.t0), 8)), [layers]);
+  const dayEnd = useMemo(() => Math.max(22, Math.ceil(Math.max(...layers.map((l) => l.t1)))), [layers]);
+  const layerAt = useMemo(() => makeLayerLookup(layers), [layers]);
+
+  // The latest time, readable from callbacks without making them change on every time step.
+  // Callbacks stay stable, so memoized panels skip re-rendering during playback and scrubbing.
+  const todRef = useRef(tod);
+  todRef.current = tod;
+  const activeRef = useRef(activeLayerIndex);
+  activeRef.current = activeLayerIndex;
+
+  const focusLayer = useCallback(
+    (idx: number, options: { keepTime?: boolean } = {}) => {
+      const target = layers[idx];
+      if (!target) return;
+      const first = target.events.find((e) => !e.deleted) ?? null;
+      const now = todRef.current;
+      setActiveLayerIndex(idx);
+      setActiveFloorFilter('all');
+      if (!options.keepTime && (now < target.t0 || now > target.t1)) {
+        // Land on the first thing that happened there, so the time and the selection agree.
+        setTod(first ? first.t : Number(((target.t0 + target.t1) / 2).toFixed(2)));
+      }
+      setSelectedPin(first);
+    },
+    [layers]
+  );
+
+  const handleScrubTod = useCallback(
+    (newTod: number) => {
+      setTod(newTod);
+      const match = layerAt(newTod);
+      if (match && match.index !== activeRef.current) {
+        setActiveLayerIndex(match.index);
+        setActiveFloorFilter('all');
+        setSelectedPin(match.events.find((e) => !e.deleted) ?? null);
+      }
+    },
+    [layerAt]
+  );
+
+  const selectLayer = useCallback(
+    (i: number) => {
+      focusLayer(i);
+      setViewMode((mode) => (mode === 'shelf' ? 'layer' : mode));
+    },
+    [focusLayer]
+  );
+
+  const selectPin = useCallback((pin: EventPin) => {
+    setSelectedPin(pin);
+    setTod(pin.t);
+  }, []);
+
+  const selectEvent = useCallback((layerIndex: number, ev: EventPin) => {
+    setActiveLayerIndex(layerIndex);
+    setSelectedPin(ev);
+    setTod(ev.t);
+    if (ev.floor !== undefined) {
+      setActiveFloorFilter((f) => (f === 'all' || f === ev.floor ? f : 'all'));
+    }
+  }, []);
+
+  // Playback
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
+    if (!playing || suspended) return;
+    const interval = window.setInterval(() => {
+      setTod((prev) => {
+        const next = prev + 0.0375 * playSpeed;
+        return next > dayEnd ? dayStart : next;
+      });
+    }, 100);
+    return () => window.clearInterval(interval);
+  }, [playing, suspended, playSpeed, dayStart, dayEnd]);
+
+  useEffect(() => {
+    if (!playing) return;
+    const match = layerAt(tod);
+    if (match && match.index !== activeLayerIndex) {
+      setActiveLayerIndex(match.index);
+      setSelectedPin(match.events.find((e) => !e.deleted) ?? null);
+    }
+  }, [tod, playing, layerAt, activeLayerIndex]);
+
+  // Keyboard: Cmd/Ctrl+K or / to ask, Space to play, Ctrl+Alt+P to pause capture.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         setAskOpen((v) => !v);
       } else if (e.ctrlKey && e.altKey && e.key.toLowerCase() === 'p') {
         e.preventDefault();
         setCapturePaused((v) => !v);
+      } else if (e.key === '/' && !isTypingTarget(e.target)) {
+        e.preventDefault();
+        setAskOpen(true);
+      } else if (e.key === ' ' && (e.target === document.body || (e.target as HTMLElement)?.tagName === 'CANVAS')) {
+        e.preventDefault();
+        setPlaying((p) => !p);
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
   }, []);
-
-  // Automatically sync active layer when scrubbing `tod` across the day
-  const handleScrubTod = useCallback(
-    (newTod: number) => {
-      setTod(newTod);
-      const matchingLayer = layers.find((l) => newTod >= l.t0 && newTod <= l.t1);
-      if (matchingLayer && matchingLayer.index !== activeLayerIndex) {
-        setActiveLayerIndex(matchingLayer.index);
-        setActiveFloorFilter('all');
-        const firstEv = matchingLayer.events.find((e) => !e.deleted) || null;
-        setSelectedPin(firstEv);
-      }
-    },
-    [layers, activeLayerIndex]
-  );
-
-  // Playback loop
-  useEffect(() => {
-    if (!playing || !pageVisible || askOpen || activeMomentId || activeScreenShotId || studioTab) return;
-    const interval = setInterval(() => {
-      setTod((prev) => {
-        const next = prev + 0.0375 * playSpeed;
-        if (next > 22.0) {
-          return 8.0;
-        }
-        const match = layers.find((l) => next >= l.t0 && next <= l.t1);
-        if (match) {
-          setActiveLayerIndex(match.index);
-        }
-        return next;
-      });
-    }, 100);
-    return () => clearInterval(interval);
-  }, [playing, playSpeed, layers, pageVisible, askOpen, activeMomentId, activeScreenShotId, studioTab]);
-
-  const handleSelectLayer = (idx: number) => {
-    const target = layers[idx];
-    if (!target) return;
-    setActiveLayerIndex(idx);
-    setActiveFloorFilter('all');
-    if (tod < target.t0 || tod > target.t1) {
-      setTod(idx === 4 ? 17.8 : Number(((target.t0 + target.t1) / 2).toFixed(2)));
-    }
-    const firstPin = target.events.find((e) => !e.deleted) || null;
-    setSelectedPin(firstPin);
-    if (viewMode === 'shelf') {
-      setViewMode('layer');
-    }
-  };
 
   const handleTeleport = (res: AskResult) => {
     if (res.hasLocation === false) return;
@@ -221,33 +266,53 @@ export const App: React.FC = () => {
     setActiveFloorFilter('all');
     setViewMode('layer');
     const targetLayer = layers[res.layerIndex];
+    const cited = new Set(res.evidence.map((ev) => ev.id));
     const matchPin =
-      targetLayer?.events.find(
-        (e) =>
-          res.evidence.some((ev) => ev.id === e.id) ||
-          (res.momentId && e.momentId === res.momentId)
-      ) ||
+      targetLayer?.events.find((e) => cited.has(e.id) || (res.momentId && e.momentId === res.momentId)) ||
       targetLayer?.events[0] ||
       null;
     setSelectedPin(matchPin);
   };
 
-  const handleConfirmSpeaker = (diarLabel: string, personName: string, momentId = 'mo_001') => {
+  const handleConfirmSpeaker = useCallback((diarLabel: string, personName: string, momentId = 'mo_001') => {
     setSpeakerOverrides((prev) => ({ ...prev, [diarLabel]: personName }));
-    backendBridge.confirmSpeaker(
-      '2026-10-20',
-      momentId,
-      diarLabel,
-      `person:${personName.toLowerCase()}`
-    );
-  };
+    backendBridge.confirmSpeaker(date, momentId, diarLabel, `person:${personName.toLowerCase()}`);
+  }, [date]);
 
-  const handleRenamePlace = (placeId: string, newName: string) => {
-    setLayers((prev) =>
-      prev.map((l) => (l.placeId === placeId ? { ...l, name: newName } : l))
-    );
+  const handleRenamePlace = useCallback((placeId: string, newName: string) => {
+    setLayers((prev) => prev.map((l) => (l.placeId === placeId ? { ...l, name: newName } : l)));
     backendBridge.renamePlace(placeId, newName);
-  };
+  }, []);
+
+  const changeViewMode = useCallback((mode: ViewMode) => {
+    setEngineMode('three');
+    setViewMode(mode);
+  }, []);
+  const openAsk = useCallback(() => setAskOpen(true), []);
+  const openSettings = useCallback(() => setSettingsSection('privacy'), []);
+  const toggleCapture = useCallback(
+    () => (captureAvailable ? setCapturePaused((v) => !v) : setSettingsSection('privacy')),
+    [captureAvailable]
+  );
+  const toggleSidebar = useCallback(() => {
+    setInspectorOpen(false);
+    setSidebarOpen((v) => !v);
+  }, []);
+  const toggleInspector = useCallback(() => {
+    setSidebarOpen(false);
+    setInspectorOpen((v) => !v);
+  }, []);
+  const recordGpuStats = useCallback((stats: GpuTelemetry) => {
+    gpuStatsRef.current = stats;
+  }, []);
+  const zoomIn = useCallback(() => cameraApi.current?.zoomBy(1.2), []);
+  const zoomOut = useCallback(() => cameraApi.current?.zoomBy(1 / 1.2), []);
+  const resetView = useCallback(() => {
+    setAzimuth2D(Math.PI * 0.22);
+    cameraApi.current?.reset();
+  }, []);
+  const togglePlay = useCallback(() => setPlaying((p) => !p), []);
+  const cycleSpeed = useCallback(() => setPlaySpeed((s) => SPEEDS[(SPEEDS.indexOf(s) + 1) % SPEEDS.length]), []);
 
   const handleDeleteHours = (t0: number, t1: number, reason: string) => {
     let purgedCount = 0;
@@ -263,7 +328,16 @@ export const App: React.FC = () => {
         }),
       }))
     );
-
+    const fallbackEntry = (): DeletionAudit => ({
+      id: `del_${Date.now()}`,
+      t0,
+      t1,
+      isoT0: `${date}T${formatTod(t0)}:00-07:00`,
+      isoT1: `${date}T${formatTod(t1)}:00-07:00`,
+      reason,
+      appliedAt: new Date().toISOString(),
+      purgedEventsCount: purgedCount,
+    });
     fetch('/api/delete-hours', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -271,879 +345,174 @@ export const App: React.FC = () => {
       body: JSON.stringify({ t0, t1, reason, purgedEventsCount: purgedCount }),
     })
       .then((r) => r.json())
-      .then((res) => {
-        if (res?.data?.deletion) {
-          setDeletions((d) => [res.data.deletion, ...d]);
-        }
-        if (res?.meta) {
-          setApiMeta({
-            responseTimeMs: res.meta.responseTimeMs,
-            heapUsedMb: res.meta.heapUsedMb,
-            cachePolicy: res.meta.cachePolicy,
-          });
-        }
-      })
-      .catch(() => {
-        setDeletions((d) => [
-          {
-            id: `del_${Date.now()}`,
-            t0,
-            t1,
-            isoT0: `2026-10-20T${formatTod(t0)}:00-07:00`,
-            isoT1: `2026-10-20T${formatTod(t1)}:00-07:00`,
-            reason,
-            appliedAt: new Date().toISOString(),
-            purgedEventsCount: purgedCount,
-          },
-          ...d,
-        ]);
-      });
+      .then((res) => setDeletions((d) => [res?.data?.deletion ?? fallbackEntry(), ...d]))
+      .catch(() => setDeletions((d) => [fallbackEntry(), ...d]));
   };
 
   const activeLayer = layers[activeLayerIndex] || layers[0];
-  const isNight = tod >= 18.2;
-  const activeViewportTab: ViewportTab =
-    engineMode === 'canvas2d' ? 'canvas2d' : viewMode;
+  const transits = dataSource === 'sample' ? SAMPLE_TRANSITS : NO_TRANSITS;
+
+  // Neighbouring recorded days and the week ending today, from the calendar's list.
+  const neighbours = useMemo(() => {
+    const order = (days ?? []).map((d) => d.date);
+    const at = order.indexOf(date);
+    return { prev: at > 0 ? order[at - 1] : null, next: at >= 0 && at < order.length - 1 ? order[at + 1] : null };
+  }, [days, date]);
+  const week = useMemo(() => {
+    const recorded = new Set((days ?? []).map((d) => d.date));
+    recorded.add(date);
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = shiftDate(date, i - 6);
+      return { date: d, recorded: recorded.has(d), isCurrent: d === date };
+    });
+  }, [days, date]);
+  const goHome = useCallback(() => onOpenDate(null), [onOpenDate]);
+  const goPrev = useMemo(() => (neighbours.prev ? () => onOpenDate(neighbours.prev) : null), [neighbours.prev, onOpenDate]);
+  const goNext = useMemo(() => (neighbours.next ? () => onOpenDate(neighbours.next) : null), [neighbours.next, onOpenDate]);
 
   return (
-    <div
-      style={{
-        position: 'relative',
-        width: '100vw',
-        height: '100vh',
-        overflow: 'hidden',
-        background: COLORS.bgDeep,
-        color: COLORS.textPrimary,
-        fontFamily: FONTS.sans,
-        userSelect: 'none',
-      }}
-    >
-      {/* ====================================================================
-          MAIN FULLSCREEN 3D DIORAMA VIEWPORT (Three.js Instanced WebGL or Canvas 2D)
-         ==================================================================== */}
-      <div style={{ position: 'absolute', inset: 0, zIndex: 1 }}>
-        {engineMode === 'three' ? (
-          <DioramaCanvas3D
-            playing={playing}
-            suspended={!pageVisible || askOpen || !!activeMomentId || !!activeScreenShotId || !!studioTab}
-            layers={layers}
-            transits={SAMPLE_TRANSITS}
-            activeLayerIndex={activeLayerIndex}
-            onSelectLayer={handleSelectLayer}
-            viewMode={viewMode}
-            onViewModeChange={setViewMode}
-            tod={tod}
-            activeFloorFilter={activeFloorFilter}
-            cutawayWalls={cutawayWalls}
-            showVenueTelemetry={showVenueTelemetry}
-            followCharacter={followCharacter}
-            headParallax={headParallax}
-            selectedPinId={selectedPin?.id || null}
-            onSelectPin={(pin) => {
-              setSelectedPin(pin);
-              setTod(pin.t);
-            }}
-            onOpenMoment={(mId) => setActiveMomentId(mId)}
-            onGpuTelemetry={setGpuStats}
-          />
-        ) : (
-          <DioramaCanvas2D
-            suspended={!pageVisible || askOpen || !!activeMomentId || !!activeScreenShotId || !!studioTab}
-            layer={activeLayer}
-            tod={tod}
-            azimuth={azimuth2D}
-            onAzimuthChange={setAzimuth2D}
-            tiltShift={tiltShift}
-            cutawayWalls={cutawayWalls}
-            selectedPinId={selectedPin?.id || null}
-            onSelectPin={(pin) => {
-              setSelectedPin(pin);
-              setTod(pin.t);
-            }}
-          />
-        )}
-      </div>
+    <div className="app" data-side-open={sidebarOpen} data-insp-open={inspectorOpen}>
+      <TopBar
+        dateLabel={longDate(date)}
+        onHome={goHome}
+        viewMode={viewMode}
+        onViewModeChange={changeViewMode}
+        onOpenAsk={openAsk}
+        capture={captureAvailable ? (capturePaused ? 'paused' : 'on') : 'off'}
+        onToggleCapture={toggleCapture}
+        onOpenSettings={openSettings}
+        onToggleSidebar={toggleSidebar}
+        onToggleInspector={toggleInspector}
+        sidebarOpen={sidebarOpen}
+        inspectorOpen={inspectorOpen}
+      />
 
-      {/* Optional Museum Miniature Tilt-Shift Blur Overlay (for Three.js mode) */}
-      {engineMode === 'three' && tiltShift && viewMode === 'layer' && (
-        <>
-          <div
-            style={{
-              pointerEvents: 'none',
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              height: '13%',
-              backdropFilter: 'blur(3px)',
-              WebkitBackdropFilter: 'blur(3px)',
-              maskImage: 'linear-gradient(to bottom, black 25%, transparent 100%)',
-              WebkitMaskImage: 'linear-gradient(to bottom, black 25%, transparent 100%)',
-              zIndex: 2,
-            }}
-          />
-          <div
-            style={{
-              pointerEvents: 'none',
-              position: 'absolute',
-              bottom: 0,
-              left: 0,
-              right: 0,
-              height: '15%',
-              backdropFilter: 'blur(3px)',
-              WebkitBackdropFilter: 'blur(3px)',
-              maskImage: 'linear-gradient(to top, black 25%, transparent 100%)',
-              WebkitMaskImage: 'linear-gradient(to top, black 25%, transparent 100%)',
-              zIndex: 2,
-            }}
-          />
-        </>
-      )}
+      <Itinerary
+        dayTitle={shortDate(date)}
+        onHome={goHome}
+        onPrevDay={goPrev}
+        onNextDay={goNext}
+        layers={layers}
+        transits={transits}
+        activeLayerIndex={activeLayerIndex}
+        selectedPinId={selectedPin?.id ?? null}
+        dataSource={dataSource}
+        onSelectLayer={selectLayer}
+        onSelectEvent={selectEvent}
+      />
 
-      {/* ====================================================================
-          TOP FLOATING NAVIGATION & REACT BITS PRO APP-UI BAR
-         ==================================================================== */}
-      <header
-        style={{
-          position: 'absolute',
-          top: 14,
-          left: 16,
-          right: 16,
-          zIndex: 20,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 12,
-          pointerEvents: 'none',
-        }}
-      >
-        {/* Brand Identity & Active Backend Contract Status Pill */}
-        <div
-          onClick={() => setStudioTab('backend')}
-          style={glassPanelStyle({
-            pointerEvents: 'auto',
-            padding: '8px 14px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
-            borderRadius: 999,
-            cursor: 'pointer',
-          })}
-        >
-          <div
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: 8,
-              background: `linear-gradient(135deg, ${COLORS.amber}, #f97316)`,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#090b10',
-              fontWeight: 900,
-              fontFamily: FONTS.mono,
-              fontSize: 13,
-              boxShadow: `0 0 16px ${COLORS.amber}66`,
-            }}
-          >
-            DC
-          </div>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-              <span style={{ fontWeight: 800, fontSize: 14, letterSpacing: '-0.02em' }}>
-                DAYCUBE
-              </span>
-              <span
-                style={{
-                  fontFamily: FONTS.mono,
-                  fontSize: 10,
-                  padding: '1px 6px',
-                  borderRadius: 4,
-                  background: backendOnline ? COLORS.emeraldSoft : COLORS.amberSoft,
-                  color: backendOnline ? COLORS.emerald : COLORS.amber,
-                  fontWeight: 700,
-                }}
-              >
-                <DecryptedText
-                  text={backendOnline ? 'API 7701 CONNECTED' : 'CONTRACT READY · 2026-10-20'}
-                />
-              </span>
-            </div>
-            <div style={{ fontFamily: FONTS.mono, fontSize: 9.5, color: COLORS.textSecondary }}>
-              Node.js + React + Three.js Instanced · Zero-CSS · no-store
-            </div>
-          </div>
-        </div>
-
-        {/* Center: React Bits Pro AnimatedPillTabs + Ask DAYCUBE Trigger */}
-        <div
-          style={glassPanelStyle({
-            pointerEvents: 'auto',
-            padding: '5px 8px',
-            borderRadius: 999,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-          })}
-        >
-          <AnimatedPillTabs<ViewportTab>
-            layoutGroupId="viewport-mode-tabs"
-            activeId={activeViewportTab}
-            onChange={(tab) => {
-              if (tab === 'canvas2d') {
-                setEngineMode('canvas2d');
-              } else {
-                setEngineMode('three');
-                setViewMode(tab);
-              }
-            }}
-            items={[
-              {
-                id: 'layer',
-                label: '3D Layer Diorama',
-                icon: <Box size={13} />,
-                accent: COLORS.amber,
-              },
-              {
-                id: 'stack',
-                label: '5-Layer Tower',
-                icon: <Layers size={13} />,
-                accent: COLORS.sky,
-                badge: '5',
-              },
-              {
-                id: 'shelf',
-                label: '7-Day Cube Shelf',
-                icon: <Sparkles size={13} />,
-                accent: COLORS.emerald,
-                badge: '7',
-              },
-              {
-                id: 'canvas2d',
-                label: 'Canvas 2D Ref',
-                icon: <Cpu size={13} />,
-                accent: COLORS.purple,
-              },
-            ]}
-          />
-
-          {/* Ask DAYCUBE Search Trigger */}
-          <MagneticButton
-            onClick={() => setAskOpen(true)}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 8,
-              padding: '6px 14px',
-              borderRadius: 999,
-              background: COLORS.amber,
-              color: '#090b10',
-              border: 'none',
-              fontFamily: FONTS.sans,
-              fontSize: 12,
-              fontWeight: 700,
-              cursor: 'pointer',
-              boxShadow: `0 0 18px rgba(255, 180, 84, 0.4)`,
-            }}
-          >
-            <Search size={13} /> Ask Memory & Teleport
-            <span
-              style={{
-                fontFamily: FONTS.mono,
-                fontSize: 9.5,
-                padding: '1px 5px',
-                borderRadius: 4,
-                background: 'rgba(9, 11, 16, 0.2)',
-              }}
-            >
-              ⌘K
-            </span>
-          </MagneticButton>
-        </div>
-
-        {/* Right: React Bits Pro FloatingMagnifyDock + Capture Status */}
-        <div
-          style={{
-            pointerEvents: 'auto',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-          }}
-        >
-          <FloatingMagnifyDock
-            items={[
-              {
-                id: 'moment',
-                label: '3D Moment',
-                icon: <Compass size={13} />,
-                accent: COLORS.amber,
-                active: activeMomentId !== null,
-                onClick: () => setActiveMomentId('mo_003'),
-              },
-              {
-                id: 'ocr',
-                label: 'Gaze OCR',
-                icon: <Eye size={13} />,
-                accent: COLORS.sky,
-                active: activeScreenShotId !== null,
-                onClick: () => setActiveScreenShotId('0938_10'),
-              },
-              {
-                id: 'backend',
-                label: 'API Bridge',
-                icon: <Server size={13} />,
-                accent: COLORS.emerald,
-                active: studioTab === 'backend',
-                onClick: () => setStudioTab('backend'),
-              },
-              {
-                id: 'studio',
-                label: 'Studio & Eval',
-                icon: <Network size={13} />,
-                accent: COLORS.purple,
-                active: studioTab !== null && studioTab !== 'backend',
-                onClick: () => setStudioTab('graph'),
-              },
-            ]}
-          />
-
-          {/* Tray Capture Indicator (Ctrl+Alt+P per Section 4.1) */}
-          <button
-            type="button"
-            onClick={() => setCapturePaused((v) => !v)}
-            title="Toggle Windows Capture Service (Ctrl+Alt+P)"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '7px 11px',
-              borderRadius: 999,
-              background: capturePaused
-                ? 'rgba(148, 163, 184, 0.12)'
-                : 'rgba(248, 113, 113, 0.14)',
-              border: `1px solid ${capturePaused ? COLORS.textMuted : COLORS.danger}`,
-              color: capturePaused ? COLORS.textSecondary : COLORS.danger,
-              fontFamily: FONTS.mono,
-              fontSize: 10,
-              fontWeight: 700,
-              cursor: 'pointer',
-            }}
-          >
-            <span
-              style={{
-                width: 7,
-                height: 7,
-                borderRadius: '50%',
-                background: capturePaused ? COLORS.textMuted : COLORS.danger,
-                boxShadow: capturePaused ? 'none' : `0 0 8px ${COLORS.danger}`,
-              }}
+      <main className="stage app__stage" aria-label="Diorama">
+        <div className="stage__canvas">
+          {engineMode === 'three' ? (
+            <DioramaCanvas3D
+              playing={playing}
+              suspended={suspended}
+              layers={layers}
+              transits={transits}
+              activeLayerIndex={activeLayerIndex}
+              onSelectLayer={focusLayer}
+              viewMode={viewMode}
+              onViewModeChange={setViewMode}
+              week={week}
+              onOpenDate={onOpenDate}
+              tod={tod}
+              activeFloorFilter={activeFloorFilter}
+              cutawayWalls={sceneOptions.cutawayWalls}
+              showVenueTelemetry={sceneOptions.indoorPositioning}
+              followCharacter={sceneOptions.followCharacter}
+              headParallax={sceneOptions.parallax}
+              selectedPinId={selectedPin?.id || null}
+              onSelectPin={selectPin}
+              onOpenMoment={setActiveMomentId}
+              onGpuTelemetry={recordGpuStats}
+              apiRef={cameraApi}
             />
-            {capturePaused ? 'PAUSED' : 'REC'}
-          </button>
-        </div>
-      </header>
-
-      {/* ====================================================================
-          LEFT FLOATING PLACE LAYER SELECTOR & EFFICIENCY TELEMETRY HUD
-         ==================================================================== */}
-      <div
-        style={{
-          position: 'absolute',
-          top: 76,
-          left: 16,
-          zIndex: 15,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 10,
-          width: 264,
-        }}
-      >
-        {/* 5 Place Layers Stack Navigator */}
-        <div style={glassPanelStyle({ padding: 12 })}>
-          <div
-            style={{
-              fontFamily: FONTS.mono,
-              fontSize: 10,
-              fontWeight: 700,
-              color: COLORS.textSecondary,
-              letterSpacing: '0.08em',
-              marginBottom: 8,
-              display: 'flex',
-              justifyContent: 'space-between',
-            }}
-          >
-            <span>PLACE LAYERS (5 VISITS)</span>
-            <span style={{ color: COLORS.amber }}>OCT 20</span>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-            {layers.map((lyr) => {
-              const isAct = lyr.index === activeLayerIndex;
-              return (
-                <button
-                  key={lyr.placeId}
-                  type="button"
-                  onClick={() => handleSelectLayer(lyr.index)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '8px 10px',
-                    borderRadius: 10,
-                    background: isAct
-                      ? 'rgba(255, 180, 84, 0.16)'
-                      : 'rgba(255, 255, 255, 0.025)',
-                    border: `1px solid ${isAct ? COLORS.amber : COLORS.borderSubtle}`,
-                    color: COLORS.textPrimary,
-                    textAlign: 'left',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  <div>
-                    <div
-                      style={{
-                        fontSize: 12,
-                        fontWeight: 700,
-                        color: isAct ? COLORS.amber : COLORS.textPrimary,
-                      }}
-                    >
-                      L{lyr.index} · {lyr.name}
-                    </div>
-                    <div
-                      style={{
-                        fontFamily: FONTS.mono,
-                        fontSize: 9.5,
-                        color: COLORS.textSecondary,
-                        marginTop: 1,
-                      }}
-                    >
-                      {formatTod(lyr.t0)}–{formatTod(lyr.t1)} · F{lyr.floors.join(',F')}
-                    </div>
-                  </div>
-                  <span
-                    style={{
-                      fontFamily: FONTS.mono,
-                      fontSize: 9.5,
-                      padding: '2px 6px',
-                      borderRadius: 6,
-                      background: isAct ? COLORS.amber : 'rgba(255,255,255,0.06)',
-                      color: isAct ? '#090b10' : COLORS.textSecondary,
-                      fontWeight: 700,
-                    }}
-                  >
-                    {Math.round(lyr.conf * 100)}%
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Diorama Camera & Dollhouse Controls */}
-        <div style={glassPanelStyle({ padding: 12 })}>
-          <div
-            style={{
-              fontFamily: FONTS.mono,
-              fontSize: 10,
-              fontWeight: 700,
-              color: COLORS.textSecondary,
-              letterSpacing: '0.08em',
-              marginBottom: 8,
-            }}
-          >
-            DIORAMA OPTICS & TELEMETRY
-          </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-            <button
-              type="button"
-              onClick={() => setCutawayWalls((v) => !v)}
-              style={pillButtonStyle(cutawayWalls, COLORS.amber, {
-                padding: '4px 9px',
-                fontSize: 10.5,
-              })}
-            >
-              Cutaway Walls
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowVenueTelemetry((v) => !v)}
-              style={pillButtonStyle(showVenueTelemetry, COLORS.sky, {
-                padding: '4px 9px',
-                fontSize: 10.5,
-              })}
-            >
-              <Radio size={11} /> HMM + Wi-Fi
-            </button>
-            <button
-              type="button"
-              onClick={() => setFollowCharacter((v) => !v)}
-              style={pillButtonStyle(followCharacter, COLORS.emerald, {
-                padding: '4px 9px',
-                fontSize: 10.5,
-              })}
-            >
-              Follow Avatar
-            </button>
-            <button
-              type="button"
-              onClick={() => setTiltShift((v) => !v)}
-              style={pillButtonStyle(tiltShift, COLORS.purple, {
-                padding: '4px 9px',
-                fontSize: 10.5,
-              })}
-            >
-              Tilt-Shift Lens
-            </button>
-            <button
-              type="button"
-              onClick={() => setHeadParallax((v) => !v)}
-              style={pillButtonStyle(headParallax, COLORS.rose, {
-                padding: '4px 9px',
-                fontSize: 10.5,
-              })}
-            >
-              Off-Axis Parallax
-            </button>
-          </div>
-        </div>
-
-        {/* System Design & Efficiency Telemetry HUD (Section 8.3 Budget Verification) */}
-        <div style={glassPanelStyle({ padding: '10px 12px' })}>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              marginBottom: 6,
-            }}
-          >
-            <span
-              style={{
-                fontFamily: FONTS.mono,
-                fontSize: 9.5,
-                color: COLORS.emerald,
-                fontWeight: 700,
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 4,
-              }}
-            >
-              <Activity size={11} /> SYSTEM EFFICIENCY BUDGET
-            </span>
-            <CountUpNumber
-              value={gpuStats.fps}
-              suffix=" FPS"
-              style={{ fontSize: 10, color: COLORS.amber, fontWeight: 700 }}
+          ) : (
+            <DioramaCanvas2D
+              suspended={suspended}
+              layer={activeLayer}
+              tod={tod}
+              azimuth={azimuth2D}
+              onAzimuthChange={setAzimuth2D}
+              tiltShift={sceneOptions.tiltShift}
+              cutawayWalls={sceneOptions.cutawayWalls}
+              selectedPinId={selectedPin?.id || null}
+              onSelectPin={selectPin}
             />
-          </div>
-
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
-              gap: 4,
-              fontFamily: FONTS.mono,
-              fontSize: 10,
-              color: COLORS.textSecondary,
-            }}
-          >
-            <div>
-              Draw Calls:{' '}
-              <span style={{ color: COLORS.emerald, fontWeight: 700 }}>
-                {gpuStats.drawCalls} (≤8)
-              </span>
-            </div>
-            <div>
-              Instances:{' '}
-              <span style={{ color: COLORS.textPrimary }}>{gpuStats.instances}</span>
-            </div>
-            <div>
-              API Latency:{' '}
-              <CountUpNumber
-                value={apiMeta.responseTimeMs}
-                decimals={2}
-                suffix="ms"
-                style={{ color: COLORS.amber }}
-              />
-            </div>
-            <div>
-              Disk Cache:{' '}
-              <span style={{ color: COLORS.sky }}>0 KB ({apiMeta.cachePolicy})</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Live API & Contract Activity Toast Feed (React Bits Pro Block) */}
-        <LiveApiToastFeed
-          logs={apiLogs}
-          onOpenBackendPanel={() => setStudioTab('backend')}
-        />
-      </div>
-
-      {/* ====================================================================
-          RIGHT FLOATING MEMORY EVIDENCE & GROUNDED CARD PANEL
-         ==================================================================== */}
-      <div
-        style={{
-          position: 'absolute',
-          top: 76,
-          right: 16,
-          zIndex: 15,
-        }}
-      >
-        <EvidenceCardPanel
-          layer={activeLayer}
-          tod={tod}
-          selectedPin={selectedPin}
-          onSelectPin={setSelectedPin}
-          onScrubTo={handleScrubTod}
-          onOpenMoment={(mId) => setActiveMomentId(mId)}
-          onOpenScreenOcr={(sId) => setActiveScreenShotId(sId)}
-          activeFloorFilter={activeFloorFilter}
-          onFloorFilterChange={setActiveFloorFilter}
-          speakerOverrides={speakerOverrides}
-          onConfirmSpeaker={handleConfirmSpeaker}
-          onRenamePlace={handleRenamePlace}
-        />
-      </div>
-
-      {/* ====================================================================
-          BOTTOM MULTI-TRACK DAY TIMELINE & TIME-OF-DAY SCRUBBER (08:00–22:00)
-         ==================================================================== */}
-      <footer
-        style={glassPanelStyle({
-          position: 'absolute',
-          bottom: 14,
-          left: 16,
-          right: 16,
-          zIndex: 20,
-          padding: '10px 18px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 8,
-        })}
-      >
-        {/* Place Visit Segments & Clickable Event Pin Markers along 08:00..22:00 */}
-        <div
-          style={{
-            position: 'relative',
-            height: 22,
-            borderRadius: 6,
-            background: 'rgba(255, 255, 255, 0.03)',
-            overflow: 'hidden',
-          }}
-        >
-          {layers.map((lyr) => {
-            const leftPct = ((lyr.t0 - 8) / 14) * 100;
-            const widthPct = ((lyr.t1 - lyr.t0) / 14) * 100;
-            const isAct = lyr.index === activeLayerIndex;
-            return (
-              <div
-                key={lyr.placeId}
-                onClick={() => handleSelectLayer(lyr.index)}
-                style={{
-                  position: 'absolute',
-                  top: 2,
-                  bottom: 2,
-                  left: `${leftPct}%`,
-                  width: `${widthPct}%`,
-                  borderRadius: 5,
-                  background: isAct
-                    ? 'rgba(255, 180, 84, 0.25)'
-                    : 'rgba(255, 255, 255, 0.06)',
-                  border: `1px solid ${
-                    isAct ? COLORS.amber : 'rgba(255, 255, 255, 0.1)'
-                  }`,
-                  display: 'flex',
-                  alignItems: 'center',
-                  paddingLeft: 6,
-                  fontFamily: FONTS.mono,
-                  fontSize: 9.5,
-                  color: isAct ? COLORS.amber : COLORS.textSecondary,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  overflow: 'hidden',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {lyr.name}
-              </div>
-            );
-          })}
-
-          {/* Event Pin Dots on Timeline */}
-          {layers.flatMap((lyr) =>
-            lyr.events
-              .filter((e) => !e.deleted)
-              .map((ev) => {
-                const leftPct = ((ev.t - 8) / 14) * 100;
-                const col =
-                  ev.kind === 'moment'
-                    ? COLORS.amber
-                    : ev.kind === 'quote'
-                    ? COLORS.rose
-                    : COLORS.sky;
-                return (
-                  <div
-                    key={ev.id}
-                    title={`${formatTod(ev.t)} · ${ev.label}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setActiveLayerIndex(lyr.index);
-                      setSelectedPin(ev);
-                      setTod(ev.t);
-                    }}
-                    style={{
-                      position: 'absolute',
-                      top: '50%',
-                      left: `${leftPct}%`,
-                      transform: 'translate(-50%, -50%)',
-                      width: 8,
-                      height: 8,
-                      borderRadius: '50%',
-                      background: col,
-                      border: '1.5px solid #090b10',
-                      boxShadow: `0 0 8px ${col}`,
-                      cursor: 'pointer',
-                      zIndex: 4,
-                    }}
-                  />
-                );
-              })
           )}
         </div>
 
-        {/* Scrubber Bar Controls */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <button
-            type="button"
-            onClick={() => setPlaying((p) => !p)}
-            aria-label={playing ? 'Pause day playback' : 'Play day playback'}
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: '50%',
-              background: COLORS.amber,
-              color: '#090b10',
-              border: 'none',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              flexShrink: 0,
-            }}
-          >
-            {playing ? <Pause size={15} /> : <Play size={15} />}
-          </button>
+        {engineMode === 'three' && sceneOptions.tiltShift && viewMode === 'layer' && (
+          <>
+            <div className="stage__tilt stage__tilt--top" aria-hidden />
+            <div className="stage__tilt stage__tilt--bottom" aria-hidden />
+          </>
+        )}
 
-          <button
-            type="button"
-            onClick={() =>
-              setPlaySpeed((s) => (s === 1 ? 4 : s === 4 ? 12 : 1))
-            }
-            style={{
-              padding: '3px 8px',
-              borderRadius: 6,
-              background: 'rgba(255,255,255,0.06)',
-              border: `1px solid ${COLORS.borderSubtle}`,
-              color: COLORS.textSecondary,
-              fontFamily: FONTS.mono,
-              fontSize: 10.5,
-              cursor: 'pointer',
-            }}
-          >
-            {playSpeed}×
-          </button>
+        <StageControls
+          viewMode={engineMode === 'canvas2d' ? 'layer' : viewMode}
+          floors={activeLayer.floors}
+          activeFloor={activeFloorFilter}
+          onFloorChange={setActiveFloorFilter}
+          options={sceneOptions}
+          onOptionsChange={setSceneOptions}
+          canZoom={engineMode === 'three'}
+          onZoomIn={zoomIn}
+          onZoomOut={zoomOut}
+          onResetView={resetView}
+        />
+      </main>
 
-          <div
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              fontFamily: FONTS.mono,
-              fontSize: 13,
-              fontWeight: 700,
-              color: COLORS.amber,
-              minWidth: 74,
-            }}
-          >
-            {isNight ? <Moon size={14} color={COLORS.sky} /> : <Sun size={14} color={COLORS.amber} />}
-            <span>{formatTod(tod)}</span>
-          </div>
+      <EvidenceCardPanel
+        key={activeLayer.placeId + activeLayer.index}
+        layer={activeLayer}
+        selectedPin={selectedPin}
+        onSelectPin={setSelectedPin}
+        onScrubTo={handleScrubTod}
+        onOpenMoment={setActiveMomentId}
+        onOpenScreenOcr={setActiveScreenShotId}
+        speakerOverrides={speakerOverrides}
+        onConfirmSpeaker={handleConfirmSpeaker}
+        onRenamePlace={handleRenamePlace}
+      />
 
-          <input
-            type="range"
-            min={8}
-            max={22}
-            step={0.02}
-            value={tod}
-            onChange={(e) => handleScrubTod(parseFloat(e.target.value))}
-            style={{
-              flex: 1,
-              accentColor: COLORS.amber,
-              cursor: 'pointer',
-              height: 6,
-            }}
-          />
+      <div
+        className="drawer-scrim"
+        onClick={() => {
+          setSidebarOpen(false);
+          setInspectorOpen(false);
+        }}
+      />
 
-          <div
-            style={{
-              fontFamily: FONTS.mono,
-              fontSize: 11,
-              color: COLORS.textSecondary,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-            }}
-          >
-            <span>drag to orbit · click pin to inspect</span>
-            <button
-              type="button"
-              onClick={() => setStudioTab('backend')}
-              style={pillButtonStyle(false, COLORS.emerald, {
-                padding: '3px 9px',
-                fontSize: 10.5,
-              })}
-            >
-              <Server size={11} /> API Contract
-            </button>
-            <button
-              type="button"
-              onClick={() => setStudioTab('eval')}
-              style={pillButtonStyle(false, COLORS.purple, {
-                padding: '3px 9px',
-                fontSize: 10.5,
-              })}
-            >
-              <BarChart3 size={11} /> A/B Eval (+26.5%)
-            </button>
-            <button
-              type="button"
-              onClick={() => setStudioTab('privacy')}
-              style={pillButtonStyle(false, COLORS.rose, {
-                padding: '3px 9px',
-                fontSize: 10.5,
-              })}
-            >
-              <Shield size={11} /> Privacy Vault
-            </button>
-          </div>
-        </div>
-      </footer>
+      <Timeline
+        layers={layers}
+        start={dayStart}
+        end={dayEnd}
+        tod={tod}
+        activeLayerIndex={activeLayerIndex}
+        selectedPinId={selectedPin?.id ?? null}
+        playing={playing}
+        speed={playSpeed}
+        onTogglePlay={togglePlay}
+        onCycleSpeed={cycleSpeed}
+        onScrub={handleScrubTod}
+        onSelectEvent={selectEvent}
+      />
 
-      {/* ====================================================================
-          LAZY-LOADED MODALS (Fetched on-demand only when opened)
-         ==================================================================== */}
       <Suspense fallback={null}>
         {askOpen && (
           <AskBarModal
             isOpen={askOpen}
             onClose={() => setAskOpen(false)}
             layers={layers}
+            liveVault={backendOnline && backendBridge.getToken() !== ''}
             onTeleport={handleTeleport}
             onOpenMoment={(mId) => setActiveMomentId(mId)}
             onOpenScreenOcr={(sId) => setActiveScreenShotId(sId)}
+            onOpenConnection={() => {
+              setAskOpen(false);
+              setSettingsSection('connection');
+            }}
           />
         )}
 
@@ -1164,21 +533,30 @@ export const App: React.FC = () => {
           />
         )}
 
-        {studioTab && (
+        {settingsSection && (
           <SystemStudioModal
-            activeTab={studioTab}
-            onTabChange={setStudioTab}
+            section={settingsSection}
+            onSectionChange={setSettingsSection}
+            onClose={() => setSettingsSection(null)}
             layers={layers}
             onJumpToLayerTime={(lIdx, tVal) => {
               setActiveLayerIndex(lIdx);
               setTod(tVal);
               setViewMode('layer');
+              setSettingsSection(null);
             }}
             deletions={deletions}
             onDeleteHours={handleDeleteHours}
             apiLogs={apiLogs}
             backendOnline={backendOnline}
+            dataSource={dataSource}
             onRefreshBackend={syncWithBackend}
+            getGpuStats={() => gpuStatsRef.current}
+            engineMode={engineMode}
+            onEngineModeChange={setEngineMode}
+            capturePaused={capturePaused}
+            captureAvailable={captureAvailable}
+            onToggleCapture={() => setCapturePaused((v) => !v)}
           />
         )}
       </Suspense>

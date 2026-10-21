@@ -1,19 +1,30 @@
-import React, { useMemo, useRef, useEffect, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { OrbitControls, Html, Line } from '@react-three/drei';
+import { OrbitControls, Html } from '@react-three/drei';
 import * as THREE from 'three';
 import {
-  DayShelfCube,
   EventPin,
   Layer,
   PathPoint,
   TransitSegment,
+  WeekDay,
 } from '../../types/daycube';
-import { PALETTE, SEVEN_DAY_SHELF } from '../../data/sampleDay';
-import { COLORS, FONTS, formatTod } from '../../styles/theme';
+import { PALETTE } from '../../data/sampleDay';
+import { CATEGORY, COLORS, eventCategory, formatTod, shortPlaceName } from '../../styles/theme';
+import { CategoryIcon } from '../ui';
+
+/** Imperative camera controls for the stage's zoom and reset buttons. */
+export interface SceneCameraApi {
+  zoomBy: (factor: number) => void;
+  reset: () => void;
+}
+
+// drei <Html> defaults to a z-index in the millions; keep scene labels under the stage UI.
+const LABEL_Z: [number, number] = [20, 10];
 
 export interface GpuTelemetry {
-  fps: number;
+  /** Null while the scene is idle: frames render on demand, so there is no rate to measure. */
+  fps: number | null;
   drawCalls: number;
   triangles: number;
   instances: number;
@@ -30,6 +41,9 @@ interface DioramaCanvas3DProps {
   onSelectLayer: (idx: number) => void;
   viewMode: 'layer' | 'stack' | 'shelf';
   onViewModeChange: (mode: 'layer' | 'stack' | 'shelf') => void;
+  /** The seven days ending on the open day, for the week shelf. */
+  week: WeekDay[];
+  onOpenDate: (date: string) => void;
   tod: number;
   activeFloorFilter: 'all' | number;
   cutawayWalls: boolean;
@@ -40,6 +54,7 @@ interface DioramaCanvas3DProps {
   onSelectPin: (pin: EventPin) => void;
   onOpenMoment: (momentId: string) => void;
   onGpuTelemetry?: (stats: GpuTelemetry) => void;
+  apiRef?: React.MutableRefObject<SceneCameraApi | null>;
 }
 
 const PW = 26;
@@ -47,68 +62,93 @@ const PD = 18;
 
 // Shared unit geometry across the entire WebGL context (1 geometry = 0 duplication)
 const SHARED_UNIT_BOX = new THREE.BoxGeometry(1, 1, 1);
-const SHARED_PIN_SPHERE = new THREE.SphereGeometry(0.28, 16, 16);
 const SHARED_NODE_CYLINDER = new THREE.CylinderGeometry(0.26, 0.26, 0.08, 16);
 
 // Pre-allocated scratch math objects (0 GC pressure per frame)
 const DUMMY_OBJ = new THREE.Object3D();
 const SCRATCH_COLOR = new THREE.Color();
 const TARGET_VEC = new THREE.Vector3();
+const followSample: PathSample = { x: 0, y: 0, floor: 0, walking: false };
 
 // Coordinate helper: Diorama (x east 0..26, y south 0..18, z up) -> Three.js (X=x-13, Y=z, Z=y-9)
 function toThreePos(x: number, y: number, z: number, yOffset = 0): [number, number, number] {
   return [x - PW / 2, z + yOffset, y - PD / 2];
 }
 
-function interpolatePath(path: PathPoint[], tod: number): {
+/** First index whose time is greater than ``t`` (upper bound); ``times`` is ascending. */
+function upperBound(times: ArrayLike<number>, t: number): number {
+  let lo = 0;
+  let hi = times.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (times[mid] <= t) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+interface PathSample {
   x: number;
   y: number;
   floor: number;
   walking: boolean;
-  conf: number;
-  altRel: number;
-} {
-  if (!path.length) {
-    return { x: 13, y: 9, floor: 0, walking: false, conf: 0.9, altRel: 0 };
-  }
-  if (tod <= path[0].t) {
-    return {
-      x: path[0].x,
-      y: path[0].y,
-      floor: path[0].floor,
-      walking: false,
-      conf: path[0].conf,
-      altRel: path[0].altRel || 0,
-    };
-  }
-  for (let i = 1; i < path.length; i++) {
-    const a = path[i - 1];
-    const b = path[i];
-    if (tod <= b.t) {
-      const span = Math.max(1e-6, b.t - a.t);
-      const u = (tod - a.t) / span;
-      const dist = Math.hypot(b.x - a.x, b.y - a.y);
-      const walking = dist > 0.25 && u > 0.01 && u < 0.99;
-      return {
-        x: a.x + (b.x - a.x) * u,
-        y: a.y + (b.y - a.y) * u,
-        floor: u > 0.5 ? b.floor : a.floor,
-        walking,
-        conf: a.conf + (b.conf - a.conf) * u,
-        altRel: (a.altRel || 0) + ((b.altRel || 0) - (a.altRel || 0)) * u,
-      };
-    }
-  }
-  const last = path[path.length - 1];
-  return {
-    x: last.x,
-    y: last.y,
-    floor: last.floor,
-    walking: false,
-    conf: last.conf,
-    altRel: last.altRel || 0,
-  };
 }
+
+/**
+ * Position along a time-sorted path, written into ``out`` so the frame loop allocates nothing.
+ * Binary search finds the segment: O(log n) per frame instead of a scan from the start.
+ */
+function samplePath(path: PathPoint[], tod: number, out: PathSample): PathSample {
+  out.walking = false;
+  if (!path.length) {
+    out.x = PW / 2;
+    out.y = PD / 2;
+    out.floor = 0;
+    return out;
+  }
+  // First point strictly after `tod`; the segment is [i - 1, i].
+  let lo = 0;
+  let hi = path.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (path[mid].t <= tod) lo = mid + 1;
+    else hi = mid;
+  }
+  if (lo === 0 || lo === path.length) {
+    const p = path[lo === 0 ? 0 : path.length - 1];
+    out.x = p.x;
+    out.y = p.y;
+    out.floor = p.floor;
+    return out;
+  }
+  const a = path[lo - 1];
+  const b = path[lo];
+  const u = (tod - a.t) / Math.max(1e-6, b.t - a.t);
+  out.x = a.x + (b.x - a.x) * u;
+  out.y = a.y + (b.y - a.y) * u;
+  out.floor = u > 0.5 ? b.floor : a.floor;
+  out.walking = Math.hypot(b.x - a.x, b.y - a.y) > 0.25 && u > 0.01 && u < 0.99;
+  return out;
+}
+
+const floorZ = (floor: number) => (floor > 0 ? 4.48 : 0.3);
+
+/**
+ * The 10-box character as data: [dx, dy, dz, w, h, d, color]. ``dy`` is the rest height of the
+ * box centre; legs, arms and the body bob are adjusted per frame without allocating.
+ */
+const CHARACTER: readonly (readonly [number, number, number, number, number, number, string])[] = [
+  [-0.18, 0, 0, 0.26, 0.35, 0.28, '#2f3a4f'], // left leg (height animated)
+  [0.18, 0, 0, 0.26, 0.35, 0.28, '#2f3a4f'], // right leg (height animated)
+  [0, 1.02, 0, 0.86, 0.94, 0.56, '#3b4a6b'], // torso
+  [-0.58, 1.03, 0, 0.24, 0.58, 0.24, '#f0c9a5'], // left arm (swing animated)
+  [0.58, 1.03, 0, 0.24, 0.58, 0.24, '#f0c9a5'], // right arm (swing animated)
+  [0, 1.98, 0, 1.04, 0.96, 0.96, '#f0c9a5'], // head
+  [0, 2.48, 0, 1.14, 0.36, 1.06, '#2f2a26'], // hair
+  [0, 2.18, -0.45, 1.12, 0.36, 0.2, '#2f2a26'], // fringe
+  [-0.24, 1.95, 0.49, 0.12, 0.12, 0.06, '#111827'], // eyes
+  [0.24, 1.95, 0.49, 0.12, 0.12, 0.06, '#111827'],
+];
 
 // ============================================================================
 // GPU INSTANCED LAYER PLATE (1 InstancedMesh for architecture, 1 for lamps, 1 for path)
@@ -127,6 +167,7 @@ const InstancedLayerDiorama: React.FC<{
   onSelectPin: (pin: EventPin) => void;
   onOpenMoment: (momentId: string) => void;
   onSelectLayer: () => void;
+  showLabel?: boolean;
 }> = ({
   playing,
   layer,
@@ -141,6 +182,7 @@ const InstancedLayerDiorama: React.FC<{
   onSelectPin,
   onOpenMoment,
   onSelectLayer,
+  showLabel = false,
 }) => {
   const opaqueMeshRef = useRef<THREE.InstancedMesh>(null);
   const lampMeshRef = useRef<THREE.InstancedMesh>(null);
@@ -161,7 +203,7 @@ const InstancedLayerDiorama: React.FC<{
     };
   }, [layer.boxes, activeFloorFilter]);
 
-  // Precompute all path breadcrumb positions along the layer trajectory
+  // Breadcrumbs along the trajectory, in time order (each segment emits increasing times).
   const pathBreadcrumbs = useMemo(() => {
     const crumbs: { x: number; y: number; z: number; t: number; fidelity: string }[] = [];
     const pts = layer.path;
@@ -182,6 +224,8 @@ const InstancedLayerDiorama: React.FC<{
     }
     return crumbs;
   }, [layer.path, activeFloorFilter]);
+  const crumbTimes = useMemo(() => Float64Array.from(pathBreadcrumbs, (c) => c.t), [pathBreadcrumbs]);
+  const samplePos = useRef<PathSample>({ x: 0, y: 0, floor: 0, walking: false });
 
   // Populate Opaque Architecture InstancedMesh matrices & colors
   useEffect(() => {
@@ -243,16 +287,18 @@ const InstancedLayerDiorama: React.FC<{
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
   }, [pathBreadcrumbs, yOffset]);
 
+  // Colors never change, so write them once instead of re-parsing ten color strings per frame.
+  useEffect(() => {
+    const mesh = charMeshRef.current;
+    if (!mesh) return;
+    CHARACTER.forEach((part, i) => mesh.setColorAt(i, SCRATCH_COLOR.set(part[6])));
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  }, []);
+
   // Update the static pose once; schedule further frames only during playback.
   useFrame(({ clock, invalidate }) => {
-    // Update visible path count up to `tod`
     if (pathMeshRef.current) {
-      let visibleCount = 0;
-      for (let i = 0; i < pathBreadcrumbs.length; i++) {
-        if (pathBreadcrumbs[i].t <= tod) visibleCount = i + 1;
-        else break;
-      }
-      pathMeshRef.current.count = isActive ? visibleCount : pathBreadcrumbs.length;
+      pathMeshRef.current.count = isActive ? upperBound(crumbTimes, tod) : pathBreadcrumbs.length;
     }
 
     // Update 10-box Voxel Character via single InstancedMesh
@@ -265,58 +311,46 @@ const InstancedLayerDiorama: React.FC<{
     if (!playing && charMesh.count === 10 && lastCharacterRef.current.tod === tod && lastCharacterRef.current.yOffset === yOffset && lastCharacterRef.current.path === layer.path) return;
     lastCharacterRef.current = { tod, yOffset, path: layer.path };
     if (playing) invalidate();
-    const pos = interpolatePath(layer.path, tod);
-    const zBase = (pos.floor > 0 ? 4.48 : 0.3) + yOffset;
+    const pos = samplePath(layer.path, tod, samplePos.current);
+    const zBase = floorZ(pos.floor) + yOffset;
     const ph = pos.walking && playing ? Math.sin(clock.getElapsedTime() * 11) : 0;
     const bob = pos.walking ? Math.abs(ph) * 0.12 : 0;
-    const legL = pos.walking ? 0.35 + 0.22 * Math.max(0, ph) : 0.35;
-    const legR = pos.walking ? 0.35 + 0.22 * Math.max(0, -ph) : 0.35;
-
-    const parts: {
-      dx: number;
-      dy: number;
-      dz: number;
-      w: number;
-      h: number;
-      d: number;
-      color: string;
-    }[] = [
-      // Left & Right Legs
-      { dx: -0.18, dy: legL / 2, dz: 0, w: 0.26, h: legL, d: 0.28, color: '#2f3a4f' },
-      { dx: 0.18, dy: legR / 2, dz: 0, w: 0.26, h: legR, d: 0.28, color: '#2f3a4f' },
-      // Torso
-      { dx: 0, dy: 0.55 + bob + 0.47, dz: 0, w: 0.86, h: 0.94, d: 0.56, color: '#3b4a6b' },
-      // Left & Right Arms
-      { dx: -0.58, dy: 0.75 + bob + 0.28, dz: ph * 0.08, w: 0.24, h: 0.58, d: 0.24, color: '#f0c9a5' },
-      { dx: 0.58, dy: 0.75 + bob + 0.28, dz: -ph * 0.08, w: 0.24, h: 0.58, d: 0.24, color: '#f0c9a5' },
-      // Head
-      { dx: 0, dy: 1.5 + bob + 0.48, dz: 0, w: 1.04, h: 0.96, d: 0.96, color: '#f0c9a5' },
-      // Hair top & fringe
-      { dx: 0, dy: 2.3 + bob + 0.18, dz: 0, w: 1.14, h: 0.36, d: 1.06, color: '#2f2a26' },
-      { dx: 0, dy: 2.0 + bob + 0.18, dz: -0.45, w: 1.12, h: 0.36, d: 0.2, color: '#2f2a26' },
-      // Eyes (2 dark voxels)
-      { dx: -0.24, dy: 1.95 + bob, dz: 0.49, w: 0.12, h: 0.12, d: 0.06, color: '#111827' },
-      { dx: 0.24, dy: 1.95 + bob, dz: 0.49, w: 0.12, h: 0.12, d: 0.06, color: '#111827' },
-    ];
-
     const cx = pos.x - PW / 2;
     const cz = pos.y - PD / 2;
-
-    parts.forEach((p, idx) => {
-      DUMMY_OBJ.position.set(cx + p.dx, zBase + p.dy, cz + p.dz);
-      DUMMY_OBJ.scale.set(p.w, p.h, p.d);
-      DUMMY_OBJ.rotation.set(0, 0, 0);
+    for (let i = 0; i < CHARACTER.length; i++) {
+      const [dx, dy, dz, w, h, d] = CHARACTER[i];
+      let height = h;
+      let y = dy + bob;
+      let z = dz;
+      if (i < 2) {
+        // Legs stretch on alternate strides and stay planted on the floor.
+        height = 0.35 + (pos.walking ? 0.22 * Math.max(0, i === 0 ? ph : -ph) : 0);
+        y = height / 2;
+      } else if (i === 3 || i === 4) {
+        z = (i === 3 ? ph : -ph) * 0.08;
+      }
+      DUMMY_OBJ.position.set(cx + dx, zBase + y, cz + z);
+      DUMMY_OBJ.scale.set(w, height, d);
       DUMMY_OBJ.updateMatrix();
-      charMesh.setMatrixAt(idx, DUMMY_OBJ.matrix);
-      SCRATCH_COLOR.set(p.color);
-      charMesh.setColorAt(idx, SCRATCH_COLOR);
-    });
-    charMesh.count = parts.length;
+      charMesh.setMatrixAt(i, DUMMY_OBJ.matrix);
+    }
+    charMesh.count = CHARACTER.length;
     charMesh.instanceMatrix.needsUpdate = true;
-    if (charMesh.instanceColor) charMesh.instanceColor.needsUpdate = true;
   });
 
-  const charPos = interpolatePath(layer.path, tod);
+  const visiblePins = useMemo(() => {
+    const seen = new Map<string, number>();
+    return layer.events
+      .filter((ev) => !ev.deleted && (activeFloorFilter === 'all' || ev.floor === activeFloorFilter))
+      .map((pin) => {
+        const key = `${Math.round(pin.x / 1.2)}:${Math.round(pin.y / 1.2)}:${pin.floor}`;
+        const n = seen.get(key) ?? 0;
+        seen.set(key, n + 1);
+        return { pin, lift: n * 1.1 };
+      });
+  }, [layer.events, activeFloorFilter]);
+
+  const charPos = samplePath(layer.path, tod, { x: 0, y: 0, floor: 0, walking: false });
   const activeQuote = useMemo(() => {
     return layer.quotes.find((q) => Math.abs(q.t - tod) <= 0.18);
   }, [layer.quotes, tod]);
@@ -352,31 +386,19 @@ const InstancedLayerDiorama: React.FC<{
         />
       </mesh>
 
-      {/* Brass Museum Nameplate on front of Plinth */}
-      <Html
-        position={[-PW / 2 + 2.2, yOffset - 0.45, PD / 2 + 0.2]}
-        center
-        style={{ pointerEvents: 'none', opacity }}
-      >
-        <div
-          style={{
-            padding: '3px 9px',
-            borderRadius: 6,
-            background: 'rgba(12, 15, 22, 0.88)',
-            border: `1px solid ${isActive ? COLORS.amber : 'rgba(255,255,255,0.15)'}`,
-            color: COLORS.textPrimary,
-            fontFamily: FONTS.mono,
-            fontSize: 10,
-            whiteSpace: 'nowrap',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
-          }}
+      {/* Level label. Only needed when several places are stacked. Never use distanceFactor
+          with the orthographic camera: drei multiplies it by camera.zoom. */}
+      {showLabel && (
+        <Html
+          position={[-PW / 2, yOffset + 0.2, PD / 2 + 0.4]}
+          zIndexRange={LABEL_Z}
+          style={{ pointerEvents: 'none', transform: 'translate(-100%, -50%)' }}
         >
-          <span style={{ color: COLORS.amber, fontWeight: 700 }}>L{layer.index}</span> · {layer.name}{' '}
-          <span style={{ color: COLORS.textSecondary }}>
-            ({formatTod(layer.t0)}–{formatTod(layer.t1)})
-          </span>
-        </div>
-      </Html>
+          <div className={`scene-label${isActive ? ' scene-label--active' : ''}`}>
+            <strong>{shortPlaceName(layer.name)}</strong>
+          </div>
+        </Html>
+      )}
 
       {/* Instanced Opaque Voxels (Single GPU Draw Call) */}
       <instancedMesh
@@ -448,324 +470,326 @@ const InstancedLayerDiorama: React.FC<{
         ))}
 
       {/* Character Speech / Thought Bubble when Quote or Active Pin is nearby */}
-      {isActive && activeQuote && (
+      {isActive && !showLabel && activeQuote && (
         <Html
-          position={toThreePos(
-            charPos.x,
-            charPos.y,
-            (charPos.floor > 0 ? 4.48 : 0.3) + 3.4,
-            yOffset
-          )}
+          position={toThreePos(charPos.x, charPos.y, floorZ(charPos.floor) + 3.4, yOffset)}
           center
+          zIndexRange={[28, 21]}
           style={{ pointerEvents: 'none' }}
         >
-          <div
-            style={{
-              maxWidth: 230,
-              padding: '7px 11px',
-              borderRadius: 12,
-              background: 'rgba(14, 18, 28, 0.94)',
-              border: `1px solid ${COLORS.amber}`,
-              color: COLORS.textPrimary,
-              fontFamily: FONTS.sans,
-              fontSize: 11,
-              lineHeight: 1.35,
-              boxShadow: '0 10px 28px rgba(0,0,0,0.65)',
-            }}
-          >
-            <div
-              style={{
-                fontFamily: FONTS.mono,
-                fontSize: 9.5,
-                color: COLORS.amber,
-                fontWeight: 700,
-                marginBottom: 2,
-              }}
-            >
-              {activeQuote.who} ({activeQuote.diarLabel}) · {formatTod(activeQuote.t)}
-            </div>
-            “{activeQuote.text}”
+          <div className="bubble">
+            <div className="bubble__who">{activeQuote.who}</div>
+            <div className="bubble__text">“{activeQuote.text}”</div>
           </div>
         </Html>
       )}
 
-      {/* Venue Corridor Graph & Wi-Fi RSSI Telemetry Overlay (Section 2.8 & 3.5) */}
-      {isActive &&
-        showVenueTelemetry &&
-        layer.venueLevels?.map((lvl) => {
-          if (activeFloorFilter !== 'all' && lvl.index !== activeFloorFilter) return null;
-          const zLvl = lvl.index > 0 ? 4.55 : 0.38;
-          return (
-            <group key={`venue-graph-${lvl.index}`}>
-              {lvl.graph.nodes.map((node, ni) => (
-                <mesh
-                  key={`node-${ni}`}
-                  geometry={SHARED_NODE_CYLINDER}
-                  position={toThreePos(node[0], node[1], zLvl, yOffset)}
-                >
-                  <meshBasicMaterial color={COLORS.sky} />
-                </mesh>
-              ))}
-              {lvl.graph.edges.map((edge, ei) => {
-                const nA = lvl.graph.nodes[edge[0]];
-                const nB = lvl.graph.nodes[edge[1]];
-                if (!nA || !nB) return null;
-                return (
-                  <Line
-                    key={`edge-${ei}`}
-                    points={[
-                      toThreePos(nA[0], nA[1], zLvl + 0.04, yOffset),
-                      toThreePos(nB[0], nB[1], zLvl + 0.04, yOffset),
-                    ]}
-                    color={COLORS.sky}
-                    lineWidth={2}
-                    dashed
-                    dashSize={0.35}
-                    gapSize={0.2}
-                  />
-                );
-              })}
-            </group>
-          );
-        })}
+      {isActive && showVenueTelemetry && (
+        <VenueOverlay layer={layer} yOffset={yOffset} activeFloorFilter={activeFloorFilter} />
+      )}
 
-      {isActive &&
-        showVenueTelemetry &&
-        layer.wifiBeacons?.map((wb, wi) => {
-          if (activeFloorFilter !== 'all' && wb.floor !== activeFloorFilter) return null;
-          const zWb = wb.floor > 0 ? 4.58 : 0.4;
-          return (
-            <group key={`wifi-${wi}`} position={toThreePos(wb.x, wb.y, zWb, yOffset)}>
-              <mesh rotation={[-Math.PI / 2, 0, 0]}>
-                <ringGeometry args={[0.9, 1.05, 24]} />
-                <meshBasicMaterial color={COLORS.emerald} side={THREE.DoubleSide} transparent opacity={0.65} />
-              </mesh>
-              <Html center style={{ pointerEvents: 'none' }}>
-                <div
-                  style={{
-                    padding: '1px 5px',
-                    borderRadius: 4,
-                    background: 'rgba(6, 78, 59, 0.9)',
-                    border: `1px solid ${COLORS.emerald}`,
-                    color: '#a7f3d0',
-                    fontFamily: FONTS.mono,
-                    fontSize: 9,
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {wb.ssid} ({wb.rssi}dBm)
-                </div>
-              </Html>
-            </group>
-          );
-        })}
-
-      {/* Interactive 3D Floating Event & Moment Pins */}
-      {layer.events
-        .filter(
-          (ev) =>
-            !ev.deleted &&
-            (activeFloorFilter === 'all' || ev.floor === activeFloorFilter)
-        )
-        .map((pin) => {
-          const zFloor = pin.floor > 0 ? 4.48 : 0.3;
-          const pinHeight = 2.65;
-          const [px, py, pz] = toThreePos(pin.x, pin.y, zFloor + pinHeight, yOffset);
-          const isSelected = selectedPinId === pin.id;
-          const pinColor =
-            pin.kind === 'moment'
-              ? COLORS.amber
-              : pin.kind === 'quote'
-              ? COLORS.rose
-              : pin.eventType === 'place.floor'
-              ? COLORS.emerald
-              : COLORS.sky;
-
-          return (
-            <group key={pin.id}>
-              {/* Vertical Stem Line */}
-              <Line
-                points={[
-                  toThreePos(pin.x, pin.y, zFloor + 0.1, yOffset),
-                  [px, py, pz],
-                ]}
-                color={pinColor}
-                lineWidth={isSelected ? 2.5 : 1.4}
-              />
-              {/* 3D Sphere Head */}
-              <mesh
-                geometry={SHARED_PIN_SPHERE}
-                position={[px, py, pz]}
-                scale={isSelected ? 1.35 : 1}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onSelectPin(pin);
-                  if (pin.momentId && isSelected) {
-                    onOpenMoment(pin.momentId);
-                  }
-                }}
-              >
-                <meshStandardMaterial
-                  color={pinColor}
-                  emissive={pinColor}
-                  emissiveIntensity={isSelected ? 1.2 : 0.55}
-                  roughness={0.2}
-                />
-              </mesh>
-              {/* Floating Interactive Pin Badge */}
-              {isActive && (
-                <Html position={[px, py + 0.52, pz]} center>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onSelectPin(pin);
-                    }}
-                    onDoubleClick={(e) => {
-                      e.stopPropagation();
-                      if (pin.momentId) onOpenMoment(pin.momentId);
-                    }}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 5,
-                      padding: isSelected ? '4px 9px' : '2px 7px',
-                      borderRadius: 999,
-                      background: isSelected
-                        ? 'rgba(255, 180, 84, 0.95)'
-                        : 'rgba(12, 16, 25, 0.88)',
-                      color: isSelected ? '#090b10' : COLORS.textPrimary,
-                      border: `1px solid ${pinColor}`,
-                      fontFamily: FONTS.mono,
-                      fontSize: 10,
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      whiteSpace: 'nowrap',
-                      boxShadow: isSelected
-                        ? `0 0 18px ${pinColor}`
-                        : '0 4px 12px rgba(0,0,0,0.45)',
-                      transition: 'all 0.15s ease',
-                    }}
-                  >
-                    <span>
-                      {pin.kind === 'moment'
-                        ? '◆ 3D'
-                        : pin.kind === 'quote'
-                        ? '❝'
-                        : pin.eventType === 'place.floor'
-                        ? '▲ F' + pin.floor
-                        : '●'}
-                    </span>
-                    <span>{formatTod(pin.t)}</span>
-                    {isSelected && (
-                      <span style={{ maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        · {pin.label.slice(0, 26)}
-                      </span>
-                    )}
-                  </button>
-                </Html>
-              )}
-            </group>
-          );
-        })}
+      <EventPins
+        pins={visiblePins}
+        yOffset={yOffset}
+        isActive={isActive}
+        selectedPinId={selectedPinId}
+        onSelectPin={onSelectPin}
+        onOpenMoment={onOpenMoment}
+      />
     </group>
   );
 };
 
 // ============================================================================
+// EVENT PINS: two draw calls for any number of pins
+// ============================================================================
+interface PlacedPin {
+  pin: EventPin;
+  lift: number;
+}
+
+const DISC = new THREE.CircleGeometry(1, 24).rotateX(-Math.PI / 2);
+
+/**
+ * All stems in one ``LineSegments`` and all floor discs in one ``InstancedMesh``. The buffers are
+ * sized exactly (two vertices per pin), filled in one pass and rebuilt only when the pins change,
+ * so playback, which changes the time but not the pins, never touches them. Separate drei
+ * ``Line``s cost a draw call each and, given a new points array every render, disposed and
+ * recompiled their shader on every time step.
+ */
+const EventPins = React.memo(function EventPins({
+  pins,
+  yOffset,
+  isActive,
+  selectedPinId,
+  onSelectPin,
+  onOpenMoment,
+}: {
+  pins: PlacedPin[];
+  yOffset: number;
+  isActive: boolean;
+  selectedPinId: string | null;
+  onSelectPin: (pin: EventPin) => void;
+  onOpenMoment: (momentId: string) => void;
+}) {
+  const discRef = useRef<THREE.InstancedMesh>(null);
+  const invalidate = useThree((state) => state.invalidate);
+
+  const stems = useMemo(() => {
+    const positions = new Float32Array(pins.length * 6);
+    const colors = new Float32Array(pins.length * 6);
+    pins.forEach(({ pin, lift }, i) => {
+      const [x, y0, z] = toThreePos(pin.x, pin.y, floorZ(pin.floor) + 0.1, yOffset);
+      positions.set([x, y0, z, x, y0 + 2.3 + lift, z], i * 6);
+      SCRATCH_COLOR.set(CATEGORY[eventCategory(pin)].color);
+      colors.set([SCRATCH_COLOR.r, SCRATCH_COLOR.g, SCRATCH_COLOR.b, SCRATCH_COLOR.r, SCRATCH_COLOR.g, SCRATCH_COLOR.b], i * 6);
+    });
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    return geometry;
+  }, [pins, yOffset]);
+  useEffect(() => () => stems.dispose(), [stems]);
+
+  useLayoutEffect(() => {
+    const mesh = discRef.current;
+    if (!mesh) return;
+    pins.forEach(({ pin }, i) => {
+      const r = pin.id === selectedPinId ? 0.42 : 0.3;
+      DUMMY_OBJ.position.set(...toThreePos(pin.x, pin.y, floorZ(pin.floor) + 0.06, yOffset));
+      DUMMY_OBJ.scale.set(r, 1, r);
+      DUMMY_OBJ.updateMatrix();
+      mesh.setMatrixAt(i, DUMMY_OBJ.matrix);
+      mesh.setColorAt(i, SCRATCH_COLOR.set(CATEGORY[eventCategory(pin)].color));
+    });
+    mesh.count = pins.length;
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    invalidate();
+  }, [pins, yOffset, selectedPinId, invalidate]);
+
+  return (
+    <>
+      <lineSegments geometry={stems}>
+        <lineBasicMaterial vertexColors transparent opacity={isActive ? 0.8 : 0.25} />
+      </lineSegments>
+      <instancedMesh ref={discRef} args={[DISC, undefined, Math.max(1, pins.length)]}>
+        <meshBasicMaterial transparent opacity={isActive ? 0.55 : 0.2} />
+      </instancedMesh>
+      {isActive &&
+        pins.map(({ pin, lift }) => {
+          const isSelected = selectedPinId === pin.id;
+          return (
+            <Html
+              key={pin.id}
+              position={toThreePos(pin.x, pin.y, floorZ(pin.floor) + 2.4 + lift, yOffset)}
+              zIndexRange={LABEL_Z}
+              style={{ transform: 'translateX(-12px)' }}
+            >
+              <button
+                type="button"
+                className="pin"
+                aria-pressed={isSelected}
+                aria-label={`${formatTod(pin.t)} ${pin.label}`}
+                style={{ color: CATEGORY[eventCategory(pin)].color }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelectPin(pin);
+                }}
+                onDoubleClick={(e) => {
+                  e.stopPropagation();
+                  if (pin.momentId) onOpenMoment(pin.momentId);
+                }}
+              >
+                <span className="pin__mark">
+                  <CategoryIcon event={pin} size={12} colored={false} />
+                </span>
+                <span className="pin__label">{pin.label}</span>
+              </button>
+            </Html>
+          );
+        })}
+    </>
+  );
+});
+
+/** Corridor graph and Wi-Fi beacons: one batched draw per primitive type, built once per layer. */
+const VenueOverlay = React.memo(function VenueOverlay({
+  layer,
+  yOffset,
+  activeFloorFilter,
+}: {
+  layer: Layer;
+  yOffset: number;
+  activeFloorFilter: 'all' | number;
+}) {
+  const nodesRef = useRef<THREE.InstancedMesh>(null);
+  const levels = useMemo(
+    () => (layer.venueLevels ?? []).filter((l) => activeFloorFilter === 'all' || l.index === activeFloorFilter),
+    [layer.venueLevels, activeFloorFilter]
+  );
+  const nodeCount = levels.reduce((n, l) => n + l.graph.nodes.length, 0);
+
+  const edges = useMemo(() => {
+    const points: number[] = [];
+    for (const level of levels) {
+      const z = (level.index > 0 ? 4.55 : 0.38) + 0.04;
+      for (const [a, b] of level.graph.edges) {
+        const na = level.graph.nodes[a];
+        const nb = level.graph.nodes[b];
+        if (na && nb) points.push(...toThreePos(na[0], na[1], z, yOffset), ...toThreePos(nb[0], nb[1], z, yOffset));
+      }
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(points, 3));
+    return geometry;
+  }, [levels, yOffset]);
+  useEffect(() => () => edges.dispose(), [edges]);
+
+  useLayoutEffect(() => {
+    const mesh = nodesRef.current;
+    if (!mesh) return;
+    let i = 0;
+    for (const level of levels) {
+      const z = level.index > 0 ? 4.55 : 0.38;
+      for (const node of level.graph.nodes) {
+        DUMMY_OBJ.position.set(...toThreePos(node[0], node[1], z, yOffset));
+        DUMMY_OBJ.scale.set(1, 1, 1);
+        DUMMY_OBJ.updateMatrix();
+        mesh.setMatrixAt(i++, DUMMY_OBJ.matrix);
+      }
+    }
+    mesh.count = i;
+    mesh.instanceMatrix.needsUpdate = true;
+  }, [levels, yOffset]);
+
+  const beacons = (layer.wifiBeacons ?? []).filter((b) => activeFloorFilter === 'all' || b.floor === activeFloorFilter);
+
+  return (
+    <>
+      <lineSegments geometry={edges} onUpdate={(line) => line.computeLineDistances()}>
+        <lineDashedMaterial color={COLORS.sky} dashSize={0.35} gapSize={0.2} />
+      </lineSegments>
+      <instancedMesh ref={nodesRef} args={[SHARED_NODE_CYLINDER, undefined, Math.max(1, nodeCount)]}>
+        <meshBasicMaterial color={COLORS.sky} />
+      </instancedMesh>
+      {beacons.map((wb) => (
+        <group key={wb.bssid} position={toThreePos(wb.x, wb.y, wb.floor > 0 ? 4.58 : 0.4, yOffset)}>
+          <mesh rotation={[-Math.PI / 2, 0, 0]}>
+            <ringGeometry args={[0.9, 1.05, 24]} />
+            <meshBasicMaterial color={COLORS.emerald} side={THREE.DoubleSide} transparent opacity={0.65} />
+          </mesh>
+          <Html center zIndexRange={LABEL_Z} style={{ pointerEvents: 'none' }}>
+            <div className="scene-label">
+              {wb.ssid} <span style={{ color: COLORS.textMuted }}>{wb.rssi} dBm</span>
+            </div>
+          </Html>
+        </group>
+      ))}
+    </>
+  );
+});
+
+/** Dashed arcs between stacked levels, one batched draw. Built once per set of transits. */
+const TransitArcs = React.memo(function TransitArcs({ transits }: { transits: TransitSegment[] }) {
+  const geometry = useMemo(() => {
+    const points: number[] = [];
+    const colors: number[] = [];
+    for (const tr of transits) {
+      const yA = tr.fromLayer * 8.5 + 0.5;
+      const yB = tr.toLayer * 8.5;
+      const bend = [PW / 2 + 2.5, (yA + yB) / 2, 0];
+      // Two segments per arc: start -> bend -> end.
+      points.push(PW / 2 - 2, yA, 0, ...bend, ...bend, -PW / 2 + 2, yB, 0);
+      SCRATCH_COLOR.set(tr.mode === 'vehicle' ? COLORS.textSecondary : COLORS.amber);
+      for (let i = 0; i < 4; i++) colors.push(SCRATCH_COLOR.r, SCRATCH_COLOR.g, SCRATCH_COLOR.b);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(points, 3));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    return g;
+  }, [transits]);
+  useEffect(() => () => geometry.dispose(), [geometry]);
+  return (
+    <lineSegments geometry={geometry} onUpdate={(line) => line.computeLineDistances()}>
+      <lineDashedMaterial vertexColors dashSize={0.5} gapSize={0.25} />
+    </lineSegments>
+  );
+});
+
+// ============================================================================
 // 3D 7-DAY MEMORY CUBE SHELF SCENE (Section 8.5)
 // ============================================================================
 const ShelfCubeMesh: React.FC<{
-  cube: DayShelfCube;
+  cube: WeekDay;
   index: number;
   total: number;
-  onSelectCube: (cube: DayShelfCube) => void;
+  onSelectCube: () => void;
 }> = ({ cube, index, total, onSelectCube }) => {
   const meshRef = useRef<THREE.Mesh>(null);
   const [hovered, setHovered] = useState(false);
 
-  const spacing = 4.2;
-  const xPos = (index - (total - 1) / 2) * spacing;
+  // The camera looks down the (-1, -1, -1) diagonal, so screen-right is world (1, 0, -1).
+  const invalidateScene = useThree((st) => st.invalidate);
+  const hover = (on: boolean) => {
+    if (!cube.recorded) return;
+    setHovered(on);
+    invalidateScene();
+  };
+  const spacing = 4.6;
+  const u = ((index - (total - 1) / 2) * spacing) / Math.SQRT2;
 
-  useFrame(({ clock, invalidate }) => {
-    if (!meshRef.current) return;
-    if (hovered) invalidate();
-    const t = clock.getElapsedTime();
-    meshRef.current.position.y =
-      (cube.isCurrent ? 0.6 : 0) +
-      (hovered ? 0.45 : 0) +
-      Math.sin(t * 1.8 + index * 0.7) * 0.14;
-    meshRef.current.rotation.y =
-      hovered || cube.isCurrent ? t * 0.55 : 0.35 + Math.sin(t * 0.5 + index) * 0.15;
-    meshRef.current.rotation.x = hovered ? 0.25 : 0.18;
+  useFrame(({ invalidate }) => {
+    const mesh = meshRef.current;
+    if (!mesh) return;
+    // Ease toward the resting lift; only ask for more frames while moving or hovered.
+    const lift = (cube.isCurrent ? 0.5 : 0) + (hovered ? 0.35 : 0);
+    const dy = lift - mesh.position.y;
+    mesh.position.y = Math.abs(dy) < 0.002 ? lift : mesh.position.y + dy * 0.14;
+    mesh.rotation.y = hovered ? mesh.rotation.y + 0.012 : 0.6;
+    mesh.rotation.x = 0.18;
+    if (hovered || Math.abs(dy) >= 0.002) invalidate();
   });
 
   return (
-    <group position={[xPos, 0, 0]}>
+    <group position={[u, 0, -u]}>
       <mesh
         ref={meshRef}
         onPointerOver={(e) => {
           e.stopPropagation();
-          setHovered(true);
+          hover(true);
         }}
-        onPointerOut={() => setHovered(false)}
+        onPointerOut={() => hover(false)}
         onClick={(e) => {
           e.stopPropagation();
-          onSelectCube(cube);
+          if (cube.recorded) onSelectCube();
         }}
-        castShadow
+        castShadow={cube.recorded}
       >
         <boxGeometry args={[2.5, 2.5, 2.5]} />
         <meshStandardMaterial
-          color={cube.isCurrent ? '#ffb454' : hovered ? '#38bdf8' : '#263147'}
-          emissive={cube.isCurrent ? '#ffb454' : hovered ? '#38bdf8' : '#0f172a'}
-          emissiveIntensity={cube.isCurrent ? 0.35 : hovered ? 0.28 : 0.08}
-          roughness={0.28}
-          metalness={0.35}
+          color={cube.isCurrent ? '#e8c27f' : hovered ? '#7d8490' : '#5b616b'}
+          roughness={0.55}
+          metalness={0.05}
+          transparent={!cube.recorded}
+          opacity={cube.recorded ? 1 : 0.18}
         />
       </mesh>
-      <Html position={[0, -2.2, 0]} center>
-        <div
-          onClick={() => onSelectCube(cube)}
-          style={{
-            padding: '8px 12px',
-            borderRadius: 12,
-            background: cube.isCurrent
-              ? 'rgba(255, 180, 84, 0.18)'
-              : 'rgba(14, 18, 28, 0.88)',
-            border: `1px solid ${
-              cube.isCurrent ? COLORS.amber : hovered ? COLORS.sky : COLORS.borderSubtle
-            }`,
-            color: COLORS.textPrimary,
-            fontFamily: FONTS.sans,
-            textAlign: 'center',
-            cursor: 'pointer',
-            minWidth: 135,
-            boxShadow: '0 10px 25px rgba(0,0,0,0.5)',
-          }}
+      <Html position={[0, -3.3, 0]} center zIndexRange={LABEL_Z}>
+        <button
+          type="button"
+          className="shelf-label"
+          aria-current={cube.isCurrent}
+          aria-label={new Intl.DateTimeFormat('en', { weekday: 'long', month: 'long', day: 'numeric' }).format(
+            new Date(`${cube.date}T12:00:00`)
+          )}
+          disabled={!cube.recorded}
+          onClick={onSelectCube}
+          onPointerEnter={() => hover(true)}
+          onPointerLeave={() => hover(false)}
         >
-          <div
-            style={{
-              fontFamily: FONTS.mono,
-              fontSize: 10,
-              color: cube.isCurrent ? COLORS.amber : COLORS.textSecondary,
-              fontWeight: 700,
-            }}
-          >
-            {cube.weekday} · {cube.date}
-          </div>
-          <div style={{ fontSize: 11.5, fontWeight: 600, marginTop: 2 }}>{cube.tagline}</div>
-          <div
-            style={{
-              fontFamily: FONTS.mono,
-              fontSize: 9.5,
-              color: COLORS.textSecondary,
-              marginTop: 4,
-            }}
-          >
-            {cube.stats.places} places · {cube.stats.moments} moments · {cube.stats.events} events
-          </div>
-        </div>
+          {new Intl.DateTimeFormat('en', { weekday: 'short', day: 'numeric' }).format(new Date(`${cube.date}T12:00:00`))}
+        </button>
       </Html>
     </group>
   );
@@ -786,6 +810,8 @@ const SceneController: React.FC<{
   mouseNormRef: React.MutableRefObject<{ x: number; y: number }>;
   controlsRef: React.MutableRefObject<any>;
   onGpuTelemetry?: (stats: GpuTelemetry) => void;
+  apiRef?: React.MutableRefObject<SceneCameraApi | null>;
+  layersCount: number;
 }> = ({
   cutawayWalls,
   activeFloorFilter,
@@ -798,13 +824,53 @@ const SceneController: React.FC<{
   mouseNormRef,
   controlsRef,
   onGpuTelemetry,
+  apiRef,
+  layersCount,
 }) => {
-  const { gl, invalidate } = useThree();
+  const { gl, camera, size, invalidate } = useThree();
+
+  // Fit the scene to the stage. Re-fit when the view or the stage size changes.
+  const fitZoom = useMemo(() => {
+    if (viewMode === 'stack') return Math.max(5, Math.min(size.width / 44, size.height / (layersCount * 8.5 + 22)));
+    if (viewMode === 'shelf') return Math.max(10, Math.min(size.width / 33, size.height / 16));
+    return Math.max(10, Math.min(size.width / 36, size.height / 25));
+  }, [viewMode, size.width, size.height]);
+
+  useEffect(() => {
+    const cam = camera as THREE.OrthographicCamera;
+    cam.zoom = fitZoom;
+    cam.updateProjectionMatrix();
+    invalidate();
+  }, [camera, fitZoom, invalidate]);
+
+  useEffect(() => {
+    if (!apiRef) return;
+    apiRef.current = {
+      zoomBy: (factor) => {
+        const cam = camera as THREE.OrthographicCamera;
+        cam.zoom = Math.min(80, Math.max(5, cam.zoom * factor));
+        cam.updateProjectionMatrix();
+        invalidate();
+      },
+      reset: () => {
+        const cam = camera as THREE.OrthographicCamera;
+        cam.position.set(22, 20, 22);
+        cam.zoom = fitZoom;
+        cam.updateProjectionMatrix();
+        controlsRef.current?.update();
+        invalidate();
+      },
+    };
+    return () => {
+      apiRef.current = null;
+    };
+  }, [apiRef, camera, fitZoom, controlsRef, invalidate]);
   const dirLightRef = useRef<THREE.DirectionalLight>(null);
   const initializedTargetRef = useRef(false);
   const frameCountRef = useRef(0);
   const lastTimeRef = useRef(performance.now());
   const previousFrameRef = useRef(performance.now());
+  const lastReportRef = useRef(0);
 
   useEffect(() => {
     gl.shadowMap.autoUpdate = false;
@@ -847,12 +913,11 @@ const SceneController: React.FC<{
       if (viewMode === 'shelf') {
         TARGET_VEC.set(0, 0, 0);
       } else if (viewMode === 'stack') {
-        const stackY = activeLayerIndex * 8.5;
+        const stackY = (layersCount - 1) * 8.5 * 0.5;
         TARGET_VEC.set(0, stackY + 1.2, 0);
       } else if (followCharacter) {
-        const pos = interpolatePath(activeLayer.path, tod);
-        const zFloor = pos.floor > 0 ? 4.48 : 0.3;
-        TARGET_VEC.set(pos.x - PW / 2, zFloor + 1.1, pos.y - PD / 2);
+        const pos = samplePath(activeLayer.path, tod, followSample);
+        TARGET_VEC.set(pos.x - PW / 2, floorZ(pos.floor) + 1.1, pos.y - PD / 2);
       } else {
         const hasUpperFloor = activeLayer.floors.includes(2);
         TARGET_VEC.set(0, hasUpperFloor ? 2.2 : 0.9, 0);
@@ -876,7 +941,8 @@ const SceneController: React.FC<{
       }
     }
 
-    // 3. Emit real WebGL GPU Telemetry every 25 frames (minimal overhead)
+    // 3. Renderer counters. Frames render on demand, so report the first frame at once and then
+    // at most twice a second; frame rate is only meaningful across an unbroken run of frames.
     const now = performance.now();
     if (now - previousFrameRef.current > 250) {
       frameCountRef.current = 0;
@@ -884,18 +950,21 @@ const SceneController: React.FC<{
     }
     previousFrameRef.current = now;
     frameCountRef.current++;
-    if (now - lastTimeRef.current >= 500 && onGpuTelemetry) {
-      const fps = Math.round((frameCountRef.current * 1000) / (now - lastTimeRef.current));
-      frameCountRef.current = 0;
-      lastTimeRef.current = now;
+    if (onGpuTelemetry && (now - lastReportRef.current >= 500 || lastReportRef.current === 0)) {
+      const elapsed = now - lastTimeRef.current;
+      lastReportRef.current = now;
       onGpuTelemetry({
-        fps,
+        fps: elapsed >= 500 ? Math.round((frameCountRef.current * 1000) / elapsed) : null,
         drawCalls: gl.info.render.calls,
         triangles: gl.info.render.triangles,
         instances: activeLayer.boxes.length + 10,
         geometries: gl.info.memory.geometries,
         textures: gl.info.memory.textures,
       });
+      if (elapsed >= 500) {
+        frameCountRef.current = 0;
+        lastTimeRef.current = now;
+      }
     }
   });
 
@@ -924,6 +993,19 @@ const SceneController: React.FC<{
   );
 };
 
+/** Stage backdrop by time of day: a dim room with a faint sky tint near the horizon. */
+function stageBackground(tod: number): string {
+  const tint =
+    tod >= 19.5 || tod < 6.5
+      ? '#1b2234'
+      : tod >= 17
+      ? '#2e2630'
+      : tod < 9
+      ? '#222a38'
+      : '#232a33';
+  return `radial-gradient(120% 90% at 50% 35%, ${tint} 0%, #15171b 70%)`;
+}
+
 // ============================================================================
 // MAIN THREE.JS DIORAMA CANVAS EXPORT
 // ============================================================================
@@ -936,6 +1018,8 @@ export const DioramaCanvas3D: React.FC<DioramaCanvas3DProps> = ({
   onSelectLayer,
   viewMode,
   onViewModeChange,
+  week,
+  onOpenDate,
   tod,
   activeFloorFilter,
   cutawayWalls,
@@ -946,6 +1030,7 @@ export const DioramaCanvas3D: React.FC<DioramaCanvas3DProps> = ({
   onSelectPin,
   onOpenMoment,
   onGpuTelemetry,
+  apiRef,
 }) => {
   const controlsRef = useRef<any>(null);
   const mouseNormRef = useRef({ x: 0, y: 0 });
@@ -969,12 +1054,7 @@ export const DioramaCanvas3D: React.FC<DioramaCanvas3DProps> = ({
         position: 'relative',
         width: '100%',
         height: '100%',
-        background:
-          tod > 18.5
-            ? 'radial-gradient(circle at 50% 42%, #172036 0%, #07090e 85%)'
-            : tod >= 16.8
-            ? 'radial-gradient(circle at 50% 42%, #2c2438 0%, #0a0d14 85%)'
-            : 'radial-gradient(circle at 50% 42%, #1d283a 0%, #090c12 85%)',
+        background: stageBackground(tod),
       }}
     >
       <Canvas
@@ -985,7 +1065,7 @@ export const DioramaCanvas3D: React.FC<DioramaCanvas3DProps> = ({
         onCreated={({ invalidate }) => { invalidateRef.current = invalidate; }}
         camera={{
           position: [22, 20, 22],
-          zoom: viewMode === 'stack' ? 14 : viewMode === 'shelf' ? 24 : 26,
+          zoom: 24,
           near: -100,
           far: 200,
         }}
@@ -1007,14 +1087,16 @@ export const DioramaCanvas3D: React.FC<DioramaCanvas3DProps> = ({
           mouseNormRef={mouseNormRef}
           controlsRef={controlsRef}
           onGpuTelemetry={onGpuTelemetry}
+          apiRef={apiRef}
+          layersCount={layers.length}
         />
 
         <OrbitControls
           ref={controlsRef}
           enableDamping
           dampingFactor={0.08}
-          minZoom={10}
-          maxZoom={65}
+          minZoom={5}
+          maxZoom={80}
           minPolarAngle={0.45}
           maxPolarAngle={1.32}
         />
@@ -1062,42 +1144,24 @@ export const DioramaCanvas3D: React.FC<DioramaCanvas3DProps> = ({
                   onSelectPin={onSelectPin}
                   onOpenMoment={onOpenMoment}
                   onSelectLayer={() => onSelectLayer(idx)}
+                  showLabel
                 />
               );
             })}
-            {/* Glowing 3D Transit Arcs between stacked layers */}
-            {transits.map((tr, ti) => {
-              const yA = tr.fromLayer * 8.5 + 0.5;
-              const yB = tr.toLayer * 8.5;
-              return (
-                <Line
-                  key={`transit-${ti}`}
-                  points={[
-                    [PW / 2 - 2, yA, 0],
-                    [PW / 2 + 2.5, (yA + yB) / 2, 0],
-                    [-PW / 2 + 2, yB, 0],
-                  ]}
-                  color={tr.mode === 'vehicle' ? COLORS.sky : COLORS.amber}
-                  lineWidth={2.2}
-                  dashed
-                  dashSize={0.5}
-                  gapSize={0.25}
-                />
-              );
-            })}
+            <TransitArcs transits={transits} />
           </group>
         )}
 
         {/* MODE 3: 3D 7-DAY MEMORY CUBE SHELF */}
         {viewMode === 'shelf' && (
           <group>
-            {SEVEN_DAY_SHELF.map((cube, idx) => (
+            {week.map((cube, idx) => (
               <ShelfCubeMesh
                 key={cube.date}
                 cube={cube}
                 index={idx}
-                total={SEVEN_DAY_SHELF.length}
-                onSelectCube={() => onViewModeChange('layer')}
+                total={week.length}
+                onSelectCube={() => (cube.isCurrent ? onViewModeChange('layer') : onOpenDate(cube.date))}
               />
             ))}
           </group>

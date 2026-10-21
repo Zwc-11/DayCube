@@ -335,28 +335,11 @@ export interface GraphEdge {
   evidence: string[];
 }
 
-export interface DayShelfCube {
+/** One day on the week shelf. Only recorded days can be opened. */
+export interface WeekDay {
   date: string;
-  weekday: string;
-  label: string;
-  tagline: string;
+  recorded: boolean;
   isCurrent: boolean;
-  stats: {
-    events: number;
-    moments: number;
-    places: number;
-    floorChanges: number;
-    deepReadMins: number;
-  };
-  faces: {
-    id: string;
-    face: 'Front' | 'Back' | 'Top' | 'Bottom' | 'Left' | 'Right';
-    title: string;
-    time: string;
-    place: string;
-    kind: 'moment' | 'screen' | 'quote' | 'place';
-    accent: string;
-  }[];
 }
 
 export interface DeletionAudit {
