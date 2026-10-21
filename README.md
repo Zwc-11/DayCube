@@ -1,5 +1,22 @@
 # DAYCUBE
 
+Replay your day as a voxel world you can walk through and ask questions about. Every place you
+visited becomes a small diorama, a character walks your route through it (up the stairs, to the
+desk, out the door), and answers to questions cite the records they came from.
+
+![DayCube demo: the character walks into Engineering Hall, climbs the stairs to floor 2 and reaches the desk](docs/media/daycube-demo.gif)
+
+▶ [Watch the 19-second demo (MP4)](docs/media/daycube-demo.mp4): walking and climbing, the
+whole day stacked, then a question answered from the local vault with sources.
+
+| Climbing to the second floor | Arriving upstairs |
+| --- | --- |
+| ![The character climbs the Engineering Hall stairs while the floor above is cut away](docs/media/stairs-climb.png) | ![The character reaches the top of the stairs on floor 2](docs/media/upper-floor.png) |
+| **The whole day, stacked** | **Ask, with cited sources** |
+| ![Every place of the day stacked as layers](docs/media/day-stack.png) | ![A question answered from the vault, with numbered sources](docs/media/ask-answer.png) |
+
+The sample day is fictional and every scene is labelled *illustrative* in the app.
+
 A local-first spatial memory system. This repository now contains a working **backend/API
 foundation** alongside a separately maintained frontend prototype. It is not yet the complete capture/reconstruction
 system described in [the technical specification](docs/daycube-technical-spec.md).
@@ -22,7 +39,8 @@ npm run demo
 The frontend loads the vault day through `/api` on startup. To enable authenticated actions:
 
 1. Open the viewer, click the gear icon (top right), then **Vault connection**.
-2. Copy your token in PowerShell: `Get-Content -Raw .\vault\.token | Set-Clipboard`.
+2. Copy your token. PowerShell: `Get-Content -Raw .\vault\.token | Set-Clipboard`;
+   macOS: `pbcopy < vault/.token`.
 3. Paste it into the token field and click **Connect**. This also reloads the vault day.
 4. Click **Rebuild search index**, then ask a question from the search field (Ctrl K).
 
@@ -62,6 +80,10 @@ client and converts the API's seconds-since-midnight into the renderer's decimal
 - Rebuildable SQLite FTS5 search, extractive cited answers and SSE responses.
 - Eight shared JSON Schema contracts with generated Pydantic and TypeScript models.
 - GPX parser, attention helper, FFmpeg probe/audio helpers, optional integration adapters.
+- A character that walks the day: routes go around furniture and through doorways, climb
+  stairs step by step between floors, and cut away the floor above while it is indoors.
+  Playback slows while it walks. Visits without measured indoor positions get an
+  illustrative walk between the spots where their records happened.
 - Python tests, JavaScript contract tests, real-browser API checks and a CI workflow.
 
 Native capture, OCR execution, gaze calibration, visit/floor inference, raw-browser synthesis,
