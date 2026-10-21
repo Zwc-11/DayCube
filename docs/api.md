@@ -38,6 +38,10 @@ unambiguous source instant. API metadata uses snake_case; viewer layer shapes us
 Speaker confirmation currently updates the transcript map only. It does not regenerate quote
 events or the graph. Unsupported ingest stages return 501 instead of reporting success.
 
-`packages/api-client` provides `DaycubeClient` for future frontend integration. Its base URL defaults
+`packages/api-client` provides `DaycubeClient` to the frontend bridge. Its base URL defaults
 to `/api`, which Vite proxies to loopback port 7701. It validates day/event/moment/search payloads
 using shared contracts. A token callback keeps token acquisition in the caller's UI.
+
+The frontend's API Contract panel binds the token in memory, reloads the day and runs index jobs.
+`apps/viewer/src/lib/backendBridge.ts` converts seconds to renderer hours and polls job completion.
+Live empty search results stay empty; they do not substitute prototype evidence.

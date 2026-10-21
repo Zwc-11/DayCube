@@ -14,7 +14,7 @@ flowchart LR
   vault --> index[Rebuildable FTS5 index]
   index --> ask[Extractive ask + citations]
   ask --> api
-  api -. typed client for future integration .-> viewer[Frontend prototype :3000]
+  api --> viewer[Frontend bridge :3000]
 ```
 
 Solid arrows are implemented. Dashed paths are planned. The default demo uses fictional fixture

@@ -19,15 +19,24 @@ npm run demo
 - API and interactive endpoint documentation: <http://127.0.0.1:7701/docs>
 - Health/capabilities: <http://127.0.0.1:7701/health>
 
-To try the backend, open the API docs, click Authorize and paste the contents of your local
-`vault/.token`. Sample `/ask` questions include “Where was I when we decided the demo order?”
-and “hinge inference loop”. Backend answers quote matching evidence verbatim and return the
-place/time. The preserved frontend currently has its own mock data and is not wired to this API.
+The frontend loads the vault day through `/api` on startup. To enable authenticated actions:
+
+1. Open the viewer and click **API Contract** in the bottom bar.
+2. Copy your token in PowerShell: `Get-Content -Raw .\vault\.token | Set-Clipboard`.
+3. Paste it into the vault-token field and click **Bind Token**.
+4. Click **GET /api/health & /api/day/2026-10-20** to reload the vault day.
+5. Use **POST /api/ingest/2026-10-20** to rebuild the search index, then Ask Memory.
+
+Try “Where was I when we decided the demo order?”. Live answers quote source evidence and
+select its place/time. The token is held only in page memory, so bind it again after a browser
+reload. Without a bound token, Ask runs the frontend's standalone demo engine. Decorative scenes,
+the moment/OCR inspectors, graph and evaluation panels still contain prototype data; they do not
+mean that capture, reconstruction or the volunteer study has run.
 
 ## Structure
 
 ```text
-apps/viewer/                 Separately maintained React/Vite frontend prototype, preserved intact
+apps/viewer/                 React/Vite frontend with a vault/API bridge and illustrative dioramas
 packages/schemas/            Canonical JSON Schemas, generated TypeScript types, Zod validators
 packages/api-client/         Typed browser client with response validation
 services/ingest/             FastAPI, vault storage, FTS search, adapters and tests
@@ -42,9 +51,8 @@ scripts/                    Fixture generation and cross-language contract check
 vault/                      Local runtime data and token; ignored by Git
 ```
 
-The other frontend draft was moved into `apps/viewer` during concurrent development. It remains
-separate from the backend and shared contracts, as requested. Its mock decimal-hour time format
-is not the API's seconds-since-midnight format. Use `packages/api-client` when connecting it later.
+The frontend's rendering design is preserved under `apps/viewer`. Its bridge uses the typed API
+client and converts the API's seconds-since-midnight into the renderer's decimal-hour format.
 
 ## Working now
 
@@ -77,6 +85,7 @@ npm run build                 # Build the separately maintained frontend
 npm run lint:api
 npx playwright install chromium
 npm run test:e2e:api           # Real-browser API checks on an isolated test vault/port
+npm run test:e2e:viewer        # Token binding, reindex and live Ask through the frontend
 uv run python eval/score_retrieval.py
 ```
 

@@ -18,7 +18,7 @@ This is a foundation milestone, not a claim that the complete technical spec has
 | Integrations | Lazy Anthropic/FastEmbed/Modal adapters, cached Overpass adapter | Authenticated account validation and live integration tests |
 | GPU jobs | Optional transcription and relative-depth function definitions | Deployment, GPU validation, splats, consent-gated ingestion |
 | API | Local read/action endpoints and OpenAPI docs, mutation auth, media confinement, index job SSE | Durable job queue, complete ingestion stages, privacy purge |
-| Viewer | Preserved separate frontend prototype under `apps/viewer` | Connect it through the typed API client in a later milestone |
+| Viewer | Existing design under `apps/viewer`, API day/event hydration, token binding, live Ask/reindex and sync smoke tests | Replace remaining prototype moment/OCR/graph/evaluation data with live views |
 | Evaluation | 4 synthetic questions, test runner and saved smoke score | 50 real questions, grounding audit, calibration metrics, volunteer experiment |
 
 The frontend draft is preserved separately under `apps/viewer` after concurrent frontend work
