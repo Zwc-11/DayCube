@@ -59,6 +59,65 @@ const box = (
   opts: opts || {},
 });
 
+/** Footprint of the Engineering Hall's east stairwell, in diorama meters. */
+const STAIRWELL = { x: 18.2, y: 4.6, w: 2.6, d: 6.75 };
+const STAIR_STEPS = 9;
+const STAIR_RUN = STAIRWELL.d / STAIR_STEPS;
+
+export type StageId = 'home' | 'morningCafe' | 'hall' | 'courtyardCafe';
+
+export type StageSpotKind = 'outside' | 'desk' | 'table' | 'counter' | 'rest' | 'landing';
+
+/** Where the character stands for a kind of activity on a stage, and what it faces there. */
+export interface StageSpot {
+  kind: StageSpotKind;
+  floor: number;
+  x: number;
+  y: number;
+  look?: [number, number];
+}
+
+export const STAGE_SPOTS: Record<StageId, StageSpot[]> = {
+  home: [
+    { kind: 'outside', floor: 0, x: 20.0, y: 10.0 },
+    { kind: 'desk', floor: 0, x: 15.65, y: 7.7, look: [15.65, 8.85] },
+    { kind: 'rest', floor: 0, x: 7.6, y: 9.85, look: [7.6, 11.6] },
+    { kind: 'counter', floor: 0, x: 7.6, y: 6.65, look: [7.6, 5.65] },
+    { kind: 'table', floor: 0, x: 10.4, y: 10.8, look: [9.6, 12.0] },
+  ],
+  morningCafe: [
+    { kind: 'outside', floor: 0, x: 11.5, y: 16.0 },
+    { kind: 'counter', floor: 0, x: 9.8, y: 6.55, look: [9.8, 5.15] },
+    { kind: 'table', floor: 0, x: 11.2, y: 7.8, look: [11.2, 9.2] },
+  ],
+  hall: [
+    { kind: 'outside', floor: 0, x: 9.2, y: 16.6 },
+    { kind: 'desk', floor: 0, x: 10.1, y: 9.3, look: [10.1, 10.35] },
+    { kind: 'landing', floor: 0, x: 19.5, y: 12.4 },
+    { kind: 'landing', floor: 2, x: 19.5, y: 3.7 },
+    { kind: 'desk', floor: 2, x: 11.8, y: 7.0, look: [11.8, 5.85] },
+    { kind: 'table', floor: 2, x: 7.1, y: 7.1, look: [7.1, 5.9] },
+  ],
+  courtyardCafe: [
+    { kind: 'outside', floor: 0, x: 14.5, y: 17.3 },
+    { kind: 'counter', floor: 0, x: 7.3, y: 8.75, look: [5.95, 8.75] },
+    { kind: 'table', floor: 0, x: 13.2, y: 9.1, look: [15.1, 9.1] },
+  ],
+};
+
+export function buildStageBoxes(stage: StageId, evening = false): VoxelBox[] {
+  switch (stage) {
+    case 'home':
+      return buildHomeBoxes(evening);
+    case 'morningCafe':
+      return buildMorningCafeBoxes();
+    case 'hall':
+      return buildEngineeringHallBoxes();
+    case 'courtyardCafe':
+      return buildCourtyardCafeBoxes();
+  }
+}
+
 // ----------------------------------------------------------------------------
 // SCENE 1 & 5: HOME DIORAMA (Exact reference architecture + rich interior props)
 // ----------------------------------------------------------------------------
@@ -212,26 +271,40 @@ export function buildEngineeringHallBoxes(): VoxelBox[] {
   B.push(box(x + 0.3, y + 5.5, 0.3, 12.0, 0.25, 1.0, '#cbd5e1', 0, { wall: true }));
   // Lobby reception desk
   B.push(box(8.5, 9.8, 0.3, 3.2, 1.1, 0.85, PALETTE.desk, 0, { label: 'Lobby Reception' }));
-  // Stepped Stairwell climbing from Floor 0 (z=0.3) toward Floor 2 (z=4.2)
-  for (let s = 0; s < 8; s++) {
+  // East stairwell: nine steps from the lobby floor (top 0.3) up to the Floor 2 slab (top 4.48),
+  // climbing north. The last step is flush with the slab and closes the stairwell opening.
+  const z2 = 4.2;
+  const rise = (z2 + 0.28 - 0.3) / STAIR_STEPS;
+  for (let s = 0; s < STAIR_STEPS; s++) {
     B.push(
       box(
-        18.2,
-        10.5 - s * 0.85,
-        0.3 + s * 0.48,
-        2.6,
-        0.85,
-        0.48,
+        STAIRWELL.x,
+        STAIRWELL.y + STAIRWELL.d - (s + 1) * STAIR_RUN,
+        0.3 + s * rise,
+        STAIRWELL.w,
+        STAIR_RUN,
+        rise,
         '#94a3b8',
-        s < 4 ? 0 : 2,
-        { label: s === 4 ? 'Stairwell Climb (Δh +6.4m)' : undefined }
+        s < 5 ? 0 : 2,
+        { stair: true, label: s === 4 ? 'Stairwell Climb (Δh +6.4m)' : undefined }
       )
     );
   }
 
   // ==================== FLOOR 2 (z = 4.2m elevated!) ====================
-  const z2 = 4.2;
-  B.push(box(x, y, z2, w, d, 0.28, '#dbeafe', 2, { label: 'Floor 2 Systems Lab Slab' }));
+  // The slab is four pieces around the stairwell opening so the stairs stay visible.
+  const sx0 = STAIRWELL.x;
+  const sx1 = STAIRWELL.x + STAIRWELL.w;
+  const sy0 = STAIRWELL.y;
+  const sy1 = STAIRWELL.y + STAIRWELL.d;
+  B.push(box(x, y, z2, sx0 - x, d, 0.28, '#dbeafe', 2, { label: 'Floor 2 Systems Lab Slab' }));
+  B.push(box(sx1, y, z2, x + w - sx1, d, 0.28, '#dbeafe', 2));
+  B.push(box(sx0, y, z2, STAIRWELL.w, sy0 - y, 0.28, '#dbeafe', 2));
+  B.push(box(sx0, sy1, z2, STAIRWELL.w, y + d - sy1, 0.28, '#dbeafe', 2));
+  // Railings on the open sides of the stairwell.
+  B.push(box(sx0 - 0.12, sy0, z2 + 0.28, 0.12, STAIRWELL.d + 0.12, 0.5, PALETTE.steel, 2));
+  B.push(box(sx0, sy1, z2 + 0.28, STAIRWELL.w, 0.12, 0.5, PALETTE.steel, 2));
+  B.push(box(sx1, sy0, z2 + 0.28, 0.12, STAIRWELL.d + 0.12, 0.5, PALETTE.steel, 2));
   // Dollhouse perimeter walls on Floor 2
   B.push(box(x, y, z2 + 0.28, w, t, 1.15, PALETTE.wallHall, 2, { wall: true }));
   B.push(box(x, y, z2 + 0.28, t, d, 1.15, PALETTE.wallHall, 2, { wall: true }));
@@ -593,7 +666,7 @@ export const SAMPLE_DAY_LAYERS: Layer[] = [
             [11.0, 14.0],
           ],
         ],
-        stairs: [[18.2, 4.5, 2.6, 6.0]],
+        stairs: [[18.2, 4.6, 2.6, 6.75]],
         rooms: [
           {
             id: 'lobby',
@@ -640,7 +713,7 @@ export const SAMPLE_DAY_LAYERS: Layer[] = [
             [13.5, 12.0],
           ],
         ],
-        stairs: [[18.2, 4.5, 2.6, 6.0]],
+        stairs: [[18.2, 4.6, 2.6, 6.75]],
         rooms: [
           {
             id: 'lab204',

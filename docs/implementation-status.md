@@ -18,10 +18,13 @@ This is a foundation milestone, not a claim that the complete technical spec has
 | Integrations | Lazy Anthropic/FastEmbed/Modal adapters, cached Overpass adapter | Authenticated account validation and live integration tests |
 | GPU jobs | Optional transcription and relative-depth function definitions | Deployment, GPU validation, splats, consent-gated ingestion |
 | API | Local read/action endpoints and OpenAPI docs, mutation auth, media confinement, index job SSE | Durable job queue, complete ingestion stages, privacy purge |
-| Viewer | Existing design under `apps/viewer`, API day/event hydration, token binding, live Ask/reindex and sync smoke tests | Replace remaining prototype moment/OCR/graph/evaluation data with live views |
+| Viewer | Existing design under `apps/viewer`, API day/event hydration, token binding, live Ask/reindex and sync smoke tests; walking routes (grid A* around stage geometry, stair flights between floors, upper-floor cutaway, walk-paced playback) | Replace remaining prototype moment/OCR/graph/evaluation data with live views; route over venue packs and OSM footprints instead of stage presets |
 | Evaluation | 4 synthetic questions, test runner and saved smoke score | 50 real questions, grounding audit, calibration metrics, volunteer experiment |
 
 The frontend draft is preserved separately under `apps/viewer` after concurrent frontend work
 moved it there. It is not imported by the new backend or shared-contract packages.
 All generated sample facts and stage geometry are labeled illustrative. Unknown coordinates
 stay null. Floor labels from the fixture are fictional; actual floor anchoring is not claimed.
+When a visit has no measured indoor positions, the viewer walks the character between stage
+spots (entrance, desk, table, stairs) at the times of its records. That walk is illustrative,
+not a measured trajectory.

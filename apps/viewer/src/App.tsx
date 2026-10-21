@@ -12,6 +12,7 @@ import type { SettingsSection } from './components/modals/SystemStudioModal';
 import { type ApiCallLog, backendBridge } from './lib/backendBridge';
 import { usePageVisible } from './lib/usePageVisible';
 import { makeLayerLookup } from './lib/timeIndex';
+import { PLAYBACK_TICK_MS, advancePlayhead, daySchedule } from './lib/walkRoute';
 import { type DaySummary, type LoadedDay, SAMPLE_DATE, refreshDay } from './lib/days';
 import { TopBar, type ViewMode } from './components/shell/TopBar';
 import { Itinerary } from './components/shell/Itinerary';
@@ -217,17 +218,18 @@ export const App: React.FC<AppProps> = ({ date, day, days, onOpenDate }) => {
     }
   }, []);
 
-  // Playback
+  // Playback slows while someone walks, so the walk plays at a watchable pace.
+  const walks = useMemo(() => daySchedule(layers), [layers]);
   useEffect(() => {
     if (!playing || suspended) return;
     const interval = window.setInterval(() => {
       setTod((prev) => {
-        const next = prev + 0.0375 * playSpeed;
+        const next = advancePlayhead(walks, prev, PLAYBACK_TICK_MS / 1000, playSpeed);
         return next > dayEnd ? dayStart : next;
       });
-    }, 100);
+    }, PLAYBACK_TICK_MS);
     return () => window.clearInterval(interval);
-  }, [playing, suspended, playSpeed, dayStart, dayEnd]);
+  }, [playing, suspended, playSpeed, dayStart, dayEnd, walks]);
 
   useEffect(() => {
     if (!playing) return;
@@ -406,6 +408,7 @@ export const App: React.FC<AppProps> = ({ date, day, days, onOpenDate }) => {
           {engineMode === 'three' ? (
             <DioramaCanvas3D
               playing={playing}
+              playSpeed={playSpeed}
               suspended={suspended}
               layers={layers}
               transits={transits}

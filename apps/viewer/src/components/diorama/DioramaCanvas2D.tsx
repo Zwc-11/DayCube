@@ -1,6 +1,9 @@
 import React, { useEffect, useRef } from 'react';
 import { EventPin, Layer } from '../../types/daycube';
 import { PALETTE } from '../../data/sampleDay';
+import { PD, PW, emptySample, routeCrumbs, routeFor, sampleRoute } from '../../lib/walkRoute';
+
+const sample = emptySample();
 
 interface DioramaCanvas2DProps {
   suspended: boolean;
@@ -13,9 +16,6 @@ interface DioramaCanvas2DProps {
   selectedPinId: string | null;
   onSelectPin: (pin: EventPin) => void;
 }
-
-const PW = 26;
-const PD = 18;
 
 function shade(hex: string, k: number, n: number): string {
   const clean = hex.startsWith('#') ? hex.slice(1) : 'cccccc';
@@ -208,34 +208,23 @@ export const DioramaCanvas2D: React.FC<DioramaCanvas2DProps> = ({
         return { key: X + Y + (b.z + b.h / 2) * 0.02, box: b };
       });
 
-      const pathPts = curLayer.path;
-      for (let i = 1; i < pathPts.length; i++) {
-        const a = pathPts[i - 1];
-        const b = pathPts[i];
-        if (a.t > curT) break;
-        const steps = Math.max(1, Math.round(Math.hypot(b.x - a.x, b.y - a.y) * 1.4));
-        for (let m = 0; m <= steps; m++) {
-          const u = m / steps;
-          const t = a.t + (b.t - a.t) * u;
-          if (t > curT) break;
-          const x = a.x + (b.x - a.x) * u;
-          const y = a.y + (b.y - a.y) * u;
-          const zFloor = (a.floor + (b.floor - a.floor) * u) > 1 ? 4.48 : 0.3;
-          const [X, Y] = rot(x, y);
-          items.push({
-            key: X + Y + zFloor * 0.02 + 0.05,
-            box: {
-              x: x - 0.2,
-              y: y - 0.2,
-              z: zFloor,
-              w: 0.4,
-              d: 0.4,
-              h: 0.25,
-              color: PALETTE.path,
-              opts: { glow: true },
-            },
-          });
-        }
+      const route = routeFor(curLayer);
+      for (const crumb of routeCrumbs(route)) {
+        if (crumb.t > curT) break;
+        const [X, Y] = rot(crumb.x, crumb.y);
+        items.push({
+          key: X + Y + crumb.z * 0.02 + 0.05,
+          box: {
+            x: crumb.x - 0.2,
+            y: crumb.y - 0.2,
+            z: crumb.z,
+            w: 0.4,
+            d: 0.4,
+            h: 0.25,
+            color: PALETTE.path,
+            opts: { glow: true },
+          },
+        });
       }
 
       items.sort((p, q) => p.key - q.key);
@@ -250,27 +239,8 @@ export const DioramaCanvas2D: React.FC<DioramaCanvas2DProps> = ({
         drawBox(it.box);
       }
 
-      // Character interpolation
-      const getPathPos = (t: number): [number, number, number] => {
-        if (!pathPts.length) return [13, 9, 0];
-        if (t <= pathPts[0].t) return [pathPts[0].x, pathPts[0].y, pathPts[0].floor];
-        for (let i = 1; i < pathPts.length; i++) {
-          const a = pathPts[i - 1];
-          const b = pathPts[i];
-          if (t <= b.t) {
-            const u = (t - a.t) / Math.max(1e-6, b.t - a.t);
-            return [a.x + (b.x - a.x) * u, a.y + (b.y - a.y) * u, u > 0.5 ? b.floor : a.floor];
-          }
-        }
-        const last = pathPts[pathPts.length - 1];
-        return [last.x, last.y, last.floor];
-      };
-
-      const [x, y, charFloor] = getPathPos(curT);
-      const z = charFloor > 0 ? 4.48 : 0.3;
-      const qPrev = getPathPos(curT - 0.01);
-      const walking = Math.hypot(x - qPrev[0], y - qPrev[1]) > 0.002;
-      const ph = walking ? Math.sin(performance.now() / 90) : 0;
+      const { x, y, z, walking, gait } = sampleRoute(route, curT, sample);
+      const ph = walking ? Math.sin(gait * Math.PI) : 0;
       const bob = walking ? Math.abs(ph) * 0.12 : 0;
 
       const sp = proj(x, y, z);
