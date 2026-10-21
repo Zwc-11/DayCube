@@ -801,6 +801,7 @@ const SceneController: React.FC<{
 }) => {
   const { gl, invalidate } = useThree();
   const dirLightRef = useRef<THREE.DirectionalLight>(null);
+  const initializedTargetRef = useRef(false);
   const frameCountRef = useRef(0);
   const lastTimeRef = useRef(performance.now());
   const previousFrameRef = useRef(performance.now());
@@ -862,8 +863,15 @@ const SceneController: React.FC<{
         TARGET_VEC.z += mouseNormRef.current.y * 1.2;
       }
 
-      if (controlsRef.current.target.distanceToSquared(TARGET_VEC) > 0.0001) {
-        controlsRef.current.target.lerp(TARGET_VEC, 0.16);
+      if (!initializedTargetRef.current) {
+        controlsRef.current.target.copy(TARGET_VEC);
+        controlsRef.current.update?.();
+        initializedTargetRef.current = true;
+      } else if (controlsRef.current.target.distanceToSquared(TARGET_VEC) > 0.0001) {
+        controlsRef.current.target.lerp(TARGET_VEC, 0.35);
+        if (controlsRef.current.target.distanceToSquared(TARGET_VEC) <= 0.0025) {
+          controlsRef.current.target.copy(TARGET_VEC);
+        }
         invalidate();
       }
     }
