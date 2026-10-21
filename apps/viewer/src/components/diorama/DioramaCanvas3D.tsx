@@ -5,12 +5,25 @@ import * as THREE from 'three';
 import {
   EventPin,
   Layer,
-  PathPoint,
   TransitSegment,
   WeekDay,
 } from '../../types/daycube';
 import { PALETTE } from '../../data/sampleDay';
 import { CATEGORY, COLORS, eventCategory, formatTod, shortPlaceName } from '../../styles/theme';
+import {
+  PD,
+  PW,
+  PlayClock,
+  Route,
+  RouteSample,
+  SHOW_ALL,
+  clockTod,
+  daySchedule,
+  emptySample,
+  routeCrumbs,
+  routeFor,
+  sampleRoute,
+} from '../../lib/walkRoute';
 import { CategoryIcon } from '../ui';
 
 /** Imperative camera controls for the stage's zoom and reset buttons. */
@@ -34,6 +47,7 @@ export interface GpuTelemetry {
 
 interface DioramaCanvas3DProps {
   playing: boolean;
+  playSpeed: number;
   suspended: boolean;
   layers: Layer[];
   transits: TransitSegment[];
@@ -57,9 +71,6 @@ interface DioramaCanvas3DProps {
   apiRef?: React.MutableRefObject<SceneCameraApi | null>;
 }
 
-const PW = 26;
-const PD = 18;
-
 // Shared unit geometry across the entire WebGL context (1 geometry = 0 duplication)
 const SHARED_UNIT_BOX = new THREE.BoxGeometry(1, 1, 1);
 const SHARED_NODE_CYLINDER = new THREE.CylinderGeometry(0.26, 0.26, 0.08, 16);
@@ -68,7 +79,10 @@ const SHARED_NODE_CYLINDER = new THREE.CylinderGeometry(0.26, 0.26, 0.08, 16);
 const DUMMY_OBJ = new THREE.Object3D();
 const SCRATCH_COLOR = new THREE.Color();
 const TARGET_VEC = new THREE.Vector3();
-const followSample: PathSample = { x: 0, y: 0, floor: 0, walking: false };
+const followSample = emptySample();
+const CHAR_OBJ = new THREE.Object3D();
+// Yaw about the vertical first, then each limb's swing about its own hip or shoulder.
+CHAR_OBJ.rotation.order = 'YXZ';
 
 // Coordinate helper: Diorama (x east 0..26, y south 0..18, z up) -> Three.js (X=x-13, Y=z, Z=y-9)
 function toThreePos(x: number, y: number, z: number, yOffset = 0): [number, number, number] {
@@ -87,74 +101,105 @@ function upperBound(times: ArrayLike<number>, t: number): number {
   return lo;
 }
 
-interface PathSample {
-  x: number;
-  y: number;
-  floor: number;
-  walking: boolean;
-}
-
-/**
- * Position along a time-sorted path, written into ``out`` so the frame loop allocates nothing.
- * Binary search finds the segment: O(log n) per frame instead of a scan from the start.
- */
-function samplePath(path: PathPoint[], tod: number, out: PathSample): PathSample {
-  out.walking = false;
-  if (!path.length) {
-    out.x = PW / 2;
-    out.y = PD / 2;
-    out.floor = 0;
-    return out;
-  }
-  // First point strictly after `tod`; the segment is [i - 1, i].
-  let lo = 0;
-  let hi = path.length;
-  while (lo < hi) {
-    const mid = (lo + hi) >>> 1;
-    if (path[mid].t <= tod) lo = mid + 1;
-    else hi = mid;
-  }
-  if (lo === 0 || lo === path.length) {
-    const p = path[lo === 0 ? 0 : path.length - 1];
-    out.x = p.x;
-    out.y = p.y;
-    out.floor = p.floor;
-    return out;
-  }
-  const a = path[lo - 1];
-  const b = path[lo];
-  const u = (tod - a.t) / Math.max(1e-6, b.t - a.t);
-  out.x = a.x + (b.x - a.x) * u;
-  out.y = a.y + (b.y - a.y) * u;
-  out.floor = u > 0.5 ? b.floor : a.floor;
-  out.walking = Math.hypot(b.x - a.x, b.y - a.y) > 0.25 && u > 0.01 && u < 0.99;
-  return out;
-}
-
 const floorZ = (floor: number) => (floor > 0 ? 4.48 : 0.3);
 
 /**
- * The 10-box character as data: [dx, dy, dz, w, h, d, color]. ``dy`` is the rest height of the
- * box centre; legs, arms and the body bob are adjusted per frame without allocating.
+ * The 10-box character as data: [dx, dy, dz, w, h, d, color], facing +z at rest. ``dy`` is the
+ * rest height of the box centre. Legs swing from the hips, arms from the shoulders, and the body
+ * leans into stairs; each frame writes the pose without allocating.
  */
 const CHARACTER: readonly (readonly [number, number, number, number, number, number, string])[] = [
-  [-0.18, 0, 0, 0.26, 0.35, 0.28, '#2f3a4f'], // left leg (height animated)
-  [0.18, 0, 0, 0.26, 0.35, 0.28, '#2f3a4f'], // right leg (height animated)
+  [-0.18, 0.3, 0, 0.26, 0.6, 0.28, '#2f3a4f'], // left leg
+  [0.18, 0.3, 0, 0.26, 0.6, 0.28, '#2f3a4f'], // right leg
   [0, 1.02, 0, 0.86, 0.94, 0.56, '#3b4a6b'], // torso
-  [-0.58, 1.03, 0, 0.24, 0.58, 0.24, '#f0c9a5'], // left arm (swing animated)
-  [0.58, 1.03, 0, 0.24, 0.58, 0.24, '#f0c9a5'], // right arm (swing animated)
+  [-0.58, 1.03, 0, 0.24, 0.58, 0.24, '#f0c9a5'], // left arm
+  [0.58, 1.03, 0, 0.24, 0.58, 0.24, '#f0c9a5'], // right arm
   [0, 1.98, 0, 1.04, 0.96, 0.96, '#f0c9a5'], // head
   [0, 2.48, 0, 1.14, 0.36, 1.06, '#2f2a26'], // hair
-  [0, 2.18, -0.45, 1.12, 0.36, 0.2, '#2f2a26'], // fringe
+  [0, 2.18, -0.45, 1.12, 0.36, 0.2, '#2f2a26'], // back of the hair
   [-0.24, 1.95, 0.49, 0.12, 0.12, 0.06, '#111827'], // eyes
   [0.24, 1.95, 0.49, 0.12, 0.12, 0.06, '#111827'],
 ];
+const HIP = 0.6;
+const LEG = 0.6;
+const SHOULDER = 1.32;
+const ARM = 0.58;
+
+/** Write the character's ten boxes for one pose at stage position (cx, baseY, cz). */
+function poseCharacter(mesh: THREE.InstancedMesh, s: RouteSample, cx: number, baseY: number, cz: number) {
+  const swing = s.walking ? (s.stair ? 0.7 : 0.55) * Math.sin(s.gait * Math.PI) : 0;
+  const lean = s.walking && s.stair ? 0.14 : 0;
+  // The hips drop as the legs open, so the planted foot stays on the floor.
+  const drop = LEG * (1 - Math.cos(swing));
+  const cosY = Math.cos(s.yaw);
+  const sinY = Math.sin(s.yaw);
+  const cosL = Math.cos(lean);
+  const sinL = Math.sin(lean);
+  for (let i = 0; i < CHARACTER.length; i++) {
+    const [dx, dy, dz, w, h, d] = CHARACTER[i];
+    let ly: number;
+    let lz: number;
+    let pitch: number;
+    if (i < 2) {
+      // A negative pitch swings the foot forward; the legs move in opposition.
+      pitch = i === 0 ? -swing : swing;
+      ly = HIP - (LEG / 2) * Math.cos(pitch);
+      lz = -(LEG / 2) * Math.sin(pitch);
+    } else if (i === 3 || i === 4) {
+      // Each arm swings with the opposite leg, hanging from a shoulder that leans with the body.
+      pitch = (i === 3 ? swing : -swing) * 0.8 + lean;
+      const shoulderY = HIP + (SHOULDER - HIP) * cosL;
+      const shoulderZ = (SHOULDER - HIP) * sinL;
+      ly = shoulderY - (ARM / 2) * Math.cos(pitch);
+      lz = shoulderZ - (ARM / 2) * Math.sin(pitch);
+    } else {
+      pitch = lean;
+      const ry = dy - HIP;
+      ly = HIP + ry * cosL - dz * sinL;
+      lz = ry * sinL + dz * cosL;
+    }
+    CHAR_OBJ.position.set(cx + dx * cosY + lz * sinY, baseY + ly - drop, cz - dx * sinY + lz * cosY);
+    CHAR_OBJ.rotation.set(pitch, s.yaw, 0);
+    CHAR_OBJ.scale.set(w, h, d);
+    CHAR_OBJ.updateMatrix();
+    mesh.setMatrixAt(i, CHAR_OBJ.matrix);
+  }
+  mesh.count = CHARACTER.length;
+  mesh.instanceMatrix.needsUpdate = true;
+}
+
+/** Box instances for one mesh; boxes on floors above ``topFloor`` collapse to nothing. */
+function writeBoxes(
+  mesh: THREE.InstancedMesh,
+  boxes: Layer['boxes'],
+  yOffset: number,
+  cutawayWalls: boolean,
+  topFloor: number
+) {
+  boxes.forEach((b, i) => {
+    const hidden = (b.floor ?? 0) > topFloor;
+    const h = cutawayWalls && b.opts?.wall ? Math.min(b.h, 0.35) : b.h;
+    DUMMY_OBJ.position.set(b.x + b.w / 2 - PW / 2, b.z + h / 2 + yOffset, b.y + b.d / 2 - PD / 2);
+    DUMMY_OBJ.scale.set(hidden ? 0 : b.w, hidden ? 0 : h, hidden ? 0 : b.d);
+    DUMMY_OBJ.rotation.set(0, 0, 0);
+    DUMMY_OBJ.updateMatrix();
+    mesh.setMatrixAt(i, DUMMY_OBJ.matrix);
+  });
+  mesh.count = boxes.length;
+  mesh.instanceMatrix.needsUpdate = true;
+}
+
+function writeBoxColors(mesh: THREE.InstancedMesh, boxes: Layer['boxes']) {
+  boxes.forEach((b, i) => mesh.setColorAt(i, SCRATCH_COLOR.set(b.color)));
+  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+}
 
 // ============================================================================
 // GPU INSTANCED LAYER PLATE (1 InstancedMesh for architecture, 1 for lamps, 1 for path)
 // ============================================================================
 const InstancedLayerDiorama: React.FC<{
   playing: boolean;
+  clock: PlayClock;
   layer: Layer;
   yOffset: number;
   isActive: boolean;
@@ -170,6 +215,7 @@ const InstancedLayerDiorama: React.FC<{
   showLabel?: boolean;
 }> = ({
   playing,
+  clock,
   layer,
   yOffset,
   isActive,
@@ -188,7 +234,8 @@ const InstancedLayerDiorama: React.FC<{
   const lampMeshRef = useRef<THREE.InstancedMesh>(null);
   const pathMeshRef = useRef<THREE.InstancedMesh>(null);
   const charMeshRef = useRef<THREE.InstancedMesh>(null);
-  const lastCharacterRef = useRef<{ tod: number; yOffset: number; path: PathPoint[] | null }>({ tod: NaN, yOffset: NaN, path: null });
+  const lastCharacterRef = useRef<{ tod: number; yOffset: number; route: Route | null }>({ tod: NaN, yOffset: NaN, route: null });
+  const route = routeFor(layer);
 
   const nightFactor = tod < 17.5 ? 0 : tod > 20 ? 1 : (tod - 17.5) / 2.5;
 
@@ -203,71 +250,34 @@ const InstancedLayerDiorama: React.FC<{
     };
   }, [layer.boxes, activeFloorFilter]);
 
-  // Breadcrumbs along the trajectory, in time order (each segment emits increasing times).
-  const pathBreadcrumbs = useMemo(() => {
-    const crumbs: { x: number; y: number; z: number; t: number; fidelity: string }[] = [];
-    const pts = layer.path;
-    for (let i = 1; i < pts.length; i++) {
-      const a = pts[i - 1];
-      const b = pts[i];
-      const steps = Math.max(1, Math.round(Math.hypot(b.x - a.x, b.y - a.y) * 1.4));
-      for (let m = 0; m <= steps; m++) {
-        const u = m / steps;
-        const t = a.t + (b.t - a.t) * u;
-        const x = a.x + (b.x - a.x) * u;
-        const y = a.y + (b.y - a.y) * u;
-        const fl = u > 0.5 ? b.floor : a.floor;
-        if (activeFloorFilter !== 'all' && fl !== activeFloorFilter) continue;
-        const z = (fl > 0 ? 4.48 : 0.3) + 0.14;
-        crumbs.push({ x, y, z, t, fidelity: b.fidelity });
-      }
-    }
-    return crumbs;
-  }, [layer.path, activeFloorFilter]);
+  // Breadcrumbs along the walked route, in time order, climbing the stairs with it.
+  const pathBreadcrumbs = useMemo(
+    () =>
+      routeCrumbs(route)
+        .filter((c) => activeFloorFilter === 'all' || c.floor === activeFloorFilter)
+        .map((c) => ({ ...c, z: c.z + 0.14 })),
+    [route, activeFloorFilter]
+  );
   const crumbTimes = useMemo(() => Float64Array.from(pathBreadcrumbs, (c) => c.t), [pathBreadcrumbs]);
-  const samplePos = useRef<PathSample>({ x: 0, y: 0, floor: 0, walking: false });
+  const samplePos = useRef<RouteSample>(emptySample());
+
+  // Floors above the walker are cut away while it is indoors beneath them; see ``reveal``.
+  const revealRef = useRef(SHOW_ALL);
 
   // Populate Opaque Architecture InstancedMesh matrices & colors
   useEffect(() => {
     const mesh = opaqueMeshRef.current;
     if (!mesh) return;
-    opaqueBoxes.forEach((b, i) => {
-      const hActual = cutawayWalls && b.opts?.wall ? Math.min(b.h, 0.35) : b.h;
-      const cx = b.x + b.w / 2 - PW / 2;
-      const cy = b.z + hActual / 2 + yOffset;
-      const cz = b.y + b.d / 2 - PD / 2;
-      DUMMY_OBJ.position.set(cx, cy, cz);
-      DUMMY_OBJ.scale.set(b.w, hActual, b.d);
-      DUMMY_OBJ.rotation.set(0, 0, 0);
-      DUMMY_OBJ.updateMatrix();
-      mesh.setMatrixAt(i, DUMMY_OBJ.matrix);
-      SCRATCH_COLOR.set(b.color);
-      mesh.setColorAt(i, SCRATCH_COLOR);
-    });
-    mesh.count = opaqueBoxes.length;
-    mesh.instanceMatrix.needsUpdate = true;
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    writeBoxes(mesh, opaqueBoxes, yOffset, cutawayWalls, revealRef.current);
+    writeBoxColors(mesh, opaqueBoxes);
   }, [opaqueBoxes, cutawayWalls, yOffset]);
 
   // Populate Emissive Lamp / Monitor InstancedMesh
   useEffect(() => {
     const mesh = lampMeshRef.current;
     if (!mesh) return;
-    lampBoxes.forEach((b, i) => {
-      const cx = b.x + b.w / 2 - PW / 2;
-      const cy = b.z + b.h / 2 + yOffset;
-      const cz = b.y + b.d / 2 - PD / 2;
-      DUMMY_OBJ.position.set(cx, cy, cz);
-      DUMMY_OBJ.scale.set(b.w, b.h, b.d);
-      DUMMY_OBJ.rotation.set(0, 0, 0);
-      DUMMY_OBJ.updateMatrix();
-      mesh.setMatrixAt(i, DUMMY_OBJ.matrix);
-      SCRATCH_COLOR.set(b.color);
-      mesh.setColorAt(i, SCRATCH_COLOR);
-    });
-    mesh.count = lampBoxes.length;
-    mesh.instanceMatrix.needsUpdate = true;
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    writeBoxes(mesh, lampBoxes, yOffset, false, revealRef.current);
+    writeBoxColors(mesh, lampBoxes);
   }, [lampBoxes, yOffset]);
 
   // Populate Path Breadcrumbs InstancedMesh
@@ -296,46 +306,33 @@ const InstancedLayerDiorama: React.FC<{
   }, []);
 
   // Update the static pose once; schedule further frames only during playback.
-  useFrame(({ clock, invalidate }) => {
+  useFrame(({ invalidate, gl }) => {
+    // Between playback ticks the time keeps moving, so the walk is smooth rather than 10 Hz.
+    const now = clockTod(clock);
     if (pathMeshRef.current) {
-      pathMeshRef.current.count = isActive ? upperBound(crumbTimes, tod) : pathBreadcrumbs.length;
+      pathMeshRef.current.count = isActive ? upperBound(crumbTimes, now) : pathBreadcrumbs.length;
     }
 
-    // Update 10-box Voxel Character via single InstancedMesh
     const charMesh = charMeshRef.current;
     if (!charMesh) return;
+    const pos = sampleRoute(route, now, samplePos.current);
+    // Only an explicit "All floors" view cuts away; a chosen floor is shown as chosen.
+    const top = isActive && activeFloorFilter === 'all' ? pos.reveal : SHOW_ALL;
+    if (top !== revealRef.current) {
+      revealRef.current = top;
+      if (opaqueMeshRef.current) writeBoxes(opaqueMeshRef.current, opaqueBoxes, yOffset, cutawayWalls, top);
+      if (lampMeshRef.current) writeBoxes(lampMeshRef.current, lampBoxes, yOffset, false, top);
+      gl.shadowMap.needsUpdate = true;
+    }
     if (!isActive) {
       charMesh.count = 0;
       return;
     }
-    if (!playing && charMesh.count === 10 && lastCharacterRef.current.tod === tod && lastCharacterRef.current.yOffset === yOffset && lastCharacterRef.current.path === layer.path) return;
-    lastCharacterRef.current = { tod, yOffset, path: layer.path };
+    const last = lastCharacterRef.current;
+    if (!playing && charMesh.count === CHARACTER.length && last.tod === now && last.yOffset === yOffset && last.route === route) return;
+    lastCharacterRef.current = { tod: now, yOffset, route };
     if (playing) invalidate();
-    const pos = samplePath(layer.path, tod, samplePos.current);
-    const zBase = floorZ(pos.floor) + yOffset;
-    const ph = pos.walking && playing ? Math.sin(clock.getElapsedTime() * 11) : 0;
-    const bob = pos.walking ? Math.abs(ph) * 0.12 : 0;
-    const cx = pos.x - PW / 2;
-    const cz = pos.y - PD / 2;
-    for (let i = 0; i < CHARACTER.length; i++) {
-      const [dx, dy, dz, w, h, d] = CHARACTER[i];
-      let height = h;
-      let y = dy + bob;
-      let z = dz;
-      if (i < 2) {
-        // Legs stretch on alternate strides and stay planted on the floor.
-        height = 0.35 + (pos.walking ? 0.22 * Math.max(0, i === 0 ? ph : -ph) : 0);
-        y = height / 2;
-      } else if (i === 3 || i === 4) {
-        z = (i === 3 ? ph : -ph) * 0.08;
-      }
-      DUMMY_OBJ.position.set(cx + dx, zBase + y, cz + z);
-      DUMMY_OBJ.scale.set(w, height, d);
-      DUMMY_OBJ.updateMatrix();
-      charMesh.setMatrixAt(i, DUMMY_OBJ.matrix);
-    }
-    charMesh.count = CHARACTER.length;
-    charMesh.instanceMatrix.needsUpdate = true;
+    poseCharacter(charMesh, pos, pos.x - PW / 2, pos.z + yOffset, pos.y - PD / 2);
   });
 
   const visiblePins = useMemo(() => {
@@ -350,7 +347,7 @@ const InstancedLayerDiorama: React.FC<{
       });
   }, [layer.events, activeFloorFilter]);
 
-  const charPos = samplePath(layer.path, tod, { x: 0, y: 0, floor: 0, walking: false });
+  const charPos = sampleRoute(route, tod, emptySample());
   const activeQuote = useMemo(() => {
     return layer.quotes.find((q) => Math.abs(q.t - tod) <= 0.18);
   }, [layer.quotes, tod]);
@@ -472,7 +469,7 @@ const InstancedLayerDiorama: React.FC<{
       {/* Character Speech / Thought Bubble when Quote or Active Pin is nearby */}
       {isActive && !showLabel && activeQuote && (
         <Html
-          position={toThreePos(charPos.x, charPos.y, floorZ(charPos.floor) + 3.4, yOffset)}
+          position={toThreePos(charPos.x, charPos.y, charPos.z + 3.4, yOffset)}
           center
           zIndexRange={[28, 21]}
           style={{ pointerEvents: 'none' }}
@@ -802,6 +799,7 @@ const SceneController: React.FC<{
   cutawayWalls: boolean;
   activeFloorFilter: 'all' | number;
   tod: number;
+  clock: PlayClock;
   viewMode: 'layer' | 'stack' | 'shelf';
   activeLayer: Layer;
   activeLayerIndex: number;
@@ -816,6 +814,7 @@ const SceneController: React.FC<{
   cutawayWalls,
   activeFloorFilter,
   tod,
+  clock,
   viewMode,
   activeLayer,
   activeLayerIndex,
@@ -916,8 +915,8 @@ const SceneController: React.FC<{
         const stackY = (layersCount - 1) * 8.5 * 0.5;
         TARGET_VEC.set(0, stackY + 1.2, 0);
       } else if (followCharacter) {
-        const pos = samplePath(activeLayer.path, tod, followSample);
-        TARGET_VEC.set(pos.x - PW / 2, floorZ(pos.floor) + 1.1, pos.y - PD / 2);
+        const pos = sampleRoute(routeFor(activeLayer), clockTod(clock), followSample);
+        TARGET_VEC.set(pos.x - PW / 2, pos.z + 1.1, pos.y - PD / 2);
       } else {
         const hasUpperFloor = activeLayer.floors.includes(2);
         TARGET_VEC.set(0, hasUpperFloor ? 2.2 : 0.9, 0);
@@ -1011,6 +1010,7 @@ function stageBackground(tod: number): string {
 // ============================================================================
 export const DioramaCanvas3D: React.FC<DioramaCanvas3DProps> = ({
   playing,
+  playSpeed,
   suspended,
   layers,
   transits,
@@ -1036,6 +1036,16 @@ export const DioramaCanvas3D: React.FC<DioramaCanvas3DProps> = ({
   const mouseNormRef = useRef({ x: 0, y: 0 });
   const invalidateRef = useRef<() => void>(() => {});
   const activeLayer = layers[activeLayerIndex] || layers[0];
+
+  // Frames read the playhead from here, so they can carry it on between the app's ticks.
+  const clock = useRef<PlayClock>({ tod, at: performance.now(), playing, speed: playSpeed, walks: [] }).current;
+  if (clock.tod !== tod) {
+    clock.tod = tod;
+    clock.at = performance.now();
+  }
+  clock.playing = playing && !suspended;
+  clock.speed = playSpeed;
+  clock.walks = daySchedule(layers);
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!headParallax) return;
@@ -1079,6 +1089,7 @@ export const DioramaCanvas3D: React.FC<DioramaCanvas3DProps> = ({
           cutawayWalls={cutawayWalls}
           activeFloorFilter={activeFloorFilter}
           tod={tod}
+          clock={clock}
           viewMode={viewMode}
           activeLayer={activeLayer}
           activeLayerIndex={activeLayerIndex}
@@ -1106,6 +1117,7 @@ export const DioramaCanvas3D: React.FC<DioramaCanvas3DProps> = ({
           <>
             <InstancedLayerDiorama
               playing={playing}
+              clock={clock}
               layer={activeLayer}
               yOffset={0}
               isActive={true}
@@ -1131,6 +1143,7 @@ export const DioramaCanvas3D: React.FC<DioramaCanvas3DProps> = ({
               return (
                 <InstancedLayerDiorama
                   playing={playing}
+                  clock={clock}
                   key={lyr.placeId}
                   layer={lyr}
                   yOffset={yOff}

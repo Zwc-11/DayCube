@@ -9,12 +9,66 @@ import {
 } from '../types/daycube';
 import {
   SAMPLE_DAY_LAYERS,
-  buildHomeBoxes,
-  buildMorningCafeBoxes,
-  buildEngineeringHallBoxes,
-  buildCourtyardCafeBoxes,
+  STAGE_SPOTS,
+  type StageId,
+  type StageSpot,
+  type StageSpotKind,
+  buildStageBoxes,
 } from '../data/sampleDay';
 import { runGroundedAsk } from '../data/askEngine';
+
+/** Where on a stage each kind of record most plausibly happened, in order of preference. */
+const SPOTS_FOR_TYPE: Record<string, StageSpotKind[]> = {
+  'place.visit': ['outside'],
+  'place.transit': ['outside'],
+  'place.floor': ['landing', 'outside'],
+  'screen.app': ['desk', 'table', 'counter'],
+  'screen.page': ['desk', 'table', 'counter'],
+  'screen.read': ['desk', 'table', 'counter'],
+  'git.push': ['desk', 'table', 'counter'],
+};
+const SOCIAL_SPOTS: StageSpotKind[] = ['table', 'counter', 'desk'];
+
+function spotFor(spots: StageSpot[], type: string, floor: number): StageSpot {
+  for (const kind of SPOTS_FOR_TYPE[type] ?? SOCIAL_SPOTS) {
+    const matches = spots.filter((s) => s.kind === kind);
+    const match = matches.find((s) => s.floor === floor) ?? matches[0];
+    if (match) return match;
+  }
+  return spots[0];
+}
+
+/**
+ * An illustrative walk for a visit whose positions are unknown: in from outside (or up from bed
+ * first thing at home), to the spot where each record happened, and out again at the end.
+ */
+function stageWalk(
+  spots: StageSpot[],
+  t0: number,
+  t1: number,
+  events: EventPin[],
+  options: { wakesHere: boolean; sleepsHere: boolean; conf: number }
+): PathPoint[] {
+  const point = (spot: StageSpot, t: number, passThrough = false): PathPoint => ({
+    x: spot.x,
+    y: spot.y,
+    floor: spot.floor,
+    t,
+    conf: options.conf,
+    fidelity: 'illustrative',
+    look: spot.look,
+    passThrough: passThrough || undefined,
+  });
+  const outside = spots.find((s) => s.kind === 'outside') ?? spots[0];
+  const rest = spots.find((s) => s.kind === 'rest');
+  const walk = [options.wakesHere && rest ? point(rest, t0) : point(outside, t0, true)];
+  for (const ev of [...events].sort((a, b) => a.t - b.t)) {
+    if (ev.deleted || ev.eventType === 'place.visit' || ev.eventType === 'place.transit') continue;
+    walk.push(point(spotFor(spots, ev.eventType, ev.floor), Math.min(t1, Math.max(t0, ev.t))));
+  }
+  walk.push(point(options.sleepsHere && rest ? rest : outside, t1));
+  return walk;
+}
 
 export interface ApiCallLog {
   id: string;
@@ -182,38 +236,31 @@ export class BackendBridge {
       const t0Hours = Number((bLayer.t0 / 3600).toFixed(3));
       const t1Hours = Number((bLayer.t1 / 3600).toFixed(3));
 
-      const boxes =
-        bLayer.kind === 'venue'
-          ? buildEngineeringHallBoxes()
-          : bLayer.kind === 'cafe'
-          ? idx === 1
-            ? buildMorningCafeBoxes()
-            : buildCourtyardCafeBoxes()
-          : buildHomeBoxes(idx >= 4);
+      // Stage geometry is illustrative: pick the preset that fits the kind of place.
+      const stage: StageId =
+        bLayer.kind === 'venue' ? 'hall' : bLayer.kind === 'cafe' ? (idx === 1 ? 'morningCafe' : 'courtyardCafe') : 'home';
+      const boxes = buildStageBoxes(stage, idx >= 4);
+      const spots = STAGE_SPOTS[stage];
+      const wakesHere = idx === 0 && stage === 'home';
+      const sleepsHere = idx === dayResp.layers.length - 1 && stage === 'home';
+      const rest = spots.find((s) => s.kind === 'rest');
+      // Records without a position are placed at the stage spot for that kind of activity.
+      const placeAt = (type: string, x: number | null | undefined, y: number | null | undefined, floor: number) => {
+        if (x != null && y != null) return { x: x + 6, y: y + 4, floor };
+        const spot = type === 'place.visit' && wakesHere && rest ? rest : spotFor(spots, type, floor);
+        return { x: spot.look?.[0] ?? spot.x, y: spot.look?.[1] ?? spot.y, floor: spot.floor };
+      };
 
-      const pathPts: PathPoint[] =
-        bLayer.path.length > 0
-          ? bLayer.path.map((p, pi) => ({
-              x: p.x !== null ? p.x + 6 : fallback.path[pi % fallback.path.length]?.x ?? 12,
-              y: p.y !== null ? p.y + 4 : fallback.path[pi % fallback.path.length]?.y ?? 9,
-              floor: p.floor ?? 0,
-              t: Number((p.t / 3600).toFixed(3)),
-              conf: p.pos_conf,
-              fidelity: p.fidelity,
-              altRel: (p.floor ?? 0) * 3.2,
-            }))
-          : [];
-
-      const events: EventPin[] = bLayer.events.map((ev, ei) => {
-        const fbEv = fallback.events[ei % Math.max(1, fallback.events.length)];
+      const events: EventPin[] = bLayer.events.map((ev) => {
         const todHours = Number((ev.tod / 3600).toFixed(3));
+        const at = placeAt(ev.type, ev.x, ev.y, ev.floor ?? 0);
         return {
           id: ev.id,
           t: todHours,
           isoTime: ev.t,
-          x: ev.x != null ? ev.x + 6 : fbEv?.x ?? 12 + ei * 1.5,
-          y: ev.y != null ? ev.y + 4 : fbEv?.y ?? 8,
-          floor: ev.floor ?? 0,
+          x: at.x,
+          y: at.y,
+          floor: at.floor,
           kind:
             ev.type === 'moment.video' || ev.type === 'moment.audio'
               ? 'moment'
@@ -237,9 +284,27 @@ export class BackendBridge {
         };
       });
 
+      // A path with only illustrative points carries no real positions; walk the stage instead.
+      const pathPts: PathPoint[] = bLayer.path.every((p) => p.fidelity === 'illustrative')
+        ? stageWalk(spots, t0Hours, t1Hours, events, {
+            wakesHere,
+            sleepsHere,
+            conf: Math.min(...bLayer.path.map((p) => p.pos_conf), 0.4),
+          })
+        : bLayer.path.map((p, pi) => ({
+            x: p.x !== null ? p.x + 6 : fallback.path[pi % fallback.path.length]?.x ?? 12,
+            y: p.y !== null ? p.y + 4 : fallback.path[pi % fallback.path.length]?.y ?? 9,
+            floor: p.floor ?? 0,
+            t: Number((p.t / 3600).toFixed(3)),
+            conf: p.pos_conf,
+            fidelity: p.fidelity,
+            altRel: (p.floor ?? 0) * 3.2,
+          }));
+
       const quotes: Quote[] = bLayer.quotes.map((q, qi) => {
         const todHours = Number((q.tod / 3600).toFixed(3));
         const speakerRaw = String((q as Record<string, unknown>).speaker ?? 'SPEAKER_00');
+        const at = placeAt('said.quote', q.x, q.y, q.floor ?? 0);
         return {
           id: q.id,
           t: todHours,
@@ -252,9 +317,9 @@ export class BackendBridge {
           text: q.text || q.label,
           evidence: q.source.ref,
           momentId: String((q as Record<string, unknown>).moment_id ?? 'mo_001'),
-          x: q.x != null ? q.x + 6 : 14.2,
-          y: q.y != null ? q.y + 4 : 9.0,
-          floor: q.floor ?? 0,
+          x: at.x,
+          y: at.y,
+          floor: at.floor,
         };
       });
 

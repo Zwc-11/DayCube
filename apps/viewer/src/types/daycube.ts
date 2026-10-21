@@ -31,6 +31,8 @@ export interface VoxelBox {
     glass?: boolean;
     wall?: boolean;
     roof?: boolean;
+    /** One step of a flight; the walker climbs these instead of treating them as obstacles. */
+    stair?: boolean;
     label?: string;
     fidelity?: Fidelity;
   };
@@ -44,6 +46,10 @@ export interface PathPoint {
   conf: number;
   fidelity: Fidelity;
   altRel?: number; // barometric delta h in meters
+  /** What the character faces while it stays here, e.g. the desk it works at. */
+  look?: [number, number];
+  /** The character moves on at once instead of staying until the next point is due. */
+  passThrough?: boolean;
 }
 
 export interface EventPin {
