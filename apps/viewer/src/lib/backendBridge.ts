@@ -82,6 +82,8 @@ export class BackendBridge {
     version: string;
     askMode: string;
     latencyMs: number;
+    /** Whether the capture service reports itself as running. */
+    capture: boolean;
   }> {
     const t0 = performance.now();
     try {
@@ -100,6 +102,7 @@ export class BackendBridge {
         version: res.version,
         askMode: String(res.capabilities?.ask_mode ?? 'extractive'),
         latencyMs,
+        capture: res.capabilities?.capture === true,
       };
     } catch {
       // Fallback check against Vite Node ephemeral health
@@ -124,6 +127,7 @@ export class BackendBridge {
         version: 'node-ephemeral-1.0',
         askMode: 'hybrid-rrf',
         latencyMs: Number((performance.now() - t0).toFixed(2)),
+        capture: false,
       };
     }
   }
@@ -222,7 +226,7 @@ export class BackendBridge {
               : 'event',
           eventType: ev.type as EventPin['eventType'],
           label: ev.label,
-          subtitle: `${ev.type} · ${ev.source.kind}`,
+          subtitle: undefined,
           source: ev.source.ref,
           sourceKind: 'capture_win',
           fidelity: ev.fidelity,
