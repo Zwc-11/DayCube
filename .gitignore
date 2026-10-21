@@ -20,3 +20,4 @@ test-results/
 .daycube-e2e-vault/
 .DS_Store
 Thumbs.db
+AGENTS.md

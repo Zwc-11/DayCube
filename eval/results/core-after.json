@@ -1,0 +1,157 @@
+{
+  "kind": "synthetic-cpu-warm-filesystem",
+  "timestamp": "2026-10-21T01:18:16.772796+00:00",
+  "environment": {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "machine": "AMD64",
+    "processor": "AMD64 Family 26 Model 68 Stepping 0, AuthenticAMD",
+    "python": "3.11.9 (tags/v3.11.9:de54cf5, Apr  2 2024, 10:12:12) [MSC v.1938 64 bit (AMD64)]",
+    "sqlite": "3.45.1",
+    "revision": "8cc829fefd5cbd59c77de432862abb9aa66480f0",
+    "dirty": true,
+    "source_sha256": {
+      "services/ingest/ingest/vault.py": "66778a3dbce555260b1b2352bc8af860b41977dc40add011665c9107721e0614",
+      "services/ingest/ingest/index/build.py": "3516998ac8e292f8a60633ed0b8c095c148317352e00e7daf9f5497444c4c06a",
+      "eval/benchmark_core.py": "749c43c46e552e5cd66807692273b08ba81fa1767e8439cd8804eecbbbf67f02",
+      "services/ingest/ingest/index/timeline.py": "5ef349a0cbee284acdfd1aefb999a55d24fd4cf815c347be195de529b2ed2cff"
+    }
+  },
+  "repeats": 5,
+  "cases": {
+    "small": {
+      "workload": {
+        "places": 5,
+        "events": 250,
+        "fixes": 500,
+        "screenshots": 50
+      },
+      "metrics": {
+        "load_day": {
+          "median_ms": 2.5854000050458126,
+          "p95_ms": 8.377599995583296,
+          "samples_ms": [
+            2.476300003763754,
+            2.5700000041979365,
+            8.377599995583296,
+            2.5854000050458126,
+            2.7604999995674007
+          ],
+          "output_sha256": "dc8a30ef7e6d3afca77f5bdcf2d386a5e9d6eb9b3945399fb3633fbfc0bb8379",
+          "baseline_median_ms": 2.8770999997504987,
+          "speedup": 1.1128258660692303
+        },
+        "collect_units": {
+          "median_ms": 2.0059999951627105,
+          "p95_ms": 2.59389999700943,
+          "samples_ms": [
+            1.8670999997993931,
+            1.9898999962606467,
+            2.0059999951627105,
+            2.59389999700943,
+            2.1010999989812262
+          ],
+          "output_sha256": "8abead25e3c86440714f06468ccc15ab0fff51b1168674c43b787840518d646e",
+          "baseline_median_ms": 11.607099993852898,
+          "speedup": 5.7861914366113565
+        },
+        "build_index": {
+          "median_ms": 99.54909999942174,
+          "p95_ms": 104.15159999683965,
+          "samples_ms": [
+            104.15159999683965,
+            100.52670000004582,
+            98.19350000179838,
+            98.26990000146907,
+            99.54909999942174
+          ],
+          "output_sha256": "233a5f29abc93048f128a842124bd1add5d1713c67d94ec393639ebc8de7010c",
+          "baseline_median_ms": 113.00179999670945,
+          "speedup": 1.1351363296842045
+        },
+        "retrieve_warm": {
+          "median_ms": 1.1678999944706447,
+          "p95_ms": 1.2219999989611097,
+          "samples_ms": [
+            1.1768000040319748,
+            1.144699999713339,
+            1.1678999944706447,
+            1.2219999989611097,
+            1.113500002247747
+          ],
+          "output_sha256": "0f5ac7d19b0db9a0c68e98c904c85f3eb8b5c27c455113eab891636bc419ce5c",
+          "baseline_median_ms": 1.1257000005571172,
+          "speedup": 0.9638667744555861
+        }
+      },
+      "verified_index_sha256": "1f6be90fb6736544334d731f8fd32133b28682f38f2d9c050f8c6aeb43454d52"
+    },
+    "large": {
+      "workload": {
+        "places": 50,
+        "events": 5000,
+        "fixes": 10000,
+        "screenshots": 1000
+      },
+      "metrics": {
+        "load_day": {
+          "median_ms": 66.20919999841135,
+          "p95_ms": 76.05160000093747,
+          "samples_ms": [
+            52.8827000016463,
+            53.087499996763654,
+            66.20919999841135,
+            75.04310000513215,
+            76.05160000093747
+          ],
+          "output_sha256": "d568bb0c6e6f733d55dac1a81b696876c3d28e15e5add5e93651d9f0e4e8c208",
+          "baseline_median_ms": 99.75439999834634,
+          "speedup": 1.506654664317646
+        },
+        "collect_units": {
+          "median_ms": 42.223600001307204,
+          "p95_ms": 53.80159999913303,
+          "samples_ms": [
+            41.2374000006821,
+            42.223600001307204,
+            39.86649999569636,
+            46.23619999620132,
+            53.80159999913303
+          ],
+          "output_sha256": "b56d5ee0578b6dd90a3f7e7dbe3a69c6c78a3fbb547f9bc46e11088112752feb",
+          "baseline_median_ms": 4540.193699998781,
+          "speedup": 107.52739462902787
+        },
+        "build_index": {
+          "median_ms": 1920.3548000004957,
+          "p95_ms": 2061.52640000073,
+          "samples_ms": [
+            1918.4737000032328,
+            1971.399800000654,
+            1920.3548000004957,
+            1903.456299995014,
+            2061.52640000073
+          ],
+          "output_sha256": "b3f62a22d89a26829947250bae6a21d0d5beaea0ab1e3efbb49b23f01d8c8863",
+          "baseline_median_ms": 6081.411500003014,
+          "speedup": 3.1668166215958866
+        },
+        "retrieve_warm": {
+          "median_ms": 1.9660999969346449,
+          "p95_ms": 2.199500006099697,
+          "samples_ms": [
+            2.199500006099697,
+            2.1909999995841645,
+            1.9660999969346449,
+            1.87240000377642,
+            1.9614999982877634
+          ],
+          "output_sha256": "0f5ac7d19b0db9a0c68e98c904c85f3eb8b5c27c455113eab891636bc419ce5c",
+          "baseline_median_ms": 1.7436999987694435,
+          "speedup": 0.8868826618625979
+        }
+      },
+      "verified_index_sha256": "c2106a19bba00e4bf518d4707cfc30310393c10ee82a5cf49907a124bc6ee479"
+    }
+  },
+  "compared_with": "eval\\results\\core-before.json"
+}

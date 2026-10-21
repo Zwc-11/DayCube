@@ -15,6 +15,7 @@
     "test:e2e:api": "playwright test",
     "test:e2e:viewer": "playwright test --config playwright.viewer.config.ts",
     "lint:api": "uv run ruff check services scripts eval jobs",
+    "bench:core": "uv run python eval/benchmark_core.py",
     "setup": "npm install && uv sync",
     "dev": "npm --workspace @daycube/viewer run dev",
     "build": "npm --workspace @daycube/viewer run build",

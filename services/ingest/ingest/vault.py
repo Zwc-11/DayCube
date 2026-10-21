@@ -4,6 +4,7 @@ import re
 import secrets
 import shutil
 import tempfile
+from collections import defaultdict
 from datetime import date as Date
 from pathlib import Path
 from threading import RLock
@@ -35,7 +36,9 @@ def read_json(path: Path) -> Any:
 def read_lines(path: Path) -> list[dict]:
     if not path.exists():
         return []
-    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    return [
+        json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
+    ]
 
 
 class Vault:
@@ -102,7 +105,9 @@ class Vault:
         return result
 
     def events(self, day: str) -> list[dict]:
-        return sorted(read_lines(self.day_path(day) / "events.jsonl"), key=lambda e: instant(e["t"]))
+        return sorted(
+            read_lines(self.day_path(day) / "events.jsonl"), key=lambda e: instant(e["t"])
+        )
 
     def append_events(self, day: str, events: list[dict]) -> int:
         with self.lock:
@@ -113,7 +118,10 @@ class Vault:
                 self.validate_event(event, day, data["tz"], places)
                 if event.get("moment_id"):
                     moment_id = event["moment_id"]
-                    if not re.fullmatch(r"[A-Za-z0-9_-]+", moment_id) or not (path / "moments" / moment_id / "meta.json").is_file():
+                    if (
+                        not re.fullmatch(r"[A-Za-z0-9_-]+", moment_id)
+                        or not (path / "moments" / moment_id / "meta.json").is_file()
+                    ):
                         raise ValueError("Event references a missing moment")
             current = self.events(day)
             known_ids = {e["id"] for e in current}
@@ -144,9 +152,12 @@ class Vault:
         path = self.day_path(day)
         data = read_json(path / "day.json")
         events = self.events(day)
-        data["stats"] = {"events": len(events), "moments": len(list((path / "moments").glob("*/meta.json"))),
-                         "places": len(data["places"]),
-                         "floor_changes": sum(e["type"] == "place.floor" for e in events)}
+        data["stats"] = {
+            "events": len(events),
+            "moments": len(list((path / "moments").glob("*/meta.json"))),
+            "places": len(data["places"]),
+            "floor_changes": sum(e["type"] == "place.floor" for e in events),
+        }
         self.write_json(path / "day.json", data)
 
     def validate(self, day: str) -> dict:
@@ -194,7 +205,9 @@ class Vault:
         for meta in moments:
             moment = read_json(meta)
             contracts.validate("moment", moment)
-            if moment["id"] != meta.parent.name or (moment["place"] is not None and moment["place"] not in places):
+            if moment["id"] != meta.parent.name or (
+                moment["place"] is not None and moment["place"] not in places
+            ):
                 raise ValueError("Moment id/place does not match its vault location")
             transcript = read_json(meta.parent / "transcript.json")
             contracts.validate("transcript", transcript)
@@ -204,10 +217,16 @@ class Vault:
         graph = read_json(path / "graph.json")
         contracts.validate("graph", graph)
         nodes = {node["id"] for node in graph["nodes"]}
-        if len(nodes) != len(graph["nodes"]) or any(edge["from"] not in nodes or edge["to"] not in nodes for edge in graph["edges"]):
+        if len(nodes) != len(graph["nodes"]) or any(
+            edge["from"] not in nodes or edge["to"] not in nodes for edge in graph["edges"]
+        ):
             raise ValueError("Graph contains duplicate nodes or dangling edges")
-        expected = {"events": len(events), "moments": len(moments), "places": len(places),
-                    "floor_changes": sum(e["type"] == "place.floor" for e in events)}
+        expected = {
+            "events": len(events),
+            "moments": len(moments),
+            "places": len(places),
+            "floor_changes": sum(e["type"] == "place.floor" for e in events),
+        }
         if data["stats"] != expected:
             raise ValueError("Day stats differ from the vault records")
         return {"date": day, "valid": True, "events": len(events), "moments": len(moments)}
@@ -218,24 +237,44 @@ class Vault:
         names = read_json(self.root / "places.json")
         events = self.events(day)
         fixes = read_json(path / "skeleton.geojson")["features"]
+        events_by_place: dict[str | None, list[dict]] = defaultdict(list)
+        fixes_by_place: dict[str | None, list[dict]] = defaultdict(list)
+        for event in events:
+            events_by_place[event.get("place")].append(event)
+        for fix in fixes:
+            fixes_by_place[fix["properties"]["place"]].append(fix["properties"])
         layers = []
         for place in sorted(data["places"], key=lambda p: p["layer_index"]):
             name = names.get(place["id"], place["name"])
-            pins = [dict(e, tod=tod(e["t"], data["tz"])) for e in events if e.get("place") == place["id"]]
+            pins = [dict(e, tod=tod(e["t"], data["tz"])) for e in events_by_place[place["id"]]]
             venue = read_json(PROJECT_ROOT / place["venue"]) if place.get("venue") else None
-            layers.append({
-                "index": place["layer_index"], "placeId": place["id"], "name": name,
-                "kind": place["kind"], "t0": tod(place["t0"], data["tz"]),
-                "t1": tod(place["t1"], data["tz"]), "floors": place["floors_visited"],
-                "floorHeight": venue["floor_height_m"] if venue else 3.3,
-                "frame": {"lat": place["lat"], "lon": place["lon"],
-                          "axisDeg": venue["axis_deg"] if venue else 0, "size": [20, 14]},
-                "geometry": {"fidelity": "illustrative", "footprint": [[-10, -7], [10, -7], [10, 7], [-10, 7]],
-                             "levels": venue["levels"] if venue else []},
-                "path": [dict(f["properties"], t=tod(f["properties"]["t"], data["tz"]))
-                         for f in fixes if f["properties"]["place"] == place["id"]],
-                "events": pins,
-                "quotes": [e for e in pins if e["type"] == "said.quote"],
-                "moments": sorted({e["moment_id"] for e in pins if e.get("moment_id")}),
-            })
+            layers.append(
+                {
+                    "index": place["layer_index"],
+                    "placeId": place["id"],
+                    "name": name,
+                    "kind": place["kind"],
+                    "t0": tod(place["t0"], data["tz"]),
+                    "t1": tod(place["t1"], data["tz"]),
+                    "floors": place["floors_visited"],
+                    "floorHeight": venue["floor_height_m"] if venue else 3.3,
+                    "frame": {
+                        "lat": place["lat"],
+                        "lon": place["lon"],
+                        "axisDeg": venue["axis_deg"] if venue else 0,
+                        "size": [20, 14],
+                    },
+                    "geometry": {
+                        "fidelity": "illustrative",
+                        "footprint": [[-10, -7], [10, -7], [10, 7], [-10, 7]],
+                        "levels": venue["levels"] if venue else [],
+                    },
+                    "path": [
+                        dict(f, t=tod(f["t"], data["tz"])) for f in fixes_by_place[place["id"]]
+                    ],
+                    "events": pins,
+                    "quotes": [e for e in pins if e["type"] == "said.quote"],
+                    "moments": sorted({e["moment_id"] for e in pins if e.get("moment_id")}),
+                }
+            )
         return {**data, "layers": layers}

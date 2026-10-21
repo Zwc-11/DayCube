@@ -45,3 +45,44 @@ token binding/search/reindex still work. GPU tests run one browser at a time.
 
 Implementation references: [React Three Fiber demand rendering](https://r3f.docs.pmnd.rs/advanced/scaling-performance)
 and the installed drei OrbitControls implementation, which invalidates on control changes.
+
+## Local service scale benchmark
+
+The DeepInfer-inspired backend pass groups events/fixes once per day, uses a binary-search
+timeline for nearest OCR evidence, and batches SQLite inserts with a single FTS rebuild.
+Nearest-event matching preserves the ten-minute cutoff, earlier-time ties and first record
+at duplicate timestamps. Tests also check that a failed rebuild preserves the previous index.
+
+Same Windows workstation, Python 3.11.9, SQLite 3.45.1, one warmup and five timed repetitions
+per operation, warm filesystem, isolated temporary synthetic vaults. Fixture creation, result
+hashing and verification are outside the timing region. `build_index` includes validation,
+evidence collection, database creation and atomic replacement; it is not just SQL insertion time.
+
+Large workload: 50 visits, 5,000 events, 10,000 path fixes, 1,000 screenshots with three OCR
+blocks each (8,050 indexed units). Medians:
+
+| Operation | Before | After |
+| --- | ---: | ---: |
+| Assemble viewer day | 99.75 ms | 66.21 ms |
+| Collect index evidence | 4,540.19 ms | 42.22 ms |
+| Full index rebuild | 6,081.41 ms | 1,920.35 ms |
+| Warm retrieval | 1.74 ms | 1.97 ms |
+
+Warm retrieval was not optimized; sub-millisecond variation is not evidence of an improvement.
+The small workload (5 visits, 250 events, 500 fixes, 50 screenshots) and all raw samples,
+runtime metadata, revisions and source hashes are retained in
+[before](../eval/results/core-before.json) and [after](../eval/results/core-after.json) reports.
+Day, collected evidence, build-summary and retrieval output hashes match across versions.
+The current run also checks every stored evidence row and FTS external-content integrity.
+Five samples are useful for a local comparison; their nearest-rank p95 is the maximum sample,
+not a reliable estimate of production tail latency.
+
+```powershell
+npm run bench:core -- --output test-results/core-current.json --compare eval/results/core-before.json
+```
+
+The benchmark never reads the user's vault, invokes cloud services or runs capture. It fails on
+result drift and only writes a completed report after all selected workloads succeed. These are
+CPU/storage measurements for the named synthetic workloads; they do not measure browser frame
+rate, HTTP latency or DeepInfer throughput. The [reference review](deepinfer-review.md) and
+[engineering standard](engineering.md) describe the applicable patterns and remaining work.

@@ -37,7 +37,37 @@ def test_viewer_times_use_local_seconds(vault):
 
 
 def test_missing_moment_is_rejected_before_writing(vault):
-    event = dict(vault.events(DAY)[0], id="missing-moment", type="moment.video", moment_id="unknown")
+    event = dict(
+        vault.events(DAY)[0], id="missing-moment", type="moment.video", moment_id="unknown"
+    )
     with pytest.raises(ValueError, match="missing moment"):
         vault.append_events(DAY, [event])
     assert len(vault.events(DAY)) == 14
+
+
+def test_layers_keep_visit_order_names_and_unlocated_records_separate(vault):
+    data = vault.load_day(DAY)
+    source = read_json(vault.day_path(DAY) / "day.json")
+    source["places"].reverse()
+    vault.write_json(vault.day_path(DAY) / "day.json", source)
+    vault.write_json(vault.root / "places.json", {"cafe1": "Renamed café"})
+    unlocated = dict(vault.events(DAY)[0], id="unlocated", place=None)
+    vault.append_events(DAY, [unlocated])
+    skeleton = read_json(vault.day_path(DAY) / "skeleton.geojson")
+    skeleton["features"].append(
+        dict(
+            skeleton["features"][0],
+            properties=dict(skeleton["features"][0]["properties"], place=None),
+        )
+    )
+    vault.write_json(vault.day_path(DAY) / "skeleton.geojson", skeleton)
+    layers = vault.load_day(DAY)["layers"]
+    assert [layer["placeId"] for layer in layers] == [layer["placeId"] for layer in data["layers"]]
+    assert layers[1]["name"] == "Renamed café"
+    assert sum(len(layer["path"]) for layer in layers) == 60
+    assert sum(len(layer["events"]) for layer in layers) == 14
+    for layer, original in zip(layers, data["layers"], strict=True):
+        assert layer["events"] == original["events"]
+        assert layer["path"] == original["path"]
+        assert layer["quotes"] == original["quotes"]
+        assert layer["moments"] == original["moments"]

@@ -45,7 +45,7 @@ extensions/chrome/          Disabled-by-default Chrome MV3 starter
 jobs/modal/                 Optional transcription/depth cloud job definitions
 fixtures/sample-day/        Fictional day with 5 visits, 60 fixes and 14 events
 venues/                     Fictional venue pack
-eval/                       Four-question fixture smoke evaluation; human study still planned
+eval/                       Fixture smoke evaluation and isolated synthetic CPU benchmarks
 docs/                       API, architecture, dependencies, runbook and implementation status
 scripts/                    Fixture generation and cross-language contract checks
 vault/                      Local runtime data and token; ignored by Git
@@ -83,6 +83,7 @@ npm run schemas               # Regenerate Pydantic + TypeScript contracts
 npm run test:api               # Drift checks, JS contracts and Python tests
 npm run build                 # Build the separately maintained frontend
 npm run lint:api
+npm run bench:core -- --output test-results/core-current.json # Isolated synthetic CPU workloads
 npx playwright install chromium
 npm run test:e2e:api           # Real-browser API checks on an isolated test vault/port
 npm run test:e2e:viewer        # Token binding, reindex and live Ask through the frontend
@@ -99,3 +100,7 @@ in [dependencies](docs/dependencies.md) and [the runbook](docs/runbook.md).
 The viewer stops rendering when idle. See [performance notes](docs/performance.md) for measured
 results and regression checks. Refresh the browser after performance updates so the less costly
 visual defaults take effect in an existing hot-reload session.
+
+The [engineering standard](docs/engineering.md) applies the measured, batch-oriented approach
+from the [DeepInfer reference review](docs/deepinfer-review.md) to this project's browser and
+local-service workloads. The review records its scope, evidence and remaining gaps.

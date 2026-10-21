@@ -1,0 +1,137 @@
+{
+  "kind": "synthetic-cpu-warm-filesystem",
+  "timestamp": "2026-10-21T01:14:45.223575+00:00",
+  "environment": {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "machine": "AMD64",
+    "processor": "AMD64 Family 26 Model 68 Stepping 0, AuthenticAMD",
+    "python": "3.11.9 (tags/v3.11.9:de54cf5, Apr  2 2024, 10:12:12) [MSC v.1938 64 bit (AMD64)]",
+    "sqlite": "3.45.1",
+    "revision": "2e470222f95c2c637f67bfb1dc49c8d8b00e7cc1",
+    "dirty": true,
+    "source_sha256": {
+      "services/ingest/ingest/vault.py": "0faf85a9db07e03aa4c3ae562024fb98c2e8bff5853df6248589ab5a6766bbad",
+      "services/ingest/ingest/index/build.py": "db556afac926a2fcd1e2080cf272664c0750eec77c2eb1dae2055deae56386cf",
+      "eval/benchmark_core.py": "7ce9e5cc29b323f0cdb4c8c2443cd01223944cf4947b9b69e399a2a539d6c0fa"
+    }
+  },
+  "repeats": 5,
+  "cases": {
+    "small": {
+      "workload": {
+        "places": 5,
+        "events": 250,
+        "fixes": 500,
+        "screenshots": 50
+      },
+      "metrics": {
+        "load_day": {
+          "median_ms": 2.8770999997504987,
+          "p95_ms": 7.767899995087646,
+          "samples_ms": [
+            2.6503999979468063,
+            2.8814999968744814,
+            7.767899995087646,
+            2.6300999961677007,
+            2.8770999997504987
+          ],
+          "output_sha256": "dc8a30ef7e6d3afca77f5bdcf2d386a5e9d6eb9b3945399fb3633fbfc0bb8379"
+        },
+        "collect_units": {
+          "median_ms": 11.607099993852898,
+          "p95_ms": 12.92279999324819,
+          "samples_ms": [
+            11.490999997477047,
+            11.607099993852898,
+            11.581000006117392,
+            12.190399997052737,
+            12.92279999324819
+          ],
+          "output_sha256": "8abead25e3c86440714f06468ccc15ab0fff51b1168674c43b787840518d646e"
+        },
+        "build_index": {
+          "median_ms": 113.00179999670945,
+          "p95_ms": 159.5350999996299,
+          "samples_ms": [
+            121.44329999864567,
+            159.5350999996299,
+            112.18549999466632,
+            113.00179999670945,
+            110.05260000092676
+          ],
+          "output_sha256": "233a5f29abc93048f128a842124bd1add5d1713c67d94ec393639ebc8de7010c"
+        },
+        "retrieve_warm": {
+          "median_ms": 1.1257000005571172,
+          "p95_ms": 1.1991999999736436,
+          "samples_ms": [
+            1.1991999999736436,
+            1.1350999993737787,
+            1.1257000005571172,
+            1.1204999973415397,
+            1.105199997255113
+          ],
+          "output_sha256": "0f5ac7d19b0db9a0c68e98c904c85f3eb8b5c27c455113eab891636bc419ce5c"
+        }
+      }
+    },
+    "large": {
+      "workload": {
+        "places": 50,
+        "events": 5000,
+        "fixes": 10000,
+        "screenshots": 1000
+      },
+      "metrics": {
+        "load_day": {
+          "median_ms": 99.75439999834634,
+          "p95_ms": 100.84240000287537,
+          "samples_ms": [
+            86.70749999873806,
+            100.84240000287537,
+            99.75439999834634,
+            96.93110000080196,
+            100.17420000076527
+          ],
+          "output_sha256": "d568bb0c6e6f733d55dac1a81b696876c3d28e15e5add5e93651d9f0e4e8c208"
+        },
+        "collect_units": {
+          "median_ms": 4540.193699998781,
+          "p95_ms": 4584.986000001663,
+          "samples_ms": [
+            4558.85280000075,
+            4540.193699998781,
+            4466.98479999759,
+            4584.986000001663,
+            4503.079099995375
+          ],
+          "output_sha256": "b56d5ee0578b6dd90a3f7e7dbe3a69c6c78a3fbb547f9bc46e11088112752feb"
+        },
+        "build_index": {
+          "median_ms": 6081.411500003014,
+          "p95_ms": 7148.786400000972,
+          "samples_ms": [
+            6154.672099997697,
+            5900.324199996248,
+            5733.543100002862,
+            6081.411500003014,
+            7148.786400000972
+          ],
+          "output_sha256": "b3f62a22d89a26829947250bae6a21d0d5beaea0ab1e3efbb49b23f01d8c8863"
+        },
+        "retrieve_warm": {
+          "median_ms": 1.7436999987694435,
+          "p95_ms": 1.8092999962391332,
+          "samples_ms": [
+            1.7436999987694435,
+            1.6853000051924028,
+            1.8092999962391332,
+            1.4719000027980655,
+            1.792299997759983
+          ],
+          "output_sha256": "0f5ac7d19b0db9a0c68e98c904c85f3eb8b5c27c455113eab891636bc419ce5c"
+        }
+      }
+    }
+  }
+}
