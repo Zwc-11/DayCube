@@ -1,0 +1,36 @@
+{
+  "name": "daycube",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "schemas:check": "node scripts/generate-contracts.mjs --check && uv run python scripts/generate-models.py --check",
+    "test:contracts": "node --test scripts/contract.test.mjs",
+    "test:api": "npm run schemas:check && npm run test:contracts && tsc -p packages/api-client/tsconfig.json && uv run pytest",
+    "setup:api": "uv sync --locked --python 3.11 && uv run daycube init",
+    "test:e2e:api": "playwright test",
+    "test:e2e:viewer": "playwright test --config playwright.viewer.config.ts",
+    "lint:api": "uv run ruff check services scripts eval jobs",
+    "setup": "npm install && uv sync",
+    "dev": "npm --workspace @daycube/viewer run dev",
+    "build": "npm --workspace @daycube/viewer run build",
+    "typecheck": "npm --workspace @daycube/viewer run typecheck",
+    "api": "uv run uvicorn ingest.api:app --host 127.0.0.1 --port 7701 --reload",
+    "demo:seed": "uv run daycube seed && uv run daycube index --date 2026-10-20",
+    "demo": "concurrently \"npm run api\" \"npm run dev\"",
+    "schemas": "node scripts/generate-contracts.mjs && uv run python scripts/generate-models.py",
+    "test": "uv run pytest -q && npm run typecheck"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.0",
+    "concurrently": "^9.2.0",
+    "json-schema-to-typescript": "^16.0.0"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  }
+}

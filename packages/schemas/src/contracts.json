@@ -1,0 +1,1237 @@
+{
+  "day": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Day",
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "schema",
+      "date",
+      "tz",
+      "places",
+      "transits",
+      "cube_faces",
+      "stats"
+    ],
+    "properties": {
+      "schema": {
+        "const": "daycube.day/1"
+      },
+      "date": {
+        "type": "string",
+        "format": "date"
+      },
+      "tz": {
+        "type": "string",
+        "minLength": 1
+      },
+      "places": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/Place"
+        }
+      },
+      "transits": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "from",
+            "to",
+            "t0",
+            "t1",
+            "mode",
+            "conf"
+          ],
+          "properties": {
+            "from": {
+              "type": "string"
+            },
+            "to": {
+              "type": "string"
+            },
+            "t0": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "t1": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "mode": {
+              "enum": [
+                "walk",
+                "vehicle",
+                "bike",
+                "unknown"
+              ]
+            },
+            "conf": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          }
+        }
+      },
+      "cube_faces": {
+        "type": "array",
+        "maxItems": 6,
+        "uniqueItems": true,
+        "items": {
+          "type": "string"
+        }
+      },
+      "stats": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "events",
+          "moments",
+          "places",
+          "floor_changes"
+        ],
+        "properties": {
+          "events": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "moments": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "places": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "floor_changes": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "summary": {
+        "type": "string"
+      }
+    },
+    "$defs": {
+      "Place": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "t0",
+          "t1",
+          "lat",
+          "lon",
+          "floors_visited",
+          "conf",
+          "layer_index"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]+$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "enum": [
+              "house",
+              "cafe",
+              "venue",
+              "outdoor"
+            ]
+          },
+          "t0": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "t1": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lat": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": -90,
+            "maximum": 90
+          },
+          "lon": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": -180,
+            "maximum": 180
+          },
+          "osm_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "venue": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "floors_visited": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "integer"
+            }
+          },
+          "conf": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "layer_index": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    }
+  },
+  "event": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Event",
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "id",
+      "t",
+      "type",
+      "label",
+      "source",
+      "confidence",
+      "fidelity"
+    ],
+    "properties": {
+      "id": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]+$"
+      },
+      "t": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "t_end": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "format": "date-time"
+      },
+      "type": {
+        "enum": [
+          "place.visit",
+          "place.floor",
+          "place.transit",
+          "screen.app",
+          "screen.page",
+          "screen.read",
+          "moment.video",
+          "moment.audio",
+          "said.quote",
+          "git.push",
+          "calendar.event"
+        ]
+      },
+      "label": {
+        "type": "string",
+        "minLength": 1
+      },
+      "place": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "floor": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "x": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "y": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "position_fidelity": {
+        "enum": [
+          "known",
+          "estimated",
+          "illustrative"
+        ]
+      },
+      "source": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "ref"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "ref": {
+            "type": "string"
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "confidence": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1
+      },
+      "fidelity": {
+        "enum": [
+          "known",
+          "estimated",
+          "illustrative"
+        ]
+      },
+      "attention": {
+        "type": [
+          "number",
+          "null"
+        ],
+        "minimum": 0,
+        "maximum": 1
+      },
+      "people": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "topics": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "text": {
+        "type": "string"
+      },
+      "moment_id": {
+        "type": "string"
+      },
+      "speaker": {
+        "type": "string"
+      },
+      "app": {
+        "type": "string"
+      },
+      "window_title": {
+        "type": "string"
+      },
+      "url": {
+        "type": "string"
+      },
+      "title": {
+        "type": "string"
+      },
+      "scroll_depth": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1
+      },
+      "blocks": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "conf": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1
+      },
+      "from": {
+        "type": "string"
+      },
+      "to": {
+        "type": "string"
+      },
+      "mode": {
+        "type": "string"
+      },
+      "repo": {
+        "type": "string"
+      },
+      "commits": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "attendees": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    },
+    "allOf": [
+      {
+        "if": {
+          "properties": {
+            "type": {
+              "const": "said.quote"
+            }
+          }
+        },
+        "then": {
+          "required": [
+            "speaker",
+            "text",
+            "moment_id"
+          ]
+        }
+      },
+      {
+        "if": {
+          "properties": {
+            "type": {
+              "enum": [
+                "moment.video",
+                "moment.audio"
+              ]
+            }
+          }
+        },
+        "then": {
+          "required": [
+            "moment_id"
+          ]
+        }
+      },
+      {
+        "if": {
+          "properties": {
+            "type": {
+              "const": "screen.app"
+            }
+          }
+        },
+        "then": {
+          "required": [
+            "app",
+            "window_title",
+            "t_end"
+          ]
+        }
+      },
+      {
+        "if": {
+          "properties": {
+            "type": {
+              "const": "screen.page"
+            }
+          }
+        },
+        "then": {
+          "required": [
+            "url",
+            "title",
+            "scroll_depth"
+          ]
+        }
+      },
+      {
+        "if": {
+          "properties": {
+            "type": {
+              "const": "screen.read"
+            }
+          }
+        },
+        "then": {
+          "required": [
+            "blocks",
+            "attention"
+          ]
+        }
+      },
+      {
+        "if": {
+          "properties": {
+            "type": {
+              "const": "place.visit"
+            }
+          }
+        },
+        "then": {
+          "required": [
+            "place",
+            "conf"
+          ]
+        }
+      },
+      {
+        "if": {
+          "properties": {
+            "type": {
+              "const": "place.floor"
+            }
+          }
+        },
+        "then": {
+          "required": [
+            "place",
+            "floor",
+            "conf"
+          ]
+        }
+      },
+      {
+        "if": {
+          "properties": {
+            "type": {
+              "const": "place.transit"
+            }
+          }
+        },
+        "then": {
+          "required": [
+            "from",
+            "to",
+            "mode"
+          ]
+        }
+      },
+      {
+        "if": {
+          "properties": {
+            "type": {
+              "const": "git.push"
+            }
+          }
+        },
+        "then": {
+          "required": [
+            "repo",
+            "commits"
+          ]
+        }
+      },
+      {
+        "if": {
+          "properties": {
+            "type": {
+              "const": "calendar.event"
+            }
+          }
+        },
+        "then": {
+          "required": [
+            "title",
+            "attendees"
+          ]
+        }
+      }
+    ]
+  },
+  "graph": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Graph",
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "nodes",
+      "edges"
+    ],
+    "properties": {
+      "nodes": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "kind"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "person",
+                "place",
+                "topic",
+                "moment",
+                "event"
+              ]
+            },
+            "label": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "edges": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "from",
+            "to",
+            "rel",
+            "evidence"
+          ],
+          "properties": {
+            "from": {
+              "type": "string"
+            },
+            "to": {
+              "type": "string"
+            },
+            "rel": {
+              "type": "string"
+            },
+            "evidence": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "moment": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Moment",
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "id",
+      "t0",
+      "duration_s",
+      "place",
+      "camera",
+      "fidelity",
+      "media_available"
+    ],
+    "properties": {
+      "id": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]+$"
+      },
+      "title": {
+        "type": "string"
+      },
+      "t0": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "duration_s": {
+        "type": "number",
+        "exclusiveMinimum": 0
+      },
+      "lat": {
+        "type": [
+          "number",
+          "null"
+        ],
+        "minimum": -90,
+        "maximum": 90
+      },
+      "lon": {
+        "type": [
+          "number",
+          "null"
+        ],
+        "minimum": -180,
+        "maximum": 180
+      },
+      "place": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "floor": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      },
+      "camera": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "fov_deg"
+        ],
+        "properties": {
+          "fov_deg": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "exclusiveMaximum": 180
+          }
+        }
+      },
+      "fidelity": {
+        "enum": [
+          "known",
+          "estimated",
+          "illustrative"
+        ]
+      },
+      "media_available": {
+        "type": "boolean"
+      },
+      "consented_people": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "ocr": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Ocr",
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "shot",
+      "t",
+      "app",
+      "title",
+      "w",
+      "h",
+      "blocks"
+    ],
+    "properties": {
+      "shot": {
+        "type": "string"
+      },
+      "t": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "app": {
+        "type": "string"
+      },
+      "title": {
+        "type": "string"
+      },
+      "w": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "h": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "blocks": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "bbox",
+            "text",
+            "conf",
+            "attention",
+            "dwell_ms"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "bbox": {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "minimum": 0
+              },
+              "minItems": 4,
+              "maxItems": 4
+            },
+            "text": {
+              "type": "string"
+            },
+            "conf": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "attention": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 1
+            },
+            "dwell_ms": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0
+            }
+          }
+        }
+      }
+    }
+  },
+  "skeleton": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Skeleton",
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "type",
+      "features"
+    ],
+    "properties": {
+      "type": {
+        "const": "FeatureCollection"
+      },
+      "features": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "geometry",
+            "properties"
+          ],
+          "properties": {
+            "type": {
+              "const": "Feature"
+            },
+            "geometry": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "type",
+                "coordinates"
+              ],
+              "properties": {
+                "type": {
+                  "const": "Point"
+                },
+                "coordinates": {
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "type": "number",
+                      "minimum": -180,
+                      "maximum": 180
+                    },
+                    {
+                      "type": "number",
+                      "minimum": -90,
+                      "maximum": 90
+                    }
+                  ],
+                  "minItems": 2,
+                  "maxItems": 2
+                }
+              }
+            },
+            "properties": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "t",
+                "place",
+                "floor",
+                "x",
+                "y",
+                "pos_conf",
+                "fidelity",
+                "source"
+              ],
+              "properties": {
+                "t": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "alt_rel": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "floor": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "floor_conf": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "place": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "x": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "y": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "pos_conf": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "fidelity": {
+                  "enum": [
+                    "known",
+                    "estimated",
+                    "illustrative"
+                  ]
+                },
+                "source": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "transcript": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Transcript",
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "segments",
+      "speaker_map"
+    ],
+    "properties": {
+      "speaker_map": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        }
+      },
+      "segments": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "start",
+            "end",
+            "text",
+            "speaker",
+            "words"
+          ],
+          "properties": {
+            "start": {
+              "type": "number",
+              "minimum": 0
+            },
+            "end": {
+              "type": "number",
+              "minimum": 0
+            },
+            "text": {
+              "type": "string"
+            },
+            "speaker": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "words": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "word",
+                  "start",
+                  "end"
+                ],
+                "properties": {
+                  "word": {
+                    "type": "string"
+                  },
+                  "start": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "end": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "score": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "venue": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Venue",
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "schema",
+      "id",
+      "name",
+      "entrance",
+      "axis_deg",
+      "floor_height_m",
+      "floors",
+      "levels"
+    ],
+    "properties": {
+      "schema": {
+        "const": "daycube.venue/1"
+      },
+      "id": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "entrance": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "lat",
+          "lon"
+        ],
+        "properties": {
+          "lat": {
+            "type": "number",
+            "minimum": -90,
+            "maximum": 90
+          },
+          "lon": {
+            "type": "number",
+            "minimum": -180,
+            "maximum": 180
+          }
+        }
+      },
+      "axis_deg": {
+        "type": "number"
+      },
+      "floor_height_m": {
+        "type": "number",
+        "exclusiveMinimum": 0
+      },
+      "floors": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "levels": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "index",
+            "walls",
+            "doors",
+            "stairs",
+            "rooms",
+            "graph"
+          ],
+          "properties": {
+            "index": {
+              "type": "integer"
+            },
+            "walls": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Segment"
+              }
+            },
+            "doors": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Segment"
+              }
+            },
+            "stairs": {
+              "type": "array",
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4
+              }
+            },
+            "rooms": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "poly",
+                  "kind"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "poly": {
+                    "type": "array",
+                    "minItems": 3,
+                    "items": {
+                      "$ref": "#/$defs/Point"
+                    }
+                  },
+                  "kind": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "graph": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "nodes",
+                "edges"
+              ],
+              "properties": {
+                "nodes": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/Point"
+                  }
+                },
+                "edges": {
+                  "type": "array",
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "minItems": 2,
+                    "maxItems": 2
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "wifi": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "bssid",
+            "x",
+            "y",
+            "floor",
+            "rssi"
+          ],
+          "properties": {
+            "bssid": {
+              "type": "string"
+            },
+            "x": {
+              "type": "number"
+            },
+            "y": {
+              "type": "number"
+            },
+            "floor": {
+              "type": "integer"
+            },
+            "rssi": {
+              "type": "number"
+            }
+          }
+        }
+      }
+    },
+    "$defs": {
+      "Point": {
+        "type": "array",
+        "items": {
+          "type": "number"
+        },
+        "minItems": 2,
+        "maxItems": 2
+      },
+      "Segment": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/Point"
+        },
+        "minItems": 2,
+        "maxItems": 2
+      }
+    }
+  }
+}

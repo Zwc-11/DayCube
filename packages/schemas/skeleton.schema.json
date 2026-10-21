@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Skeleton", "type": "object", "additionalProperties": false,
+  "required": ["type", "features"],
+  "properties": {
+    "type": {"const": "FeatureCollection"},
+    "features": {"type": "array", "items": {
+      "type": "object", "additionalProperties": false, "required": ["type", "geometry", "properties"],
+      "properties": {
+        "type": {"const": "Feature"},
+        "geometry": {"type": "object", "additionalProperties": false, "required": ["type", "coordinates"], "properties": {
+          "type": {"const": "Point"},
+          "coordinates": {"type": "array", "prefixItems": [{"type": "number", "minimum": -180, "maximum": 180}, {"type": "number", "minimum": -90, "maximum": 90}], "minItems": 2, "maxItems": 2}
+        }},
+        "properties": {"type": "object", "additionalProperties": false, "required": ["t", "place", "floor", "x", "y", "pos_conf", "fidelity", "source"], "properties": {
+          "t": {"type": "string", "format": "date-time"}, "alt_rel": {"type": ["number", "null"]},
+          "floor": {"type": ["integer", "null"]}, "floor_conf": {"type": "number", "minimum": 0, "maximum": 1},
+          "place": {"type": ["string", "null"]}, "x": {"type": ["number", "null"]}, "y": {"type": ["number", "null"]},
+          "pos_conf": {"type": "number", "minimum": 0, "maximum": 1}, "fidelity": {"enum": ["known", "estimated", "illustrative"]}, "source": {"type": "string"}
+        }}
+      }
+    }}
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Ocr", "type": "object", "additionalProperties": false,
+  "required": ["shot", "t", "app", "title", "w", "h", "blocks"],
+  "properties": {
+    "shot": {"type": "string"}, "t": {"type": "string", "format": "date-time"}, "app": {"type": "string"}, "title": {"type": "string"},
+    "w": {"type": "integer", "minimum": 1}, "h": {"type": "integer", "minimum": 1},
+    "blocks": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["id", "bbox", "text", "conf", "attention", "dwell_ms"], "properties": {
+      "id": {"type": "string"}, "bbox": {"type": "array", "items": {"type": "number", "minimum": 0}, "minItems": 4, "maxItems": 4},
+      "text": {"type": "string"}, "conf": {"type": "number", "minimum": 0, "maximum": 1},
+      "attention": {"type": ["number", "null"], "minimum": 0, "maximum": 1}, "dwell_ms": {"type": ["number", "null"], "minimum": 0}
+    }}}
+  }
+}

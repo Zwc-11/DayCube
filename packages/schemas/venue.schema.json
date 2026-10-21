@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Venue", "type": "object", "additionalProperties": false,
+  "required": ["schema", "id", "name", "entrance", "axis_deg", "floor_height_m", "floors", "levels"],
+  "properties": {
+    "schema": {"const": "daycube.venue/1"}, "id": {"type": "string"}, "name": {"type": "string"},
+    "entrance": {"type": "object", "additionalProperties": false, "required": ["lat", "lon"], "properties": {"lat": {"type": "number", "minimum": -90, "maximum": 90}, "lon": {"type": "number", "minimum": -180, "maximum": 180}}},
+    "axis_deg": {"type": "number"}, "floor_height_m": {"type": "number", "exclusiveMinimum": 0}, "floors": {"type": "integer", "minimum": 1},
+    "levels": {"type": "array", "items": {
+      "type": "object", "additionalProperties": false, "required": ["index", "walls", "doors", "stairs", "rooms", "graph"],
+      "properties": {
+        "index": {"type": "integer"},
+        "walls": {"type": "array", "items": {"$ref": "#/$defs/Segment"}},
+        "doors": {"type": "array", "items": {"$ref": "#/$defs/Segment"}},
+        "stairs": {"type": "array", "items": {"type": "array", "items": {"type": "number"}, "minItems": 4, "maxItems": 4}},
+        "rooms": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["id", "poly", "kind"], "properties": {
+          "id": {"type": "string"}, "poly": {"type": "array", "minItems": 3, "items": {"$ref": "#/$defs/Point"}}, "kind": {"type": "string"}
+        }}},
+        "graph": {"type": "object", "additionalProperties": false, "required": ["nodes", "edges"], "properties": {
+          "nodes": {"type": "array", "items": {"$ref": "#/$defs/Point"}},
+          "edges": {"type": "array", "items": {"type": "array", "items": {"type": "integer", "minimum": 0}, "minItems": 2, "maxItems": 2}}
+        }}
+      }
+    }},
+    "wifi": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["bssid", "x", "y", "floor", "rssi"], "properties": {
+      "bssid": {"type": "string"}, "x": {"type": "number"}, "y": {"type": "number"}, "floor": {"type": "integer"}, "rssi": {"type": "number"}
+    }}}
+  },
+  "$defs": {
+    "Point": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2},
+    "Segment": {"type": "array", "items": {"$ref": "#/$defs/Point"}, "minItems": 2, "maxItems": 2}
+  }
+}

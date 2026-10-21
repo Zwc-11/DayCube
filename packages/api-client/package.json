@@ -1,0 +1,8 @@
+{
+  "name": "@daycube/api-client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": { "@daycube/schemas": "0.1.0" }
+}

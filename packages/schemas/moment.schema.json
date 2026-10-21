@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Moment", "type": "object", "additionalProperties": false,
+  "required": ["id", "t0", "duration_s", "place", "camera", "fidelity", "media_available"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$"}, "title": {"type": "string"},
+    "t0": {"type": "string", "format": "date-time"}, "duration_s": {"type": "number", "exclusiveMinimum": 0},
+    "lat": {"type": ["number", "null"], "minimum": -90, "maximum": 90}, "lon": {"type": ["number", "null"], "minimum": -180, "maximum": 180},
+    "place": {"type": ["string", "null"]}, "floor": {"type": ["integer", "null"]},
+    "camera": {"type": "object", "additionalProperties": false, "required": ["fov_deg"], "properties": {"fov_deg": {"type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 180}}},
+    "fidelity": {"enum": ["known", "estimated", "illustrative"]},
+    "media_available": {"type": "boolean"}, "consented_people": {"type": "array", "items": {"type": "string"}}
+  }
+}

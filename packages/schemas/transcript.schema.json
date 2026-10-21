@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Transcript", "type": "object", "additionalProperties": false,
+  "required": ["segments", "speaker_map"],
+  "properties": {
+    "speaker_map": {"type": "object", "additionalProperties": {"type": "string"}},
+    "segments": {"type": "array", "items": {
+      "type": "object", "additionalProperties": false, "required": ["start", "end", "text", "speaker", "words"],
+      "properties": {
+        "start": {"type": "number", "minimum": 0}, "end": {"type": "number", "minimum": 0}, "text": {"type": "string"}, "speaker": {"type": ["string", "null"]},
+        "words": {"type": "array", "items": {"type": "object", "required": ["word", "start", "end"], "properties": {
+          "word": {"type": "string"}, "start": {"type": "number", "minimum": 0}, "end": {"type": "number", "minimum": 0}, "score": {"type": "number", "minimum": 0, "maximum": 1}
+        }}}
+      }
+    }}
+  }
+}

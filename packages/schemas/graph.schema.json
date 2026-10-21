@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Graph", "type": "object", "additionalProperties": false,
+  "required": ["nodes", "edges"],
+  "properties": {
+    "nodes": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["id", "kind"], "properties": {
+      "id": {"type": "string"}, "kind": {"enum": ["person", "place", "topic", "moment", "event"]}, "label": {"type": "string"}
+    }}},
+    "edges": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["from", "to", "rel", "evidence"], "properties": {
+      "from": {"type": "string"}, "to": {"type": "string"}, "rel": {"type": "string"}, "evidence": {"type": "array", "items": {"type": "string"}}
+    }}}
+  }
+}

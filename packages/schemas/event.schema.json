@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Event", "type": "object", "additionalProperties": false,
+  "required": ["id", "t", "type", "label", "source", "confidence", "fidelity"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$"},
+    "t": {"type": "string", "format": "date-time"}, "t_end": {"type": ["string", "null"], "format": "date-time"},
+    "type": {"enum": ["place.visit", "place.floor", "place.transit", "screen.app", "screen.page", "screen.read", "moment.video", "moment.audio", "said.quote", "git.push", "calendar.event"]},
+    "label": {"type": "string", "minLength": 1},
+    "place": {"type": ["string", "null"]}, "floor": {"type": ["integer", "null"]},
+    "x": {"type": ["number", "null"]}, "y": {"type": ["number", "null"]},
+    "position_fidelity": {"enum": ["known", "estimated", "illustrative"]},
+    "source": {
+      "type": "object", "additionalProperties": false, "required": ["kind", "ref"],
+      "properties": {"kind": {"type": "string"}, "ref": {"type": "string"}, "url": {"type": ["string", "null"]}, "title": {"type": ["string", "null"]}}
+    },
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    "fidelity": {"enum": ["known", "estimated", "illustrative"]},
+    "attention": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+    "people": {"type": "array", "items": {"type": "string"}}, "topics": {"type": "array", "items": {"type": "string"}},
+    "text": {"type": "string"}, "moment_id": {"type": "string"}, "speaker": {"type": "string"},
+    "app": {"type": "string"}, "window_title": {"type": "string"},
+    "url": {"type": "string"}, "title": {"type": "string"}, "scroll_depth": {"type": "number", "minimum": 0, "maximum": 1},
+    "blocks": {"type": "array", "items": {"type": "string"}}, "conf": {"type": "number", "minimum": 0, "maximum": 1},
+    "from": {"type": "string"}, "to": {"type": "string"}, "mode": {"type": "string"},
+    "repo": {"type": "string"}, "commits": {"type": "array", "items": {"type": "string"}},
+    "attendees": {"type": "array", "items": {"type": "string"}}
+  },
+  "allOf": [
+    {"if": {"properties": {"type": {"const": "said.quote"}}}, "then": {"required": ["speaker", "text", "moment_id"]}},
+    {"if": {"properties": {"type": {"enum": ["moment.video", "moment.audio"]}}}, "then": {"required": ["moment_id"]}},
+    {"if": {"properties": {"type": {"const": "screen.app"}}}, "then": {"required": ["app", "window_title", "t_end"]}},
+    {"if": {"properties": {"type": {"const": "screen.page"}}}, "then": {"required": ["url", "title", "scroll_depth"]}},
+    {"if": {"properties": {"type": {"const": "screen.read"}}}, "then": {"required": ["blocks", "attention"]}},
+    {"if": {"properties": {"type": {"const": "place.visit"}}}, "then": {"required": ["place", "conf"]}},
+    {"if": {"properties": {"type": {"const": "place.floor"}}}, "then": {"required": ["place", "floor", "conf"]}},
+    {"if": {"properties": {"type": {"const": "place.transit"}}}, "then": {"required": ["from", "to", "mode"]}},
+    {"if": {"properties": {"type": {"const": "git.push"}}}, "then": {"required": ["repo", "commits"]}},
+    {"if": {"properties": {"type": {"const": "calendar.event"}}}, "then": {"required": ["title", "attendees"]}}
+  ]
+}
