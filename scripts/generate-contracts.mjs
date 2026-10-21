@@ -23,7 +23,8 @@ await mkdir(path.join(folder, 'src'), { recursive: true });
 for (const [file, content] of Object.entries(output)) {
   const target = path.join(folder, 'src', file);
   if (process.argv.includes('--check')) {
-    if (await readFile(target, 'utf8').catch(() => '') !== content) throw new Error(`Stale contract: ${file}`);
+    const existing = (await readFile(target, 'utf8').catch(() => '')).replace(/\r\n/g, '\n');
+    if (existing !== content.replace(/\r\n/g, '\n')) throw new Error(`Stale contract: ${file}`);
   } else await writeFile(target, content);
 }
 console.log(`Contracts: ${files.length} canonical JSON schemas`);

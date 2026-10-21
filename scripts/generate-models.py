@@ -20,7 +20,8 @@ for schema in sorted((ROOT / "packages/schemas").glob("*.schema.json")):
         content = output.read_text(encoding="utf-8")
         target = TARGET / f"{schema.name.removesuffix('.schema.json')}.py"
         if "--check" in sys.argv:
-            if not target.exists() or target.read_text(encoding="utf-8") != content:
+            existing = target.read_text(encoding="utf-8").replace("\r\n", "\n") if target.exists() else ""
+            if existing != content.replace("\r\n", "\n"):
                 raise SystemExit(f"Stale generated model: {target}")
         else:
             target.write_text(content, encoding="utf-8")
