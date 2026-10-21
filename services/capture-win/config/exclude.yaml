@@ -1,0 +1,9 @@
+# Starter exclusions for the future native sampler. That sampler is not implemented yet.
+# The Chrome receiver uses its own domain exclusions, configured in extension options.
+apps: []
+title_patterns:
+  - "(?i)password"
+  - "(?i)private browsing"
+url_patterns:
+  - "chrome://*"
+  - "chrome-extension://*"
