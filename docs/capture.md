@@ -186,6 +186,11 @@ yesterday's snapshots, so dwells on pages already open still know their text.
 3. The receiver converts the fixation to page coordinates, corrects for scrolling since the last
    snapshot, and picks the block that contains it or lies within 40 CSS px.
 
+The receiver clears its front page on focus loss. Returning to a tab or window therefore sends
+a fresh block-position snapshot even when the page has not changed. Block ids remain stable;
+already acknowledged text is not duplicated. Reload the unpacked extension and refresh open
+pages after updating the reporter script.
+
 ## Limits
 
 - **Accuracy.** Webcam gaze is good to roughly 3-4 degrees, about 150 px at 60 cm from a 24"
@@ -194,10 +199,11 @@ yesterday's snapshots, so dwells on pages already open still know their text.
   movement make it worse; recalibrate when they change.
 - **One monitor.** Gaze is calibrated on the primary monitor. Pages in windows on other monitors
   are recorded, but gaze is not placed on them.
-- **Untested on your PC so far.** The receiver, extension and dwell path are tested end to end in
-  Chromium on Linux (`npm run test:extension`), and the tracking loop with a scripted camera.
-  Opera on Windows, the webcam, the sign-in entry, the lock, idle and camera-in-use checks, and
-  the viewport estimate for your window layout have not run yet.
+- **Windows acceptance is in progress.** The webcam, calibration, live receiver, Opera settings
+  and browsing records have been checked on the Windows PC. The paragraph dwell test failed
+  and needs a retest; shortcut timing, lock, video-call camera handoff and real sign-in checks
+  remain pending. The [Windows check record](capture-windows-check.md) distinguishes measured
+  results from synthetic tests.
 - **Browser only.** Other apps, screenshots and OCR are not captured yet; nor is there a tray
   icon. The toolbar badge and Windows' own camera indicator show that recording is on.
 - **No synthesis yet.** The logs are not yet turned into day events in the viewer.
@@ -215,4 +221,6 @@ also have a vault day folder; capture-only days are not compacted yet.
 uv run pytest services/ingest/tests/test_capture.py services/ingest/tests/test_attention.py services/ingest/tests/test_capture_tools.py
 cd services/gaze; uv run pytest
 npm run test:extension   # Node unit tests, then the extension in Chromium against a scratch vault
+# Reporter lifecycle only: synthetic transport, safe while the live receiver is running.
+npx playwright test --config playwright.extension.config.ts reporter.e2e.spec.ts
 ```
