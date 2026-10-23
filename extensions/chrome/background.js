@@ -2,17 +2,21 @@
 // Records wait in a queue in extension storage until the receiver acknowledges them, so nothing
 // is lost while it is starting or stopped. The vault token never reaches a page.
 
-import { RECEIVER, allowed, clip, record, searchOf, trim } from './lib.js';
+import { RECEIVER, allowed, clip, record, sameDocument, searchOf, trim } from './lib.js';
 
 const BATCH = 400;
 const QUEUE_LIMIT = 5000;
+const GUARD_TTL = 5000; // a frame's "password field visible" report lasts this long without a refresh
 const DEFAULTS = {
   enabled: false, token: '', exclusions: ['localhost', '127.0.0.1'],
-  paused: false, pauseSynced: true, dwellAction: 'mark',
+  paused: false, pauseSynced: true, exclusionsSynced: false, dwellAction: 'none', epoch: 0,
 };
 
 const settings = () => chrome.storage.local.get(DEFAULTS);
 const recording = s => Boolean(s.enabled && s.token && !s.paused);
+
+// Pages never need this storage (they talk to the worker by message); keep it from content scripts.
+chrome.storage.local.setAccessLevel?.({ accessLevel: 'TRUSTED_CONTEXTS' })?.catch?.(() => {});
 
 // -- delivery -------------------------------------------------------------------------------------
 
@@ -32,12 +36,27 @@ function flush() {
 
 // Heartbeats only matter live; everything else waits for the receiver.
 const durable = items => items.filter(item => item.kind !== 'view');
+const hasText = items => items.some(item => item.kind === 'blocks' && item.blocks?.some(block => block.text != null));
+
+// Pages send a block's text once. When queued text is dropped (a pause, a full queue, a refusal),
+// the epoch moves on, and pages that see the new epoch send their texts again.
+async function dropped(items) {
+  if (!hasText(items)) return;
+  const { epoch } = await settings();
+  await chrome.storage.local.set({ epoch: epoch + 1 });
+}
 
 async function deliver() {
   const s = await settings();
   const { queue = [] } = await chrome.storage.local.get('queue');
-  let items = trim(queue.concat(pending.splice(0)), QUEUE_LIMIT);
+  const all = queue.concat(pending.splice(0));
+  let items = trim(all, QUEUE_LIMIT);
+  if (items.length < all.length) {
+    const kept = new Set(items);
+    await dropped(all.filter(item => !kept.has(item)));
+  }
   if (!recording(s)) {
+    await dropped(items);
     await chrome.storage.local.set({ queue: [] });
     return refreshBadge();
   }
@@ -54,15 +73,20 @@ async function deliver() {
     }
     if (response.status === 409) {
       // Paused at the receiver (from this toolbar, another client or a remembered pause).
+      await dropped(items);
       await chrome.storage.local.set({ queue: [], paused: true, pauseSynced: true });
       return report('paused', 'Paused');
     }
     if (response.status === 401) return keep(items, 'error', 'The receiver refused the vault token');
     if (!response.ok) return keep(items, 'error', `The receiver answered ${response.status}`);
     const body = await response.json();
+    const refused = new Set((body.rejected || []).map(item => item.id));
+    if (refused.size) {
+      console.warn('DayCube receiver rejected records', body.rejected);
+      await dropped(batch.filter(item => refused.has(item.id)));
+    }
     items = items.slice(batch.length);
     await chrome.storage.local.set({ queue: durable(items) });
-    for (const rejected of body.rejected || []) console.warn('DayCube receiver rejected a record', rejected);
     act(body.signals || [], s);
     await report('ok', `Delivered ${body.accepted} records`);
   }
@@ -84,10 +108,11 @@ async function refreshBadge() {
   const { delivery } = await chrome.storage.local.get('delivery');
   const failed = delivery && ['offline', 'error'].includes(delivery.status);
   const [text, color, title] =
-    !s.enabled || !s.token ? ['OFF', '#5b6472', 'DayCube is off. Click to set it up.']
-      : s.paused ? ['II', '#3f6f8f', 'DayCube is paused. Click to resume.']
-        : failed ? ['ERR', '#a33a32', `DayCube: ${delivery.detail}. Records are kept until it is back.`]
-          : ['REC', '#b5651d', 'DayCube is recording. Click to pause (Alt+Shift+D).'];
+    !s.token ? ['OFF', '#5b6472', 'DayCube is not set up. Click to open its settings.']
+      : s.paused ? ['II', '#3f6f8f', 'DayCube is paused. Click to resume (Alt+Shift+D).']
+        : !s.enabled ? ['OFF', '#5b6472', 'Browser recording is off; the eye tracker may still run. Click to pause it.']
+          : failed ? ['ERR', '#a33a32', `DayCube: ${delivery.detail}. Records are kept until it is back.`]
+            : ['REC', '#b5651d', 'DayCube is recording. Click to pause (Alt+Shift+D).'];
   await chrome.action.setBadgeText({ text });
   await chrome.action.setBadgeBackgroundColor({ color });
   await chrome.action.setTitle({ title });
@@ -113,18 +138,41 @@ function act(signals, s) {
 
 // -- pause ----------------------------------------------------------------------------------------
 
-async function setPaused(paused) {
-  const s = await settings();
-  if (!s.enabled || !s.token) return chrome.runtime.openOptionsPage();
-  let synced = false;
+async function tellReceiver(paused, token) {
   try {
     const response = await fetch(`${RECEIVER}/${paused ? 'pause' : 'resume'}`, {
-      method: 'POST', headers: { Authorization: `Bearer ${s.token}` },
+      method: 'POST', headers: { Authorization: `Bearer ${token}` },
     });
-    synced = response.ok;
-  } catch { /* the receiver is down: tell it on the next tick */ }
-  if (paused) pending = [];
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+// A pause the receiver has not heard about is retried every few seconds for a minute, then on
+// every tick, so the eye tracker stops as soon as the receiver is reachable.
+let pauseRetry = null;
+function retryPause(attempt = 0) {
+  clearTimeout(pauseRetry);
+  pauseRetry = setTimeout(async () => {
+    const s = await settings();
+    if (s.pauseSynced || !s.token) return;
+    if (await tellReceiver(s.paused, s.token)) await chrome.storage.local.set({ pauseSynced: true });
+    else if (attempt < 20) retryPause(attempt + 1);
+  }, 3000);
+}
+
+async function setPaused(paused) {
+  const s = await settings();
+  if (!s.token) return chrome.runtime.openOptionsPage();
+  // The pause controls the receiver, so it also stops the eye tracker when browser recording is off.
+  const synced = await tellReceiver(paused, s.token);
+  if (paused) {
+    await dropped(pending);
+    pending = [];
+  }
   await chrome.storage.local.set({ paused, pauseSynced: synced, ...(paused ? { queue: [] } : {}) });
+  if (!synced) retryPause();
   await refreshBadge();
   if (!paused) focusSoon();
 }
@@ -137,13 +185,10 @@ chrome.commands.onCommand.addListener(command => { if (command === 'toggle-recor
 // resume made here while it was unreachable, which is sent to it instead.
 async function tick() {
   const s = await settings();
-  if (s.enabled && s.token) {
+  if (s.token) {
     try {
       if (!s.pauseSynced) {
-        const response = await fetch(`${RECEIVER}/${s.paused ? 'pause' : 'resume'}`, {
-          method: 'POST', headers: { Authorization: `Bearer ${s.token}` },
-        });
-        if (response.ok) await chrome.storage.local.set({ pauseSynced: true });
+        if (await tellReceiver(s.paused, s.token)) await chrome.storage.local.set({ pauseSynced: true });
       } else {
         const status = await (await fetch(`${RECEIVER}/status`)).json();
         if (status.paused !== s.paused) {
@@ -151,10 +196,26 @@ async function tick() {
           if (!status.paused) focusSoon();
         }
       }
+      if (!s.exclusionsSynced) await syncExclusions();
     } catch { /* offline: keep the local state */ }
   }
   await flush();
   await refreshBadge();
+}
+
+// The receiver keeps a copy of the excluded domains, so importing Opera's history leaves them out too.
+async function syncExclusions() {
+  const s = await settings();
+  if (!s.token) return;
+  try {
+    const response = await fetch(`${RECEIVER}/exclusions`, {
+      method: 'POST', body: JSON.stringify({ domains: s.exclusions }),
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${s.token}` },
+    });
+    await chrome.storage.local.set({ exclusionsSynced: response.ok });
+  } catch {
+    await chrome.storage.local.set({ exclusionsSynced: false });
+  }
 }
 
 function ensureAlarm() {
@@ -166,6 +227,7 @@ chrome.alarms.onAlarm.addListener(alarm => { if (alarm.name === 'tick') tick(); 
 
 const commits = new Map(); // tab id -> last recorded address
 const searches = new Map(); // tab id -> last recorded "engine query"
+const guards = new Map(); // tab id -> Map(frame id -> time a password field was last reported)
 
 const topFrame = details => details.frameId === 0 && details.documentLifecycle !== 'prerender';
 
@@ -186,17 +248,28 @@ async function navigation(tabId, url, transition, qualifiers) {
 }
 
 chrome.webNavigation.onCommitted.addListener(d => {
-  if (topFrame(d)) navigation(d.tabId, d.url, d.transitionType, d.transitionQualifiers);
+  if (!topFrame(d)) return;
+  guards.delete(d.tabId); // a new document: its frames report again
+  navigation(d.tabId, d.url, d.transitionType, d.transitionQualifiers);
 });
 chrome.webNavigation.onHistoryStateUpdated.addListener(d => {
-  if (topFrame(d)) navigation(d.tabId, d.url, d.transitionType, [...d.transitionQualifiers, 'history_state']);
+  if (!topFrame(d)) return;
+  // Pages that rewrite only the fragment as you scroll (section links) are not new pages.
+  if (sameDocument(commits.get(d.tabId), d.url)) {
+    commits.set(d.tabId, d.url);
+    return;
+  }
+  navigation(d.tabId, d.url, d.transitionType, [...d.transitionQualifiers, 'history_state']);
 });
 
 const titles = new Map();
 chrome.tabs.onUpdated.addListener((tabId, change, tab) => {
   if (change.url) {
     // A page shown without a commit event (a prerendered page being activated, say).
-    setTimeout(() => { if (commits.get(tabId) !== change.url) navigation(tabId, change.url, 'unknown', []); }, 1500);
+    setTimeout(() => {
+      const last = commits.get(tabId);
+      if (last !== change.url && !sameDocument(last, change.url)) navigation(tabId, change.url, 'unknown', []);
+    }, 1500);
   }
   if (change.title !== undefined && titles.get(tabId) !== tab.title) {
     titles.set(tabId, tab.title);
@@ -207,7 +280,9 @@ chrome.tabs.onUpdated.addListener((tabId, change, tab) => {
     });
   }
 });
-chrome.tabs.onRemoved.addListener(tabId => { commits.delete(tabId); searches.delete(tabId); titles.delete(tabId); });
+chrome.tabs.onRemoved.addListener(tabId => {
+  for (const map of [commits, searches, titles, guards]) map.delete(tabId);
+});
 
 let lastFocus = '';
 let focusTimer = null;
@@ -253,9 +328,28 @@ chrome.idle.onStateChanged.addListener(async state => {
 
 const number = value => (Number.isFinite(Number(value)) && Number(value) >= 0 ? Number(value) : 0);
 
+function guarded(tabId) {
+  const frames = guards.get(tabId);
+  if (!frames) return false;
+  const now = Date.now();
+  for (const [frame, at] of frames) if (now - at > GUARD_TTL) frames.delete(frame);
+  return frames.size > 0;
+}
+
+function guard(message, sender) {
+  let frames = guards.get(sender.tab.id);
+  if (message.on) {
+    if (!frames) guards.set(sender.tab.id, (frames = new Map()));
+    frames.set(sender.frameId, Date.now());
+  } else {
+    frames?.delete(sender.frameId);
+  }
+}
+
 async function fromPage(message, tab) {
   const s = await settings();
-  if (!recording(s) || tab.incognito || !allowed(tab.url, s.exclusions)) return false;
+  // Any frame of the tab showing a password field (an embedded sign-in, a payment form) silences it.
+  if (!recording(s) || tab.incognito || !allowed(tab.url, s.exclusions) || guarded(tab.id)) return false;
   const base = { tab: tab.id, window: tab.windowId, url: tab.url, title: clip(tab.title, 1000) };
   switch (message?.kind) {
     case 'view':
@@ -265,9 +359,11 @@ async function fromPage(message, tab) {
       enqueue(record(message.kind, { ...base, doc: clip(message.doc, 40), geometry: message.geometry, ...extra }));
       return true;
     }
-    case 'click':
-      enqueue(record('click', { ...base, href: message.href ? clip(message.href, 4096) : null, text: clip(message.text, 300) }));
+    case 'click': {
+      const href = message.href && allowed(message.href, s.exclusions) ? clip(message.href, 4096) : null;
+      enqueue(record('click', { ...base, href, text: clip(message.text, 300) }));
       return true;
+    }
     case 'selection':
       enqueue(record('selection', { ...base, text: clip(message.text, 2000), copied: Boolean(message.copied) }));
       return true;
@@ -285,23 +381,33 @@ async function fromPage(message, tab) {
 }
 
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
-  if (sender.id !== chrome.runtime.id || !sender.tab || sender.frameId !== 0) return false;
-  fromPage(message, sender.tab).then(ok => respond({ ok }), () => respond({ ok: false }));
-  return true; // the page keeps a block's text for a later snapshot unless it was taken
+  if (sender.id !== chrome.runtime.id || !sender.tab) return false;
+  if (message?.kind === 'guard') {
+    guard(message, sender);
+    return false;
+  }
+  if (sender.frameId !== 0) return false;
+  // The reply tells the page whether its record was taken, and the text epoch (see dropped()).
+  Promise.all([fromPage(message, sender.tab).catch(() => false), settings()])
+    .then(([ok, s]) => respond({ ok, epoch: s.epoch }), () => respond({ ok: false }));
+  return true;
 });
 
 // -- start ----------------------------------------------------------------------------------------
 
 chrome.runtime.onInstalled.addListener(async () => {
+  // Only settings that are missing: an update keeps everything the user chose.
   const stored = await chrome.storage.local.get(Object.keys(DEFAULTS));
-  await chrome.storage.local.set({ ...DEFAULTS, ...stored });
+  await chrome.storage.local.set(Object.fromEntries(Object.entries(DEFAULTS).filter(([key]) => !(key in stored))));
   ensureAlarm();
   await refreshBadge();
+  syncExclusions();
 });
 chrome.runtime.onStartup.addListener(() => { ensureAlarm(); focusSoon(); tick(); });
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local') return;
   if (changes.enabled || changes.token || changes.paused) refreshBadge();
   if (changes.enabled?.newValue || changes.token?.newValue) focusSoon();
+  if (changes.exclusions || changes.token?.newValue) syncExclusions();
 });
 ensureAlarm();

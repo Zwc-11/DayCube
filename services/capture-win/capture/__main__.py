@@ -34,7 +34,12 @@ def _logging(vault_root: Path) -> None:
 
 
 def _split(command: str | None) -> list[str] | None:
-    return shlex.split(command, posix=os.name != "nt") if command else None
+    """A command line as arguments. Windows paths keep their backslashes; quotes only group."""
+    if not command:
+        return None
+    if os.name != "nt":
+        return shlex.split(command)
+    return [p[1:-1] if len(p) > 1 and p[0] == p[-1] == '"' else p for p in shlex.split(command, posix=False)]
 
 
 def run(args: argparse.Namespace) -> None:
@@ -109,11 +114,13 @@ def import_history(args: argparse.Namespace) -> None:
         )
     vault = Vault(settings.vault_root)
     vault.initialize()
-    exclusions = Exclusions.load(extra_domains=args.exclude or ())
+    exclusions = Exclusions.for_vault(vault, args.exclude or ())
     since = date.fromisoformat(args.since) if args.since else None
-    for source in sources:
-        days = import_history(vault, ZoneInfo(settings.timezone), source, since=since, exclusions=exclusions)
-        print(f"{source}: {sum(days.values())} visits on {len(days)} days")
+    days = import_history(vault, ZoneInfo(settings.timezone), sources, since=since, exclusions=exclusions)
+    print(f"From {', '.join(map(str, sources))}:")
+    print(f"  {sum(days.values())} visits on {sum(1 for n in days.values() if n)} days", end="")
+    removed = [day for day, n in days.items() if not n]
+    print(f"; removed {len(removed)} days with no visits left" if removed else "")
 
 
 def main(argv: list[str] | None = None) -> None:

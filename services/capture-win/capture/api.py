@@ -7,7 +7,10 @@ Writes append-only logs to ``vault/capture/<local date>/``:
 - ``gaze.jsonl``: fixations, each with the page point and text block it landed on
 - ``attention.jsonl``: dwells (see ``attention.py``), a start and an end record per dwell
 
-A pause is remembered in ``vault/capture/paused`` until resumed, so a restart never undoes it.
+A pause is remembered in ``vault/capture/paused`` until resumed, so a restart never undoes it,
+and every pause and resume is logged in ``vault/capture/pauses.jsonl``. The extension's excluded
+domains are mirrored to ``vault/capture/exclusions.json``. The history import uses both, so it
+cannot bring back what was paused or excluded.
 """
 
 from __future__ import annotations
@@ -27,8 +30,8 @@ from fastapi import Body, Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from ingest.config import Settings
-from ingest.vault import Vault
-from pydantic import TypeAdapter, ValidationError
+from ingest.vault import Vault, read_lines
+from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
 from .attention import Attention
 from .records import Blocks, BrowserRecord, GazeBatch, View
@@ -42,9 +45,14 @@ MAX_BATCH = 500
 MAX_AGE = timedelta(hours=24)
 MAX_AHEAD = timedelta(minutes=5)
 SEEN_IDS = 200_000
+WARM_TEXT_BYTES = 64 << 20  # block texts are reloaded from logs up to this size after a restart
 # Fixations arrive about a second after they end, so a run is closed only after this extra wait.
 GAZE_LATENCY = timedelta(seconds=3)
 GAZE_SILENT = timedelta(seconds=30)  # the tracker reports every second while it runs
+
+
+class Exclusions(BaseModel):
+    domains: list[str] = Field(max_length=2000)
 
 
 class Receiver:
@@ -65,6 +73,27 @@ class Receiver:
         self.attention = attention or Attention()
         self.on_dwell = on_dwell
         self.hook: subprocess.Popen | None = None
+        self._warm_texts()
+
+    def _warm_texts(self) -> None:
+        """Reload block texts from today's and yesterday's snapshots: the extension sends a block's
+        text once per page load, so pages open across a restart still have it for dwells."""
+        today = datetime.now(self.zone).date()
+        for day in (today - timedelta(days=1), today):
+            path = self.vault.root / "capture" / day.isoformat() / "blocks.jsonl"
+            if not path.is_file() or path.stat().st_size > WARM_TEXT_BYTES:
+                continue
+            try:
+                records = read_lines(path)
+            except (OSError, ValueError) as error:
+                log.warning("could not reload block texts from %s: %s", path, error)
+                continue
+            for record in records:
+                for block in record.get("blocks", []):
+                    if block.get("text") is not None:
+                        self.attention.remember(
+                            record["doc"], block["id"], block["tag"], block["text"], block.get("words")
+                        )
 
     # -- state -------------------------------------------------------------------------------------
 
@@ -84,23 +113,31 @@ class Receiver:
 
     def set_paused(self, paused: bool) -> None:
         with self.lock:
-            if paused and not self.paused:
-                self._write({}, self.attention.end())
-                self.attention.front = None
-            self.paused = paused
+            changed = paused != self.paused
+            ending = self.attention.end() if paused and changed else []
+            self.attention.front = None if paused else self.attention.front
+            self.paused = paused  # the pause holds even if a write below fails
             self.marker.parent.mkdir(parents=True, exist_ok=True)
             if paused:
                 self.marker.touch()
             else:
                 self.marker.unlink(missing_ok=True)
+            if changed:
+                record = {"t": datetime.now(UTC).astimezone(self.zone).isoformat(), "paused": paused}
+                self.vault.append_lines(self.marker.parent / "pauses.jsonl", [record])
+            self._write({}, ending)
 
-    def _fresh(self, record_id: str) -> bool:
-        if record_id in self.seen:
-            return False
-        self.seen[record_id] = None
-        if len(self.seen) > SEEN_IDS:
+    def set_exclusions(self, exclusions: Exclusions) -> None:
+        with self.lock:
+            domains = sorted({d.strip().lower() for d in exclusions.domains if d.strip()})
+            self.vault.write_json(self.vault.root / "capture" / "exclusions.json", {"domains": domains})
+
+    def _remember_ids(self, ids: dict[str, None]) -> None:
+        """Called only after the records were written, so a failed write is retried, not dropped."""
+        for record_id in ids:
+            self.seen[record_id] = None
+        while len(self.seen) > SEEN_IDS:
             self.seen.popitem(last=False)
-        return True
 
     def _in_window(self, t: datetime, now: datetime) -> bool:
         return now - MAX_AGE <= t <= now + MAX_AHEAD
@@ -112,11 +149,12 @@ class Receiver:
     def _write(self, lines: dict[tuple[str, str], list[dict]], dwells: list[dict]) -> None:
         for event in dwells:
             lines.setdefault((self._day(event["t"]), "attention.jsonl"), []).append(event)
-            if event["phase"] == "start":
-                self._signal(event)
         for (day, name), records in lines.items():
             # Appending costs the batch, not the day: rewriting the log made capture O(n^2).
             self.vault.append_lines(self.vault.root / "capture" / day / name, records)
+        for event in dwells:
+            if event["phase"] == "start":
+                self._signal(event)
 
     # -- dwell actions -----------------------------------------------------------------------------
 
@@ -149,6 +187,7 @@ class Receiver:
         rejected: list[dict] = []
         lines: dict[tuple[str, str], list[dict]] = {}
         dwells: list[dict] = []
+        ids: dict[str, None] = {}  # this batch's new ids, in order
         with self.lock:
             if self.paused:
                 raise HTTPException(409, "Receiver is paused")
@@ -161,16 +200,18 @@ class Receiver:
                 if not self._in_window(record.t, now):
                     rejected.append({"id": record.id, "reason": "older than a day or in the future"})
                     continue
-                if not self._fresh(record.id):
+                if record.id in self.seen or record.id in ids:
                     duplicates += 1
                     continue
                 accepted += 1
+                ids[record.id] = None
                 dwells += self.attention.browser(record)
                 if isinstance(record, View):
                     continue  # live only
                 name = "blocks.jsonl" if isinstance(record, Blocks) else "browser.jsonl"
                 lines.setdefault((self._day(record.t), name), []).append(record.model_dump(mode="json"))
             self._write(lines, dwells)
+            self._remember_ids(ids)
             if accepted:
                 self.last["browser"] = now.isoformat()
             signals, self.signals = self.signals, []
@@ -181,6 +222,7 @@ class Receiver:
         accepted = duplicates = stale = 0
         lines: dict[tuple[str, str], list[dict]] = {}
         dwells: list[dict] = []
+        ids: dict[str, None] = {}  # this batch's new ids, in order
         with self.lock:
             if self.paused:
                 raise HTTPException(409, "Receiver is paused")
@@ -190,10 +232,11 @@ class Receiver:
                 if not self._in_window(fixation.t, now):
                     stale += 1
                     continue
-                if not self._fresh(fixation.id):
+                if fixation.id in self.seen or fixation.id in ids:
                     duplicates += 1
                     continue
                 accepted += 1
+                ids[fixation.id] = None
                 hit, events = self.attention.fixation(fixation)
                 dwells += events
                 line = fixation.model_dump(mode="json")
@@ -202,6 +245,7 @@ class Receiver:
                 lines.setdefault((self._day(fixation.t), "gaze.jsonl"), []).append(line)
             dwells += self.attention.advance(now - GAZE_LATENCY)
             self._write(lines, dwells)
+            self._remember_ids(ids)
             if accepted:
                 self.last["gaze"] = now.isoformat()
         return {"accepted": accepted, "duplicates": duplicates, "stale": stale}
@@ -267,6 +311,12 @@ def create_capture_app(
         if len(records) > MAX_BATCH:
             raise HTTPException(413, f"At most {MAX_BATCH} records per batch")
         return receiver.browser(records)
+
+    @app.post("/exclusions", dependencies=[Depends(authorize)])
+    def exclusions(body: Exclusions) -> dict:
+        """The extension's excluded domains, so the history import leaves them out too."""
+        receiver.set_exclusions(body)
+        return {"domains": len(body.domains)}
 
     @app.post("/gaze", dependencies=[Depends(authorize)])
     def gaze(batch: GazeBatch) -> dict:

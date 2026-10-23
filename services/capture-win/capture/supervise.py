@@ -18,7 +18,8 @@ from ingest.config import PROJECT_ROOT
 
 log = logging.getLogger("capture.gaze")
 
-NOT_CALIBRATED = 3  # the tracker's exit code when vault/calibration/gaze.json is missing
+NOT_CALIBRATED = 3  # the tracker's exit code when vault/calibration/gaze.json is missing or unusable
+OTHER_MONITOR = 4  # the primary monitor is not the calibrated one (undocked, or a monitor off)
 CALIBRATION = Path("calibration") / "gaze.json"
 
 
@@ -77,6 +78,10 @@ class GazeSupervisor(threading.Thread):
                 seen = self._stamp()
                 while self._stamp() == seen and not self.stopping.wait(10):
                     pass
+                continue
+            if code == OTHER_MONITOR:
+                log.info("eye tracker off: the calibrated monitor is not the primary one; checking again in a minute")
+                self.stopping.wait(60)
                 continue
             # A tracker that ran for a while gets a quick restart; one that keeps failing backs off.
             delay = 5.0 if time.monotonic() - started > 300 else min(delay * 2, 300.0)

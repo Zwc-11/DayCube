@@ -3,7 +3,7 @@
 from datetime import UTC, datetime, timedelta
 
 from capture.attention import Attention
-from capture.records import Blocks, Fixation, Focus, View
+from capture.records import Blocks, Fixation, Focus, Page, View
 
 T0 = datetime(2026, 10, 22, 14, 0, tzinfo=UTC)
 GEOMETRY = {
@@ -115,3 +115,14 @@ def test_a_gap_in_gaze_or_a_tab_switch_ends_the_run() -> None:
     switch = Focus(id="focus-0001", t=at(9.5), kind="focus", tab=8, window=1, url="https://example.org/", title="B")
     assert [e["phase"] for e in attention.browser(switch)] == ["end"]
     assert attention.fixation(fixation(10, 10.5, 500, 260)) == (None, [])  # tab 8 has not reported its blocks
+
+
+def test_a_same_page_address_change_keeps_the_run() -> None:
+    attention = watching(threshold_s=2, factor=1)
+    stare(attention, 0, 1.5)
+    spy = Page(
+        id="page-0000001", t=at(1.6), kind="page", tab=7, window=1, url="https://example.com/a#section-2",
+        title="A page", transition="link", qualifiers=["history_state"],
+    )  # fmt: skip
+    assert attention.browser(spy) == [] and attention.front is not None
+    assert [e["phase"] for e in stare(attention, 1.5, 1.0)] == ["start"]

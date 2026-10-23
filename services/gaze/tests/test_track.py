@@ -93,7 +93,7 @@ def run_for(t: Tracker, clock: Clock, seconds: float) -> None:
 
 def test_a_steady_look_becomes_fixations_at_its_screen_fraction() -> None:
     t, scene, receiver, *_, clock, log = tracker()
-    run_for(t, clock, 3.5)
+    run_for(t, clock, 4)
     assert len(receiver.fixations) == 3
     assert all(abs(f.x - 0.5) < 1e-6 and abs(f.y - 0.5) < 1e-6 for f in receiver.fixations)
     state = receiver.states[-1]
@@ -140,6 +140,29 @@ def test_away_needs_both_no_input_and_no_face() -> None:
     computer.idle = 1  # back at the keyboard
     run_for(t, clock, 3)
     assert log == ["open", "release", "open"]
+
+
+def test_the_camera_stays_off_until_the_receiver_confirms_recording() -> None:
+    t, scene, receiver, *_, clock, log = tracker()
+    receiver.answer = "paused"  # a pause remembered from before sign-in
+    run_for(t, clock, 10)
+    assert log == [] and receiver.states[-1]["reason"] == "paused"
+    receiver.answer = "offline"  # a stopped receiver is not a resume
+    run_for(t, clock, 10)
+    assert log == []
+    receiver.answer = "ok"
+    run_for(t, clock, 1)
+    assert log == ["open"]
+
+
+def test_a_receiver_that_stops_answering_turns_the_camera_off() -> None:
+    t, scene, receiver, *_, clock, log = tracker()
+    run_for(t, clock, 2)
+    receiver.answer = "offline"
+    run_for(t, clock, 3)
+    assert log == ["open"]  # a brief hiccup is tolerated
+    run_for(t, clock, 5)
+    assert log == ["open", "release"] and receiver.states[-1]["reason"] == "receiver not running"
 
 
 def test_a_supervised_tracker_exits_when_the_receiver_is_gone() -> None:

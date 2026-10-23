@@ -116,7 +116,14 @@ class Attention:
             return ended
         leaves = (
             (kind == "focus" and (self.front is None or record.tab != self.front.tab))
-            or (kind == "page" and self.front is not None and record.tab == self.front.tab)
+            # A same-document URL change (pushState, scroll-spy pages) keeps the page; new
+            # content shows up in the next snapshot.
+            or (
+                kind == "page"
+                and self.front is not None
+                and record.tab == self.front.tab
+                and "history_state" not in record.qualifiers
+            )
             or (kind == "idle" and record.state == "locked")
         )
         if leaves:
@@ -128,9 +135,11 @@ class Attention:
         self.monitor = (monitor[0], monitor[1]) if monitor else None
 
     def _remember(self, doc: str, block: Block) -> None:
-        text = block.text or ""
-        self.texts[(doc, block.id)] = (block.tag, text, len(text.split()) if block.words is None else block.words)
-        self.texts.move_to_end((doc, block.id))
+        self.remember(doc, block.id, block.tag, block.text or "", block.words)
+
+    def remember(self, doc: str, block: str, tag: str, text: str, words: int | None = None) -> None:
+        self.texts[(doc, block)] = (tag, text, len(text.split()) if words is None else words)
+        self.texts.move_to_end((doc, block))
         while len(self.texts) > TEXT_CACHE:
             self.texts.popitem(last=False)
 

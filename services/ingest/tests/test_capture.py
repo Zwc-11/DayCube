@@ -7,6 +7,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import pytest
 from capture.api import create_capture_app
 from fastapi.testclient import TestClient
 from ingest.config import Settings
@@ -127,3 +128,44 @@ def test_a_stare_at_a_paragraph_becomes_a_dwell_signal_and_hook(
     while not (out.exists() and out.stat().st_size) and time.monotonic() < deadline:
         time.sleep(0.05)
     assert json.loads(out.read_text())["block"] == "b1"
+
+
+def test_a_record_whose_write_failed_is_stored_when_resent(
+    vault: Vault, auth: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    item = record("click", href="https://example.com/next", text="Next", **TAB)
+    app = create_capture_app(settings(vault), receive=True)
+    append = app.state.receiver.vault.append_lines
+    with TestClient(app, raise_server_exceptions=False) as client:
+        monkeypatch.setattr(
+            app.state.receiver.vault, "append_lines", lambda *_: (_ for _ in ()).throw(PermissionError())
+        )
+        assert client.post("/events", json=[item], headers=auth).status_code == 500  # a file locked by a scanner
+        monkeypatch.setattr(app.state.receiver.vault, "append_lines", append)
+        assert client.post("/events", json=[item], headers=auth).json()["accepted"] == 1
+    assert [line["id"] for line in logged(vault, "browser.jsonl")] == [item["id"]]
+
+
+def test_pauses_and_exclusions_are_kept_for_the_history_import(vault: Vault, auth: dict[str, str]) -> None:
+    with TestClient(create_capture_app(settings(vault), receive=True)) as client:
+        client.post("/pause", headers=auth)
+        client.post("/pause", headers=auth)  # no change, no entry
+        client.post("/resume", headers=auth)
+        domains = {"domains": ["MyBank.com", "health.example.org"]}
+        assert client.post("/exclusions", json=domains, headers=auth).json() == {"domains": 2}
+        assert client.post("/exclusions", json=domains).status_code == 401
+    pauses = [json.loads(line) for line in (vault.root / "capture/pauses.jsonl").open()]
+    assert [p["paused"] for p in pauses] == [True, False]
+    saved = json.loads((vault.root / "capture/exclusions.json").read_text())
+    assert saved == {"domains": ["health.example.org", "mybank.com"]}
+
+
+def test_block_texts_survive_a_receiver_restart(vault: Vault, auth: dict[str, str]) -> None:
+    text = "Gradient checkpointing trades compute for memory."
+    blocks = [{"id": "b1", "tag": "p", "text": text, "words": 6, "rect": [100, 200, 800, 120]}]
+    with TestClient(create_capture_app(settings(vault), receive=True)) as client:
+        client.post(
+            "/events", json=[record("blocks", doc="doc-1", geometry=GEOMETRY, blocks=blocks, **TAB)], headers=auth
+        )
+    restarted = create_capture_app(settings(vault), receive=True)
+    assert restarted.state.receiver.attention.texts[("doc-1", "b1")] == ("p", text, 6)
