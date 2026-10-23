@@ -150,7 +150,8 @@ test('a reading session reaches the vault, and a stare marks the paragraph', asy
   }));
   const gaze = await fetch(`${RECEIVER}/gaze`, {
     method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ state: { tracking: true, calibrated: true, monitor: [g.screen_w, g.screen_h] }, fixations }),
+    // An exact synthetic tracker: 12 px of error, so every fixation belongs to the line it is on.
+    body: JSON.stringify({ state: { tracking: true, calibrated: true, error_px: 12, monitor: [g.screen_w, g.screen_h] }, fixations }),
   });
   expect(await gaze.json()).toEqual({ accepted: 18, duplicates: 0, stale: 0 });
   const placed = lines('gaze.jsonl');
@@ -169,12 +170,21 @@ test('a reading session reaches the vault, and a stare marks the paragraph', asy
   });
   await page.evaluate(() => (document.getElementById('clip') as HTMLAudioElement).play());
   await page.waitForTimeout(1200);
-  await page.click('#next');
+  const link = (await page.locator('#next').boundingBox())!;
+  await page.mouse.click(link.x + 12, link.y + 6);
   await page.waitForURL(`${SITE}/second`);
-  const browser = await until(() => lines('browser.jsonl'), found => found.some(r => r.kind === 'page' && r.url.endsWith('/second')));
+  // A search, as a result page's address (the test site stands in for Google on plain http).
+  await page.goto('http://www.google.test:8765/search?q=gradient+checkpointing');
+  const browser = await until(() => lines('browser.jsonl'), found => found.some(r => r.kind === 'search'));
   const kinds = new Set(browser.map(r => r.kind));
-  for (const kind of ['page', 'title', 'focus', 'click', 'selection', 'media']) expect(kinds, kind).toContain(kind);
-  expect(browser.find(r => r.kind === 'click')).toMatchObject({ href: `${SITE}/second`, text: 'Read the second page' });
+  for (const kind of ['page', 'title', 'focus', 'click', 'selection', 'media', 'search']) expect(kinds, kind).toContain(kind);
+  expect(browser.find(r => r.kind === 'search')).toMatchObject({ engine: 'google', query: 'gradient checkpointing' });
+  // Where the click landed, for the eye tracker's live accuracy: viewport CSS px and the geometry.
+  const click = browser.find(r => r.kind === 'click');
+  expect(click).toMatchObject({ href: `${SITE}/second`, text: 'Read the second page' });
+  expect(Math.abs(click.x - (link.x + 12))).toBeLessThan(1.5); // mouse events land on whole pixels
+  expect(Math.abs(click.y - (link.y + 6))).toBeLessThan(1.5);
+  expect(click.geometry).toMatchObject({ scale: 1, exact: true, primary: true });
   expect(browser.find(r => r.kind === 'selection' && r.copied)?.text).toContain('Activations are recomputed');
   expect(browser.find(r => r.kind === 'page' && r.url.endsWith('/second'))?.transition).toBe('link');
 });

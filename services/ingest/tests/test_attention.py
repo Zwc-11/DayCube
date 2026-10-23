@@ -1,9 +1,10 @@
 """Placing fixations on page text and detecting dwells."""
 
+import random
 from datetime import UTC, datetime, timedelta
 
 from capture.attention import Attention
-from capture.records import Blocks, Fixation, Focus, Page, View
+from capture.records import Blocks, Click, Fixation, Focus, GazeState, Page, View
 
 T0 = datetime(2026, 10, 22, 14, 0, tzinfo=UTC)
 GEOMETRY = {
@@ -12,6 +13,7 @@ GEOMETRY = {
 }  # fmt: skip
 SHORT = "Gradient checkpointing trades compute for memory."
 LONG = " ".join(["word"] * 150)  # cut at 1,000 characters; the block reports 200 words
+PRECISE = 12.0  # median gaze error in monitor px: a tracker good enough to point at a line
 
 
 def at(seconds: float) -> datetime:
@@ -37,9 +39,13 @@ def fixation(start: float, end: float, page_x: float, page_y: float, geometry: d
     return Fixation(id=f"fix-{start:08.2f}", t=at(start), t_end=at(end), x=x, y=y, samples=10)
 
 
-def watching(**options: float) -> Attention:
+def tracker(attention: Attention, error_px: float | None = PRECISE, monitor: tuple = (2560, 1440)) -> None:
+    attention.gaze_state(GazeState(tracking=True, calibrated=True, error_px=error_px, monitor=list(monitor)))
+
+
+def watching(error_px: float = PRECISE, **options: float) -> Attention:
     attention = Attention(**options)
-    attention.gaze_monitor([2560, 1440])  # same 16:9 shape as the browser's 1920x1080 DIP screen
+    tracker(attention, error_px)  # same 16:9 shape as the browser's 1920x1080 DIP screen
     attention.browser(snapshot())
     return attention
 
@@ -65,16 +71,17 @@ def stare(attention: Attention, start: float, seconds: float, x: float = 500, y:
 def test_a_fixation_lands_on_the_block_under_it() -> None:
     attention = watching()
     hit = attention.place(fixation(0.2, 0.4, 500, 260))
-    assert (hit.block, hit.x, hit.y) == ("b1", 500, 260)
-    assert attention.place(fixation(0.2, 0.4, 500, 340)).block == "b1"  # 20 px below: within the margin
-    assert attention.place(fixation(0.2, 0.4, 960, 360)).block is None  # on the page, beside the text
+    assert (hit.block, hit.x, hit.y) == ("b1", 500, 260) and hit.p > 0.8
+    assert attention.place(fixation(0.2, 0.4, 500, 325)).block == "b1"  # 5 px below: within the tracker's error
+    assert attention.place(fixation(0.2, 0.4, 500, 350)).block is None  # in the space between the paragraphs
+    assert attention.place(fixation(0.2, 0.4, 1300, 360)).block is None  # on the page, well beside the text
     assert attention.place(fixation(0.2, 0.4, 500, -50)) is None  # on the browser's toolbar
 
 
 def test_placement_follows_zoom_scroll_and_monitor() -> None:
     zoomed = GEOMETRY | {"scale": 1.25, "inner_w": 1536.0, "inner_h": 784.0}
     attention = Attention()
-    attention.gaze_monitor([1920, 1080])
+    tracker(attention, monitor=(1920, 1080))
     attention.browser(snapshot(geometry=zoomed))
     assert attention.place(fixation(0.2, 0.4, 500, 260, zoomed)).block == "b1"
     scrolled = zoomed | {"scroll_y": 200.0}
@@ -84,7 +91,7 @@ def test_placement_follows_zoom_scroll_and_monitor() -> None:
     attention.browser(snapshot(2, geometry=GEOMETRY | {"primary": False}))
     assert attention.place(fixation(2.2, 2.4, 500, 260)) is None  # the tracker only knows the primary monitor
     attention.browser(snapshot(3))
-    attention.gaze_monitor([1920, 1200])
+    tracker(attention, monitor=(1920, 1200))
     assert attention.place(fixation(3.2, 3.4, 500, 260)) is None  # a different monitor shape
 
 
@@ -95,9 +102,13 @@ def test_a_short_line_stared_at_becomes_a_dwell_at_the_floor() -> None:
     assert [(e["phase"], e["block"], e["dwell_s"]) for e in events] == [("start", "b1", 8.0)]
     assert events[0]["text"] == SHORT and events[0]["reading_s"] == 1.51
     assert stare(attention, 8.5, 3.0) == []  # one start per dwell
-    assert attention.fixation(fixation(13.0, 13.4, 500, 900))[1] == []  # looking away, still within 1 s
-    ended = attention.fixation(fixation(13.4, 14.8, 500, 900))[1]
-    assert [(e["phase"], e["dwell_s"], e["fixations"]) for e in ended] == [("end", 11.5, 23)]
+    # Looking away: the first second elsewhere could still be tracker error, then 2.5 s more end it.
+    assert attention.fixation(fixation(11.5, 12.5, 1500, 900))[1] == []
+    assert attention.fixation(fixation(12.5, 14.5, 1500, 900))[1] == []
+    ended = attention.fixation(fixation(14.5, 15.5, 1500, 900))[1]
+    # 22 of the 23 fixations: the first alone does not outweigh the 200-word paragraph's prior.
+    assert [(e["phase"], e["fixations"]) for e in ended] == [("end", 22)]
+    assert 11.0 <= ended[0]["dwell_s"] <= 11.5  # the first second away adds only its chance of being on the line
 
 
 def test_reading_a_long_paragraph_at_normal_speed_is_not_a_dwell() -> None:
@@ -126,3 +137,85 @@ def test_a_same_page_address_change_keeps_the_run() -> None:
     )  # fmt: skip
     assert attention.browser(spy) == [] and attention.front is not None
     assert [e["phase"] for e in stare(attention, 1.5, 1.0)] == ["start"]
+
+
+def test_blinks_between_fixations_count_as_looking() -> None:
+    attention = watching()
+    events, t = [], 0.0
+    while t < 8.6:  # 0.4 s looks with 0.2 s blinks: 8 s on the line, 5.6 s of it in fixations
+        events += attention.fixation(fixation(t, t + 0.4, 500, 260))[1]
+        t += 0.6
+    assert [(e["phase"], e["block"]) for e in events] == [("start", "b1")]
+
+
+# -- webcam-grade gaze ---------------------------------------------------------------------------
+
+# example.com at 200% zoom on a 2560 x 1440 monitor at 125% scaling, as the extension measures it.
+EXAMPLE = GEOMETRY | {"vx": 0.0, "vy": 87.0, "scale": 2.0, "inner_w": 1024.0, "inner_h": 508.5,
+                      "screen_w": 2048.0, "screen_h": 1152.0}  # fmt: skip
+HEADING, BODY, LINK = [212, 133.4, 260.3, 39], [212, 193.9, 586.3, 40], [212, 249.9, 143.3, 20]
+TEXT = (
+    "This domain is for use in illustrative examples in documents. You may use this domain in literature "
+    "without prior coordination or asking for permission."
+)  # 24 words: a dwell needs twice their 6.05 s reading time
+
+
+def example(error_px: float, **options: float) -> Attention:
+    attention = Attention(**options)
+    tracker(attention, error_px)
+    attention.browser(
+        snapshot(geometry=EXAMPLE, h1=(HEADING, "Example Domain"), body=(BODY, TEXT), more=(LINK, "More"))
+    )
+    return attention
+
+
+def noisy_stare(
+    attention: Attention, start: float, seconds: float, rect: list, offset: tuple, spread: float
+) -> list[dict]:
+    """Fixations anywhere in the middle of ``rect``, shifted by a tracker bias, with tracker noise."""
+    rng, events, t = random.Random(4), [], start
+    left, top, width, height = rect
+    while t < start + seconds - 1e-9:
+        if t % 5 == 0:
+            events += attention.browser(view(t, EXAMPLE))
+        x = left + width * rng.uniform(0.2, 0.8) + offset[0] + rng.gauss(0, spread)
+        y = top + height * rng.uniform(0.25, 0.75) + offset[1] + rng.gauss(0, spread)
+        hit, found = attention.fixation(fixation(t, t + 0.5, x, y, EXAMPLE))
+        events += found
+        t += 0.5
+    return events
+
+
+def test_a_stare_survives_webcam_error_that_lands_beside_the_paragraph() -> None:
+    # The recalibrated Windows session: 69 px median error, here a 14 CSS px downward bias plus
+    # 10 px of scatter. Many fixations fall in the gap below the paragraph or on the link.
+    attention = example(69.1)
+    events = noisy_stare(attention, 0, 20, BODY, (0, 14), 10)
+    starts = [e for e in events if e["phase"] == "start"]
+    assert [e["block"] for e in starts] == ["body"]
+    assert 12.1 <= starts[0]["dwell_s"] < 12.7
+
+
+def test_clicks_learn_a_bias_too_large_for_the_page_to_absorb() -> None:
+    # A head moved since calibration: every fixation is 45 CSS px (90 DIP) too low, which puts a
+    # stare at the heading on the paragraph below it.
+    def after(clicks: bool) -> list[str]:
+        attention = example(69.1)
+        if clicks:
+            rng = random.Random(2)
+            for i in range(6):  # browsing: look at a link, click it
+                x, y = rng.uniform(100, 900), rng.uniform(50, 450)
+                t = -60 + 8 * i
+                click = Click.model_validate({
+                    "id": f"click-{i:04d}", "t": at(t), "kind": "click", "tab": 7, "window": 1,
+                    "url": "https://example.com/a", "title": "A page", "x": x, "y": y, "geometry": EXAMPLE,
+                })  # fmt: skip
+                attention.browser(click)
+                attention.fixation(fixation(t - 0.5, t + 0.2, x, y + 45, EXAMPLE))
+                attention.fixation(fixation(t + 0.3, t + 1.0, x + 200, y + 45, EXAMPLE))
+            health = attention.health(at(0).timestamp())
+            assert health["clicks"] == 6 and abs(health["live_error_px"] - 112.5) < 1  # 45 CSS px at 200%, 125%
+        return [e["block"] for e in noisy_stare(attention, 0, 12, HEADING, (0, 45), 4) if e["phase"] == "start"]
+
+    assert after(clicks=False) != ["h1"]
+    assert after(clicks=True) == ["h1"]

@@ -16,7 +16,10 @@ CALIBRATION_FILE = "gaze.json"
 # Held-out targets sit between the training grid's points, where interpolation is hardest.
 HELD_OUT = [(0.3, 0.3), (0.7, 0.3), (0.3, 0.7), (0.7, 0.7)]
 TRAIN_ORDER = [(1, 1), (0, 0), (2, 0), (0, 2), (2, 2), (1, 0), (0, 1), (2, 1), (1, 2)]
-USABLE_PX_AT_1920 = 150  # median held-out error above this is too coarse to tell paragraphs apart
+# Median held-out error above this is too coarse to tell paragraphs apart at 100% zoom. 150 px let
+# through a 183 px calibration on a 2560 px monitor (137 px at 1920) that could not single out
+# most paragraphs; the recalibration that followed measured 69 px (eval/gaze_sim.py, docs/capture.md).
+USABLE_PX_AT_1920 = 120
 
 
 class Aborted(Exception):

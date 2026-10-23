@@ -84,7 +84,7 @@ client and converts the API's seconds-since-midnight into the renderer's decimal
 - Eight shared JSON Schema contracts with generated Pydantic and TypeScript models.
 - GPX parser, attention helper, FFmpeg probe/audio helpers, optional integration adapters.
 - Browser and gaze capture from sign-in to shutdown: a browser extension, a webcam eye tracker
-  and a local receiver that places gaze on the paragraph under it and flags dwells. See
+  and a local receiver that works out which paragraph the eyes are on and flags dwells. See
   [capture](docs/capture.md).
 - A character that walks the day: routes go around furniture and through doorways, climb
   stairs step by step between floors, and cut away the floor above while it is indoors.

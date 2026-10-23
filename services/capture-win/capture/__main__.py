@@ -1,4 +1,4 @@
-"""``python -m capture``: the receiver, its autostart entry and the Opera history import."""
+"""``python -m capture``: the receiver, its autostart entry, a health check and the Opera history import."""
 
 from __future__ import annotations
 
@@ -101,6 +101,13 @@ def autostart_status(_: argparse.Namespace) -> None:
     print(f"Starts at sign-in:\n  {line}" if line else "Not set to start at sign-in.")
 
 
+def doctor(_: argparse.Namespace) -> None:
+    from .doctor import main as check
+
+    settings = Settings()
+    raise SystemExit(check(settings.vault_root, settings.timezone, PORT))
+
+
 def import_history(args: argparse.Namespace) -> None:
     from ingest.vault import Vault
 
@@ -146,6 +153,10 @@ def main(argv: list[str] | None = None) -> None:
         handler=uninstall_autostart
     )
     commands.add_parser("autostart-status", help="Show the sign-in entry").set_defaults(handler=autostart_status)
+
+    commands.add_parser(
+        "doctor", help="Check capture from what it recorded: receiver, extension, eye tracker, accuracy, autostart"
+    ).set_defaults(handler=doctor)
 
     history = commands.add_parser("import-history", help="Copy Opera's history into vault/capture/<date>/history.jsonl")
     history.add_argument("--profile", type=Path, help="A Chromium History file (default: Opera's)")

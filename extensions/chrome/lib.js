@@ -74,10 +74,13 @@ export function record(kind, fields) {
 
 export const clip = (value, length) => String(value ?? '').slice(0, length);
 
-export function gazeLabel(gaze = {}) {
+export function gazeLabel(gaze = {}, accuracy = {}) {
   if (!gaze.tracking) return `Not tracking: ${gaze.reason || 'unknown'}`;
   const rate = Number.isFinite(gaze.fps) ? `, ${gaze.fps}${Number.isFinite(gaze.target_fps) ? `/${gaze.target_fps}` : ''} fps` : '';
   const face = Number.isFinite(gaze.face) ? `, face ${Math.round(gaze.face * 100)}%` : '';
   const error = Number.isFinite(gaze.error_px) ? `, calibrated to ${Math.round(gaze.error_px)} px` : '';
-  return `Tracking${rate}${face}${error}`;
+  // Measured from clicks while browsing: how far off the tracker is now, after correction.
+  const live = Number.isFinite(accuracy?.corrected_error_px) && accuracy.clicks >= 5
+    ? `, ${Math.round(accuracy.corrected_error_px)} px now (${accuracy.clicks} clicks)` : '';
+  return `Tracking${rate}${face}${error}${live}`;
 }

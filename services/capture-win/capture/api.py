@@ -6,6 +6,9 @@ Writes append-only logs to ``vault/capture/<local date>/``:
 - ``blocks.jsonl``: snapshots of the text on screen and where the viewport sits
 - ``gaze.jsonl``: fixations, each with the page point and text block it landed on
 - ``attention.jsonl``: dwells (see ``attention.py``), a start and an end record per dwell
+- ``health.jsonl``: every 10 minutes while gaze arrives, the tracker's state (frame rate, face,
+  how much gaze became fixations, noise) and the live accuracy measured from clicks, so a session
+  can be judged afterwards without a test
 
 A pause is remembered in ``vault/capture/paused`` until resumed, so a restart never undoes it,
 and every pause and resume is logged in ``vault/capture/pauses.jsonl``. The extension's excluded
@@ -49,6 +52,7 @@ WARM_TEXT_BYTES = 64 << 20  # block texts are reloaded from logs up to this size
 # Fixations arrive about a second after they end, so a run is closed only after this extra wait.
 GAZE_LATENCY = timedelta(seconds=3)
 GAZE_SILENT = timedelta(seconds=30)  # the tracker reports every second while it runs
+HEALTH_EVERY = timedelta(minutes=10)
 
 
 class Exclusions(BaseModel):
@@ -73,6 +77,7 @@ class Receiver:
         self.attention = attention or Attention()
         self.on_dwell = on_dwell
         self.hook: subprocess.Popen | None = None
+        self.health_at: datetime | None = None
         self._warm_texts()
 
     def _warm_texts(self) -> None:
@@ -111,6 +116,7 @@ class Receiver:
             "browser": {"last": self.last.get("browser")},
             "gaze": {"last": self.last.get("gaze"), **gaze},
             "dwell": {"threshold_s": a.threshold_s, "factor": a.factor, "wpm": a.wpm},
+            "accuracy": a.health(datetime.now(UTC).timestamp()),
             "capabilities": ["browser", "gaze", "attention"],
         }
 
@@ -232,7 +238,7 @@ class Receiver:
             if self.paused:
                 raise HTTPException(409, "Receiver is paused")
             self.gaze = {**batch.state.model_dump(mode="json"), "at": now.isoformat()}
-            self.attention.gaze_monitor(batch.state.monitor)
+            self.attention.gaze_state(batch.state)
             for fixation in sorted(batch.fixations, key=lambda f: f.t):
                 if not self._in_window(fixation.t, now):
                     stale += 1
@@ -246,9 +252,15 @@ class Receiver:
                 dwells += events
                 line = fixation.model_dump(mode="json")
                 if hit is not None:
-                    line |= {"tab": hit.tab, "doc": hit.doc, "page": [hit.x, hit.y], "block": hit.block}
+                    line |= {"tab": hit.tab, "doc": hit.doc, "page": [hit.x, hit.y], "block": hit.block, "p": hit.p}
                 lines.setdefault((self._day(fixation.t), "gaze.jsonl"), []).append(line)
             dwells += self.attention.advance(now - GAZE_LATENCY)
+            settled = batch.state.tracking and batch.state.coverage is not None  # a few seconds of gaze
+            if settled and (self.health_at is None or now - self.health_at >= HEALTH_EVERY):
+                self.health_at = now
+                health = {"t": now.astimezone(self.zone).isoformat(), "gaze": batch.state.model_dump(mode="json")}
+                health["accuracy"] = self.attention.health(now.timestamp())
+                lines.setdefault((self._day(now), "health.jsonl"), []).append(health)
             self._write(lines, dwells)
             self._remember_ids(ids)
             if accepted:
