@@ -136,7 +136,7 @@ class Attention:
         lead: float = 0.5,
         keep: float = 0.25,
         resolve: float = 0.5,
-        restless: float = 2.0,
+        restless: float = 3.0,
         bridge_s: float = 0.4,
         base_words: float = 10.0,
         evidence: float = 0.5,
@@ -157,6 +157,7 @@ class Attention:
         self.calibrated_px: float | None = None
         self.run: Run | None = None
         self.away: datetime | None = None  # when the eyes left the run's block
+        self.challenger: Run | None = None  # the block leading while the eyes are away from the run's
         self.belief: dict[str, float] = {}  # posterior over the front page's blocks and NOTHING
         self.belief_doc: str | None = None
         self.last_t: datetime | None = None  # start of the last fixation the filter took
@@ -259,7 +260,7 @@ class Attention:
 
     def _likelihoods(self, front: Front, x: float, y: float, now: float) -> dict[str, float]:
         g = front.geometry
-        sigma = self.error_px(now) / RAYLEIGH_MEDIAN * (g.screen_w / self.monitor[0]) / g.scale
+        sigma = self.error_px(now) / RAYLEIGH_MEDIAN * (g.screen_w / self.monitor[0]) / g.scale  # monitor known
         uniform = (g.scale * g.scale) / (g.screen_w * g.screen_h)  # 1 / screen area in CSS px
         shift = g.scroll_y - front.blocks_scroll
         out = {NOTHING: uniform}
@@ -320,7 +321,6 @@ class Attention:
         jump = self._prior(front)
         if self.belief and self.last_t is not None:
             dt = max((t - self.last_t).total_seconds(), 0.0)
-            kept = sum(self.belief.get(k, 0.0) for k in like) or 1.0  # blocks that scrolled away drop out
             stays = dict.fromkeys(like, math.exp(-self.rate * dt))
             run = self.run
             if self.restless and run is not None and run.doc == front.doc and run.block in stays:
@@ -328,8 +328,11 @@ class Attention:
                 if reading is not None and run.dwell > reading:
                     # Past its reading time, the eyes are likelier to have moved on than at first.
                     stays[run.block] = math.exp(-self.rate * (1 + self.restless) * dt)
-            moving = sum((1 - stays[k]) * self.belief.get(k, 0.0) / kept for k in like)
-            predicted = {k: stays[k] * self.belief.get(k, 0.0) / kept + moving * jump[k] for k in like}
+            # Belief on blocks that scrolled away or were re-rendered under new ids moves like
+            # belief that leaves a block: to wherever eyes go when they move.
+            vanished = max(0.0, 1.0 - sum(self.belief.get(k, 0.0) for k in like))
+            moving = vanished + sum((1 - stays[k]) * self.belief.get(k, 0.0) for k in like)
+            predicted = {k: stays[k] * self.belief.get(k, 0.0) + moving * jump[k] for k in like}
         else:
             predicted = jump
         self.belief = self._normalize({k: predicted[k] * like[k] ** self.evidence for k in like})
@@ -339,7 +342,7 @@ class Attention:
     def fixation(self, fixation: Fixation) -> tuple[Hit | None, list[dict]]:
         """Place one fixation and advance the run; returns the hit and any dwell records."""
         located = self._locate(fixation)
-        events = self.advance(fixation.t)
+        events = self.advance(fixation.t)  # gaze absent since the last fixation ended
         duration = (fixation.t_end - fixation.t).total_seconds()
         if self.last_end is not None:
             gap = (fixation.t - self.last_end).total_seconds()
@@ -369,17 +372,23 @@ class Attention:
                 # Full time while the block leads; while it is only plausible, its share.
                 run.dwell += duration * (1.0 if key == run.key else share)
                 run.t1, run.fixations = fixation.t_end, run.fixations + (key == run.key)
-                self.away = None
+                self.away, self.challenger = None, None
             else:
                 self.away = self.away or fixation.t
+                if key is not None:  # another block leads: where the eyes went, if they stay away
+                    challenger = self.challenger
+                    if challenger is None or challenger.key != key:
+                        self.challenger = self._run(key, fixation, duration)
+                    else:
+                        challenger.dwell += duration
+                        challenger.t1, challenger.fixations = fixation.t_end, challenger.fixations + 1
                 if (fixation.t_end - self.away).total_seconds() > self.excursion_s:
+                    challenger = self.challenger
                     events += self.end()
+                    if challenger is not None and challenger.key == key:
+                        self.run = challenger  # it led all along the excursion: that time is its own
         if self.run is None and key is not None and self.front is not None:
-            front = self.front
-            self.run = Run(
-                uuid.uuid4().hex[:16], front.tab, front.url, front.title, front.doc, key[1],
-                fixation.t, fixation.t_end, duration, 1,
-            )  # fmt: skip
+            self.run = self._run(key, fixation, duration)
         if self.monitor is not None:
             self.anchors.fixation(fixation.t.timestamp(), fixation.t_end.timestamp(), fixation.x, fixation.y)
         run = self.run
@@ -388,14 +397,23 @@ class Attention:
             events.append(self._record(run, "start"))
         return hit, events
 
+    def _run(self, key: tuple[str, str], fixation: Fixation, duration: float) -> Run:
+        front = self.front
+        return Run(
+            uuid.uuid4().hex[:16], front.tab, front.url, front.title, front.doc, key[1],
+            fixation.t, fixation.t_end, duration, 1,
+        )  # fmt: skip
+
     def _resolvable(self, run: Run) -> bool:
         """Whether the tracker, at its current error, can single out the run's block: a look at
         its middle would make it the likeliest block by at least ``resolve``. When the error is
         larger than the space between blocks, time near a small block (a heading, a one-line
         paragraph) is mostly time on its neighbours, and a dwell on it would be a guess."""
         front = self.front
-        if self.resolve <= 0 or front is None or front.doc != run.doc:
+        if self.resolve <= 0:
             return True
+        if front is None or front.doc != run.doc or self.monitor is None:
+            return False  # nothing to judge it against now; the next fixation tries again
         block = next((b for b in front.blocks if b.id == run.block), None)
         if block is None:
             return False
@@ -407,13 +425,15 @@ class Attention:
         return posterior.get(run.block, 0.0) >= self.resolve
 
     def advance(self, now: datetime) -> list[dict]:
-        """End the run if gaze has been absent for longer than ``max_gap_s``."""
-        if self.run is not None and (now - self.run.t1).total_seconds() > self.max_gap_s:
+        """End the run if no gaze at all has arrived for longer than ``max_gap_s`` (eyes closed, off
+        the screen, face lost). Gaze elsewhere on the screen is ``excursion_s``'s business."""
+        last = self.last_end if self.last_end is not None else (self.run.t1 if self.run else None)
+        if self.run is not None and last is not None and (now - last).total_seconds() > self.max_gap_s:
             return self.end()
         return []
 
     def end(self) -> list[dict]:
-        run, self.run, self.away = self.run, None, None
+        run, self.run, self.away, self.challenger = self.run, None, None, None
         return [self._record(run, "end")] if run is not None and run.fired else []
 
     def health(self, now: float) -> dict:

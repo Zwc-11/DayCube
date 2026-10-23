@@ -70,3 +70,30 @@ def test_old_clicks_and_another_monitor_are_forgotten() -> None:
     assert a.offset(0.5, 0.5, 1000.0) == (0.0, 0.0)
     a.set_monitor((1920, 1080), 70.0)
     assert not a.anchors and a.live(20.0) == (0, None, None)
+
+
+def test_a_new_calibration_starts_over_and_stale_clicks_stop_setting_the_error() -> None:
+    a = anchors()
+    watch(a, [(10.0 + 5 * i, 600 + 150 * i, 400 + 60 * i) for i in range(6)], (50, 30))
+    assert a.error_px(60.0) is not None
+    assert a.error_px(10.0 + 25 + 601) is None  # the newest click is over 10 minutes old
+    a.set_monitor((W, H), 70.0)  # the same calibration reported again
+    assert len(a.anchors) == 6
+    a.set_monitor((W, H), 64.2)  # recalibrated: the old offsets belong to the old model
+    assert not a.anchors and a.live(60.0) == (0, None, None)
+
+
+def test_the_live_error_uses_only_earlier_clicks() -> None:
+    a = anchors()
+    # The offset changes halfway: the first click after the change is predicted from the old ones.
+    watch(a, [(10.0 + 5 * i, 600 + 100 * i, 500) for i in range(4)], (0, 0))
+    watch(a, [(40.0 + 5 * i, 600 + 100 * i, 500) for i in range(4)], (80, 0))
+    _, raw, corrected = a.live(60.0)
+    assert corrected > 20  # leave-one-out with later clicks would see the new offset coming
+
+
+def test_clicks_never_answered_by_gaze_are_bounded() -> None:
+    a = anchors()
+    for i in range(1000):
+        a.click(float(i), 0.5, 0.5)
+    assert len(a.pending) == 50

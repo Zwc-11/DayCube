@@ -261,11 +261,10 @@
     const link = element.closest('a[href]');
     const href = link && /^https?:/.test(link.href) ? link.href : null;
     // Where the click landed: the eyes are almost always on what is clicked, so the receiver uses
-    // each click to measure, and correct, the eye tracker's live error (anchors.py).
-    send({
-      kind: 'click', href, text: clean(label || '').slice(0, 300),
-      x: round(event.clientX), y: round(event.clientY), geometry: geometry(),
-    });
+    // each click to measure, and correct, the eye tracker's live error (anchors.py). A click made
+    // with the keyboard (Enter on a link, Space on a button) has no position: it reports 0, 0.
+    const pointer = event.detail > 0 ? { x: round(event.clientX), y: round(event.clientY), geometry: geometry() } : {};
+    send({ kind: 'click', href, text: clean(label || '').slice(0, 300), ...pointer });
   }, true);
 
   let selectionTimer = null;

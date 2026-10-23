@@ -59,6 +59,9 @@ BROWSER_TOP_DIP = 87.0  # Opera's tab strip and address bar, maximized
 TASKBAR_DIP = 48.0
 DELIVERY_S = 1.0  # the extension flushes its queue a second after a record is made
 LINE_PX = {"example-domain": 20.0, "reading": 28.8}  # line height of body text, CSS px
+BUMP = 0.73  # height SD of each bias bump, in bias SDs: the three make 30% of the variance at held-out targets
+# The attention parameters were chosen on seeds 0-39; reported results use seeds from 1000 on.
+SEED_BASE = 1000
 
 PROFILES = {
     # Held-out per-frame error, median and 90th percentile, from the Windows check on 2026-10-23.
@@ -121,8 +124,14 @@ class Camera:
         w, h = monitor
         self.center = (w / 2, h / 2)
         self.half = (w / 2, h / 2)
-        b0, g = model.bias_px * math.sqrt(0.6), model.bias_px * math.sqrt(0.9)
+        # The calibration bias: an offset and a linear term (70% of its variance), plus three broad
+        # bumps (30%) that a correction learned at a few clicks does not capture exactly.
+        b0, g = model.bias_px * math.sqrt(0.42), model.bias_px * math.sqrt(0.63)
         self.bias = [(rng.gauss(0, b0), rng.gauss(0, g), rng.gauss(0, g)) for _ in range(2)]
+        self.bumps = [
+            [(rng.uniform(-1, 1), rng.uniform(-1, 1), rng.gauss(0, model.bias_px * BUMP)) for _ in range(3)]
+            for _ in range(2)
+        ]
         self.drift = [rng.gauss(0, model.drift_px), rng.gauss(0, model.drift_px)]
         self.jitter = [rng.gauss(0, model.jitter_px), rng.gauss(0, model.jitter_px)]
         self.t: float | None = None
@@ -140,7 +149,8 @@ class Camera:
             self.drift[axis] = self.drift[axis] * decay + rng.gauss(0, m.drift_px * math.sqrt(1 - decay * decay))
             self.jitter[axis] = self.jitter[axis] * rho + rng.gauss(0, m.jitter_px * math.sqrt(1 - rho * rho))
             b0, gu, gv = self.bias[axis]
-            error = b0 + gu * u + gv * v + self.drift[axis] + self.jitter[axis]
+            bumps = sum(a * math.exp(-((u - cu) ** 2 + (v - cv) ** 2) / 0.5) for cu, cv, a in self.bumps[axis])
+            error = b0 + gu * u + gv * v + bumps + self.drift[axis] + self.jitter[axis]
             if rng.random() < m.outlier:
                 error += rng.gauss(0, m.outlier_px)
             out.append(point[axis] + error)
@@ -298,13 +308,18 @@ def _load(script: Script) -> None:
 
 
 def _clicks(script: Script, rng: random.Random, n: int = 6) -> None:
-    """Browsing before the test: look at a link, click it 0.3 s later, read around."""
+    """Browsing before the test: look near a link, click it 0.3 s later, read around. The eyes land
+    within about 15 CSS px of the click, and one click in seven is made without looking."""
     vw, vh = script.layout.screen.viewport
     for _ in range(n):
         x, y = rng.uniform(0.1, 0.9) * vw, rng.uniform(0.1, 0.9) * vh
-        script.look(0.35, x + rng.gauss(0, 4), y + rng.gauss(0, 4))
+        if rng.random() < 1 / 7:
+            ex, ey = rng.uniform(0.1, 0.9) * vw, rng.uniform(0.1, 0.9) * vh
+        else:
+            ex, ey = x + rng.gauss(0, 15), y + rng.gauss(0, 15)
+        script.look(0.35, ex, ey)
         script.record("click", x=round(x, 1), y=round(y, 1))
-        script.look(0.25, x, y)
+        script.look(0.25, ex, ey)
         script.look(rng.uniform(2, 6), rng.uniform(0.1, 0.9) * vw, rng.uniform(0.1, 0.9) * vh)
 
 
@@ -677,7 +692,14 @@ def _trial(job: tuple[int, str, float, int]) -> dict:
 
 
 def evaluate(seeds: int, profiles: list[str], scales: list[float], workers: int) -> list[dict]:
-    jobs = [(i, p, s, seed) for i in range(len(SCENARIOS)) for p in profiles for s in scales for seed in range(seeds)]
+    first = int(os.environ.get("GAZE_SIM_FIRST_SEED", SEED_BASE))
+    jobs = [
+        (i, p, s, seed)
+        for i in range(len(SCENARIOS))
+        for p in profiles
+        for s in scales
+        for seed in range(first, first + seeds)
+    ]
     with ProcessPoolExecutor(max_workers=workers) as pool:
         return list(pool.map(_trial, jobs, chunksize=8))
 

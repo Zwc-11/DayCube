@@ -10,7 +10,14 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 
 class Strict(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+
+
+# The tracker and the extension are updated with the receiver, but an autostarted receiver keeps
+# running old code until the next sign-in while it restarts the tracker from the new code (after a
+# recalibration, say). The two records that grow with new versions take fields they do not know
+# and ignore them, instead of refusing the whole record.
+TOLERANT = ConfigDict(extra="ignore", allow_inf_nan=False)
 
 
 class Record(Strict):
@@ -97,6 +104,7 @@ class Click(Record, Tab):
     """A click on a link or button. ``x`` and ``y`` (CSS px in the viewport) and the viewport's
     ``geometry`` at that moment make it a calibration point for the eye tracker (anchors.py)."""
 
+    model_config = TOLERANT
     kind: Literal["click"]
     href: str | None = Field(default=None, max_length=4096)
     text: str = Field(default="", max_length=300)
@@ -153,11 +161,12 @@ class Fixation(Strict):
 
 
 class GazeState(Strict):
+    model_config = TOLERANT
     tracking: bool
     reason: str | None = Field(default=None, max_length=80)  # why not tracking: paused, away, camera busy, ...
     calibrated: bool = False
-    error_px: float | None = None
-    monitor: Annotated[list[int], Field(min_length=2, max_length=2)] | None = None  # calibrated monitor, pixels
+    error_px: float | None = Field(default=None, ge=0)
+    monitor: Annotated[list[Annotated[int, Field(ge=1)]], Field(min_length=2, max_length=2)] | None = None  # pixels
     fps: float | None = None
     target_fps: float | None = Field(default=None, gt=0)
     face: float | None = Field(default=None, ge=0, le=1)  # share of recent frames with a usable face

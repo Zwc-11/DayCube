@@ -57,6 +57,12 @@ Optional: copy the history Opera already kept (about 90 days) into the vault:
 uv run --project services/capture-win python -m capture import-history
 ```
 
+After pulling a new version, reload the extension at `opera://extensions` and restart the
+receiver (sign out and in, or end its `pythonw.exe` in Task Manager and run
+`python -m capture install-autostart` again), so the extension, receiver and tracker run the same
+code. A newer tracker or extension still works with an older receiver: fields it does not know
+are ignored.
+
 Recalibrate when your seat, lighting or monitor changes (`python -m gaze calibrate`). It pauses
 recording for the half minute it takes, which frees the webcam, and the receiver restarts the
 tracker with the new calibration.
@@ -99,11 +105,13 @@ extension, frame rate, face detection, **fixations** (the share of gaze that bec
 the gaze noise), calibration error, **live accuracy**, today's logs, dwells and the sign-in entry.
 It exits with code 1 when a check fails.
 
-Live accuracy comes from clicks. The eyes are on a link or button when it is clicked, so each click
-with a fixation around it measures how far off the tracker is at that moment and place. After five
-clicks the receiver reports the median error before and after its correction (each click predicted
-from the others), uses it as the gaze error it allows for, and shows it in the extension's **Right
-now** panel (`58 px now (7 clicks)`). A live error above the calibration limit means: recalibrate
+Live accuracy comes from clicks. The eyes are on a link or button when it is clicked, so each mouse
+click with a fixation around it measures how far off the tracker is at that moment and place
+(keyboard clicks have no position and are not used). After five clicks the receiver reports the
+median error before and after its correction (each click predicted from the clicks before it),
+uses it as the gaze error it allows for while the newest click is under 10 minutes old, and shows
+it in the extension's **Right now** panel (`58 px now (7 clicks)`). A recalibration starts the
+clicks over. A live error above the calibration limit means: recalibrate
 from your usual seat. Every 10 minutes while gaze arrives, the same figures go to
 `vault/capture/<date>/health.jsonl`, so a session can be judged afterwards.
 
@@ -285,8 +293,10 @@ frame.
 `eval/gaze_sim.py` runs the tracker loop and the receiver's attention code against simulated
 eyes and webcam error, 100 sessions per row, on a 2560 x 1440 monitor at 100% and 125% Windows
 scaling. The error model is fitted to the held-out error the tracker reports, per frame: a
-calibration bias that varies over the screen, head drift since calibration, correlated frame
-jitter, landmark failures and blinks. Page layouts are measured by the extension's reporter in
+calibration bias that varies over the screen (an offset, a linear term and broad bumps), head
+drift since calibration, correlated frame jitter, landmark failures and blinks. Clicks in the
+simulation land within about 15 CSS px of where the eyes are, and one in seven is made without
+looking. The attention parameters were chosen on seeds 0-39; the table uses seeds 1000-1099. Page layouts are measured by the extension's reporter in
 Chromium (`eval/measure_pages.mjs`).
 
 ```powershell

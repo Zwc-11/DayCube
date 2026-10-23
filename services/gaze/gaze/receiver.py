@@ -27,6 +27,7 @@ class Receiver:
         self.timeout = timeout
         self.queue: deque[dict] = deque(maxlen=QUEUE)
         self.opener = build_opener(ProxyHandler({}))  # never route localhost through a system proxy
+        self.refusal: str | None = None  # why the receiver last refused a report, for the log
 
     def add(self, fixation: Fixation) -> None:
         self.queue.append({
@@ -55,6 +56,11 @@ class Receiver:
             if error.code == 409:
                 self.queue.clear()
                 return "paused"
+            try:
+                body = error.read(300).decode("utf-8", "replace")
+            except OSError:
+                body = ""
+            self.refusal = f"{error.code} {body}".strip()
             return "refused"
         except (URLError, OSError):
             return "offline"

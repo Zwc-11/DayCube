@@ -170,10 +170,19 @@ test('clicks carry where they landed, and a glance is not a dwell', async () => 
   await stare([ox + left, oy + top, width, height], 5, 4); // 5 s on a 34-word paragraph: below the 8 s floor
   expect(lines('attention.jsonl').filter(d => d.phase === 'start').length).toBe(before);
 
+  // Enter on a focused link is a click with no position: it must not become a calibration point.
+  await page.focus('#next');
+  await page.keyboard.press('Enter');
+  await page.waitForURL(/\/second$/);
+  await page.goBack();
+  const keyboard = await until(() => lines('browser.jsonl').find(r => r.kind === 'click' && r.url.endsWith('/reading')), Boolean);
+  expect(keyboard).toMatchObject({ text: 'Read the next note', x: null, y: null, geometry: null });
+
+  await page.mouse.move(600, 350);
   await page.locator('#next').scrollIntoViewIfNeeded();
   const link = await page.locator('#next').boundingBox();
   await page.mouse.click(link!.x + 10, link!.y + 5);
-  const click = await until(() => lines('browser.jsonl').find(r => r.kind === 'click' && r.url.endsWith('/reading')), Boolean);
+  const click = await until(() => lines('browser.jsonl').find(r => r.kind === 'click' && r.url.endsWith('/reading') && r.x !== null), Boolean);
   expect(Math.abs(click.x - (link!.x + 10))).toBeLessThan(1.5); // mouse events land on whole pixels
   expect(Math.abs(click.y - (link!.y + 5))).toBeLessThan(1.5);
   expect(click.geometry).toMatchObject({ scale: 1, exact: true, primary: true });

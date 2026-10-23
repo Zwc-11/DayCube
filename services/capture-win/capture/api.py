@@ -104,6 +104,8 @@ class Receiver:
 
     def status(self) -> dict:
         a = self.attention
+        with self.lock:  # the click calibration is updated by gaze batches on other threads
+            accuracy = a.health(datetime.now(UTC).timestamp())
         gaze = self.gaze or {"tracking": False, "reason": "not running"}
         if self.gaze and datetime.now(UTC) - datetime.fromisoformat(self.gaze["at"]) > GAZE_SILENT:
             gaze = {**self.gaze, "tracking": False, "reason": "no reports"}
@@ -116,7 +118,7 @@ class Receiver:
             "browser": {"last": self.last.get("browser")},
             "gaze": {"last": self.last.get("gaze"), **gaze},
             "dwell": {"threshold_s": a.threshold_s, "factor": a.factor, "wpm": a.wpm},
-            "accuracy": a.health(datetime.now(UTC).timestamp()),
+            "accuracy": accuracy,
             "capabilities": ["browser", "gaze", "attention"],
         }
 

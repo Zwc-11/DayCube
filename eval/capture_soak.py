@@ -83,14 +83,23 @@ def soak(hours: float, seed: int) -> dict:
                 first = [b | {"text": f"Paragraph {i} of page {page} " * 6, "words": 30} for i, b in enumerate(blocks)]
                 records.append({"kind": "blocks", "doc": doc, "geometry": GEOMETRY, "blocks": first})
             elif s % 10 == 0:
-                records.append({"kind": "blocks", "doc": doc, "geometry": GEOMETRY | {"scroll_y": float(s % 400)}, "blocks": blocks})
+                records.append(
+                    {
+                        "kind": "blocks",
+                        "doc": doc,
+                        "geometry": GEOMETRY | {"scroll_y": float(s % 400)},
+                        "blocks": blocks,
+                    }
+                )
             if s % 5 == 0:
                 records.append({"kind": "view", "doc": doc, "geometry": GEOMETRY})
             if rng.random() < 1 / 40:
                 x, y = rng.uniform(300, 1200), rng.uniform(60, 1000)
                 records.append({"kind": "click", "href": None, "text": "Next", "x": x, "y": y, "geometry": GEOMETRY})
             if rng.random() < 1 / 300:
-                records.append({"kind": "selection", "text": "a selected passage of text", "copied": rng.random() < 0.5})
+                records.append(
+                    {"kind": "selection", "text": "a selected passage of text", "copied": rng.random() < 0.5}
+                )
             if rng.random() < 1 / 600:
                 records.append({"kind": "media", "state": "playing", "position_s": 0.0, "duration_s": 300.0})
             batch = []

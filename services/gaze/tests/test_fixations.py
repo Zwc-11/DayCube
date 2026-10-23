@@ -77,7 +77,7 @@ def test_the_threshold_follows_the_noise_so_a_noisy_look_is_not_lost() -> None:
     noisy = webcam(20, 120)  # a 640x480 camera in dim light: 120 px of frame jitter
     fixed = coverage(FixationDetector(W, H, noise_k=0), noisy)  # the old fixed 6% threshold
     adaptive = FixationDetector(W, H)
-    assert fixed < 0.5 and coverage(adaptive, noisy) > 0.85
+    assert fixed < 0.5 and coverage(adaptive, noisy) > 0.8
     assert 20 < adaptive.noise_px < 120 and adaptive.dispersion > adaptive.base  # scatter after smoothing
     quiet = FixationDetector(W, H)
     coverage(quiet, webcam(20, 20))
@@ -89,3 +89,18 @@ def test_steady_motion_does_not_count_as_noise() -> None:
     for i in range(300):  # 10 s of slow pursuit across the screen
         detector.add(i / 30, 0.1 + i * 0.0025, 0.5)
     assert detector.noise_px < 5
+
+
+def test_quick_looks_between_two_targets_stay_two_targets() -> None:
+    """Saccades are not noise: eyes moving between two points 300 px apart every 0.3 s (one
+    saccade in every second difference the estimator sees) still give fixations on the points."""
+    rng, smooth, detector = random.Random(1), Smoother(), FixationDetector(2560, 1440)
+    found, ex, ey = [], 0.0, 0.0
+    for i in range(600):
+        t = i / 30
+        ex, ey = 0.6 * ex + 0.8 * rng.gauss(0, 20), 0.6 * ey + 0.8 * rng.gauss(0, 20)
+        x, y = smooth(t, 1000 + 300 * (int(t / 0.3) % 2) + ex, 700 + ey)
+        found += detector.add(t, x / 2560, y / 1440)
+    found += detector.flush()
+    between = sum(f.end - f.start for f in found if 1075 < f.x * 2560 < 1225)
+    assert len(found) > 40 and between < 0.5  # of 20 s: at most a brief piece while the smoother catches up

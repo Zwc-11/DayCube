@@ -108,7 +108,7 @@ def checks(status: dict | None, vault: Path, zone: ZoneInfo, now: datetime, auto
     )
     dwells = 0
     if (day / "attention.jsonl").is_file():
-        for line in (day / "attention.jsonl").read_text(encoding="utf-8").splitlines():
+        for line in (day / "attention.jsonl").read_text(encoding="utf-8", errors="replace").splitlines():
             with contextlib.suppress(ValueError):
                 dwells += json.loads(line).get("phase") == "start"
     out.append((INFO, "dwells today", str(dwells)))
@@ -126,7 +126,8 @@ def checks(status: dict | None, vault: Path, zone: ZoneInfo, now: datetime, auto
 def main(vault: Path, timezone: str, port: int) -> int:
     now = datetime.now(UTC)
     try:
-        status = httpx.get(f"http://127.0.0.1:{port}/status", timeout=2).json()
+        # trust_env=False: a system proxy (Windows takes it from the registry) must not see localhost.
+        status = httpx.get(f"http://127.0.0.1:{port}/status", timeout=2, trust_env=False).json()
     except (httpx.HTTPError, ValueError):
         status = None
     autostart = None
