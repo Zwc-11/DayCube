@@ -333,3 +333,59 @@ def test_without_lines_no_line_is_decoded() -> None:
     attention = watching()
     hits = [attention.fixation(fixation(0.2 + 0.3 * k, 0.45 + 0.3 * k, 500, 260))[0] for k in range(5)]
     assert hits[-1].block == "b1" and all(hit.line is None for hit in hits) and attention.reading is None
+
+
+def window_page(seconds: float, window: int, tab: int, doc: str, vx: float, text: str) -> Blocks:
+    """A page in a browser window half the screen wide, at ``vx`` on the monitor."""
+    geometry = GEOMETRY | {"vx": vx, "inner_w": 960.0}
+    return Blocks.model_validate({
+        "id": f"blocks-{doc}-{seconds}", "t": at(seconds), "kind": "blocks", "tab": tab, "window": window,
+        "url": f"https://example.com/{doc}", "title": doc, "doc": doc, "geometry": geometry,
+        "blocks": [{"id": "b1", "tag": "p", "text": text, "words": 8, "rect": [100, 200, 700, 120]}],
+    })  # fmt: skip
+
+
+def test_pages_in_windows_side_by_side_take_the_gaze_that_falls_in_them() -> None:
+    attention = Attention()
+    tracker(attention, PRECISE)
+    attention.browser(window_page(0, 1, 7, "left-doc", 0.0, "On the left."))
+    attention.browser(window_page(0.5, 2, 9, "right-doc", 960.0, "On the right."))
+    left = attention.fixation(fixation(1.0, 1.4, 500, 260))[0]  # page x 500 on a monitor x of 500
+    right = attention.fixation(fixation(1.5, 1.9, 960 + 500, 260))[0]
+    assert (left.doc, right.doc) == ("left-doc", "right-doc")
+    assert (left.x, right.x) == (500, 500)
+    # Focus goes to another app (a terminal beside the browser): both pages are still on screen.
+    away = Focus(id="focus-0002", t=at(2.0), kind="focus", tab=None, window=None)
+    assert attention.browser(away) == []
+    assert attention.fixation(fixation(2.1, 2.5, 500, 260))[0].doc == "left-doc"
+    # The right window is minimized: its page leaves at once, not when its heartbeat lapses.
+    gone = View.model_validate({
+        "id": "view-hidden-1", "t": at(2.6), "kind": "view", "tab": 9, "window": 2, "url": "https://example.com/right-doc",
+        "title": "right-doc", "doc": "right-doc", "geometry": GEOMETRY | {"vx": 960.0, "inner_w": 960.0}, "hidden": True,
+    })  # fmt: skip
+    attention.browser(gone)
+    hit = attention.fixation(fixation(2.7, 3.1, 960 + 500, 260))[0]
+    assert hit is None  # on the monitor, but outside the only page left
+    health = attention.lines_health()
+    assert health["fixations"] == 4 and health["on_page"] == 3 and health["outside"] == 1
+
+
+def test_why_fixations_miss_pages_is_counted() -> None:
+    attention = Attention()
+    tracker(attention, PRECISE)
+    attention.fixation(fixation(0.0, 0.3, 500, 260))  # no page reported yet
+    attention.browser(snapshot(1))
+    attention.fixation(fixation(20.0, 20.3, 500, 260))  # the page has not reported for 19 s
+    health = attention.lines_health()
+    assert (health["no_page"], health["stale"], health["on_page"]) == (1, 1, 0)
+    assert attention.gaze_point is None
+    attention.browser(view(21))
+    attention.fixation(fixation(21.0, 21.3, 500, 260))
+    assert attention.gaze_point == {
+        "t": at(21.3).isoformat(),
+        "doc": "doc-1",
+        "x": 500.0,
+        "y": 260.0,
+        "scroll_y": 0.0,
+        "block": None,
+    }

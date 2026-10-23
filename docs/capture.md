@@ -58,7 +58,7 @@ uv run --project services/capture-win python -m capture import-history
 ```
 
 After pulling a new version, reload the extension at `opera://extensions` (its card shows the
-version: 0.5.0 or later puts its page script into tabs already open, so they need no refresh;
+version: 0.6.0 now; 0.5.0 or later puts its page script into tabs already open, so they need no refresh;
 before 0.5.0, refresh them), and restart the receiver
 (sign out and in, or end its `pythonw.exe` and `python.exe` processes in Task Manager and run
 `python -m capture install-autostart` again), so the extension, receiver and tracker run the same
@@ -124,7 +124,7 @@ from your usual seat. Every 10 minutes while gaze arrives, the same figures go t
 | Pause everything, including the webcam | Click the toolbar button or press `Alt+Shift+D` (works once the token is saved, even with browser recording off). The badge reads `II`. The webcam is released within about a second |
 | Resume | The same again. The badge reads `REC` |
 | See whether it works | The extension's options page, **Right now**; or `http://127.0.0.1:7700/status` |
-| See which line it has you reading | Extension options, **Show the line I am reading**: a small blue marker beside the line, updated every second, fainter when less sure. **Right now** shows the line, or why there is none: how many of the last fixations landed on a page and on a line, and how many of the last page's text blocks sent their lines |
+| See where it has you looking, and which line | Extension options, **Show where I am looking and the line I am reading**: a red ring at the last fixation placed on the page and a blue marker beside the decoded line (fainter when less sure), updated twice a second, a second or two behind the eyes. **Right now** shows the line, or why there is none: where the last fixations went (on a page, on a line, outside the browser page, no page on screen, page not reporting, another monitor) and how many of the last page's text blocks sent their lines |
 | Stop starting at sign-in | `python -m capture uninstall-autostart`, or turn it off in Task Manager > Startup apps |
 | Read the logs | `vault\logs\capture.log` and `vault\logs\gaze.log` |
 
@@ -220,18 +220,22 @@ yesterday's snapshots, so dwells on pages already open still know their text.
    reports the share of gaze that became fixations (`coverage`) and the noise (`noise_px`).
 2. The extension reports where the viewport is on the monitor: measured from two mouse events
    (screen point minus page point, and the page zoom from their spacing), otherwise estimated
-   from the window's outer and inner sizes.
-3. The receiver subtracts the offset learned from recent clicks, converts the fixation to page
+   from the window's outer and inner sizes. Every browser window reports the page it shows,
+   focused or not: a page read beside a terminal or another window is on screen too. A page that
+   leaves the screen (another tab, minimized, covered) says so at once.
+3. The receiver places each fixation on the page whose window it falls in (the focused window's
+   when windows overlap).
+4. It subtracts the offset learned from recent clicks, converts the fixation to page
    coordinates, and corrects for scrolling since the last snapshot.
-4. It does not pick the block under the point: webcam error is larger than the space between
+5. It does not pick the block under the point: webcam error is larger than the space between
    paragraphs. A filter over "on block b" and "on nothing" scores each block by how likely the
    tracker was to report this point if the eyes were anywhere in it (the block blurred by the
    current gaze error), and assumes the eyes tend to stay where they were. After each fixation it
    knows how likely each block is; the block that leads is the one in `gaze.jsonl`, and the time
    it leads is what a dwell counts. Details and parameters: `services/capture-win/capture/attention.py`.
 
-The receiver clears its front page on focus loss. Returning to a tab or window therefore sends
-a fresh block-position snapshot even when the page has not changed. Block ids remain stable;
+Returning to a tab or window sends a fresh block-position snapshot even when the page has not
+changed. Block ids remain stable;
 already acknowledged text is not duplicated. Reload the unpacked extension and refresh open
 pages after updating the reporter script.
 
@@ -256,7 +260,7 @@ decodes the line from the sequence of fixations instead (`services/capture-win/c
 | Where | What |
 | --- | --- |
 | `gaze.jsonl` | Each fixation's line, `"line": {"block", "line", "p"}` |
-| `/status` | `"reading": {"block", "line", "lines", "p", "text", "url", "t"}`: the line now; `null` after 10 s without one. `"line_decoding"`: of the last 300 fixations, how many landed on a page and on a line, and the last page's text blocks and how many sent lines; `doctor` reads it ("line reading") |
+| `/status` | `"reading": {"block", "line", "lines", "p", "text", "url", "t"}`: the line now; `null` after 10 s without one. `"line_decoding"`: of the last 300 fixations, how many landed on a page and on a line, and where the rest went (`outside` every page shown, `no_page` on screen, `stale` page, `other_monitor`), with the last page's text blocks and how many sent lines; `doctor` reads it ("line reading"). `"gaze_point"`: the last fixation placed on a page (viewport px and that page's scroll) |
 | `reading.jsonl` | A record per block once the eyes have left it (two fixations decoded on another block), the page changes, the tab or window loses focus, the block's lines are re-measured, or 10 s pass without gaze on the page. Blocks looked at for under 1.5 s or 3 fixations get none. A pass is a stay of 0.4 s or more on a line |
 
 Example `reading.jsonl` record (shortened):
@@ -314,7 +318,8 @@ npm run test:extension   # Node unit tests, then the extension in Chromium again
 npx playwright test --config playwright.extension.config.ts reporter.e2e.spec.ts
 ```
 
-`capture.e2e.spec.ts` also checks that text inside web components (an open shadow root filled
+`capture.e2e.spec.ts` also checks that a page in a window that has lost focus keeps reporting
+(it fails with the old focused-window rule), that text inside web components (an open shadow root filled
 from a template, as D2L's `d2l-html-block` does, and a closed one) is recorded with its lines, and
 that a link clicked inside one carries its address. `update.e2e.spec.ts` updates the extension in
 place (over the DevTools protocol) with a page open and checks that the page reports again without

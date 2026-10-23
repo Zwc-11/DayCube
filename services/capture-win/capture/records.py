@@ -146,11 +146,14 @@ class Blocks(Record, Tab):
 
 
 class View(Record, Tab):
-    """A heartbeat from the page in front: used live to place gaze, never stored."""
+    """A heartbeat from a page on screen: used live to place gaze, never stored. ``hidden``: the
+    page just left the screen (another tab, minimized, covered by another window)."""
 
+    model_config = TOLERANT
     kind: Literal["view"]
     doc: str = Field(min_length=4, max_length=40)
     geometry: Geometry
+    hidden: bool = False
 
 
 BrowserRecord = Annotated[

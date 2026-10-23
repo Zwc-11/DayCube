@@ -48,7 +48,10 @@
   let zoom = null;
 
   const send = message => (live() ? chrome.runtime.sendMessage(message).catch(() => null) : Promise.resolve(null));
-  const front = () => document.visibilityState === 'visible' && document.hasFocus() && !document.prerendering;
+  // On screen: the tab shown in a window that is not minimized or covered. The window need not have
+  // focus: a page read beside another app is still read.
+  const shown = () => document.visibilityState === 'visible' && !document.prerendering;
+  const front = () => shown() && document.hasFocus();
   // Web components (D2L Brightspace, YouTube, Reddit, Salesforce) keep their text in shadow roots,
   // open or closed; chrome.dom reaches closed ones from a content script.
   const shadowOf = element => {
@@ -177,7 +180,7 @@
 
   function snapshot() {
     timer = null;
-    if (!front() || guarded() || !document.body) return;
+    if (!shown() || guarded() || !document.body) return;
     const started = performance.now();
     const vw = innerWidth;
     const vh = innerHeight;
@@ -327,7 +330,11 @@
   addEventListener('scroll', () => schedule(350), { passive: true, capture: true });
   addEventListener('resize', () => { mouse = null; schedule(350); }, { passive: true });
   addEventListener('focus', refreshBlocks);
-  document.addEventListener('visibilitychange', () => { if (front()) refreshBlocks(); });
+  document.addEventListener('visibilitychange', () => {
+    if (shown()) refreshBlocks();
+    // Off screen now: the receiver stops placing gaze on this page at once, not after its heartbeat lapses.
+    else if (!document.prerendering) send({ kind: 'view', doc: DOC, geometry: geometry(), hidden: true });
+  });
   if (document.prerendering) document.addEventListener('prerenderingchange', () => schedule(300), { once: true });
   // At most one snapshot per gap for changing pages, with one more after the gap so content that
   // arrives later in it is not missed.
@@ -345,7 +352,7 @@
     }
   }).observe(document.documentElement, { childList: true, subtree: true, characterData: true });
   setInterval(() => {
-    if (front() && !guarded()) send({ kind: 'view', doc: DOC, geometry: geometry() }).then(follow);
+    if (shown() && !guarded()) send({ kind: 'view', doc: DOC, geometry: geometry() }).then(follow);
   }, 5000);
   schedule(600);
 
@@ -443,32 +450,37 @@
     if (message?.signal?.doc === DOC) mark(message.signal);
   });
 
-  // -- the line being read --------------------------------------------------------------------------
+  // -- where the eyes are, and the line being read -----------------------------------------------
 
-  // When chosen in the options: a small marker beside the line the receiver decodes the eyes to be
-  // on, asked for once a second while the page is in front (every 10 s whether it is wanted at all:
-  // storage, where the option lives, is kept from content scripts). Like the dwell bar it is an
-  // element in the page, outside its layout, and ignores the pointer.
+  // When chosen in the options: a ring where the receiver placed the last fixation on this page,
+  // and a marker beside the line it decodes, asked for twice a second while the page is on screen
+  // (every 10 s whether they are wanted at all: storage, where the option lives, is kept from
+  // content scripts). Like the dwell bar they are elements in the page, outside its layout, and
+  // ignore the pointer.
   let marker = null;
+  let ring = null;
+  const calmMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const fresh = item => item && item.doc === DOC && Date.now() - Date.parse(item.t) < 3000;
+
+  function overlay(kind, style) {
+    const element = document.createElement('div');
+    element.dataset.daycube = kind;
+    element.setAttribute('aria-hidden', 'true');
+    Object.assign(element.style, { position: 'absolute', zIndex: '2147483647', pointerEvents: 'none', ...style });
+    return element;
+  }
 
   function place(reading) {
-    const rect = reading && reading.doc === DOC && Date.now() - Date.parse(reading.t) < 3000
-      ? measured.get(reading.block)?.[reading.line]?.rect : null;
+    const rect = fresh(reading) ? measured.get(reading.block)?.[reading.line]?.rect : null;
     if (!rect) {
       marker?.remove();
       marker = null;
       return;
     }
-    if (!marker) {
-      marker = document.createElement('div');
-      marker.dataset.daycube = 'line';
-      marker.setAttribute('aria-hidden', 'true');
-      Object.assign(marker.style, {
-        position: 'absolute', width: '4px', background: '#3b82f6', borderRadius: '2px', zIndex: '2147483647',
-        boxShadow: '0 0 0 1px rgba(255,255,255,.6)', pointerEvents: 'none',
-        transition: matchMedia('(prefers-reduced-motion: reduce)').matches ? '' : 'top .15s ease, opacity .3s',
-      });
-    }
+    marker ??= overlay('line', {
+      width: '4px', background: '#3b82f6', borderRadius: '2px', boxShadow: '0 0 0 1px rgba(255,255,255,.6)',
+      transition: calmMotion() ? '' : 'top .15s ease, opacity .3s',
+    });
     Object.assign(marker.style, {
       left: `${Math.max(0, rect[0] - 12)}px`, top: `${rect[1]}px`, height: `${Math.max(12, rect[3])}px`,
       opacity: `${0.4 + 0.6 * reading.p}`,
@@ -476,17 +488,35 @@
     if (!marker.isConnected) document.documentElement.appendChild(marker);
   }
 
-  async function followLine() {
-    if (!live()) return place(null); // the extension was updated or removed: this copy stops
+  // The fixation is a viewport point with the page's scroll at that moment: page coordinates.
+  function look(point) {
+    if (!fresh(point)) {
+      ring?.remove();
+      ring = null;
+      return;
+    }
+    ring ??= overlay('gaze', {
+      width: '22px', height: '22px', marginLeft: '-11px', marginTop: '-11px', borderRadius: '50%',
+      border: '2px solid rgba(239,68,68,.9)', background: 'rgba(239,68,68,.15)', boxShadow: '0 0 0 1px rgba(255,255,255,.7)',
+      transition: calmMotion() ? '' : 'left .2s ease, top .2s ease',
+    });
+    Object.assign(ring.style, { left: `${point.x + scrollX}px`, top: `${point.y + point.scroll_y}px` });
+    if (!ring.isConnected) document.documentElement.appendChild(ring);
+  }
+
+  async function watchGaze() {
+    if (!live()) { place(null); look(null); return; } // the extension was updated or removed: this copy stops
     let wanted = false;
-    if (front() && !guarded()) {
+    if (shown() && !guarded()) {
       const reply = await send({ kind: 'reading' });
       wanted = Boolean(reply?.show);
       place(reply?.reading);
+      look(reply?.point);
     } else {
       place(null);
+      look(null);
     }
-    setTimeout(followLine, wanted ? 1000 : 10000);
+    setTimeout(watchGaze, wanted ? 500 : 10000);
   }
-  setTimeout(followLine, 1000);
+  setTimeout(watchGaze, 1000);
 })();

@@ -89,7 +89,13 @@ export function gazeLabel(gaze = {}, accuracy = {}) {
 export function readingLabel(reading, decoding) {
   if (reading) return `Line ${reading.line + 1} of ${reading.lines} (${Math.round(reading.p * 100)}%): ${reading.text.slice(0, 60)}`;
   if (!decoding?.fixations) return 'No line now: no gaze on pages yet';
+  // Where the rest went, largest first: the reason no line is shown.
+  const missed = [
+    [decoding.outside, 'outside the browser page'], [decoding.no_page, 'with no browser page on screen'],
+    [decoding.stale, 'while the page was not reporting'], [decoding.other_monitor, 'with the page on another monitor'],
+  ].filter(([n]) => n > 0).sort((a, b) => b[0] - a[0]).map(([n, why]) => `${n} ${why}`);
   const page = decoding.page;
   const text = page ? ` ${page.host}: ${page.with_lines} of ${page.blocks} text blocks have lines.` : '';
-  return `No line now. Last ${decoding.fixations} fixations: ${decoding.on_page} on a page, ${decoding.on_line} on a line.${text}`;
+  const rest = missed.length ? ` (${missed.join(', ')})` : '';
+  return `No line now. Last ${decoding.fixations} fixations: ${decoding.on_page} on a page${rest}, ${decoding.on_line} on a line.${text}`;
 }

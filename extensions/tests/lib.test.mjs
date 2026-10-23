@@ -69,4 +69,6 @@ test('reading label names the line, or why there is none', () => {
   assert.equal(readingLabel(null, { fixations: 0 }), 'No line now: no gaze on pages yet');
   assert.equal(readingLabel(null, { fixations: 300, on_page: 280, on_line: 0, page: { host: 'learn.uwaterloo.ca', blocks: 14, with_lines: 0 } }),
     'No line now. Last 300 fixations: 280 on a page, 0 on a line. learn.uwaterloo.ca: 0 of 14 text blocks have lines.');
+  assert.equal(readingLabel(null, { fixations: 95, on_page: 7, on_line: 4, outside: 30, no_page: 58, stale: 0, page: null }),
+    'No line now. Last 95 fixations: 7 on a page (58 with no browser page on screen, 30 outside the browser page), 4 on a line.');
 });

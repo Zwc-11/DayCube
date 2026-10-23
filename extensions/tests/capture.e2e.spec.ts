@@ -261,6 +261,24 @@ test('text inside web components is recorded with its lines, and links in them c
   expect(click.x).not.toBeNull();
 });
 
+test('a page beside a focused window keeps reporting what is on screen', async () => {
+  const page = await open(`${SITE}/article`);
+  const tab = await worker.evaluate(async url => (await chrome.tabs.query({ url }))[0], `${SITE}/article`);
+  // Another window takes focus, as a terminal or a second browser window beside this one would.
+  const other = await worker.evaluate(url => chrome.windows.create({ url, focused: true, width: 600, height: 500 }).then(w => w.id), `${SITE}/second`);
+  await worker.evaluate(id => chrome.windows.update(id, { focused: false }), tab.windowId); // headless keeps both focused otherwise
+  expect(await until(() => worker.evaluate(id => chrome.windows.get(id).then(w => w.focused), tab.windowId), focused => !focused),
+    'the article\'s window lost focus').toBe(false);
+  const since = Date.now();
+  await page.evaluate(() => scrollTo(0, 600)); // the reader scrolls the page beside it
+  const moved = await until(() => lines('blocks.jsonl').find(b => b.url.endsWith('/article') && b.geometry.scroll_y >= 500
+    && Date.parse(b.t) >= since - 1000), Boolean);
+  expect(moved, 'the unfocused window\'s page reported its scrolled text').toBeTruthy();
+  expect(moved.window).toBe(tab.windowId);
+  await worker.evaluate(id => chrome.windows.remove(id), other);
+  await page.evaluate(() => scrollTo(0, 0));
+});
+
 test('records wait in the queue while the receiver refuses them, and pausing stops recording', async () => {
   await settings({ token: 'not-the-token' });
   const page = await open(`${SITE}/article`);
