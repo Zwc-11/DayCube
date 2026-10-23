@@ -196,19 +196,19 @@ def test_repeated_screens_index_once(vault: Vault) -> None:
 
 
 def test_compacted_day_reads_and_indexes_identically(vault: Vault) -> None:
-    from ingest.index.build import build_index
+    from ingest.store import LifeStore
 
     path = vault.day_path(DAY)
     for _ in range(40):  # make the log big enough to compact
         vault.append_events(DAY, [dict(copy.deepcopy(vault.events(DAY)[0]), id=f"ev_bulk_{_}")])
     payload, events = vault.day_payload(DAY), vault.events(DAY)
-    units = build_index(vault, DAY)["units"]
+    units = LifeStore(vault).update(DAY)["units"]
     report = vault.compact_day(DAY)
     assert "2026-10-20/events.jsonl" in report and not (path / "events.jsonl").exists()
     for reader in (vault, Vault(vault.root)):
         assert reader.day_payload(DAY) == payload and reader.events(DAY) == events
         assert reader.validate(DAY)["valid"]
-        assert build_index(reader, DAY)["units"] == units
+        assert LifeStore(reader).update(DAY)["units"] == units
     vault.append_events(DAY, [dict(copy.deepcopy(events[0]), id="ev_after_compact")])
     assert (path / "events.jsonl").exists() and not (path / "events.jsonl.zst").exists()
     assert len(Vault(vault.root).events(DAY)) == len(events) + 1

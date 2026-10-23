@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 from ingest.contracts import ContractError, validate
-from ingest.index.build import build_index
+from ingest.store import LifeStore
 from ingest.time import overlaps
 from ingest.vault import EventSeries, Vault, atomic_text, read_json, read_lines
 
@@ -117,7 +117,8 @@ def test_contract_errors_locate_nested_values() -> None:
 
 
 def test_index_stores_moment_offsets(vault: Vault, tmp_path: Path) -> None:
-    build_index(vault, DAY)
-    with closing(sqlite3.connect(vault.day_path(DAY) / "index.sqlite")) as db:
+    store = LifeStore(vault)
+    store.update(DAY)
+    with closing(sqlite3.connect(store.path)) as db:
         rows = db.execute("SELECT evidence_id, offset_s FROM units WHERE moment_id IS NOT NULL").fetchall()
     assert rows and all(offset is not None and offset >= 0 for _, offset in rows)

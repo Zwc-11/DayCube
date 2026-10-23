@@ -6,7 +6,7 @@ dependencies = ["daycube-ingest"]
 
 [project.optional-dependencies]
 ai = ["anthropic>=0.72,<1"]
-vector = ["fastembed>=0.7,<1", "sqlite-vec>=0.1.6,<1"]
+vector = ["fastembed>=0.7,<1"]
 modal = ["modal>=1,<2"]
 skeleton = ["scikit-learn>=1.6,<2", "numpy>=2,<3"]
 moments = ["pillow>=11,<13", "trimesh>=4,<5", "numpy>=2,<3"]
