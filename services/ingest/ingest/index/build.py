@@ -1,15 +1,17 @@
+"""What gets searched: one unit per event, transcript segment, on-screen text run and visit.
+
+The units are written to the vault's database by ``ingest.store``; this module only decides what
+they are, from a single parse of the day.
+"""
+
 from __future__ import annotations
 
-import os
-import sqlite3
-import tempfile
 from collections.abc import Sequence
-from contextlib import closing
 from datetime import timedelta
 from pathlib import Path
 
 from ..time import instant
-from ..vault import Record, Vault, read_json, stored
+from ..vault import Record, Vault, stored
 from .timeline import EventTimeline
 
 UNIT_COLUMNS = (
@@ -30,23 +32,10 @@ UNIT_COLUMNS = (
     "moment_id",
     "offset_s",
 )
-INSERT_UNIT = f"INSERT INTO units({','.join(UNIT_COLUMNS)}) VALUES ({','.join('?' for _ in UNIT_COLUMNS)})"
-
-DDL = """
-CREATE TABLE units (
-  id INTEGER PRIMARY KEY, day TEXT NOT NULL, t TEXT NOT NULL, t_end TEXT, type TEXT NOT NULL,
-  text TEXT NOT NULL, place TEXT, floor INTEGER, x REAL, y REAL,
-  evidence_id TEXT NOT NULL UNIQUE, source_ref TEXT NOT NULL, attention REAL,
-  fidelity TEXT NOT NULL, confidence REAL NOT NULL, moment_id TEXT, offset_s REAL
-);
-CREATE VIRTUAL TABLE units_fts USING fts5(text, content='units', content_rowid='id');
-CREATE TABLE speakers (moment_id TEXT, diar_label TEXT, person_id TEXT, confirmed INTEGER);
-CREATE TABLE deletions (t0 TEXT, t1 TEXT, reason TEXT, applied_at TEXT);
-"""
 
 
 def source_stamp(path: Path) -> dict[str, list[int]]:
-    """Mtime, size and inode of every file the index is built from; a mismatch forces a rebuild."""
+    """Mtime, size and inode of every file a day's units come from; a mismatch forces a rebuild."""
     files = [path / "day.json", path / "events.jsonl", path / "screens/ocr.jsonl"]
     files += sorted((path / "moments").glob("*/meta.json"))
     files += sorted((path / "moments").glob("*/transcript.json"))
@@ -199,36 +188,3 @@ def collect_units(vault: Vault, day: str) -> list[Record]:
             }
         )
     return units
-
-
-def build_index(vault: Vault, day: str) -> Record:
-    with vault.lock:
-        vault.validate(day)
-        path = vault.day_path(day)
-        units = collect_units(vault, day)
-        descriptor, name = tempfile.mkstemp(prefix=".index-", suffix=".sqlite", dir=path)
-        os.close(descriptor)
-        temporary = Path(name)
-        try:
-            with closing(sqlite3.connect(temporary)) as db, db:
-                db.executescript(DDL)
-                db.executemany(INSERT_UNIT, (tuple(unit[column] for column in UNIT_COLUMNS) for unit in units))
-                db.execute("INSERT INTO units_fts(units_fts) VALUES ('rebuild')")
-            os.replace(temporary, path / "index.sqlite")
-            vault.write_json(path / "index.stamp.json", source_stamp(path))
-        finally:
-            temporary.unlink(missing_ok=True)
-        return {"date": day, "units": len(units), "engine": "sqlite-fts5"}
-
-
-def ensure_index(vault: Vault, day: str) -> None:
-    """Rebuild the index if any input changed. A repeat call with unchanged inputs costs stats."""
-    path = vault.day_path(day)
-    key = (vault.snapshot_key(day), vault.stamp(vault.root / "places.json"), vault.stamp(path / "index.sqlite"))
-    if vault.fresh_index.get(day) == key:
-        return
-    stamp = path / "index.stamp.json"
-    if not (path / "index.sqlite").exists() or not stamp.exists() or read_json(stamp) != source_stamp(path):
-        build_index(vault, day)
-        key = (key[0], key[1], vault.stamp(path / "index.sqlite"))
-    vault.fresh_index[day] = key

@@ -14,7 +14,7 @@ for actions. Do not paste external provider keys there.
 | GET | `/day/{date}/graph` | Evidence graph |
 | GET | `/moment/{id}?date=YYYY-MM-DD` | Metadata, scene availability and transcript |
 | GET | `/vault/{date}/{asset}` | Allowlisted media only, with path confinement |
-| POST | `/ask` | `{date, question}` → extractive answer, citations, location |
+| POST | `/ask` | `{date?, question}` → extractive answer, citations, location; no `date` searches every day |
 | POST | `/ask?stream=1` | SSE `location`, `answer`, `done` events |
 | POST | `/events` | `{date, events:[canonical Event]}` → accepted count |
 | POST | `/ingest/{date}` | `{steps:["index"]}` → process-local job id |
@@ -35,9 +35,13 @@ Moment lookup requires a date so two days can safely both contain `mo_001`.
 simplified so the interpolated position at every fix time is within 10 cm of the fix.
 `/day/{date}/skeleton` still returns every fix with every field.
 
-The starter's `/ask` is lexical retrieval with verbatim extraction, not the full rewrite/vector/
-LLM/verification pipeline. An unknown question returns empty `sentences` and `evidence`, null
-location fields and an explanatory message. Unknown x/y/floor values remain null.
+`/ask` searches the vault database (`vault/daycube.sqlite`, see [search.md](search.md)) with
+keywords and, when the vector extra is installed, meaning, merged by rank. It answers with the
+best record verbatim; query rewriting, generated answers and verification are still to come.
+Each evidence record carries its `day` and `matched` (`keyword`, `meaning` or both), and the
+answer carries the `day` of its best record. `/health` reports `vector_search`. An unknown
+question returns empty `sentences` and `evidence`, null location fields and an explanatory
+message. Unknown x/y/floor values remain null.
 `t` in ask results and `tod` on event pins are seconds since local midnight; `iso_time` is the
 unambiguous source instant. API metadata uses snake_case; viewer layer shapes use camelCase.
 

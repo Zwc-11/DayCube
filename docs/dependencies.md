@@ -8,11 +8,11 @@ It does not install GPU model weights or create external accounts.
 | --- | --- | --- |
 | Local API | FastAPI, Uvicorn, Pydantic, pydantic-settings, HTTPX | Installed; API tested |
 | Contracts | JSON Schema, jsonschema, generated Pydantic/TS, Ajv, Zod | Installed; cross-language checks pass |
-| Search | Python sqlite3 + FTS5 | Available locally; real indexing/search |
+| Search | Python sqlite3 + FTS5, NumPy | One vault database across days ([search.md](search.md)) |
 | Viewer | Preserved React 18, Vite 6, Three, R3F, drei | Separate frontend prototype |
 | Development | uv, pytest, Ruff, datamodel-code-generator, Playwright | Installed; Chromium smoke tests supported |
 | AI adapter | Anthropic SDK | Optional `ai` extra; requires API key and model id |
-| Semantic search | FastEmbed, sqlite-vec | Optional `vector` extra; full query integration is planned |
+| Semantic search | FastEmbed (optional `vector` extra), NumPy | bge-small embeddings stored as int8 in the vault database; searched in two passes in NumPy ([search.md](search.md)) |
 | Skeleton inference | NumPy, scikit-learn | Optional `skeleton` extra; GPX parsing already uses stdlib |
 | Local scene helpers | Pillow, trimesh, NumPy | Optional `moments` extra; GLB generation still planned |
 | Cloud jobs | Modal SDK | Optional `modal` extra; separate account; no jobs deployed |

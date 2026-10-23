@@ -20,7 +20,8 @@ from .ask.service import ask
 from .config import Settings
 from .contracts import ContractError
 from .generated.event import Event
-from .index.build import build_index
+from .index.embed import Embedder, default_embedder
+from .store import LifeStore
 from .vault import Record, Vault, read_json
 
 MEDIA_SUFFIXES = frozenset({".jpg", ".jpeg", ".png", ".svg", ".mp4", ".wav", ".glb", ".ply", ".spz"})
@@ -33,7 +34,7 @@ class RequestModel(BaseModel):
 
 
 class AskRequest(RequestModel):
-    date: str
+    date: str | None = None  # None: search every day in the vault
     question: str = Field(min_length=1, max_length=2000)
 
 
@@ -62,9 +63,11 @@ def sse(event: str, value: Record) -> str:
     return f"event: {event}\ndata: {json.dumps(value)}\n\n"
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(settings: Settings | None = None, *, embedder: Embedder | None = None) -> FastAPI:
+    """``embedder`` replaces the configured model (tests pass a deterministic one)."""
     settings = settings or Settings()
     vault = Vault(settings.vault_root)
+    store = LifeStore(vault, embedder or default_embedder(settings.vector_search, settings.embedding_model))
     jobs: dict[str, Record] = {}
     bearer = HTTPBearer(auto_error=False)
 
@@ -80,6 +83,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         description="Local vault and extractive search. Synthetic fixture data is labeled illustrative.",
     )
     app.state.vault = vault
+    app.state.store = store
     origins = settings.cors_origins.copy()
     if settings.extension_id:
         origins.append(f"chrome-extension://{settings.extension_id}")
@@ -116,7 +120,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "vault": True,
                 "fts_search": True,
                 "ask_mode": "extractive",
-                "vector_search": False,
+                "vector_search": store.vectors,
                 "capture": False,
                 "gpu_pipeline": False,
                 "delete_hours": False,
@@ -177,7 +181,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/ask", dependencies=[Depends(authorize)], response_model=None)
     def answer(body: AskRequest, stream: bool = False) -> Record | StreamingResponse:
-        result = ask(vault, body.date, body.question.strip())
+        result = ask(store, body.date, body.question.strip())
         if not stream:
             return result
 
@@ -201,8 +205,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def run_job(job_id: str, date: str) -> None:
         jobs[job_id].update(status="running", stage="index", pct=10)
         try:
-            result = build_index(vault, date)
-            jobs[job_id].update(status="complete", pct=100, result=result, message="Local FTS5 index rebuilt")
+            result = store.update(date)
+            jobs[job_id].update(status="complete", pct=100, result=result, message="Vault index updated")
         except Exception:
             jobs[job_id].update(status="failed", message="Index build failed; run daycube validate for diagnostics")
 

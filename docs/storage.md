@@ -52,8 +52,8 @@ Excluding moments:
 | With this change: finished days compacted, repeated OCR collapsed | 38.7 MB | 14.1 GB |
 | Plus int8 embeddings and unchanged-screen thumbnails skipped | 17.1 MB | 6.3 GB |
 
-The last row needs two producers the repo does not have yet: an embedding index and screenshot
-capture. Moments dominate whenever they exist. Keep the source video and treat everything derived
+The last row's int8 embeddings now exist (the vault database, [search.md](search.md)); unchanged-
+screen thumbnails still need screenshot capture. Moments dominate whenever they exist. Keep the source video and treat everything derived
 from it as cache.
 
 ## What changed in the vault
