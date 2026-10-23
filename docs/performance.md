@@ -1,8 +1,8 @@
 # Performance measurements
 
-The [codebase efficiency review](efficiency-review.md#changes-measured-in-this-pass) records
-the newer scoped-search benchmarks, retained-cache budget, streaming checks and remaining
-limits across the repository. Earlier viewer, service, storage and gaze measurements follow.
+See the [search measurements](efficiency-review.md#search-measurements) for scoped vector
+queries, cache retention and streaming checks. Earlier viewer, service, storage and gaze
+measurements follow.
 
 The viewer uses demand-driven rendering. A paused diorama should finish camera easing and stop
 drawing. OrbitControls invalidates frames while orbiting/zooming; playback requests animation

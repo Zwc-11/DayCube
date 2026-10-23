@@ -109,14 +109,11 @@ These are camera/CPU workload improvements, not evidence of accelerator throughp
 
 ## Codebase-wide follow-up
 
-The [codebase efficiency review](efficiency-review.md) covers every source area at the architecture
-and hot-path level. It adds scoped, size-bounded vector caching, grouped evidence enrichment,
-incremental validated API streaming and a shared Windows/Linux check command. It retains named
-synthetic before/after workloads with unchanged ranked-output checks and records the unmeasured
-areas. This extends the standard across the project; it is not a whole-repository line audit or
-proof of equal accelerator efficiency.
+The [codebase review](efficiency-review.md) examines module boundaries and frequently executed
+paths across the repository. The resulting changes are scoped vector caching, per-day evidence
+enrichment, incremental API streaming and a common Windows/Linux check command. The review
+includes before/after search measurements, output checks and remaining profiling work.
 
-The [engineering standard](engineering.md) defines the ongoing expectations and remaining gaps.
-The earlier viewer fixes and idle measurements are documented separately in
-[performance notes](performance.md). Neither pass establishes general performance parity
-with DeepInfer or finishes the remaining live-mode and capture work.
+Follow the [engineering guide](engineering.md) for further changes. Earlier viewer fixes and
+idle measurements are in [performance notes](performance.md). These reviews do not establish
+performance parity with DeepInfer; live-mode and capture acceptance work remains open.
