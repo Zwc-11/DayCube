@@ -347,13 +347,19 @@ function guard(message, sender) {
 }
 
 // Whether the page should show where the eyes are and the line being read (the ``showLine``
-// option), the last fixation the receiver placed, and the line its decoder has the eyes on.
-async function readingFor(tab) {
+// option); the live gaze point on the page (the receiver streams it from the tracker while it is
+// asked for), the line its decoder has the eyes on, and the last fixation placed on the page.
+async function readingFor(tab, doc) {
   const s = await settings();
   const show = Boolean(s.showLine) && recording(s) && !tab.incognito && allowed(tab.url, s.exclusions);
-  if (!show || !tab.active || guarded(tab.id)) return { show, reading: null, point: null };
-  const status = await (await fetch(`${RECEIVER}/status`)).json();
-  return { show, reading: status.reading ?? null, point: status.gaze_point ?? null };
+  const none = { show, reading: null, point: null, fixation: null };
+  if (!show || !tab.active || guarded(tab.id) || typeof doc !== 'string') return none;
+  const response = await fetch(`${RECEIVER}/live?doc=${encodeURIComponent(doc)}`, {
+    headers: { Authorization: `Bearer ${s.token}` },
+  });
+  if (!response.ok) return none;
+  const live = await response.json();
+  return { show, reading: live.reading ?? null, point: live.point ?? null, fixation: live.fixation ?? null };
 }
 
 async function fromPage(message, tab) {
@@ -406,7 +412,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
   }
   if (sender.frameId !== 0) return false;
   if (message?.kind === 'reading') {
-    readingFor(sender.tab).then(respond, () => respond({ show: false, reading: null, point: null }));
+    readingFor(sender.tab, message.doc).then(respond, () => respond({ show: false, reading: null, point: null, fixation: null }));
     return true;
   }
   // The reply tells the page whether its record was taken, and the text epoch (see dropped()).

@@ -125,7 +125,7 @@ def test_a_stare_at_a_paragraph_becomes_a_dwell_signal_and_hook(
         snapshot = record("blocks", -12, doc="doc-1", geometry=GEOMETRY, blocks=blocks, **TAB)
         assert client.post("/events", json=[snapshot], headers=auth).json()["accepted"] == 1
         body = client.post("/gaze", json={"state": state, "fixations": fixations}, headers=auth).json()
-        assert body == {"accepted": 18, "duplicates": 0, "stale": 0}
+        assert body == {"accepted": 18, "duplicates": 0, "stale": 0, "live": False}
         status = client.get("/status").json()["gaze"]
         assert status["tracking"] is True and status["error_px"] == 120.0
         signals = client.post("/events", json=[], headers=auth).json()["signals"]
@@ -333,3 +333,25 @@ def test_the_doctor_judges_capture_from_what_it_recorded(vault: Vault, monkeypat
     }
     results = {name: verdict for verdict, name, _ in doctor.checks(old, vault.root, zone, now, None)}
     assert results["receiver code"] == doctor.FAIL and results["tracker code"] == doctor.WARN
+
+
+def test_the_live_gaze_point_streams_only_while_the_ring_is_shown(vault: Vault, auth: dict[str, str]) -> None:
+    """The extension asks /live for its page; the next /gaze reply tells the tracker to stream,
+    and each live point comes back in that page's viewport px, corrected like fixations."""
+    state = {"tracking": True, "calibrated": True, "error_px": 30.0, "monitor": [1920, 1080]}
+    page = {**record("view", doc="doc-1", geometry=GEOMETRY, **TAB)}
+    with TestClient(create_capture_app(settings(vault), receive=True)) as client:
+        assert client.post("/events", json=[page], headers=auth).json()["accepted"] == 1
+        assert client.post("/gaze", json={"state": state, "fixations": []}, headers=auth).json()["live"] is False
+        assert client.get("/live", params={"doc": "doc-1"}).status_code == 401
+        view = client.get("/live", params={"doc": "doc-1"}, headers=auth).json()
+        assert view == {"point": None, "reading": None, "fixation": None}  # nothing streamed yet
+        assert client.post("/gaze", json={"state": state, "fixations": []}, headers=auth).json()["live"] is True
+        point = {"t": stamp(), "x": 500 / 1920, "y": (100 + 260) / 1080}
+        assert client.post("/gaze/live", json=point, headers=auth).json() == {"ok": True}
+        view = client.get("/live", params={"doc": "doc-1"}, headers=auth).json()
+        assert (view["point"]["x"], view["point"]["y"], view["point"]["inside"]) == (500.0, 260.0, True)
+        assert client.get("/live", params={"doc": "another-doc"}, headers=auth).json()["point"] is None
+        client.post("/pause", headers=auth)
+        assert client.post("/gaze/live", json=point, headers=auth).status_code == 409
+    assert not any(path.name == "live.jsonl" for path in (vault.root / "capture").rglob("*"))  # never stored

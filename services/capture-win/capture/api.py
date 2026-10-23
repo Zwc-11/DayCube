@@ -27,6 +27,7 @@ import secrets
 import subprocess
 import sys
 import threading
+import time
 from collections import OrderedDict
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -41,7 +42,7 @@ from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
 from .attention import Attention
 from .reading import LineBox
-from .records import Blocks, BrowserRecord, GazeBatch, View
+from .records import Blocks, BrowserRecord, GazeBatch, LivePoint, View
 
 log = logging.getLogger("capture")
 
@@ -55,6 +56,7 @@ SEEN_IDS = 200_000
 WARM_TEXT_BYTES = 64 << 20  # block texts are reloaded from logs up to this size after a restart
 # Fixations arrive about a second after they end, so a run is closed only after this extra wait.
 GAZE_LATENCY = timedelta(seconds=3)
+LIVE_WATCH_S = 10.0  # the tracker streams live gaze while something asked for it this recently
 GAZE_SILENT = timedelta(seconds=30)  # the tracker reports every second while it runs
 HEALTH_EVERY = timedelta(minutes=10)
 
@@ -82,6 +84,8 @@ class Receiver:
         self.on_dwell = on_dwell
         self.hook: subprocess.Popen | None = None
         self.health_at: datetime | None = None
+        self.live: tuple[float, float, float] | None = None  # (epoch t, x, y): the gaze point now, never stored
+        self.watched_at = -1e9  # when the extension last asked for the live point
         self._warm_texts()
 
     def _warm_texts(self) -> None:
@@ -291,7 +295,35 @@ class Receiver:
             self._remember_ids(ids)
             if accepted:
                 self.last["gaze"] = now.isoformat()
-        return {"accepted": accepted, "duplicates": duplicates, "stale": stale}
+        # "live": the extension is showing the gaze ring, so the tracker streams the point now.
+        live = time.time() - self.watched_at < LIVE_WATCH_S
+        return {"accepted": accepted, "duplicates": duplicates, "stale": stale, "live": live}
+
+    def live_point(self, point: LivePoint) -> None:
+        if self.paused:
+            raise HTTPException(409, "Receiver is paused")
+        self.live = (point.t.timestamp(), point.x, point.y)
+
+    def live_view(self, doc: str) -> dict:
+        """For the gaze ring and line marker on page ``doc``: the live gaze point on it (viewport
+        CSS px, at most 2 s old), the line being read, and the last fixation placed (for a tracker
+        that does not stream live points)."""
+        now = time.time()
+        self.watched_at = now
+        with self.lock:
+            live, point = self.live, None
+            if live is not None and now - live[0] <= 2.0 and not self.paused:
+                point = self.attention.live_point(doc, *live)
+                if point is not None:
+                    point["t"] = datetime.fromtimestamp(live[0], UTC).isoformat()
+            reading, fixation = self.attention.reading, self.attention.gaze_point
+
+        def fresh(item: dict | None) -> dict | None:
+            if not item or item.get("doc", doc) != doc:
+                return None
+            return item if now - datetime.fromisoformat(item["t"]).timestamp() <= 10 else None
+
+        return {"point": point, "reading": fresh(reading), "fixation": fresh(fixation)}
 
 
 def _feed(process: subprocess.Popen, payload: bytes) -> None:
@@ -364,5 +396,14 @@ def create_capture_app(
     @app.post("/gaze", dependencies=[Depends(authorize)])
     def gaze(batch: GazeBatch) -> dict:
         return receiver.gaze_batch(batch)
+
+    @app.post("/gaze/live", dependencies=[Depends(authorize)])
+    def gaze_live(point: LivePoint) -> dict:
+        receiver.live_point(point)
+        return {"ok": True}
+
+    @app.get("/live", dependencies=[Depends(authorize)])
+    def live(doc: str) -> dict:
+        return receiver.live_view(doc)
 
     return app

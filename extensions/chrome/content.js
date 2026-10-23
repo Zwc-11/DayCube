@@ -452,34 +452,37 @@
 
   // -- where the eyes are, and the line being read -----------------------------------------------
 
-  // When chosen in the options: a ring where the receiver placed the last fixation on this page,
-  // and a marker beside the line it decodes, asked for twice a second while the page is on screen
-  // (every 10 s whether they are wanted at all: storage, where the option lives, is kept from
-  // content scripts). Like the dwell bar they are elements in the page, outside its layout, and
-  // ignore the pointer.
+  // When chosen in the options: a ring where the tracker has the eyes now, and a marker beside the
+  // line the receiver decodes. The ring follows the live gaze point, which the tracker streams ten
+  // times a second while a page asks for it (about 0.3 s behind the eyes: the smoother's lag), and
+  // glides between updates; it fades while no point arrives, and sits dashed at the window's edge
+  // when the gaze is off the page. Pages ask ten times a second while on screen (every 10 s whether
+  // it is wanted at all: storage, where the option lives, is kept from content scripts). Like the
+  // dwell bar they are elements in the page, outside its layout, and ignore the pointer.
   let marker = null;
   let ring = null;
+  let ringAt = 0; // when the ring last moved (Date.now())
   const calmMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const fresh = item => item && item.doc === DOC && Date.now() - Date.parse(item.t) < 3000;
+  const age = item => (item ? Date.now() - Date.parse(item.t) : Infinity);
 
   function overlay(kind, style) {
     const element = document.createElement('div');
     element.dataset.daycube = kind;
     element.setAttribute('aria-hidden', 'true');
-    Object.assign(element.style, { position: 'absolute', zIndex: '2147483647', pointerEvents: 'none', ...style });
+    Object.assign(element.style, { zIndex: '2147483647', pointerEvents: 'none', ...style });
     return element;
   }
 
   function place(reading) {
-    const rect = fresh(reading) ? measured.get(reading.block)?.[reading.line]?.rect : null;
+    const rect = reading && reading.doc === DOC && age(reading) < 4000 ? measured.get(reading.block)?.[reading.line]?.rect : null;
     if (!rect) {
       marker?.remove();
       marker = null;
       return;
     }
     marker ??= overlay('line', {
-      width: '4px', background: '#3b82f6', borderRadius: '2px', boxShadow: '0 0 0 1px rgba(255,255,255,.6)',
-      transition: calmMotion() ? '' : 'top .15s ease, opacity .3s',
+      position: 'absolute', width: '4px', background: '#3b82f6', borderRadius: '2px',
+      boxShadow: '0 0 0 1px rgba(255,255,255,.6)', transition: calmMotion() ? '' : 'top .15s ease, opacity .3s',
     });
     Object.assign(marker.style, {
       left: `${Math.max(0, rect[0] - 12)}px`, top: `${rect[1]}px`, height: `${Math.max(12, rect[3])}px`,
@@ -488,35 +491,55 @@
     if (!marker.isConnected) document.documentElement.appendChild(marker);
   }
 
-  // The fixation is a viewport point with the page's scroll at that moment: page coordinates.
-  function look(point) {
-    if (!fresh(point)) {
-      ring?.remove();
-      ring = null;
-      return;
+  // ``point``: live, in viewport px. ``fixation``: the last fixation placed on this page, for a tracker
+  // that does not stream (viewport px with the page's scroll then).
+  function look(point, fixation) {
+    let x = null;
+    let y = null;
+    let inside = true;
+    if (point && age(point) < 2000) {
+      ({ x, y, inside } = point);
+    } else if (fixation && fixation.doc === DOC && age(fixation) < 4000) {
+      x = fixation.x;
+      y = fixation.y + fixation.scroll_y - scrollY;
     }
-    ring ??= overlay('gaze', {
-      width: '22px', height: '22px', marginLeft: '-11px', marginTop: '-11px', borderRadius: '50%',
-      border: '2px solid rgba(239,68,68,.9)', background: 'rgba(239,68,68,.15)', boxShadow: '0 0 0 1px rgba(255,255,255,.7)',
-      transition: calmMotion() ? '' : 'left .2s ease, top .2s ease',
-    });
-    Object.assign(ring.style, { left: `${point.x + scrollX}px`, top: `${point.y + point.scroll_y}px` });
-    if (!ring.isConnected) document.documentElement.appendChild(ring);
+    if (x !== null) {
+      ring ??= overlay('gaze', {
+        position: 'fixed', width: '24px', height: '24px', marginLeft: '-12px', marginTop: '-12px', borderRadius: '50%',
+        border: '2px solid rgba(239,68,68,.9)', background: 'rgba(239,68,68,.15)', boxShadow: '0 0 0 1px rgba(255,255,255,.7)',
+        transition: calmMotion() ? 'opacity .3s' : 'left .12s linear, top .12s linear, opacity .3s',
+      });
+      Object.assign(ring.style, {
+        left: `${Math.min(Math.max(x, 0), innerWidth)}px`, top: `${Math.min(Math.max(y, 0), innerHeight)}px`,
+        borderStyle: inside ? 'solid' : 'dashed', opacity: '1',
+      });
+      if (!ring.isConnected) document.documentElement.appendChild(ring);
+      ringAt = Date.now();
+    } else if (ring) {
+      // No point for a moment (a blink, the face lost): fade, and go after a few seconds.
+      const quiet = Date.now() - ringAt;
+      if (quiet > 4000) {
+        ring.remove();
+        ring = null;
+      } else if (quiet > 600) {
+        ring.style.opacity = '0.35';
+      }
+    }
   }
 
   async function watchGaze() {
-    if (!live()) { place(null); look(null); return; } // the extension was updated or removed: this copy stops
+    if (!live()) { place(null); look(null, null); return; } // the extension was updated or removed: this copy stops
     let wanted = false;
     if (shown() && !guarded()) {
-      const reply = await send({ kind: 'reading' });
+      const reply = await send({ kind: 'reading', doc: DOC });
       wanted = Boolean(reply?.show);
       place(reply?.reading);
-      look(reply?.point);
+      look(reply?.point, reply?.fixation);
     } else {
       place(null);
-      look(null);
+      look(null, null);
     }
-    setTimeout(watchGaze, wanted ? 500 : 10000);
+    setTimeout(watchGaze, wanted ? 100 : 10000);
   }
   setTimeout(watchGaze, 1000);
 })();

@@ -369,6 +369,23 @@ class Attention:
             return None, OTHER_MONITOR
         return best, ON_PAGE if rank[0] else OUTSIDE
 
+    def live_point(self, doc: str, t: float, fx: float, fy: float) -> dict | None:
+        """A live gaze point (monitor fractions, corrected by clicks) on the page ``doc`` shows,
+        in its viewport's CSS px, with whether it falls inside the viewport; None when that page
+        is not on screen on the tracker's monitor."""
+        monitor = self.monitor
+        front = next((f for f in self.fronts.values() if f.doc == doc), None)
+        if front is None or monitor is None:
+            return None
+        g = front.geometry
+        if not g.primary or abs(monitor[0] / monitor[1] - g.screen_w / g.screen_h) > 0.02:
+            return None
+        dx, dy = self.anchors.offset(fx, fy, t)
+        x = ((fx - dx) * g.screen_w - g.vx) / g.scale
+        y = ((fy - dy) * g.screen_h - g.vy) / g.scale
+        inside = 0 <= x <= g.inner_w and 0 <= y <= g.inner_h
+        return {"x": round(x, 1), "y": round(y, 1), "inside": inside}
+
     def _likelihoods(self, front: Front, x: float, y: float, now: float) -> dict[str, float]:
         g = front.geometry
         sigma = self.error_px(now) / RAYLEIGH_MEDIAN * (g.screen_w / self.monitor[0]) / g.scale  # monitor known

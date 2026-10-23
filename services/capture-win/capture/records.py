@@ -188,6 +188,14 @@ class GazeState(Strict):
     noise_px: float | None = Field(default=None, ge=0)  # scatter of the smoothed gaze, monitor pixels
 
 
+class LivePoint(Strict):
+    """The tracker's smoothed gaze point now, for the extension's gaze ring: shown, never stored."""
+
+    t: AwareDatetime
+    x: float = Field(ge=-0.1, le=1.1)  # fractions of the monitor
+    y: float = Field(ge=-0.1, le=1.1)
+
+
 class GazeBatch(Strict):
     state: GazeState
     fixations: list[Fixation] = Field(default_factory=list, max_length=1000)

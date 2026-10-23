@@ -51,13 +51,20 @@ class Receiver:
     answer: str = "ok"
     fixations: list = field(default_factory=list)
     states: list = field(default_factory=list)
+    live: bool = False
+    points: list = field(default_factory=list)
+    sent: list = field(default_factory=list)  # how many fixations each report carried
 
     def add(self, fixation: object) -> None:
         self.fixations.append(fixation)
 
     def send(self, state: dict) -> str:
         self.states.append(state)
+        self.sent.append(len(self.fixations))
         return self.answer
+
+    def send_live(self, t: float, x: float, y: float) -> None:
+        self.points.append((t, x, y))
 
 
 @dataclass
@@ -247,3 +254,33 @@ def test_fps_and_pacing_do_not_follow_wall_clock_corrections() -> None:
     t.clock = lambda: clock() - 100.0
     run_for(t, clock, 2)
     assert 29 <= t.state()["fps"] <= 30.5
+
+
+def test_live_points_stream_at_ten_a_second_only_while_asked() -> None:
+    t, scene, receiver, *_, clock, log = tracker()
+    run_for(t, clock, 3)  # the camera is on after the receiver's first confirmation
+    assert receiver.points == [] and receiver.fixations
+    receiver.live = True
+    start = clock.now
+    run_for(t, clock, 2)
+    assert 18 <= len(receiver.points) <= 22
+    assert all(abs(x - 0.5) < 1e-6 and abs(y - 0.5) < 1e-6 for _, x, y in receiver.points)
+    assert all(b - a >= 0.089 for (a, *_), (b, *_) in zip(receiver.points, receiver.points[1:], strict=False))
+    assert receiver.points[0][0] >= start
+
+
+def test_a_completed_fixation_is_reported_within_a_quarter_second() -> None:
+    t, scene, receiver, *_, clock, log = tracker()
+    run_for(t, clock, 3.2)  # camera on, a long look split into fixations of a second
+    assert receiver.fixations
+    reported = len(receiver.states)
+    before = len(receiver.fixations)
+    scene.point = (300.0, 200.0)  # a saccade: the fixation under way ends now
+    ended = clock.now
+    while len(receiver.fixations) == before:
+        t.step()
+    completed = clock.now
+    while receiver.sent[-1] < len(receiver.fixations):
+        t.step()
+    assert clock.now - completed <= 0.3 and len(receiver.states) > reported
+    assert completed - ended < 0.3  # the smoother follows the saccade within a few frames

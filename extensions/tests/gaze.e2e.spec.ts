@@ -220,7 +220,15 @@ test('reading a paragraph is followed line by line and recorded', async () => {
   const seen = new Set<string>();
   const marked = new Set<number>();
   const rings: number[] = []; // page y of the gaze ring
+  const trail: [number, number][] = []; // (epoch s, viewport y) of the ring, sampled every 50 ms
   let reading = true;
+  const sample = (async () => {
+    while (reading) {
+      const y = await page.evaluate(() => (document.querySelector('[data-daycube="gaze"]') as HTMLElement | null)?.style.top);
+      if (y) trail.push([Date.now() / 1000, parseFloat(y)]);
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+  })();
   const watch = (async () => {
     while (reading) {
       const now = await fetch(`${RECEIVER}/status`).then(r => r.json(), () => null);
@@ -238,6 +246,7 @@ test('reading a paragraph is followed line by line and recorded', async () => {
   const out = JSON.parse(await track(['--lines', file], 5));
   reading = false;
   await watch;
+  await sample;
   expect(seen.size, '/status followed the eyes down the paragraph').toBeGreaterThanOrEqual(block.lines.length - 1);
   expect(marked.size, 'the marker moved down the lines').toBeGreaterThanOrEqual(block.lines.length - 1);
   // The ring shows where gaze was placed: around the paragraph, within the tracker's error.
@@ -246,6 +255,24 @@ test('reading a paragraph is followed line by line and recorded', async () => {
   const near = rings.filter(y => y > top - 120 && y < bottom + 120);
   expect(rings.length, 'the gaze ring showed').toBeGreaterThan(10);
   expect(near.length / rings.length, 'mostly around the paragraph').toBeGreaterThan(0.8);
+  // The ring follows the live gaze: how far behind the eyes it is, from the delay that best lines
+  // its height up with the line being read (the tracker's offset removed), and how often it moves.
+  const centre = (line: number) => block.lines[line].rect[1] - sy + block.lines[line].rect[3] / 2;
+  const truthAt = (t: number) => { const look = out.read.find(([a, b]: number[]) => a <= t && t < b); return look ? centre(look[2]) : null; };
+  let lag = Infinity;
+  let best = Infinity;
+  for (let delay = 0; delay <= 3; delay += 0.05) {
+    const pairs = trail.map(([t, y]) => [y, truthAt(t - delay)]).filter(([, truth]) => truth !== null) as [number, number][];
+    if (pairs.length < 50) continue;
+    const offset = pairs.reduce((sum, [y, truth]) => sum + y - truth, 0) / pairs.length;
+    const error = pairs.reduce((sum, [y, truth]) => sum + Math.abs(y - truth - offset), 0) / pairs.length;
+    if (error < best) [best, lag] = [error, delay];
+  }
+  const moves = trail.filter(([, y], i) => i > 0 && y !== trail[i - 1][1]).length;
+  const span = trail.length > 1 ? trail.at(-1)![0] - trail[0][0] : 1;
+  console.log(`gaze ring: ${(moves / span).toFixed(1)} moves/s, about ${lag.toFixed(2)} s behind the eyes, ${best.toFixed(0)} px from the line after its offset`);
+  expect(moves / span, 'the ring moves several times a second').toBeGreaterThan(4);
+  expect(lag, 'and follows the eyes within a second').toBeLessThan(1.0);
   await expect(page.locator('[data-daycube="line"]'), 'and goes once the eyes stop').toHaveCount(0, { timeout: 6000 });
   await expect(page.locator('[data-daycube="gaze"]')).toHaveCount(0, { timeout: 6000 });
   await worker.evaluate(() => chrome.storage.local.set({ showLine: false }));

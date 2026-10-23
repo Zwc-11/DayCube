@@ -1,4 +1,6 @@
-"""Talking to the capture receiver on 127.0.0.1:7700: fixations and tracker state, once a second."""
+"""Talking to the capture receiver on 127.0.0.1:7700: fixations and tracker state, once a second
+(sooner when a fixation completes), and the live gaze point ten times a second while the receiver
+says something shows it (the extension's gaze ring). Live points are not stored anywhere."""
 
 from __future__ import annotations
 
@@ -28,6 +30,8 @@ class Receiver:
         self.queue: deque[dict] = deque(maxlen=QUEUE)
         self.opener = build_opener(ProxyHandler({}))  # never route localhost through a system proxy
         self.refusal: str | None = None  # why the receiver last refused a report, for the log
+        self.live = False  # the receiver wants the live gaze point: something on screen shows it
+        self.token: str | None = None
 
     def add(self, fixation: Fixation) -> None:
         self.queue.append({
@@ -51,8 +55,9 @@ class Receiver:
         )
         try:
             with self.opener.open(request, timeout=self.timeout) as response:
-                response.read()
+                body = response.read()
         except HTTPError as error:
+            self.live = False
             if error.code == 409:
                 self.queue.clear()
                 return "paused"
@@ -63,10 +68,35 @@ class Receiver:
             self.refusal = f"{error.code} {body}".strip()
             return "refused"
         except (URLError, OSError):
+            self.live = False
             return "offline"
         for _ in batch:
             self.queue.popleft()
+        self.token = token
+        try:
+            self.live = bool(json.loads(body).get("live"))
+        except (ValueError, AttributeError):
+            self.live = False
         return "ok"
+
+    def send_live(self, t: float, x: float, y: float) -> None:
+        """POST /gaze/live: the smoothed gaze point now (monitor fractions). Best effort: a lost
+        point is replaced by the next one a tenth of a second later."""
+        if self.token is None:
+            return
+        request = Request(
+            f"{self.url}/gaze/live",
+            data=json.dumps({"t": iso(t), "x": round(x, 5), "y": round(y, 5)}).encode("utf-8"),
+            headers={"Content-Type": "application/json", "Authorization": f"Bearer {self.token}"},
+            method="POST",
+        )
+        try:
+            with self.opener.open(request, timeout=0.25) as response:
+                response.read()
+        except HTTPError:
+            self.live = False  # paused, or an older receiver without the endpoint
+        except (URLError, OSError):
+            pass
 
     def paused(self) -> bool | None:
         """The receiver's pause state, or None when it is not running."""
