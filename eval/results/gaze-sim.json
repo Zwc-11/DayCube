@@ -55,12 +55,12 @@
    "dip_scale": 1.0,
    "trials": 100,
    "expect": "dwell on target",
-   "pass": 0.87,
-   "fired_on_target": 0.87,
+   "pass": 0.84,
+   "fired_on_target": 0.84,
    "fired_elsewhere": 0.0,
-   "median_time_to_dwell_s": 13.81,
-   "fixation_coverage": 0.7992761538120214,
-   "on_target_share": 0.6685756018866803
+   "median_time_to_dwell_s": 14.4,
+   "fixation_coverage": 0.6537147327930894,
+   "on_target_share": 0.5213946683403228
   },
   {
    "scenario": "stare 20 s, 200% zoom",
@@ -71,191 +71,191 @@
    "pass": 0.9,
    "fired_on_target": 0.9,
    "fired_elsewhere": 0.0,
+   "median_time_to_dwell_s": 14.1,
+   "fixation_coverage": 0.6451883934965212,
+   "on_target_share": 0.5399303388606385
+  },
+  {
+   "scenario": "stare 20 s, 200% zoom",
+   "profile": "recalibrated",
+   "dip_scale": 1.0,
+   "trials": 100,
+   "expect": "dwell on target",
+   "pass": 0.99,
+   "fired_on_target": 0.99,
+   "fired_elsewhere": 0.0,
+   "median_time_to_dwell_s": 14.03,
+   "fixation_coverage": 0.8800808882871659,
+   "on_target_share": 0.7986581201941523
+  },
+  {
+   "scenario": "stare 20 s, 200% zoom",
+   "profile": "recalibrated",
+   "dip_scale": 1.25,
+   "trials": 100,
+   "expect": "dwell on target",
+   "pass": 1.0,
+   "fired_on_target": 1.0,
+   "fired_elsewhere": 0.0,
+   "median_time_to_dwell_s": 13.3,
+   "fixation_coverage": 0.8722151771773555,
+   "on_target_share": 0.8241088187693977
+  },
+  {
+   "scenario": "stare 20 s, 200% zoom",
+   "profile": "good-webcam",
+   "dip_scale": 1.0,
+   "trials": 100,
+   "expect": "dwell on target",
+   "pass": 1.0,
+   "fired_on_target": 1.0,
+   "fired_elsewhere": 0.0,
+   "median_time_to_dwell_s": 14.13,
+   "fixation_coverage": 0.8657312199779073,
+   "on_target_share": 0.7948849273897293
+  },
+  {
+   "scenario": "stare 20 s, 200% zoom",
+   "profile": "good-webcam",
+   "dip_scale": 1.25,
+   "trials": 100,
+   "expect": "dwell on target",
+   "pass": 1.0,
+   "fired_on_target": 1.0,
+   "fired_elsewhere": 0.0,
    "median_time_to_dwell_s": 13.61,
-   "fixation_coverage": 0.7915944054180974,
-   "on_target_share": 0.6924556162751968
-  },
-  {
-   "scenario": "stare 20 s, 200% zoom",
-   "profile": "recalibrated",
-   "dip_scale": 1.0,
-   "trials": 100,
-   "expect": "dwell on target",
-   "pass": 1.0,
-   "fired_on_target": 1.0,
-   "fired_elsewhere": 0.0,
-   "median_time_to_dwell_s": 14.17,
-   "fixation_coverage": 0.9125805158831787,
-   "on_target_share": 0.8328450483573907
-  },
-  {
-   "scenario": "stare 20 s, 200% zoom",
-   "profile": "recalibrated",
-   "dip_scale": 1.25,
-   "trials": 100,
-   "expect": "dwell on target",
-   "pass": 1.0,
-   "fired_on_target": 1.0,
-   "fired_elsewhere": 0.0,
-   "median_time_to_dwell_s": 13.35,
-   "fixation_coverage": 0.9063019641825716,
-   "on_target_share": 0.8696111165356676
-  },
-  {
-   "scenario": "stare 20 s, 200% zoom",
-   "profile": "good-webcam",
-   "dip_scale": 1.0,
-   "trials": 100,
-   "expect": "dwell on target",
-   "pass": 1.0,
-   "fired_on_target": 1.0,
-   "fired_elsewhere": 0.0,
-   "median_time_to_dwell_s": 14.11,
-   "fixation_coverage": 0.8988060187233736,
-   "on_target_share": 0.8297856602554863
-  },
-  {
-   "scenario": "stare 20 s, 200% zoom",
-   "profile": "good-webcam",
-   "dip_scale": 1.25,
-   "trials": 100,
-   "expect": "dwell on target",
-   "pass": 1.0,
-   "fired_on_target": 1.0,
-   "fired_elsewhere": 0.0,
-   "median_time_to_dwell_s": 13.56,
-   "fixation_coverage": 0.8909003768974257,
-   "on_target_share": 0.8484857221284003
+   "fixation_coverage": 0.8556141998647682,
+   "on_target_share": 0.8080623395097514
   },
   {
    "scenario": "stare 20 s, 200% zoom, after 6 clicks",
    "profile": "first-calibration",
-   "dip_scale": 1.0,
-   "trials": 100,
-   "expect": "dwell on target",
-   "pass": 0.94,
-   "fired_on_target": 0.94,
-   "fired_elsewhere": 0.0,
-   "median_time_to_dwell_s": 41.1,
-   "fixation_coverage": 0.8121333366639939,
-   "on_target_share": 0.3881533545301054
-  },
-  {
-   "scenario": "stare 20 s, 200% zoom, after 6 clicks",
-   "profile": "first-calibration",
-   "dip_scale": 1.25,
-   "trials": 100,
-   "expect": "dwell on target",
-   "pass": 0.94,
-   "fired_on_target": 0.95,
-   "fired_elsewhere": 0.01,
-   "median_time_to_dwell_s": 39.72,
-   "fixation_coverage": 0.809811478330456,
-   "on_target_share": 0.4393194357097393
-  },
-  {
-   "scenario": "stare 20 s, 200% zoom, after 6 clicks",
-   "profile": "recalibrated",
-   "dip_scale": 1.0,
-   "trials": 100,
-   "expect": "dwell on target",
-   "pass": 1.0,
-   "fired_on_target": 1.0,
-   "fired_elsewhere": 0.0,
-   "median_time_to_dwell_s": 41.35,
-   "fixation_coverage": 0.9129653164037806,
-   "on_target_share": 0.4210776786651734
-  },
-  {
-   "scenario": "stare 20 s, 200% zoom, after 6 clicks",
-   "profile": "recalibrated",
-   "dip_scale": 1.25,
-   "trials": 100,
-   "expect": "dwell on target",
-   "pass": 0.99,
-   "fired_on_target": 1.0,
-   "fired_elsewhere": 0.01,
-   "median_time_to_dwell_s": 40.15,
-   "fixation_coverage": 0.9110034288459137,
-   "on_target_share": 0.4668211826210967
-  },
-  {
-   "scenario": "stare 20 s, 200% zoom, after 6 clicks",
-   "profile": "good-webcam",
-   "dip_scale": 1.0,
-   "trials": 100,
-   "expect": "dwell on target",
-   "pass": 0.99,
-   "fired_on_target": 1.0,
-   "fired_elsewhere": 0.01,
-   "median_time_to_dwell_s": 41.4,
-   "fixation_coverage": 0.9010552283157134,
-   "on_target_share": 0.4046750738268262
-  },
-  {
-   "scenario": "stare 20 s, 200% zoom, after 6 clicks",
-   "profile": "good-webcam",
-   "dip_scale": 1.25,
-   "trials": 100,
-   "expect": "dwell on target",
-   "pass": 1.0,
-   "fired_on_target": 1.0,
-   "fired_elsewhere": 0.0,
-   "median_time_to_dwell_s": 40.32,
-   "fixation_coverage": 0.8975827973026924,
-   "on_target_share": 0.434877260965502
-  },
-  {
-   "scenario": "stare 20 s, 100% zoom",
-   "profile": "first-calibration",
-   "dip_scale": 1.0,
-   "trials": 100,
-   "expect": "dwell on target",
-   "pass": 0.71,
-   "fired_on_target": 0.71,
-   "fired_elsewhere": 0.0,
-   "median_time_to_dwell_s": 14.32,
-   "fixation_coverage": 0.8094891353221629,
-   "on_target_share": 0.5153357233503635
-  },
-  {
-   "scenario": "stare 20 s, 100% zoom",
-   "profile": "first-calibration",
-   "dip_scale": 1.25,
-   "trials": 100,
-   "expect": "dwell on target",
-   "pass": 0.74,
-   "fired_on_target": 0.74,
-   "fired_elsewhere": 0.0,
-   "median_time_to_dwell_s": 14.02,
-   "fixation_coverage": 0.8095538579145655,
-   "on_target_share": 0.5795970851761512
-  },
-  {
-   "scenario": "stare 20 s, 100% zoom",
-   "profile": "recalibrated",
    "dip_scale": 1.0,
    "trials": 100,
    "expect": "dwell on target",
    "pass": 0.89,
    "fired_on_target": 0.89,
    "fired_elsewhere": 0.0,
-   "median_time_to_dwell_s": 14.74,
-   "fixation_coverage": 0.9189922381603575,
-   "on_target_share": 0.7372374092850599
+   "median_time_to_dwell_s": 41.6,
+   "fixation_coverage": 0.6752918918254703,
+   "on_target_share": 0.30633863493475505
   },
   {
-   "scenario": "stare 20 s, 100% zoom",
-   "profile": "recalibrated",
+   "scenario": "stare 20 s, 200% zoom, after 6 clicks",
+   "profile": "first-calibration",
    "dip_scale": 1.25,
    "trials": 100,
    "expect": "dwell on target",
    "pass": 0.94,
-   "fired_on_target": 0.94,
+   "fired_on_target": 0.97,
+   "fired_elsewhere": 0.03,
+   "median_time_to_dwell_s": 40.97,
+   "fixation_coverage": 0.6710059871057745,
+   "on_target_share": 0.347920993174044
+  },
+  {
+   "scenario": "stare 20 s, 200% zoom, after 6 clicks",
+   "profile": "recalibrated",
+   "dip_scale": 1.0,
+   "trials": 100,
+   "expect": "dwell on target",
+   "pass": 1.0,
+   "fired_on_target": 1.0,
    "fired_elsewhere": 0.0,
-   "median_time_to_dwell_s": 14.74,
-   "fixation_coverage": 0.9160126997096489,
-   "on_target_share": 0.7664012700367232
+   "median_time_to_dwell_s": 41.46,
+   "fixation_coverage": 0.8867134819960082,
+   "on_target_share": 0.3999444640943356
+  },
+  {
+   "scenario": "stare 20 s, 200% zoom, after 6 clicks",
+   "profile": "recalibrated",
+   "dip_scale": 1.25,
+   "trials": 100,
+   "expect": "dwell on target",
+   "pass": 0.98,
+   "fired_on_target": 1.0,
+   "fired_elsewhere": 0.02,
+   "median_time_to_dwell_s": 40.49,
+   "fixation_coverage": 0.8839775805202689,
+   "on_target_share": 0.43691070429368856
+  },
+  {
+   "scenario": "stare 20 s, 200% zoom, after 6 clicks",
+   "profile": "good-webcam",
+   "dip_scale": 1.0,
+   "trials": 100,
+   "expect": "dwell on target",
+   "pass": 1.0,
+   "fired_on_target": 1.0,
+   "fired_elsewhere": 0.0,
+   "median_time_to_dwell_s": 41.49,
+   "fixation_coverage": 0.8862034183111891,
+   "on_target_share": 0.384498045622834
+  },
+  {
+   "scenario": "stare 20 s, 200% zoom, after 6 clicks",
+   "profile": "good-webcam",
+   "dip_scale": 1.25,
+   "trials": 100,
+   "expect": "dwell on target",
+   "pass": 0.99,
+   "fired_on_target": 1.0,
+   "fired_elsewhere": 0.01,
+   "median_time_to_dwell_s": 40.81,
+   "fixation_coverage": 0.881628975316573,
+   "on_target_share": 0.4175674439712534
+  },
+  {
+   "scenario": "stare 20 s, 100% zoom",
+   "profile": "first-calibration",
+   "dip_scale": 1.0,
+   "trials": 100,
+   "expect": "dwell on target",
+   "pass": 0.62,
+   "fired_on_target": 0.62,
+   "fired_elsewhere": 0.0,
+   "median_time_to_dwell_s": 14.87,
+   "fixation_coverage": 0.678393999703102,
+   "on_target_share": 0.3909837525254404
+  },
+  {
+   "scenario": "stare 20 s, 100% zoom",
+   "profile": "first-calibration",
+   "dip_scale": 1.25,
+   "trials": 100,
+   "expect": "dwell on target",
+   "pass": 0.7,
+   "fired_on_target": 0.7,
+   "fired_elsewhere": 0.0,
+   "median_time_to_dwell_s": 14.75,
+   "fixation_coverage": 0.6716662901550854,
+   "on_target_share": 0.44357085083262987
+  },
+  {
+   "scenario": "stare 20 s, 100% zoom",
+   "profile": "recalibrated",
+   "dip_scale": 1.0,
+   "trials": 100,
+   "expect": "dwell on target",
+   "pass": 0.91,
+   "fired_on_target": 0.91,
+   "fired_elsewhere": 0.01,
+   "median_time_to_dwell_s": 14.78,
+   "fixation_coverage": 0.8953723943327916,
+   "on_target_share": 0.7144666901206811
+  },
+  {
+   "scenario": "stare 20 s, 100% zoom",
+   "profile": "recalibrated",
+   "dip_scale": 1.25,
+   "trials": 100,
+   "expect": "dwell on target",
+   "pass": 0.95,
+   "fired_on_target": 0.95,
+   "fired_elsewhere": 0.01,
+   "median_time_to_dwell_s": 14.57,
+   "fixation_coverage": 0.8917204110785569,
+   "on_target_share": 0.750468791462645
   },
   {
    "scenario": "stare 20 s, 100% zoom",
@@ -263,12 +263,12 @@
    "dip_scale": 1.0,
    "trials": 100,
    "expect": "dwell on target",
-   "pass": 0.99,
-   "fired_on_target": 0.99,
+   "pass": 0.98,
+   "fired_on_target": 0.98,
    "fired_elsewhere": 0.0,
-   "median_time_to_dwell_s": 14.24,
-   "fixation_coverage": 0.9143268493266224,
-   "on_target_share": 0.8194084871857816
+   "median_time_to_dwell_s": 14.23,
+   "fixation_coverage": 0.8972676127750892,
+   "on_target_share": 0.8027836978548342
   },
   {
    "scenario": "stare 20 s, 100% zoom",
@@ -279,9 +279,9 @@
    "pass": 0.99,
    "fired_on_target": 0.99,
    "fired_elsewhere": 0.0,
-   "median_time_to_dwell_s": 14.21,
-   "fixation_coverage": 0.9101208947766354,
-   "on_target_share": 0.8272484075346934
+   "median_time_to_dwell_s": 14.12,
+   "fixation_coverage": 0.8872190037767399,
+   "on_target_share": 0.8028022603932345
   },
   {
    "scenario": "look away 1.5 s mid-stare",
@@ -289,12 +289,12 @@
    "dip_scale": 1.0,
    "trials": 100,
    "expect": "dwell on target",
-   "pass": 0.83,
-   "fired_on_target": 0.83,
+   "pass": 0.75,
+   "fired_on_target": 0.75,
    "fired_elsewhere": 0.0,
-   "median_time_to_dwell_s": 15.4,
-   "fixation_coverage": 0.799170481646707,
-   "on_target_share": 0.6557500018132438
+   "median_time_to_dwell_s": 16.07,
+   "fixation_coverage": 0.6521674425440912,
+   "on_target_share": 0.518707744078828
   },
   {
    "scenario": "look away 1.5 s mid-stare",
@@ -302,12 +302,12 @@
    "dip_scale": 1.25,
    "trials": 100,
    "expect": "dwell on target",
-   "pass": 0.87,
-   "fired_on_target": 0.87,
+   "pass": 0.81,
+   "fired_on_target": 0.81,
    "fired_elsewhere": 0.0,
-   "median_time_to_dwell_s": 15.27,
-   "fixation_coverage": 0.7935594309035372,
-   "on_target_share": 0.6830723056134899
+   "median_time_to_dwell_s": 15.83,
+   "fixation_coverage": 0.6437676828970597,
+   "on_target_share": 0.5372502872413293
   },
   {
    "scenario": "look away 1.5 s mid-stare",
@@ -315,12 +315,12 @@
    "dip_scale": 1.0,
    "trials": 100,
    "expect": "dwell on target",
-   "pass": 1.0,
-   "fired_on_target": 1.0,
+   "pass": 0.98,
+   "fired_on_target": 0.98,
    "fired_elsewhere": 0.0,
-   "median_time_to_dwell_s": 15.77,
-   "fixation_coverage": 0.9058429890500886,
-   "on_target_share": 0.8286338058310837
+   "median_time_to_dwell_s": 15.67,
+   "fixation_coverage": 0.879720321591234,
+   "on_target_share": 0.792991422020275
   },
   {
    "scenario": "look away 1.5 s mid-stare",
@@ -331,9 +331,9 @@
    "pass": 1.0,
    "fired_on_target": 1.0,
    "fired_elsewhere": 0.0,
-   "median_time_to_dwell_s": 14.94,
-   "fixation_coverage": 0.9017148364991114,
-   "on_target_share": 0.8648593032998023
+   "median_time_to_dwell_s": 14.95,
+   "fixation_coverage": 0.8726644839041054,
+   "on_target_share": 0.8239581150835028
   },
   {
    "scenario": "look away 1.5 s mid-stare",
@@ -341,12 +341,12 @@
    "dip_scale": 1.0,
    "trials": 100,
    "expect": "dwell on target",
-   "pass": 1.0,
-   "fired_on_target": 1.0,
+   "pass": 0.99,
+   "fired_on_target": 0.99,
    "fired_elsewhere": 0.0,
-   "median_time_to_dwell_s": 15.74,
-   "fixation_coverage": 0.8941415803918639,
-   "on_target_share": 0.8252421007499151
+   "median_time_to_dwell_s": 15.67,
+   "fixation_coverage": 0.8636200668932247,
+   "on_target_share": 0.7931269805787575
   },
   {
    "scenario": "look away 1.5 s mid-stare",
@@ -354,12 +354,12 @@
    "dip_scale": 1.25,
    "trials": 100,
    "expect": "dwell on target",
-   "pass": 1.0,
-   "fired_on_target": 1.0,
+   "pass": 0.99,
+   "fired_on_target": 0.99,
    "fired_elsewhere": 0.0,
-   "median_time_to_dwell_s": 15.04,
-   "fixation_coverage": 0.8879222753481403,
-   "on_target_share": 0.8459464891152311
+   "median_time_to_dwell_s": 15.16,
+   "fixation_coverage": 0.8544125717477,
+   "on_target_share": 0.8060906849996963
   },
   {
    "scenario": "re-read a paragraph 3 times",
@@ -367,12 +367,12 @@
    "dip_scale": 1.0,
    "trials": 100,
    "expect": "dwell on target",
-   "pass": 0.06,
-   "fired_on_target": 0.06,
+   "pass": 0.0,
+   "fired_on_target": 0.0,
    "fired_elsewhere": 0.0,
-   "median_time_to_dwell_s": 69.65,
-   "fixation_coverage": 0.8273226086583643,
-   "on_target_share": 0.43341570061424883
+   "median_time_to_dwell_s": null,
+   "fixation_coverage": 0.6873897344482961,
+   "on_target_share": 0.3333629934730807
   },
   {
    "scenario": "re-read a paragraph 3 times",
@@ -380,12 +380,12 @@
    "dip_scale": 1.25,
    "trials": 100,
    "expect": "dwell on target",
-   "pass": 0.17,
-   "fired_on_target": 0.17,
+   "pass": 0.09,
+   "fired_on_target": 0.09,
    "fired_elsewhere": 0.0,
-   "median_time_to_dwell_s": 58.6,
-   "fixation_coverage": 0.8236042774320177,
-   "on_target_share": 0.5216814264777527
+   "median_time_to_dwell_s": 66.26,
+   "fixation_coverage": 0.6825724523728063,
+   "on_target_share": 0.39135411073005905
   },
   {
    "scenario": "re-read a paragraph 3 times",
@@ -393,12 +393,12 @@
    "dip_scale": 1.0,
    "trials": 100,
    "expect": "dwell on target",
-   "pass": 0.45,
-   "fired_on_target": 0.45,
-   "fired_elsewhere": 0.0,
-   "median_time_to_dwell_s": 54.99,
-   "fixation_coverage": 0.9159333849730062,
-   "on_target_share": 0.7525703240789376
+   "pass": 0.39,
+   "fired_on_target": 0.39,
+   "fired_elsewhere": 0.01,
+   "median_time_to_dwell_s": 54.07,
+   "fixation_coverage": 0.8863587258852584,
+   "on_target_share": 0.7081038100405938
   },
   {
    "scenario": "re-read a paragraph 3 times",
@@ -406,12 +406,12 @@
    "dip_scale": 1.25,
    "trials": 100,
    "expect": "dwell on target",
-   "pass": 0.56,
-   "fired_on_target": 0.56,
+   "pass": 0.55,
+   "fired_on_target": 0.55,
    "fired_elsewhere": 0.0,
-   "median_time_to_dwell_s": 53.62,
-   "fixation_coverage": 0.9129830813127819,
-   "on_target_share": 0.8134458476590413
+   "median_time_to_dwell_s": 53.4,
+   "fixation_coverage": 0.8823101912390631,
+   "on_target_share": 0.7632569284646837
   },
   {
    "scenario": "re-read a paragraph 3 times",
@@ -422,9 +422,9 @@
    "pass": 0.8,
    "fired_on_target": 0.8,
    "fired_elsewhere": 0.0,
-   "median_time_to_dwell_s": 54.11,
-   "fixation_coverage": 0.9071255534177668,
-   "on_target_share": 0.8415320526161081
+   "median_time_to_dwell_s": 53.26,
+   "fixation_coverage": 0.8991284521583525,
+   "on_target_share": 0.82987673483962
   },
   {
    "scenario": "re-read a paragraph 3 times",
@@ -432,12 +432,12 @@
    "dip_scale": 1.25,
    "trials": 100,
    "expect": "dwell on target",
-   "pass": 0.88,
-   "fired_on_target": 0.88,
+   "pass": 0.9,
+   "fired_on_target": 0.9,
    "fired_elsewhere": 0.0,
-   "median_time_to_dwell_s": 53.85,
-   "fixation_coverage": 0.9017923549175607,
-   "on_target_share": 0.8541297291536118
+   "median_time_to_dwell_s": 52.67,
+   "fixation_coverage": 0.8904401649314806,
+   "on_target_share": 0.841370824325182
   },
   {
    "scenario": "glance 5 s",
@@ -449,7 +449,7 @@
    "fired_on_target": 0.0,
    "fired_elsewhere": 0.0,
    "median_time_to_dwell_s": null,
-   "fixation_coverage": 0.7473596199144913,
+   "fixation_coverage": 0.6084748435352173,
    "on_target_share": null
   },
   {
@@ -462,7 +462,7 @@
    "fired_on_target": 0.0,
    "fired_elsewhere": 0.0,
    "median_time_to_dwell_s": null,
-   "fixation_coverage": 0.7452706562944678,
+   "fixation_coverage": 0.6038014579442781,
    "on_target_share": null
   },
   {
@@ -475,7 +475,7 @@
    "fired_on_target": 0.0,
    "fired_elsewhere": 0.0,
    "median_time_to_dwell_s": null,
-   "fixation_coverage": 0.8695597887867575,
+   "fixation_coverage": 0.8574362497243421,
    "on_target_share": null
   },
   {
@@ -488,7 +488,7 @@
    "fired_on_target": 0.0,
    "fired_elsewhere": 0.0,
    "median_time_to_dwell_s": null,
-   "fixation_coverage": 0.8693188847849933,
+   "fixation_coverage": 0.8498303516588873,
    "on_target_share": null
   },
   {
@@ -501,7 +501,7 @@
    "fired_on_target": 0.0,
    "fired_elsewhere": 0.0,
    "median_time_to_dwell_s": null,
-   "fixation_coverage": 0.8683669183028069,
+   "fixation_coverage": 0.8490660015844079,
    "on_target_share": null
   },
   {
@@ -514,7 +514,7 @@
    "fired_on_target": 0.0,
    "fired_elsewhere": 0.0,
    "median_time_to_dwell_s": null,
-   "fixation_coverage": 0.8562628216617945,
+   "fixation_coverage": 0.839115224094264,
    "on_target_share": null
   },
   {
@@ -527,7 +527,7 @@
    "fired_on_target": 0.0,
    "fired_elsewhere": 0.0,
    "median_time_to_dwell_s": null,
-   "fixation_coverage": 0.7990471243732066,
+   "fixation_coverage": 0.6487551779307325,
    "on_target_share": null
   },
   {
@@ -540,7 +540,7 @@
    "fired_on_target": 0.0,
    "fired_elsewhere": 0.0,
    "median_time_to_dwell_s": null,
-   "fixation_coverage": 0.7926766796202572,
+   "fixation_coverage": 0.6385314538637421,
    "on_target_share": null
   },
   {
@@ -553,7 +553,7 @@
    "fired_on_target": 0.0,
    "fired_elsewhere": 0.0,
    "median_time_to_dwell_s": null,
-   "fixation_coverage": 0.9063316950608321,
+   "fixation_coverage": 0.8716191862316698,
    "on_target_share": null
   },
   {
@@ -566,7 +566,7 @@
    "fired_on_target": 0.0,
    "fired_elsewhere": 0.0,
    "median_time_to_dwell_s": null,
-   "fixation_coverage": 0.9014429813205443,
+   "fixation_coverage": 0.8634747318740501,
    "on_target_share": null
   },
   {
@@ -579,7 +579,7 @@
    "fired_on_target": 0.0,
    "fired_elsewhere": 0.0,
    "median_time_to_dwell_s": null,
-   "fixation_coverage": 0.8931093240648207,
+   "fixation_coverage": 0.8568997555438852,
    "on_target_share": null
   },
   {
@@ -592,7 +592,7 @@
    "fired_on_target": 0.0,
    "fired_elsewhere": 0.0,
    "median_time_to_dwell_s": null,
-   "fixation_coverage": 0.8883228647321986,
+   "fixation_coverage": 0.8469940208390527,
    "on_target_share": null
   },
   {
@@ -605,7 +605,7 @@
    "fired_on_target": 0.0,
    "fired_elsewhere": 0.0,
    "median_time_to_dwell_s": null,
-   "fixation_coverage": 0.8247019870473852,
+   "fixation_coverage": 0.6862558947515641,
    "on_target_share": null
   },
   {
@@ -618,7 +618,7 @@
    "fired_on_target": 0.0,
    "fired_elsewhere": 0.03,
    "median_time_to_dwell_s": null,
-   "fixation_coverage": 0.8217244464806005,
+   "fixation_coverage": 0.6838093922628413,
    "on_target_share": null
   },
   {
@@ -627,11 +627,11 @@
    "dip_scale": 1.0,
    "trials": 100,
    "expect": "no dwell",
-   "pass": 1.0,
+   "pass": 0.99,
    "fired_on_target": 0.0,
-   "fired_elsewhere": 0.0,
+   "fired_elsewhere": 0.01,
    "median_time_to_dwell_s": null,
-   "fixation_coverage": 0.9155630715992042,
+   "fixation_coverage": 0.8877479540051983,
    "on_target_share": null
   },
   {
@@ -640,11 +640,11 @@
    "dip_scale": 1.25,
    "trials": 100,
    "expect": "no dwell",
-   "pass": 1.0,
+   "pass": 0.99,
    "fired_on_target": 0.0,
-   "fired_elsewhere": 0.0,
+   "fired_elsewhere": 0.01,
    "median_time_to_dwell_s": null,
-   "fixation_coverage": 0.9137497890777037,
+   "fixation_coverage": 0.8852611072001946,
    "on_target_share": null
   },
   {
@@ -657,7 +657,7 @@
    "fired_on_target": 0.0,
    "fired_elsewhere": 0.0,
    "median_time_to_dwell_s": null,
-   "fixation_coverage": 0.9062166041902586,
+   "fixation_coverage": 0.900419200988097,
    "on_target_share": null
   },
   {
@@ -670,7 +670,7 @@
    "fired_on_target": 0.0,
    "fired_elsewhere": 0.0,
    "median_time_to_dwell_s": null,
-   "fixation_coverage": 0.902035730611534,
+   "fixation_coverage": 0.89223121575565,
    "on_target_share": null
   },
   {
@@ -683,7 +683,7 @@
    "fired_on_target": 0.0,
    "fired_elsewhere": 0.0,
    "median_time_to_dwell_s": null,
-   "fixation_coverage": 0.8190660392647631,
+   "fixation_coverage": 0.6849606205390857,
    "on_target_share": null
   },
   {
@@ -696,7 +696,7 @@
    "fired_on_target": 0.0,
    "fired_elsewhere": 0.0,
    "median_time_to_dwell_s": null,
-   "fixation_coverage": 0.8163105373623736,
+   "fixation_coverage": 0.6806998383317524,
    "on_target_share": null
   },
   {
@@ -709,7 +709,7 @@
    "fired_on_target": 0.0,
    "fired_elsewhere": 0.0,
    "median_time_to_dwell_s": null,
-   "fixation_coverage": 0.9151643832102239,
+   "fixation_coverage": 0.8951465713791212,
    "on_target_share": null
   },
   {
@@ -722,7 +722,7 @@
    "fired_on_target": 0.0,
    "fired_elsewhere": 0.0,
    "median_time_to_dwell_s": null,
-   "fixation_coverage": 0.913944395489468,
+   "fixation_coverage": 0.8940139034447521,
    "on_target_share": null
   },
   {
@@ -735,7 +735,7 @@
    "fired_on_target": 0.0,
    "fired_elsewhere": 0.0,
    "median_time_to_dwell_s": null,
-   "fixation_coverage": 0.9096629152367665,
+   "fixation_coverage": 0.9103586503760855,
    "on_target_share": null
   },
   {
@@ -748,7 +748,7 @@
    "fired_on_target": 0.0,
    "fired_elsewhere": 0.0,
    "median_time_to_dwell_s": null,
-   "fixation_coverage": 0.9076858803115126,
+   "fixation_coverage": 0.9063235392152476,
    "on_target_share": null
   }
  ],
@@ -765,8 +765,8 @@
     "fired_on_target": 0.0,
     "fired_elsewhere": 0.0,
     "median_time_to_dwell_s": null,
-    "fixation_coverage": 0.3191383481519714,
-    "on_target_share": 0.15386586086759935
+    "fixation_coverage": 0.3246145142659273,
+    "on_target_share": 0.1528210475231653
    },
    {
     "scenario": "stare 20 s, 200% zoom",
@@ -778,8 +778,8 @@
     "fired_on_target": 0.0,
     "fired_elsewhere": 0.0,
     "median_time_to_dwell_s": null,
-    "fixation_coverage": 0.31200549434881564,
-    "on_target_share": 0.18555781074739602
+    "fixation_coverage": 0.3171187411654369,
+    "on_target_share": 0.18210738883638442
    },
    {
     "scenario": "stare 20 s, 200% zoom",
@@ -787,12 +787,12 @@
     "dip_scale": 1.0,
     "trials": 100,
     "expect": "dwell on target",
-    "pass": 0.82,
-    "fired_on_target": 0.82,
+    "pass": 0.75,
+    "fired_on_target": 0.75,
     "fired_elsewhere": 0.0,
-    "median_time_to_dwell_s": 17.44,
-    "fixation_coverage": 0.8086938206621772,
-    "on_target_share": 0.6690553208430957
+    "median_time_to_dwell_s": 17.28,
+    "fixation_coverage": 0.809342486775162,
+    "on_target_share": 0.6551812071553664
    },
    {
     "scenario": "stare 20 s, 200% zoom",
@@ -800,12 +800,12 @@
     "dip_scale": 1.25,
     "trials": 100,
     "expect": "dwell on target",
-    "pass": 0.93,
-    "fired_on_target": 0.93,
+    "pass": 0.89,
+    "fired_on_target": 0.89,
     "fired_elsewhere": 0.0,
-    "median_time_to_dwell_s": 16.6,
-    "fixation_coverage": 0.7970207211707419,
-    "on_target_share": 0.7199270456001245
+    "median_time_to_dwell_s": 16.81,
+    "fixation_coverage": 0.7983779945791745,
+    "on_target_share": 0.7102435308470798
    },
    {
     "scenario": "stare 20 s, 200% zoom",
@@ -813,12 +813,12 @@
     "dip_scale": 1.0,
     "trials": 100,
     "expect": "dwell on target",
-    "pass": 0.97,
-    "fired_on_target": 0.97,
+    "pass": 0.98,
+    "fired_on_target": 0.98,
     "fired_elsewhere": 0.0,
-    "median_time_to_dwell_s": 15.9,
-    "fixation_coverage": 0.8613190359947336,
-    "on_target_share": 0.7845800203652583
+    "median_time_to_dwell_s": 15.93,
+    "fixation_coverage": 0.8596754628156134,
+    "on_target_share": 0.7822983685686867
    },
    {
     "scenario": "stare 20 s, 200% zoom",
@@ -829,9 +829,9 @@
     "pass": 1.0,
     "fired_on_target": 1.0,
     "fired_elsewhere": 0.0,
-    "median_time_to_dwell_s": 15.44,
-    "fixation_coverage": 0.84694817195427,
-    "on_target_share": 0.8061582537758955
+    "median_time_to_dwell_s": 15.46,
+    "fixation_coverage": 0.8470781062509174,
+    "on_target_share": 0.8000284201572486
    },
    {
     "scenario": "stare 20 s, 200% zoom, after 6 clicks",
@@ -843,8 +843,8 @@
     "fired_on_target": 0.0,
     "fired_elsewhere": 0.0,
     "median_time_to_dwell_s": null,
-    "fixation_coverage": 0.33167234243414484,
-    "on_target_share": 0.09299328193034186
+    "fixation_coverage": 0.3374771969596282,
+    "on_target_share": 0.09102996132748327
    },
    {
     "scenario": "stare 20 s, 200% zoom, after 6 clicks",
@@ -856,8 +856,8 @@
     "fired_on_target": 0.0,
     "fired_elsewhere": 0.0,
     "median_time_to_dwell_s": null,
-    "fixation_coverage": 0.32872704394745594,
-    "on_target_share": 0.12194871181484754
+    "fixation_coverage": 0.334230028038863,
+    "on_target_share": 0.12005353127505412
    },
    {
     "scenario": "stare 20 s, 200% zoom, after 6 clicks",
@@ -865,38 +865,38 @@
     "dip_scale": 1.0,
     "trials": 100,
     "expect": "dwell on target",
-    "pass": 0.82,
-    "fired_on_target": 0.83,
-    "fired_elsewhere": 0.02,
-    "median_time_to_dwell_s": 45.44,
-    "fixation_coverage": 0.8367307090675531,
-    "on_target_share": 0.35315763395114513
-   },
-   {
-    "scenario": "stare 20 s, 200% zoom, after 6 clicks",
-    "profile": "recalibrated",
-    "dip_scale": 1.25,
-    "trials": 100,
-    "expect": "dwell on target",
-    "pass": 0.88,
-    "fired_on_target": 0.89,
-    "fired_elsewhere": 0.01,
-    "median_time_to_dwell_s": 43.23,
-    "fixation_coverage": 0.8318578499239447,
-    "on_target_share": 0.41859243747714464
-   },
-   {
-    "scenario": "stare 20 s, 200% zoom, after 6 clicks",
-    "profile": "good-webcam",
-    "dip_scale": 1.0,
-    "trials": 100,
-    "expect": "dwell on target",
-    "pass": 0.94,
-    "fired_on_target": 0.94,
+    "pass": 0.81,
+    "fired_on_target": 0.81,
     "fired_elsewhere": 0.0,
-    "median_time_to_dwell_s": 44.08,
-    "fixation_coverage": 0.8818813179432681,
-    "on_target_share": 0.39693322445661783
+    "median_time_to_dwell_s": 45.43,
+    "fixation_coverage": 0.8370903615634653,
+    "on_target_share": 0.3426042039824447
+   },
+   {
+    "scenario": "stare 20 s, 200% zoom, after 6 clicks",
+    "profile": "recalibrated",
+    "dip_scale": 1.25,
+    "trials": 100,
+    "expect": "dwell on target",
+    "pass": 0.92,
+    "fired_on_target": 0.92,
+    "fired_elsewhere": 0.0,
+    "median_time_to_dwell_s": 43.29,
+    "fixation_coverage": 0.8320518313677221,
+    "on_target_share": 0.4171584981213224
+   },
+   {
+    "scenario": "stare 20 s, 200% zoom, after 6 clicks",
+    "profile": "good-webcam",
+    "dip_scale": 1.0,
+    "trials": 100,
+    "expect": "dwell on target",
+    "pass": 0.96,
+    "fired_on_target": 0.96,
+    "fired_elsewhere": 0.0,
+    "median_time_to_dwell_s": 43.57,
+    "fixation_coverage": 0.8837012242723921,
+    "on_target_share": 0.399346057180142
    },
    {
     "scenario": "stare 20 s, 200% zoom, after 6 clicks",
@@ -904,12 +904,12 @@
     "dip_scale": 1.25,
     "trials": 100,
     "expect": "dwell on target",
-    "pass": 0.98,
-    "fired_on_target": 0.99,
+    "pass": 0.99,
+    "fired_on_target": 1.0,
     "fired_elsewhere": 0.01,
-    "median_time_to_dwell_s": 41.2,
-    "fixation_coverage": 0.8774141782346833,
-    "on_target_share": 0.46179759068433734
+    "median_time_to_dwell_s": 41.09,
+    "fixation_coverage": 0.8784354821038566,
+    "on_target_share": 0.4717675219501809
    },
    {
     "scenario": "stare 20 s, 100% zoom",
@@ -921,8 +921,8 @@
     "fired_on_target": 0.0,
     "fired_elsewhere": 0.0,
     "median_time_to_dwell_s": null,
-    "fixation_coverage": 0.3434875458912133,
-    "on_target_share": 0.07779099867709617
+    "fixation_coverage": 0.34947281400640945,
+    "on_target_share": 0.07678966131824744
    },
    {
     "scenario": "stare 20 s, 100% zoom",
@@ -934,8 +934,8 @@
     "fired_on_target": 0.0,
     "fired_elsewhere": 0.0,
     "median_time_to_dwell_s": null,
-    "fixation_coverage": 0.33538778764348104,
-    "on_target_share": 0.09899497117199571
+    "fixation_coverage": 0.340852150305241,
+    "on_target_share": 0.10025540071293416
    },
    {
     "scenario": "stare 20 s, 100% zoom",
@@ -946,9 +946,9 @@
     "pass": 0.39,
     "fired_on_target": 0.39,
     "fired_elsewhere": 0.02,
-    "median_time_to_dwell_s": 18.18,
-    "fixation_coverage": 0.8510041049241117,
-    "on_target_share": 0.47424797301295607
+    "median_time_to_dwell_s": 18.38,
+    "fixation_coverage": 0.8505971211080421,
+    "on_target_share": 0.46397553724121643
    },
    {
     "scenario": "stare 20 s, 100% zoom",
@@ -956,12 +956,12 @@
     "dip_scale": 1.25,
     "trials": 100,
     "expect": "dwell on target",
-    "pass": 0.56,
-    "fired_on_target": 0.56,
-    "fired_elsewhere": 0.0,
-    "median_time_to_dwell_s": 17.59,
-    "fixation_coverage": 0.8371436054406698,
-    "on_target_share": 0.5515530847216341
+    "pass": 0.55,
+    "fired_on_target": 0.55,
+    "fired_elsewhere": 0.02,
+    "median_time_to_dwell_s": 17.49,
+    "fixation_coverage": 0.8368217970739457,
+    "on_target_share": 0.5451346993788596
    },
    {
     "scenario": "stare 20 s, 100% zoom",
@@ -969,12 +969,12 @@
     "dip_scale": 1.0,
     "trials": 100,
     "expect": "dwell on target",
-    "pass": 0.72,
-    "fired_on_target": 0.72,
+    "pass": 0.7,
+    "fired_on_target": 0.7,
     "fired_elsewhere": 0.01,
-    "median_time_to_dwell_s": 15.63,
-    "fixation_coverage": 0.8993791118192668,
-    "on_target_share": 0.7088424483365295
+    "median_time_to_dwell_s": 15.32,
+    "fixation_coverage": 0.8958562677828522,
+    "on_target_share": 0.7147651996870131
    },
    {
     "scenario": "stare 20 s, 100% zoom",
@@ -982,12 +982,12 @@
     "dip_scale": 1.25,
     "trials": 100,
     "expect": "dwell on target",
-    "pass": 0.84,
-    "fired_on_target": 0.84,
+    "pass": 0.79,
+    "fired_on_target": 0.79,
     "fired_elsewhere": 0.0,
-    "median_time_to_dwell_s": 15.72,
-    "fixation_coverage": 0.8874559741748075,
-    "on_target_share": 0.7603797468706248
+    "median_time_to_dwell_s": 15.43,
+    "fixation_coverage": 0.8845941270558542,
+    "on_target_share": 0.7565218443063917
    },
    {
     "scenario": "look away 1.5 s mid-stare",
@@ -999,8 +999,8 @@
     "fired_on_target": 0.0,
     "fired_elsewhere": 0.0,
     "median_time_to_dwell_s": null,
-    "fixation_coverage": 0.3195950372886391,
-    "on_target_share": 0.15461705487212604
+    "fixation_coverage": 0.3205197129197744,
+    "on_target_share": 0.1526992747046744
    },
    {
     "scenario": "look away 1.5 s mid-stare",
@@ -1012,138 +1012,138 @@
     "fired_on_target": 0.0,
     "fired_elsewhere": 0.0,
     "median_time_to_dwell_s": null,
-    "fixation_coverage": 0.3119919175009691,
-    "on_target_share": 0.18364636039920576
+    "fixation_coverage": 0.31265490208952745,
+    "on_target_share": 0.18100131388024046
    },
    {
     "scenario": "look away 1.5 s mid-stare",
     "profile": "recalibrated",
     "dip_scale": 1.0,
-    "trials": 100,
-    "expect": "dwell on target",
-    "pass": 0.75,
-    "fired_on_target": 0.75,
-    "fired_elsewhere": 0.0,
-    "median_time_to_dwell_s": 18.91,
-    "fixation_coverage": 0.8020936509650332,
-    "on_target_share": 0.6615702675050974
-   },
-   {
-    "scenario": "look away 1.5 s mid-stare",
-    "profile": "recalibrated",
-    "dip_scale": 1.25,
-    "trials": 100,
-    "expect": "dwell on target",
-    "pass": 0.87,
-    "fired_on_target": 0.87,
-    "fired_elsewhere": 0.0,
-    "median_time_to_dwell_s": 18.05,
-    "fixation_coverage": 0.7911033208206952,
-    "on_target_share": 0.7122734268397544
-   },
-   {
-    "scenario": "look away 1.5 s mid-stare",
-    "profile": "good-webcam",
-    "dip_scale": 1.0,
-    "trials": 100,
-    "expect": "dwell on target",
-    "pass": 0.95,
-    "fired_on_target": 0.95,
-    "fired_elsewhere": 0.0,
-    "median_time_to_dwell_s": 17.53,
-    "fixation_coverage": 0.8523579103549014,
-    "on_target_share": 0.7764439547164165
-   },
-   {
-    "scenario": "look away 1.5 s mid-stare",
-    "profile": "good-webcam",
-    "dip_scale": 1.25,
-    "trials": 100,
-    "expect": "dwell on target",
-    "pass": 1.0,
-    "fired_on_target": 1.0,
-    "fired_elsewhere": 0.0,
-    "median_time_to_dwell_s": 17.09,
-    "fixation_coverage": 0.8409871006178058,
-    "on_target_share": 0.8004671728793401
-   },
-   {
-    "scenario": "re-read a paragraph 3 times",
-    "profile": "first-calibration",
-    "dip_scale": 1.0,
-    "trials": 100,
-    "expect": "dwell on target",
-    "pass": 0.0,
-    "fired_on_target": 0.0,
-    "fired_elsewhere": 0.0,
-    "median_time_to_dwell_s": null,
-    "fixation_coverage": 0.3488138215853317,
-    "on_target_share": 0.1666910090251854
-   },
-   {
-    "scenario": "re-read a paragraph 3 times",
-    "profile": "first-calibration",
-    "dip_scale": 1.25,
-    "trials": 100,
-    "expect": "dwell on target",
-    "pass": 0.0,
-    "fired_on_target": 0.0,
-    "fired_elsewhere": 0.0,
-    "median_time_to_dwell_s": null,
-    "fixation_coverage": 0.34463160594678227,
-    "on_target_share": 0.20158982465142042
-   },
-   {
-    "scenario": "re-read a paragraph 3 times",
-    "profile": "recalibrated",
-    "dip_scale": 1.0,
-    "trials": 100,
-    "expect": "dwell on target",
-    "pass": 0.26,
-    "fired_on_target": 0.26,
-    "fired_elsewhere": 0.0,
-    "median_time_to_dwell_s": 64.02,
-    "fixation_coverage": 0.8581157154404111,
-    "on_target_share": 0.7006248033032436
-   },
-   {
-    "scenario": "re-read a paragraph 3 times",
-    "profile": "recalibrated",
-    "dip_scale": 1.25,
-    "trials": 100,
-    "expect": "dwell on target",
-    "pass": 0.43,
-    "fired_on_target": 0.43,
-    "fired_elsewhere": 0.0,
-    "median_time_to_dwell_s": 63.51,
-    "fixation_coverage": 0.8503796390808381,
-    "on_target_share": 0.7403917484440247
-   },
-   {
-    "scenario": "re-read a paragraph 3 times",
-    "profile": "good-webcam",
-    "dip_scale": 1.0,
-    "trials": 100,
-    "expect": "dwell on target",
-    "pass": 0.54,
-    "fired_on_target": 0.54,
-    "fired_elsewhere": 0.0,
-    "median_time_to_dwell_s": 58.02,
-    "fixation_coverage": 0.9011207824834817,
-    "on_target_share": 0.8272121454825059
-   },
-   {
-    "scenario": "re-read a paragraph 3 times",
-    "profile": "good-webcam",
-    "dip_scale": 1.25,
     "trials": 100,
     "expect": "dwell on target",
     "pass": 0.69,
     "fired_on_target": 0.69,
     "fired_elsewhere": 0.0,
-    "median_time_to_dwell_s": 58.34,
-    "fixation_coverage": 0.8927743078084582,
-    "on_target_share": 0.8410266718532367
+    "median_time_to_dwell_s": 19.01,
+    "fixation_coverage": 0.8059955086055285,
+    "on_target_share": 0.6503561121924072
+   },
+   {
+    "scenario": "look away 1.5 s mid-stare",
+    "profile": "recalibrated",
+    "dip_scale": 1.25,
+    "trials": 100,
+    "expect": "dwell on target",
+    "pass": 0.83,
+    "fired_on_target": 0.83,
+    "fired_elsewhere": 0.0,
+    "median_time_to_dwell_s": 18.43,
+    "fixation_coverage": 0.793235211299071,
+    "on_target_share": 0.7052081853555165
+   },
+   {
+    "scenario": "look away 1.5 s mid-stare",
+    "profile": "good-webcam",
+    "dip_scale": 1.0,
+    "trials": 100,
+    "expect": "dwell on target",
+    "pass": 0.97,
+    "fired_on_target": 0.97,
+    "fired_elsewhere": 0.0,
+    "median_time_to_dwell_s": 17.53,
+    "fixation_coverage": 0.8559333062897175,
+    "on_target_share": 0.7784817038154389
+   },
+   {
+    "scenario": "look away 1.5 s mid-stare",
+    "profile": "good-webcam",
+    "dip_scale": 1.25,
+    "trials": 100,
+    "expect": "dwell on target",
+    "pass": 0.99,
+    "fired_on_target": 0.99,
+    "fired_elsewhere": 0.0,
+    "median_time_to_dwell_s": 17.11,
+    "fixation_coverage": 0.8455648685380214,
+    "on_target_share": 0.7971600759730373
+   },
+   {
+    "scenario": "re-read a paragraph 3 times",
+    "profile": "first-calibration",
+    "dip_scale": 1.0,
+    "trials": 100,
+    "expect": "dwell on target",
+    "pass": 0.0,
+    "fired_on_target": 0.0,
+    "fired_elsewhere": 0.0,
+    "median_time_to_dwell_s": null,
+    "fixation_coverage": 0.34823706876494553,
+    "on_target_share": 0.1603141874815023
+   },
+   {
+    "scenario": "re-read a paragraph 3 times",
+    "profile": "first-calibration",
+    "dip_scale": 1.25,
+    "trials": 100,
+    "expect": "dwell on target",
+    "pass": 0.0,
+    "fired_on_target": 0.0,
+    "fired_elsewhere": 0.0,
+    "median_time_to_dwell_s": null,
+    "fixation_coverage": 0.3436825308451257,
+    "on_target_share": 0.19424035788234012
+   },
+   {
+    "scenario": "re-read a paragraph 3 times",
+    "profile": "recalibrated",
+    "dip_scale": 1.0,
+    "trials": 100,
+    "expect": "dwell on target",
+    "pass": 0.27,
+    "fired_on_target": 0.27,
+    "fired_elsewhere": 0.0,
+    "median_time_to_dwell_s": 64.95,
+    "fixation_coverage": 0.8561430266625188,
+    "on_target_share": 0.6951302654207767
+   },
+   {
+    "scenario": "re-read a paragraph 3 times",
+    "profile": "recalibrated",
+    "dip_scale": 1.25,
+    "trials": 100,
+    "expect": "dwell on target",
+    "pass": 0.33,
+    "fired_on_target": 0.33,
+    "fired_elsewhere": 0.0,
+    "median_time_to_dwell_s": 63.25,
+    "fixation_coverage": 0.8476912532688867,
+    "on_target_share": 0.7324261066172264
+   },
+   {
+    "scenario": "re-read a paragraph 3 times",
+    "profile": "good-webcam",
+    "dip_scale": 1.0,
+    "trials": 100,
+    "expect": "dwell on target",
+    "pass": 0.53,
+    "fired_on_target": 0.53,
+    "fired_elsewhere": 0.0,
+    "median_time_to_dwell_s": 58.43,
+    "fixation_coverage": 0.8988426579036957,
+    "on_target_share": 0.8287601116829307
+   },
+   {
+    "scenario": "re-read a paragraph 3 times",
+    "profile": "good-webcam",
+    "dip_scale": 1.25,
+    "trials": 100,
+    "expect": "dwell on target",
+    "pass": 0.64,
+    "fired_on_target": 0.64,
+    "fired_elsewhere": 0.0,
+    "median_time_to_dwell_s": 58.65,
+    "fixation_coverage": 0.8900266715682456,
+    "on_target_share": 0.8407502306209114
    },
    {
     "scenario": "glance 5 s",
@@ -1155,7 +1155,7 @@
     "fired_on_target": 0.0,
     "fired_elsewhere": 0.0,
     "median_time_to_dwell_s": null,
-    "fixation_coverage": 0.338500439394142,
+    "fixation_coverage": 0.32651453160448596,
     "on_target_share": null
    },
    {
@@ -1168,7 +1168,7 @@
     "fired_on_target": 0.0,
     "fired_elsewhere": 0.0,
     "median_time_to_dwell_s": null,
-    "fixation_coverage": 0.3335025700269123,
+    "fixation_coverage": 0.32043846523227254,
     "on_target_share": null
    },
    {
@@ -1181,7 +1181,7 @@
     "fired_on_target": 0.0,
     "fired_elsewhere": 0.0,
     "median_time_to_dwell_s": null,
-    "fixation_coverage": 0.8082813622356487,
+    "fixation_coverage": 0.8047738109353508,
     "on_target_share": null
    },
    {
@@ -1194,7 +1194,7 @@
     "fired_on_target": 0.0,
     "fired_elsewhere": 0.0,
     "median_time_to_dwell_s": null,
-    "fixation_coverage": 0.800794959414363,
+    "fixation_coverage": 0.7988349914727338,
     "on_target_share": null
    },
    {
@@ -1207,7 +1207,7 @@
     "fired_on_target": 0.0,
     "fired_elsewhere": 0.0,
     "median_time_to_dwell_s": null,
-    "fixation_coverage": 0.8451619917877794,
+    "fixation_coverage": 0.8443272748207867,
     "on_target_share": null
    },
    {
@@ -1220,7 +1220,7 @@
     "fired_on_target": 0.0,
     "fired_elsewhere": 0.0,
     "median_time_to_dwell_s": null,
-    "fixation_coverage": 0.8385926884799427,
+    "fixation_coverage": 0.8371927197158888,
     "on_target_share": null
    },
    {
@@ -1233,7 +1233,7 @@
     "fired_on_target": 0.0,
     "fired_elsewhere": 0.0,
     "median_time_to_dwell_s": null,
-    "fixation_coverage": 0.3210867756393667,
+    "fixation_coverage": 0.3196532684735335,
     "on_target_share": null
    },
    {
@@ -1246,7 +1246,7 @@
     "fired_on_target": 0.0,
     "fired_elsewhere": 0.0,
     "median_time_to_dwell_s": null,
-    "fixation_coverage": 0.31465401486909833,
+    "fixation_coverage": 0.31204699961317517,
     "on_target_share": null
    },
    {
@@ -1259,7 +1259,7 @@
     "fired_on_target": 0.0,
     "fired_elsewhere": 0.0,
     "median_time_to_dwell_s": null,
-    "fixation_coverage": 0.805894294515655,
+    "fixation_coverage": 0.8030306634071921,
     "on_target_share": null
    },
    {
@@ -1272,7 +1272,7 @@
     "fired_on_target": 0.0,
     "fired_elsewhere": 0.0,
     "median_time_to_dwell_s": null,
-    "fixation_coverage": 0.791221994324284,
+    "fixation_coverage": 0.7924193592618203,
     "on_target_share": null
    },
    {
@@ -1285,7 +1285,7 @@
     "fired_on_target": 0.0,
     "fired_elsewhere": 0.0,
     "median_time_to_dwell_s": null,
-    "fixation_coverage": 0.8528969738274482,
+    "fixation_coverage": 0.8484606696272661,
     "on_target_share": null
    },
    {
@@ -1298,7 +1298,7 @@
     "fired_on_target": 0.0,
     "fired_elsewhere": 0.0,
     "median_time_to_dwell_s": null,
-    "fixation_coverage": 0.8425818951190349,
+    "fixation_coverage": 0.8382481690477062,
     "on_target_share": null
    },
    {
@@ -1311,7 +1311,7 @@
     "fired_on_target": 0.0,
     "fired_elsewhere": 0.0,
     "median_time_to_dwell_s": null,
-    "fixation_coverage": 0.34762420738947186,
+    "fixation_coverage": 0.3481726524221376,
     "on_target_share": null
    },
    {
@@ -1324,7 +1324,7 @@
     "fired_on_target": 0.0,
     "fired_elsewhere": 0.0,
     "median_time_to_dwell_s": null,
-    "fixation_coverage": 0.34428383164485915,
+    "fixation_coverage": 0.34528637971467296,
     "on_target_share": null
    },
    {
@@ -1337,7 +1337,7 @@
     "fired_on_target": 0.0,
     "fired_elsewhere": 0.0,
     "median_time_to_dwell_s": null,
-    "fixation_coverage": 0.8576342380692443,
+    "fixation_coverage": 0.8567829106490286,
     "on_target_share": null
    },
    {
@@ -1350,7 +1350,7 @@
     "fired_on_target": 0.0,
     "fired_elsewhere": 0.0,
     "median_time_to_dwell_s": null,
-    "fixation_coverage": 0.8485418891645051,
+    "fixation_coverage": 0.8482019201820385,
     "on_target_share": null
    },
    {
@@ -1363,7 +1363,7 @@
     "fired_on_target": 0.0,
     "fired_elsewhere": 0.0,
     "median_time_to_dwell_s": null,
-    "fixation_coverage": 0.8993053951015781,
+    "fixation_coverage": 0.90008356696594,
     "on_target_share": null
    },
    {
@@ -1376,7 +1376,7 @@
     "fired_on_target": 0.0,
     "fired_elsewhere": 0.0,
     "median_time_to_dwell_s": null,
-    "fixation_coverage": 0.8906108716490838,
+    "fixation_coverage": 0.8915498182965267,
     "on_target_share": null
    },
    {
@@ -1389,7 +1389,7 @@
     "fired_on_target": 0.0,
     "fired_elsewhere": 0.0,
     "median_time_to_dwell_s": null,
-    "fixation_coverage": 0.35100319995990026,
+    "fixation_coverage": 0.35328742729335266,
     "on_target_share": null
    },
    {
@@ -1402,7 +1402,7 @@
     "fired_on_target": 0.0,
     "fired_elsewhere": 0.0,
     "median_time_to_dwell_s": null,
-    "fixation_coverage": 0.3484697316078964,
+    "fixation_coverage": 0.3499206419706383,
     "on_target_share": null
    },
    {
@@ -1415,7 +1415,7 @@
     "fired_on_target": 0.0,
     "fired_elsewhere": 0.0,
     "median_time_to_dwell_s": null,
-    "fixation_coverage": 0.867948736328873,
+    "fixation_coverage": 0.8700814706133221,
     "on_target_share": null
    },
    {
@@ -1428,7 +1428,7 @@
     "fired_on_target": 0.0,
     "fired_elsewhere": 0.0,
     "median_time_to_dwell_s": null,
-    "fixation_coverage": 0.8630012548587613,
+    "fixation_coverage": 0.8650749554463181,
     "on_target_share": null
    },
    {
@@ -1441,7 +1441,7 @@
     "fired_on_target": 0.0,
     "fired_elsewhere": 0.0,
     "median_time_to_dwell_s": null,
-    "fixation_coverage": 0.9054427648027424,
+    "fixation_coverage": 0.9097061475158411,
     "on_target_share": null
    },
    {
@@ -1454,7 +1454,7 @@
     "fired_on_target": 0.0,
     "fired_elsewhere": 0.0,
     "median_time_to_dwell_s": null,
-    "fixation_coverage": 0.9017611122852833,
+    "fixation_coverage": 0.9057370552222272,
     "on_target_share": null
    }
   ]

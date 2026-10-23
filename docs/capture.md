@@ -284,9 +284,8 @@ uv run python eval/capture_soak.py --hours 8 --output eval/results/capture-soak.
 
 On 8 simulated hours (28,800 browser and 28,800 gaze batches, 91,076 fixations) every record was
 logged once, none malformed, the receiver's id, text and click caches stayed under their caps,
-and the median request took 3.6 ms (browser) and 5.0 ms (gaze), 0.5-0.9 ms more in the last
-tenth of the day than in the first. The tracker's smoother and fixation detector take 20 µs a
-frame.
+and the median request took 3.2 ms (browser) and 4.4 ms (gaze), the same in the last tenth of the
+day as in the first. The tracker's smoother and fixation detector take 12 µs a frame.
 
 ## Simulation
 
@@ -310,26 +309,27 @@ no other; a no-dwell case passes when none fires.
 
 | Case | Expect | 183 px, 100% | 183 px, 125% | 69 px, 100% | 69 px, 125% | 40 px, 100% | 40 px, 125% |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| stare 20 s, 200% zoom | dwell on target | 0% → **87%** | 0% → **90%** | 82% → **100%** | 93% → **100%** | 97% → **100%** | 100% → **100%** |
-| stare 20 s, 200% zoom, after 6 clicks | dwell on target | 0% → **94%** | 0% → **94%** | 82% → **100%** | 88% → **99%** | 94% → **99%** | 98% → **100%** |
-| stare 20 s, 100% zoom | dwell on target | 0% → **71%** | 0% → **74%** | 39% → **89%** | 56% → **94%** | 72% → **99%** | 84% → **99%** |
-| look away 1.5 s mid-stare | dwell on target | 0% → **83%** | 0% → **87%** | 75% → **100%** | 87% → **100%** | 95% → **100%** | 100% → **100%** |
-| re-read a paragraph 3 times | dwell on target | 0% → **6%** | 0% → **17%** | 26% → **45%** | 43% → **56%** | 54% → **80%** | 69% → **88%** |
+| stare 20 s, 200% zoom | dwell on target | 0% → **84%** | 0% → **90%** | 75% → **99%** | 89% → **100%** | 98% → **100%** | 100% → **100%** |
+| stare 20 s, 200% zoom, after 6 clicks | dwell on target | 0% → **89%** | 0% → **94%** | 81% → **100%** | 92% → **98%** | 96% → **100%** | 99% → **99%** |
+| stare 20 s, 100% zoom | dwell on target | 0% → **62%** | 0% → **70%** | 39% → **91%** | 55% → **95%** | 70% → **98%** | 79% → **99%** |
+| look away 1.5 s mid-stare | dwell on target | 0% → **75%** | 0% → **81%** | 69% → **98%** | 83% → **100%** | 97% → **99%** | 99% → **99%** |
+| re-read a paragraph 3 times | dwell on target | 0% → **0%** | 0% → **9%** | 27% → **39%** | 33% → **55%** | 53% → **80%** | 64% → **90%** |
 | glance 5 s | no dwell | 100% → **100%** | 100% → **100%** | 100% → **100%** | 100% → **100%** | 100% → **100%** | 100% → **100%** |
 | tab switch mid-stare | no dwell | 100% → **100%** | 100% → **100%** | 100% → **100%** | 100% → **100%** | 100% → **100%** | 100% → **100%** |
-| read an article | no dwell | 100% → **100%** | 100% → **97%** | 100% → **100%** | 100% → **100%** | 100% → **100%** | 100% → **100%** |
+| read an article | no dwell | 100% → **100%** | 100% → **97%** | 100% → **99%** | 100% → **99%** | 100% → **100%** | 100% → **100%** |
 | slow read under a heading | no dwell | 100% → **100%** | 100% → **100%** | 100% → **100%** | 100% → **100%** | 100% → **100%** | 100% → **100%** |
 
-| Share of tracked time in fixations | | 34% → **80%** | 33% → **80%** | 83% → **91%** | 82% → **91%** | 88% → **90%** | 87% → **89%** |
+| Share of tracked time in fixations | | 34% → **66%** | 33% → **66%** | 83% → **88%** | 82% → **88%** | 88% → **88%** | 87% → **87%** |
 
 - **Why the Windows stares failed.** With the first calibration's error, the fixation detector
   kept a third of tracked time (its threshold was fixed at 6% of the screen width; noisier gaze
   broke a steady look into pieces too short to keep), and the receiver counted only fixations
   inside the paragraph's rectangle, ending the run after 1 s outside it. None of 100 simulated
-  stares became a dwell, as on the PC. The old code passed 82-93% with the recalibrated error.
-- **Clicks** matter most when the calibration has drifted: six clicks before the stare take the
-  coarse calibration from 87-90% to 94%.
-- **Re-reading** a paragraph three times is the weakest case: its first and last lines sit within
+  stares became a dwell, as on the PC. The old code passed 75-89% with the recalibrated error.
+- **Clicks** matter most when the calibration is coarse: six clicks before the stare take the
+  183 px calibration from 84-90% to 89-94%, even with clicks that miss by about 15 px and one in
+  seven made without looking.
+- **Re-reading** a paragraph three times is the weakest case (39-55% at 69 px): its first and last lines sit within
   the gaze error of the neighbouring blocks, and the filter is deliberately quicker to move on
   once a paragraph's reading time has passed, which is what keeps normal reading from being
   flagged.

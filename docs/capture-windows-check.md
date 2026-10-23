@@ -70,13 +70,14 @@ What the simulation showed about the failed stare, with the first calibration's 
 
 - The tracker turned 31% of tracked time into fixations. Its dispersion threshold was fixed at
   6% of the screen width; noisier gaze broke a steady look into pieces under 0.1 s, which are
-  dropped. The threshold now follows the measured noise: 80% of tracked time.
+  dropped. The threshold now follows the measured noise: 66% of tracked time at that error, 88%
+  at the recalibrated one.
 - Fixations were assigned to the block under them, with 40 CSS px of margin, and a run ended
   after 1 s on anything else. At 2.5 CSS px per monitor pixel of error at 200% zoom, about a fifth
   of the stare landed inside the paragraph. A filter now weighs every block by how likely the
   tracker was to report each point if the eyes were on it.
 - The 0 of 100 simulated stares that became dwells with the old code is consistent with the two
-  live failures; with the recalibrated error the old code passed 82-93 of 100, so the unscored
+  live failures; with the recalibrated error the old code passed 75-89 of 100, so the unscored
   third stare most likely passed.
 
 Pending on the PC, and not replaced by simulation: shortcut timing (7c), a real lock (7d), a real
