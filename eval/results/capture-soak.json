@@ -14,7 +14,7 @@
  },
  "malformed": 0,
  "bytes": {
-  "gaze.jsonl": 23950785,
+  "gaze.jsonl": 23950769,
   "health.jsonl": 397,
   "blocks.jsonl": 4902216,
   "browser.jsonl": 560688
@@ -31,34 +31,34 @@
  },
  "events": {
   "requests": 28800,
-  "median_ms": 3.56,
-  "p99_ms": 7.54,
-  "first_tenth_median_ms": 3.38,
-  "last_tenth_median_ms": 3.9
+  "median_ms": 3.17,
+  "p99_ms": 6.01,
+  "first_tenth_median_ms": 3.16,
+  "last_tenth_median_ms": 3.17
  },
  "gaze": {
   "requests": 28800,
-  "median_ms": 5.03,
-  "p99_ms": 9.72,
-  "first_tenth_median_ms": 4.68,
-  "last_tenth_median_ms": 5.58
+  "median_ms": 4.44,
+  "p99_ms": 7.66,
+  "first_tenth_median_ms": 4.34,
+  "last_tenth_median_ms": 4.43
  },
  "accuracy": {
   "clicks": 9,
   "rejected": 634,
   "live_error_px": 217.1,
-  "corrected_error_px": 220.5,
+  "corrected_error_px": 227.7,
   "offset_px": [
    -32.7,
    -1.6
   ],
   "calibrated_error_px": 69.1,
-  "planned_error_px": 220.5
+  "planned_error_px": 69.1
  },
  "ok": true,
  "tracker": {
   "frames": 3600,
-  "microseconds_per_frame": 20.1
+  "microseconds_per_frame": 11.9
  },
- "wall_s": 261.6
+ "wall_s": 232.5
 }
