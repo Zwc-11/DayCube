@@ -59,12 +59,6 @@ class Search(Record, Tab):
     query: str = Field(max_length=1000)
 
 
-class Click(Record, Tab):
-    kind: Literal["click"]
-    href: str | None = Field(default=None, max_length=4096)
-    text: str = Field(default="", max_length=300)
-
-
 class Selection(Record, Tab):
     kind: Literal["selection"]
     text: str = Field(max_length=2000)
@@ -97,6 +91,18 @@ class Geometry(Strict):
     exact: bool
     scroll_y: float = Field(ge=0)
     scroll_h: float = Field(ge=0)
+
+
+class Click(Record, Tab):
+    """A click on a link or button. ``x`` and ``y`` (CSS px in the viewport) and the viewport's
+    ``geometry`` at that moment make it a calibration point for the eye tracker (anchors.py)."""
+
+    kind: Literal["click"]
+    href: str | None = Field(default=None, max_length=4096)
+    text: str = Field(default="", max_length=300)
+    x: float | None = Field(default=None, ge=-100_000, le=100_000)
+    y: float | None = Field(default=None, ge=-100_000, le=100_000)
+    geometry: Geometry | None = None
 
 
 class Block(Strict):
@@ -155,6 +161,8 @@ class GazeState(Strict):
     fps: float | None = None
     target_fps: float | None = Field(default=None, gt=0)
     face: float | None = Field(default=None, ge=0, le=1)  # share of recent frames with a usable face
+    coverage: float | None = Field(default=None, ge=0, le=1)  # share of recent gaze samples inside fixations
+    noise_px: float | None = Field(default=None, ge=0)  # scatter of the smoothed gaze, monitor pixels
 
 
 class GazeBatch(Strict):

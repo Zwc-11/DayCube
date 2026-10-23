@@ -46,7 +46,7 @@ async function refresh() {
     const status = await (await fetch(`${RECEIVER}/status`)).json();
     show('receiver', status.paused ? 'Running, paused' : `Running, last record ${ago(status.browser.last)}`, 'good');
     const gaze = status.gaze;
-    show('gaze', gazeLabel(gaze), gaze.tracking ? 'good' : '');
+    show('gaze', gazeLabel(gaze, status.accuracy), gaze.tracking ? 'good' : '');
   } catch {
     show('receiver', 'Not running. Start it with python -m capture run --receive, or install autostart.', 'bad');
     show('gaze', '—');

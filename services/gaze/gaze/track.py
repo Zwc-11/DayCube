@@ -94,6 +94,8 @@ class Tracker:
         self.offline_since: float | None = None
         self.last_face = clock()
         self.frames: deque[tuple[float, bool]] = deque()  # (time, had a face) over the last 10 s
+        self.samples: deque[float] = deque()  # gaze samples given to the detector over the last 30 s
+        self.fixated: deque[tuple[float, int]] = deque()  # (time, samples) of fixations over the last 30 s
 
     # -- state -------------------------------------------------------------------------------------
 
@@ -109,7 +111,24 @@ class Tracker:
             "fps": round((frames - 1) / span, 1) if span > 0 else None,
             "target_fps": self.target_fps,
             "face": round(sum(face for _, face in self.frames) / frames, 2) if frames else None,
+            # How much of the gaze becomes fixations: low means the detector is splitting looks.
+            "coverage": round(min(1.0, (sum(n for _, n in self.fixated) + self._open()) / len(self.samples)), 2)
+            if len(self.samples) >= 30
+            else None,
+            "noise_px": None if self.detector.noise_px is None else round(self.detector.noise_px, 1),
         }
+
+    def _open(self) -> int:
+        """Samples in the fixation still under way, once it is long enough to count."""
+        window = self.detector.window
+        return len(window) if window and window[-1][0] - window[0][0] >= self.detector.min_duration else 0
+
+    def _fixations(self, now: float, found: list) -> None:
+        for fixation in found:
+            self.receiver.add(fixation)
+            self.fixated.append((now, fixation.samples))
+        while self.fixated and now - self.fixated[0][0] > 30:
+            self.fixated.popleft()
 
     def _reason(self, now: float) -> str | None:
         """Why the camera should be off now, or None. Re-evaluated every couple of seconds."""
@@ -142,6 +161,8 @@ class Tracker:
             self.receiver.add(fixation)
         self.smoother.reset()
         self.frames.clear()
+        self.samples.clear()
+        self.fixated.clear()
         self._prediction_input = None
 
     def _report(self, now: float) -> None:
@@ -226,8 +247,10 @@ class Tracker:
             x, y = self.smoother(now, x, y)
             fx, fy = x / self.width, y / self.height
             if -0.05 <= fx <= 1.05 and -0.05 <= fy <= 1.05:  # off-screen samples end the fixation
-                for fixation in self.detector.add(now, fx, fy):
-                    self.receiver.add(fixation)
+                self.samples.append(now)
+                while now - self.samples[0] > 30:
+                    self.samples.popleft()
+                self._fixations(now, self.detector.add(now, fx, fy))
         self._report(now)
         self.sleep(max(0.0, self.period - (self.timer() - started)))
 

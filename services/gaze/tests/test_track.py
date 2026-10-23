@@ -99,6 +99,7 @@ def test_a_steady_look_becomes_fixations_at_its_screen_fraction() -> None:
     state = receiver.states[-1]
     assert state["tracking"] is True and state["face"] == 1.0 and 29 <= state["fps"] <= 30.5
     assert state["target_fps"] == 30.0
+    assert state["coverage"] >= 0.9 and state["noise_px"] is not None and state["noise_px"] < 1  # a still point
     assert log == ["open"]
 
 

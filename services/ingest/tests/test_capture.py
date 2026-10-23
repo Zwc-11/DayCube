@@ -184,3 +184,68 @@ def test_block_texts_survive_a_receiver_restart(vault: Vault, auth: dict[str, st
         )
     restarted = create_capture_app(settings(vault), receive=True)
     assert restarted.state.receiver.attention.texts[("doc-1", "b1")] == ("p", text, 6)
+
+
+def test_clicks_measure_live_accuracy_and_health_is_logged(vault: Vault, auth: dict[str, str]) -> None:
+    """Six clicks, each with the tracker's fixation 40 px below it: the receiver learns the offset,
+    reports it in /status, and writes a health line with the tracker's own figures."""
+    state = {
+        "tracking": True, "calibrated": True, "error_px": 69.1, "monitor": [1920, 1080], "fps": 29.5,
+        "target_fps": 30.0, "face": 1.0, "coverage": 0.9, "noise_px": 21.0,
+    }  # fmt: skip
+    start = datetime.now(UTC) - timedelta(seconds=30)
+    clicks, fixations = [], []
+    for i in range(6):
+        x, y = 200 + 250 * i, 150 + 100 * i
+        t = start + timedelta(seconds=4 * i)
+        clicks.append(
+            {**record("click", href=None, text="Next", x=x, y=y, geometry=GEOMETRY, **TAB), "t": t.isoformat()}
+        )
+        for begin, end, dx in ((-0.5, 0.2, 0), (0.3, 0.9, 300)):
+            fixations.append({
+                "id": uuid.uuid4().hex, "t": (t + timedelta(seconds=begin)).isoformat(),
+                "t_end": (t + timedelta(seconds=end)).isoformat(),
+                "x": (x + dx) / 1920, "y": (100 + y + 40) / 1080, "samples": 20,
+            })  # fmt: skip
+    with TestClient(create_capture_app(settings(vault), receive=True)) as client:
+        assert client.post("/events", json=clicks, headers=auth).json()["accepted"] == 6
+        assert (
+            client.post("/gaze", json={"state": state, "fixations": fixations}, headers=auth).json()["accepted"] == 12
+        )
+        accuracy = client.get("/status").json()["accuracy"]
+    assert accuracy["clicks"] == 6 and accuracy["live_error_px"] == 40.0
+    assert accuracy["corrected_error_px"] < 15 and accuracy["offset_px"][1] > 30  # each click from the other five
+    assert accuracy["planned_error_px"] == accuracy["corrected_error_px"]
+    stored = [line for line in logged(vault, "browser.jsonl") if line["kind"] == "click"]
+    assert stored[0]["x"] == 200 and stored[0]["geometry"]["scale"] == 1.0
+    (health,) = logged(vault, "health.jsonl")
+    assert health["gaze"]["coverage"] == 0.9 and health["accuracy"]["clicks"] == 6
+
+
+def test_the_doctor_judges_capture_from_what_it_recorded(vault: Vault, monkeypatch: pytest.MonkeyPatch) -> None:
+    from zoneinfo import ZoneInfo
+
+    from capture import doctor
+
+    now = datetime.now(UTC)
+    zone = ZoneInfo("America/Toronto")
+    day = vault.root / "capture" / now.astimezone(zone).date().isoformat()
+    day.mkdir(parents=True)
+    (day / "attention.jsonl").write_text('{"phase": "start"}\n{"phase": "end"}\n', encoding="utf-8")
+    (day / "gaze.jsonl").write_text('{"x": 1}\nnot json\n{"x": 2', encoding="utf-8")  # last line still being written
+    status = {
+        "paused": False, "browser": {"last": (now - timedelta(minutes=2)).isoformat()},
+        "gaze": {"tracking": True, "fps": 29.4, "target_fps": 30.0, "face": 1.0, "coverage": 0.88, "noise_px": 24.0,
+                 "error_px": 69.1, "monitor": [2560, 1440]},
+        "accuracy": {"clicks": 7, "rejected": 0, "live_error_px": 120.0, "corrected_error_px": 58.0},
+    }  # fmt: skip
+    monkeypatch.setattr(doctor.sys, "platform", "linux")
+    results = {name: (verdict, detail) for verdict, name, detail in doctor.checks(status, vault.root, zone, now, None)}
+    assert results["receiver"][0] == doctor.PASS and results["fixations"] == (doctor.PASS, "88% of gaze, noise 24 px")
+    assert results["calibration"][0] == doctor.PASS and results["live accuracy"][0] == doctor.PASS
+    assert results["today's logs"][0] == doctor.FAIL and "1 malformed" in results["today's logs"][1]
+    assert results["dwells today"] == (doctor.INFO, "1")
+    worse = status | {"accuracy": {"clicks": 7, "rejected": 9, "live_error_px": 300.0, "corrected_error_px": 260.0}}
+    results = {name: verdict for verdict, name, _ in doctor.checks(worse, vault.root, zone, now, None)}
+    assert results["live accuracy"] == doctor.FAIL and results["clicks"] == doctor.WARN
+    assert doctor.checks(None, vault.root, zone, now, None)[0][0] == doctor.FAIL

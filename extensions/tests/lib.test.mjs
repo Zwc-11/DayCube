@@ -12,6 +12,11 @@ test('gaze label distinguishes measured rate, target and pause state', () => {
   assert.equal(gazeLabel({ tracking: true, error_px: 90 }), 'Tracking, calibrated to 90 px');
   assert.equal(gazeLabel({ tracking: true, fps: null, face: null }), 'Tracking');
   assert.equal(gazeLabel(), 'Not tracking: unknown');
+  // Live accuracy from clicks, once there are enough of them.
+  assert.equal(gazeLabel({ tracking: true, error_px: 69.1 }, { clicks: 7, corrected_error_px: 58.4 }),
+    'Tracking, calibrated to 69 px, 58 px now (7 clicks)');
+  assert.equal(gazeLabel({ tracking: true, error_px: 69.1 }, { clicks: 3, corrected_error_px: 40 }),
+    'Tracking, calibrated to 69 px');
 });
 
 test('searches are read from result-page addresses', () => {

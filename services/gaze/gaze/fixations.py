@@ -7,8 +7,22 @@
 - I-DT (Salvucci and Goldberg, ETRA 2000): a fixation is a run of samples whose dispersion,
   (max x - min x) + (max y - min y), stays under a threshold for at least a minimum duration.
 
-Webcam gaze is noisy (errors of 100-200 px are typical), so the default dispersion threshold is
-6% of the screen width (115 px at 1920) rather than the 25-50 px used with infrared trackers.
+Webcam gaze is noisy (errors of 100-200 px are typical), so the dispersion threshold starts at 6%
+of the screen width (115 px at 1920) rather than the 25-50 px used with infrared trackers, and
+rises with the noise actually measured: ``noise_k`` times a robust estimate of the smoothed gaze's
+scatter over the last few seconds. Without that, a session noisier than the fixed threshold
+assumes (a camera at 640x480, dim light, a stale calibration) breaks a steady look into pieces
+shorter than ``min_duration``, which are dropped: on the 2026-10-23 Windows session the tracker
+turned about a third of tracked time into fixations (``eval/gaze_sim.py``). Adapting the threshold
+to measured noise follows Nystrom and Holmqvist (Behavior Research Methods, 2010), who set the
+velocity threshold of their detector from the noise of each recording.
+
+The scatter is estimated from second differences at a lag longer than the smoother's memory,
+``x[t] - 2 x[t-L] + x[t-2L]``: noise survives them, steady motion (a slow drift, a pursuit) does
+not, and saccades are brief enough to barely move a median. A threshold never exceeds
+``max_dispersion`` of the screen width, so gaze too noisy to separate even distant targets is
+still split into separate fixations at large jumps.
+
 Fixations longer than ``max_duration`` are split, so a long stare is reported while it lasts
 instead of only when it ends.
 """
@@ -16,6 +30,7 @@ instead of only when it ends.
 from __future__ import annotations
 
 import math
+from collections import deque
 from dataclasses import dataclass
 
 
@@ -80,11 +95,25 @@ class FixationDetector:
         min_duration: float = 0.1,
         max_duration: float = 1.0,
         max_gap: float = 0.25,
+        noise_k: float = 9.0,
+        noise_window: float = 8.0,
+        noise_lag: float = 0.3,
+        max_dispersion: float = 0.25,
     ) -> None:
         self.width, self.height = width, height
-        self.dispersion = (dispersion_px if dispersion_px is not None else 0.06 * width) / width  # in x-fractions
+        self.base = (dispersion_px if dispersion_px is not None else 0.06 * width) / width  # in x-fractions
+        self.dispersion = self.base
         self.min_duration, self.max_duration, self.max_gap = min_duration, max_duration, max_gap
+        self.noise_k, self.noise_window, self.noise_lag = noise_k, noise_window, noise_lag
+        self.max_dispersion = max(max_dispersion, self.base)
+        self.noise: float | None = None  # scatter of the smoothed gaze, in x-fractions
+        self.history: deque[tuple[float, float, float]] = deque()  # recent samples for the noise estimate
+        self.since_estimate = 0
         self.window: list[tuple[float, float, float]] = []
+
+    @property
+    def noise_px(self) -> float | None:
+        return None if self.noise is None else self.noise * self.width
 
     def _spread(self, window: list[tuple[float, float, float]]) -> float:
         xs = [x for _, x, _ in window]
@@ -97,11 +126,45 @@ class FixationDetector:
         n = len(window)
         return [Fixation(window[0][0], window[-1][0], sum(w[1] for w in window) / n, sum(w[2] for w in window) / n, n)]
 
+    def _learn(self, t: float, x: float, y: float) -> None:
+        """Keep the noise estimate, and the threshold that follows it, up to date."""
+        history = self.history
+        history.append((t, x, y * self.height / self.width))
+        while history and t - history[0][0] > self.noise_window:
+            history.popleft()
+        self.since_estimate += 1
+        if self.since_estimate < 10:
+            return
+        self.since_estimate = 0
+        samples = list(history)
+        times = [s[0] for s in samples]
+        diffs: list[float] = []
+        lag, j, k = self.noise_lag, 0, 0
+        for i, (ti, xi, yi) in enumerate(samples):  # i is the newest of the three points
+            while j < i and times[j + 1] <= ti - lag:
+                j += 1
+            if ti - times[j] < lag:
+                continue
+            tj = times[j]
+            while k < j and times[k + 1] <= tj - lag:
+                k += 1
+            if tj - times[k] < lag:
+                continue
+            (_, xj, yj), (_, xk, yk) = samples[j], samples[k]
+            diffs += (abs(xi - 2 * xj + xk), abs(yi - 2 * yj + yk))
+        if len(diffs) < 40:
+            return
+        diffs.sort()
+        # For independent noise a second difference has variance 6 sigma^2; MAD to sigma is 1.4826.
+        self.noise = 1.4826 * diffs[len(diffs) // 2] / math.sqrt(6)
+        self.dispersion = min(max(self.base, self.noise_k * self.noise), self.max_dispersion)
+
     def add(self, t: float, x: float, y: float) -> list[Fixation]:
         """Add one gaze sample (monitor fractions); returns fixations that it completed."""
         out: list[Fixation] = []
         if self.window and t - self.window[-1][0] > self.max_gap:  # a blink or a lost face
             out += self.flush()
+        self._learn(t, x, y)
         self.window.append((t, x, y))
         if self._spread(self.window) > self.dispersion:
             sample = self.window.pop()

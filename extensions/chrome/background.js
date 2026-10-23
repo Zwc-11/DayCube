@@ -361,7 +361,9 @@ async function fromPage(message, tab) {
     }
     case 'click': {
       const href = message.href && allowed(message.href, s.exclusions) ? clip(message.href, 4096) : null;
-      enqueue(record('click', { ...base, href, text: clip(message.text, 300) }));
+      const point = Number.isFinite(message.x) && Number.isFinite(message.y) && message.geometry
+        ? { x: message.x, y: message.y, geometry: message.geometry } : {};
+      enqueue(record('click', { ...base, href, text: clip(message.text, 300), ...point }));
       return true;
     }
     case 'selection':

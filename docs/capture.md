@@ -16,8 +16,9 @@ flowchart LR
 - **The eye tracker** turns webcam frames into fixations with EyeTrax (MIT). Frames stay in
   memory; only fixations leave the process. It runs in its own environment because EyeTrax
   needs numpy<2 and the rest of DayCube needs numpy>=2.
-- **The receiver** writes the logs, places each fixation on the paragraph under it, and detects
-  dwells. It starts the eye tracker and restarts it if it stops.
+- **The receiver** writes the logs, decides which paragraph each fixation belongs to, and detects
+  dwells. It learns the tracker's live error from clicks (people look at what they click) and
+  corrects for it. It starts the eye tracker and restarts it if it stops.
 
 Nothing goes over the network: the receiver listens on 127.0.0.1 only, and the extension can
 reach no other host.
@@ -84,8 +85,27 @@ uv run python eval/profile_gaze.py --seconds 15 --output test-results/gaze-rate.
 
 The report samples status only. Its rate values share the tracker's rolling ten-second window,
 so consecutive samples are correlated. Allow ten seconds after startup for that window to settle.
-Processing rate and face detection establish that the tracker is working on frames; matched block
-hits and the reading tests below are still needed to establish page placement and useful dwells.
+Processing rate and face detection establish that the tracker is working on frames. Whether gaze
+lands on the right paragraphs is measured from ordinary use, below.
+
+### Checking it without a test
+
+```powershell
+uv run --project services/capture-win python -m capture doctor
+```
+
+prints one line per check, from what the services recorded while you used the computer: receiver,
+extension, frame rate, face detection, **fixations** (the share of gaze that became fixations, and
+the gaze noise), calibration error, **live accuracy**, today's logs, dwells and the sign-in entry.
+It exits with code 1 when a check fails.
+
+Live accuracy comes from clicks. The eyes are on a link or button when it is clicked, so each click
+with a fixation around it measures how far off the tracker is at that moment and place. After five
+clicks the receiver reports the median error before and after its correction (each click predicted
+from the others), uses it as the gaze error it allows for, and shows it in the extension's **Right
+now** panel (`58 px now (7 clicks)`). A live error above the calibration limit means: recalibrate
+from your usual seat. Every 10 minutes while gaze arrives, the same figures go to
+`vault/capture/<date>/health.jsonl`, so a session can be judged afterwards.
 
 ## Everyday use
 
@@ -113,10 +133,11 @@ minute.
 
 ## Dwells: when your eyes stay too long
 
-A *dwell* is a run of fixations on one block of text (a paragraph, heading, list item or cell).
-Glances away of up to 1 second do not end it; a gap in gaze of 2 seconds, a tab switch or a
-navigation to another page does (an address change within the page, such as a section link,
-does not). A run becomes a dwell when its fixation time reaches both:
+A *dwell* is a run of time on one block of text (a paragraph, heading, list item or cell).
+Looking elsewhere for up to 2.5 seconds does not end it; a gap in gaze of 2 seconds, a tab switch
+or a navigation to another page does (an address change within the page, such as a section link,
+does not). Blinks and saccades between fixations count as looking. A run becomes a dwell when its
+time reaches both:
 
 - 8 seconds (`--dwell-seconds`), and
 - twice the time the block takes to read at 238 words a minute (`--dwell-factor`), the average
@@ -124,7 +145,9 @@ does not). A run becomes a dwell when its fixation time reaches both:
   studies).
 
 Reading a long paragraph at normal speed is therefore not a dwell. Reading it at under half
-speed, re-reading it, or staring at a short line is.
+speed, re-reading it, or staring at a short line is. A dwell also needs a block the tracker can
+single out at its current error: with a coarse calibration, a heading 20 px above a paragraph is a
+guess between the two, and no dwell is reported on it.
 
 Each dwell writes a `start` record when it is detected and an `end` record when it ends, with
 the page, the block's text, fixation time and reading time. What happens at `start` is up to you:
@@ -145,10 +168,11 @@ the dwell is detected. The program runs at once; one runs at a time.
 
 | File | Records |
 | --- | --- |
-| `browser.jsonl` | `page` (address, how it was reached: link, typed, reload, form submit, back/forward; address changes that only move to a section are left out), `title`, `focus` (tab in front; none when the browser loses focus; no address for an excluded page), `idle` (active, idle after 60 s, locked), `search` (engine and query from result-page addresses), `click` (label, and the link address unless it points to an excluded domain), `selection` (selected or copied text), `media` (play, pause, end, with position) |
+| `browser.jsonl` | `page` (address, how it was reached: link, typed, reload, form submit, back/forward; address changes that only move to a section are left out), `title`, `focus` (tab in front; none when the browser loses focus; no address for an excluded page), `idle` (active, idle after 60 s, locked), `search` (engine and query from result-page addresses), `click` (label, where it landed on the page, and the link address unless it points to an excluded domain), `selection` (selected or copied text), `media` (play, pause, end, with position) |
 | `blocks.jsonl` | The text blocks on screen (up to 150) with their rectangles, and where the viewport is on the monitor. A block's text is sent once per page load, and again if queued text was dropped; later snapshots carry only positions |
-| `gaze.jsonl` | Fixations as fractions of the monitor, with the page point and block each landed on |
+| `gaze.jsonl` | Fixations as fractions of the monitor, with the page point (corrected by clicks), the block the eyes were most likely on and its probability `p` |
 | `attention.jsonl` | Dwell `start` and `end` records |
+| `health.jsonl` | Every 10 minutes while tracking: the tracker's state (frame rate, face, fixation share, noise) and the live accuracy from clicks |
 | `history.jsonl` | Visits imported from Opera's history |
 
 Not recorded:
@@ -177,14 +201,22 @@ yesterday's snapshots, so dwells on pages already open still know their text.
 ## How gaze is placed on a page
 
 1. The tracker predicts a screen point per frame (EyeTrax ridge regression on MediaPipe eye
-   landmarks), smooths it with a One Euro filter, and groups samples into fixations (I-DT,
-   dispersion up to 6% of the screen width, at least 0.1 s, split at 1 s so a long stare is
-   reported while it lasts).
+   landmarks), smooths it with a One Euro filter, and groups samples into fixations (I-DT, at
+   least 0.1 s, split at 1 s so a long stare is reported while it lasts). The dispersion
+   threshold starts at 6% of the screen width and rises with the gaze noise measured over the
+   last 8 seconds, so a noisy session is not broken into pieces too short to keep. The tracker
+   reports the share of gaze that became fixations (`coverage`) and the noise (`noise_px`).
 2. The extension reports where the viewport is on the monitor: measured from two mouse events
    (screen point minus page point, and the page zoom from their spacing), otherwise estimated
    from the window's outer and inner sizes.
-3. The receiver converts the fixation to page coordinates, corrects for scrolling since the last
-   snapshot, and picks the block that contains it or lies within 40 CSS px.
+3. The receiver subtracts the offset learned from recent clicks, converts the fixation to page
+   coordinates, and corrects for scrolling since the last snapshot.
+4. It does not pick the block under the point: webcam error is larger than the space between
+   paragraphs. A filter over "on block b" and "on nothing" scores each block by how likely the
+   tracker was to report this point if the eyes were anywhere in it (the block blurred by the
+   current gaze error), and assumes the eyes tend to stay where they were. After each fixation it
+   knows how likely each block is; the block that leads is the one in `gaze.jsonl`, and the time
+   it leads is what a dwell counts. Details and parameters: `services/capture-win/capture/attention.py`.
 
 The receiver clears its front page on focus loss. Returning to a tab or window therefore sends
 a fresh block-position snapshot even when the page has not changed. Block ids remain stable;
@@ -193,34 +225,104 @@ pages after updating the reporter script.
 
 ## Limits
 
-- **Accuracy.** Webcam gaze is good to roughly 3-4 degrees, about 150 px at 60 cm from a 24"
-  monitor: paragraphs, not words. Calibration reports the median error on four held-out targets
-  and refuses to track above 150 px (scaled to your screen width). Glasses, backlight and head
-  movement make it worse; recalibrate when they change.
+- **Accuracy.** Webcam gaze is good to roughly 2-4 degrees: paragraphs, not words. Calibration
+  reports the median error on four held-out targets and refuses to track above 120 px at 1920 px
+  wide (scaled to your screen width; 160 px on a 2560 px monitor). Glasses, backlight and head
+  movement make it worse; the live accuracy from clicks shows when, and `doctor` says to
+  recalibrate.
 - **One monitor.** Gaze is calibrated on the primary monitor. Pages in windows on other monitors
   are recorded, but gaze is not placed on them.
-- **Windows acceptance is in progress.** The webcam, calibration, live receiver, Opera settings
-  and browsing records have been checked on the Windows PC. The paragraph dwell test failed
-  and needs a retest; shortcut timing, lock, video-call camera handoff and real sign-in checks
-  remain pending. The [Windows check record](capture-windows-check.md) distinguishes measured
-  results from synthetic tests.
+- **Windows acceptance.** The webcam, calibration, live receiver, Opera settings and browsing
+  records were checked on the Windows PC ([record](capture-windows-check.md)). The paragraph test
+  and the reading tests are now simulated end to end (below) instead of being run by hand; on the
+  PC, `python -m capture doctor` judges a session from ordinary use. Lock, video-call camera
+  handoff and sign-in are covered by the tracker's tests with a scripted computer; the Windows
+  calls themselves (`OpenInputDesktop`, the camera privacy records, the `Run` key) are not.
 - **Browser only.** Other apps, screenshots and OCR are not captured yet; nor is there a tray
   icon. The toolbar badge and Windows' own camera indicator show that recording is on.
 - **No synthesis yet.** The logs are not yet turned into day events in the viewer.
 
 ## Size
 
-Estimates, not measurements: fixations are about 230 bytes each; at 2-4 a second over 8 hours of
-screen time that is 13-27 MB a day before compression. Text snapshots depend on how much you
+Fixations are about 260 bytes each with the block and its probability; an 8-hour simulated day
+(`eval/capture_soak.py`, 3 fixations a second) wrote 24 MB of `gaze.jsonl`, 4.9 MB of text
+snapshots and 0.6 MB of browser records before compression. Text snapshots depend on how much you
 scroll. `daycube compact` compresses the capture logs of finished days with zstd, for days that
 also have a vault day folder; capture-only days are not compacted yet.
 
 ## Tests
 
 ```powershell
-uv run pytest services/ingest/tests/test_capture.py services/ingest/tests/test_attention.py services/ingest/tests/test_capture_tools.py
+uv run pytest services/ingest/tests/test_capture.py services/ingest/tests/test_attention.py services/ingest/tests/test_anchors.py services/ingest/tests/test_capture_tools.py
 cd services/gaze; uv run pytest
 npm run test:extension   # Node unit tests, then the extension in Chromium against a scratch vault
 # Reporter lifecycle only: synthetic transport, safe while the live receiver is running.
 npx playwright test --config playwright.extension.config.ts reporter.e2e.spec.ts
 ```
+
+`gaze.e2e.spec.ts` is the paragraph test without a person: example.com at 200% zoom (set with
+`chrome.tabs.setZoom`) in Chromium with the extension, the real receiver, and the real tracker
+loop fed by simulated eyes staring at the paragraph through the recalibrated session's error
+model, in real time for 20 s. It checks that the reporter measured the zoom, that the paragraph is
+where the browser says it is, that the dwell fires on it and the bar appears, that a 5 s glance
+does not fire, and that clicks carry their position. Headless Chromium needs the full browser
+(`DAYCUBE_CHROMIUM=<path to chrome>`), not the headless shell, for extensions.
+
+A day of capture through the receiver, at the live rates, takes about four minutes:
+
+```powershell
+uv run python eval/capture_soak.py --hours 8 --output eval/results/capture-soak.json
+```
+
+On 8 simulated hours (28,800 browser and 28,800 gaze batches, 91,076 fixations) every record was
+logged once, none malformed, the receiver's id, text and click caches stayed under their caps,
+and the median request took 3.6 ms (browser) and 5.0 ms (gaze), 0.5-0.9 ms more in the last
+tenth of the day than in the first. The tracker's smoother and fixation detector take 20 µs a
+frame.
+
+## Simulation
+
+`eval/gaze_sim.py` runs the tracker loop and the receiver's attention code against simulated
+eyes and webcam error, 100 sessions per row, on a 2560 x 1440 monitor at 100% and 125% Windows
+scaling. The error model is fitted to the held-out error the tracker reports, per frame: a
+calibration bias that varies over the screen, head drift since calibration, correlated frame
+jitter, landmark failures and blinks. Page layouts are measured by the extension's reporter in
+Chromium (`eval/measure_pages.mjs`).
+
+```powershell
+uv run python eval/gaze_sim.py --compare 80e2d6b --output eval/results/gaze-sim.json
+```
+
+Pass rate per case, revision `80e2d6b` (before) → this version, by calibration error (median
+held-out, per frame: the first calibration on the Windows PC, the recalibration, a good webcam
+session) and Windows scaling. A dwell case passes when a dwell fires on the intended block and on
+no other; a no-dwell case passes when none fires.
+
+| Case | Expect | 183 px, 100% | 183 px, 125% | 69 px, 100% | 69 px, 125% | 40 px, 100% | 40 px, 125% |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| stare 20 s, 200% zoom | dwell on target | 0% → **87%** | 0% → **90%** | 82% → **100%** | 93% → **100%** | 97% → **100%** | 100% → **100%** |
+| stare 20 s, 200% zoom, after 6 clicks | dwell on target | 0% → **94%** | 0% → **94%** | 82% → **100%** | 88% → **99%** | 94% → **99%** | 98% → **100%** |
+| stare 20 s, 100% zoom | dwell on target | 0% → **71%** | 0% → **74%** | 39% → **89%** | 56% → **94%** | 72% → **99%** | 84% → **99%** |
+| look away 1.5 s mid-stare | dwell on target | 0% → **83%** | 0% → **87%** | 75% → **100%** | 87% → **100%** | 95% → **100%** | 100% → **100%** |
+| re-read a paragraph 3 times | dwell on target | 0% → **6%** | 0% → **17%** | 26% → **45%** | 43% → **56%** | 54% → **80%** | 69% → **88%** |
+| glance 5 s | no dwell | 100% → **100%** | 100% → **100%** | 100% → **100%** | 100% → **100%** | 100% → **100%** | 100% → **100%** |
+| tab switch mid-stare | no dwell | 100% → **100%** | 100% → **100%** | 100% → **100%** | 100% → **100%** | 100% → **100%** | 100% → **100%** |
+| read an article | no dwell | 100% → **100%** | 100% → **97%** | 100% → **100%** | 100% → **100%** | 100% → **100%** | 100% → **100%** |
+| slow read under a heading | no dwell | 100% → **100%** | 100% → **100%** | 100% → **100%** | 100% → **100%** | 100% → **100%** | 100% → **100%** |
+
+| Share of tracked time in fixations | | 34% → **80%** | 33% → **80%** | 83% → **91%** | 82% → **91%** | 88% → **90%** | 87% → **89%** |
+
+- **Why the Windows stares failed.** With the first calibration's error, the fixation detector
+  kept a third of tracked time (its threshold was fixed at 6% of the screen width; noisier gaze
+  broke a steady look into pieces too short to keep), and the receiver counted only fixations
+  inside the paragraph's rectangle, ending the run after 1 s outside it. None of 100 simulated
+  stares became a dwell, as on the PC. The old code passed 82-93% with the recalibrated error.
+- **Clicks** matter most when the calibration has drifted: six clicks before the stare take the
+  coarse calibration from 87-90% to 94%.
+- **Re-reading** a paragraph three times is the weakest case: its first and last lines sit within
+  the gaze error of the neighbouring blocks, and the filter is deliberately quicker to move on
+  once a paragraph's reading time has passed, which is what keeps normal reading from being
+  flagged.
+- The simulation measures the code, not the person: the error model, the stare (fixations of
+  about 0.45 s anywhere in the middle of the paragraph) and reading (one fixation per 1.2 words
+  at 200-280 wpm) are models. `python -m capture doctor` and `health.jsonl` measure real sessions.

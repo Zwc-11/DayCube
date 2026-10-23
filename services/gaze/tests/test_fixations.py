@@ -3,7 +3,7 @@
 import random
 import statistics
 
-from gaze.fixations import Fixation, FixationDetector, OneEuro
+from gaze.fixations import Fixation, FixationDetector, OneEuro, Smoother
 
 W, H = 1920, 1080
 
@@ -52,3 +52,40 @@ def test_one_euro_steadies_a_still_point_and_follows_a_jump() -> None:
     assert statistics.pstdev(out[30:]) < statistics.pstdev(raw[30:]) / 2
     after = [smooth(10 + i / 15, 1400.0) for i in range(30)]
     assert abs(after[-1] - 1400) < 50  # within two seconds of a saccade-sized jump
+
+
+def webcam(seconds: float, sigma_px: float, seed: int = 3, fps: float = 30) -> list[tuple[float, float, float]]:
+    """A steady look at the middle of the screen as a noisy webcam reports it, after smoothing:
+    correlated frame jitter of ``sigma_px`` on each axis."""
+    rng, smooth = random.Random(seed), Smoother()
+    ex = ey = 0.0
+    out = []
+    for i in range(int(seconds * fps)):
+        ex = 0.6 * ex + 0.8 * rng.gauss(0, sigma_px)
+        ey = 0.6 * ey + 0.8 * rng.gauss(0, sigma_px)
+        x, y = smooth(i / fps, 960 + ex, 540 + ey)
+        out.append((i / fps, x / W, y / H))
+    return out
+
+
+def coverage(detector: FixationDetector, samples: list[tuple[float, float, float]]) -> float:
+    found = [f for t, x, y in samples for f in detector.add(t, x, y)] + detector.flush()
+    return sum(f.end - f.start for f in found) / (samples[-1][0] - samples[0][0])
+
+
+def test_the_threshold_follows_the_noise_so_a_noisy_look_is_not_lost() -> None:
+    noisy = webcam(20, 120)  # a 640x480 camera in dim light: 120 px of frame jitter
+    fixed = coverage(FixationDetector(W, H, noise_k=0), noisy)  # the old fixed 6% threshold
+    adaptive = FixationDetector(W, H)
+    assert fixed < 0.5 and coverage(adaptive, noisy) > 0.85
+    assert 20 < adaptive.noise_px < 120 and adaptive.dispersion > adaptive.base  # scatter after smoothing
+    quiet = FixationDetector(W, H)
+    coverage(quiet, webcam(20, 20))
+    assert quiet.dispersion == quiet.base  # a quiet session keeps the floor, and its resolution
+
+
+def test_steady_motion_does_not_count_as_noise() -> None:
+    detector = FixationDetector(W, H)
+    for i in range(300):  # 10 s of slow pursuit across the screen
+        detector.add(i / 30, 0.1 + i * 0.0025, 0.5)
+    assert detector.noise_px < 5

@@ -2,7 +2,8 @@
 // - what text is on screen ("blocks") and where the viewport sits on the monitor, so the
 //   receiver can tell which paragraph the eye tracker's gaze falls on;
 // - a heartbeat every 5 s while the page is in front;
-// - clicks on links and buttons, text selected or copied, and media play/pause/end.
+// - clicks on links and buttons (with where they landed), text selected or copied, and media
+//   play/pause/end.
 // It never reads what is typed into fields, editable areas or code editors, and reports nothing
 // while the page shows a password field (guard.js covers frames and shadow roots). Excluded
 // domains and pausing are enforced by the service worker.
@@ -259,7 +260,12 @@
     const label = element.getAttribute('aria-label') || (element instanceof HTMLInputElement ? (button ? element.value : '') : element.innerText);
     const link = element.closest('a[href]');
     const href = link && /^https?:/.test(link.href) ? link.href : null;
-    send({ kind: 'click', href, text: clean(label || '').slice(0, 300) });
+    // Where the click landed: the eyes are almost always on what is clicked, so the receiver uses
+    // each click to measure, and correct, the eye tracker's live error (anchors.py).
+    send({
+      kind: 'click', href, text: clean(label || '').slice(0, 300),
+      x: round(event.clientX), y: round(event.clientY), geometry: geometry(),
+    });
   }, true);
 
   let selectionTimer = null;
