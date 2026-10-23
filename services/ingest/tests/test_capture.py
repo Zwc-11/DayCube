@@ -49,6 +49,21 @@ def test_receiver_starts_paused_requires_auth_and_remembers_a_pause(vault: Vault
         assert client.get("/status").json()["paused"] is True  # a restart never undoes a pause
 
 
+def test_pause_and_resume_never_replay_old_tracking_telemetry(vault: Vault, auth: dict[str, str]) -> None:
+    state = {"tracking": True, "monitor": [1920, 1080], "fps": 29.8, "target_fps": 30.0, "face": 1.0}
+    with TestClient(create_capture_app(settings(vault), receive=True)) as client:
+        assert client.post("/gaze", json={"state": state, "fixations": []}, headers=auth).status_code == 200
+        assert client.get("/status").json()["gaze"]["target_fps"] == 30.0
+        paused = client.post("/pause", headers=auth).json()["gaze"]
+        assert paused["tracking"] is False and paused["reason"] == "paused"
+        assert paused["fps"] is None and paused["face"] is None
+        assert client.post("/gaze", json={"state": state, "fixations": []}, headers=auth).status_code == 409
+        resumed = client.post("/resume", headers=auth).json()["gaze"]
+        assert resumed["tracking"] is False
+        assert client.post("/gaze", json={"state": state, "fixations": []}, headers=auth).status_code == 200
+        assert client.get("/status").json()["gaze"]["tracking"] is True
+
+
 def test_browser_records_are_stored_by_kind_once_each(vault: Vault, auth: dict[str, str]) -> None:
     page = record("page", transition="typed", qualifiers=["from_address_bar"], **TAB)
     blocks = record(

@@ -2,7 +2,17 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { allowed, normalizeDomains, searchOf, trim } from '../chrome/lib.js';
+import { allowed, gazeLabel, normalizeDomains, searchOf, trim } from '../chrome/lib.js';
+
+test('gaze label distinguishes measured rate, target and pause state', () => {
+  assert.equal(gazeLabel({ tracking: true, fps: 29.8, target_fps: 30, face: 0.98, error_px: 182.9 }),
+    'Tracking, 29.8/30 fps, face 98%, calibrated to 183 px');
+  assert.equal(gazeLabel({ tracking: false, reason: 'paused', fps: 29.8, target_fps: 30, face: 1 }),
+    'Not tracking: paused');
+  assert.equal(gazeLabel({ tracking: true, error_px: 90 }), 'Tracking, calibrated to 90 px');
+  assert.equal(gazeLabel({ tracking: true, fps: null, face: null }), 'Tracking');
+  assert.equal(gazeLabel(), 'Not tracking: unknown');
+});
 
 test('searches are read from result-page addresses', () => {
   assert.deepEqual(searchOf('https://www.google.ca/search?q=kalman+filter&hl=en'), { engine: 'google', query: 'kalman filter' });

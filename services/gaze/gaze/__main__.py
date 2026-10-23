@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import math
 import os
 import sys
 import time
@@ -12,6 +13,7 @@ from pathlib import Path
 
 from . import calibrate as calibration
 from .calibrate import usable_limit
+from .track import DEFAULT_FPS
 
 NOT_CALIBRATED = 3  # the capture service's supervisor waits for a new calibration on this code
 OTHER_MONITOR = 4  # ... and retries every minute on this one (a laptop undocked, a monitor off)
@@ -152,7 +154,7 @@ def main(argv: list[str] | None = None) -> None:
     track = commands.add_parser("track", parents=[common], help="Send fixations to the capture receiver until stopped")
     track.add_argument("--camera", type=int, help="Default: the calibrated camera")
     track.add_argument("--receiver", default="http://127.0.0.1:7700")
-    track.add_argument("--fps", type=float, default=15.0)
+    track.add_argument("--fps", type=float, default=DEFAULT_FPS, help="Processing target in frames/s (default: 30)")
     track.add_argument("--force", action="store_true", help="Track even with a coarse calibration")
     track.add_argument("--supervised", action="store_true", help=argparse.SUPPRESS)
     track.set_defaults(handler=do_track)
@@ -163,6 +165,8 @@ def main(argv: list[str] | None = None) -> None:
     check.set_defaults(handler=do_check)
 
     args = parser.parse_args(argv)
+    if args.command == "track" and (not math.isfinite(args.fps) or args.fps <= 0):
+        parser.error("--fps must be positive and finite")
     args.vault = args.vault.resolve()
     args.handler(args)
 

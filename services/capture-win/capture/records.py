@@ -153,6 +153,7 @@ class GazeState(Strict):
     error_px: float | None = None
     monitor: Annotated[list[int], Field(min_length=2, max_length=2)] | None = None  # calibrated monitor, pixels
     fps: float | None = None
+    target_fps: float | None = Field(default=None, gt=0)
     face: float | None = Field(default=None, ge=0, le=1)  # share of recent frames with a usable face
 
 

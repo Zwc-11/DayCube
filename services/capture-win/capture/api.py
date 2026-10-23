@@ -102,6 +102,9 @@ class Receiver:
         gaze = self.gaze or {"tracking": False, "reason": "not running"}
         if self.gaze and datetime.now(UTC) - datetime.fromisoformat(self.gaze["at"]) > GAZE_SILENT:
             gaze = {**self.gaze, "tracking": False, "reason": "no reports"}
+        if self.paused:
+            # /gaze rejects paused batches. Do not present the last active report as live.
+            gaze = {**gaze, "tracking": False, "reason": "paused", "fps": None, "face": None}
         return {
             "paused": self.paused,
             "since": self.since,
@@ -117,6 +120,8 @@ class Receiver:
             ending = self.attention.end() if paused and changed else []
             self.attention.front = None if paused else self.attention.front
             self.paused = paused  # the pause holds even if a write below fails
+            if changed:
+                self.gaze = None  # a resume needs a fresh tracker report, not pre-pause telemetry
             self.marker.parent.mkdir(parents=True, exist_ok=True)
             if paused:
                 self.marker.touch()

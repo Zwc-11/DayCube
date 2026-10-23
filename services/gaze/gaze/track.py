@@ -16,10 +16,13 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import math
 import time
 from collections import deque
 from collections.abc import Callable
 from typing import Any, Protocol
+
+import numpy as np
 
 from .fixations import FixationDetector, Smoother
 from .receiver import Receiver
@@ -34,6 +37,7 @@ OFFLINE_EXIT_S = 120  # a supervised tracker outlives a stopped receiver by this
 CONFIRM_S = 5.0  # the camera stays on only this long after the receiver last said "recording"
 CHECK_EVERY_S = 2.0
 REPORT_EVERY_S = 1.0
+DEFAULT_FPS = 30.0
 
 
 class Camera(Protocol):
@@ -55,17 +59,23 @@ class Tracker:
         calibration: dict,
         *,
         system: System | None = None,
-        fps: float = 15.0,
+        fps: float = DEFAULT_FPS,
         supervised: bool = False,
         recalibrated: Callable[[], bool] = lambda: False,
         clock: Callable[[], float] = time.time,
         sleep: Callable[[float], None] = time.sleep,
+        timer: Callable[[], float] = time.monotonic,
     ) -> None:
+        if not math.isfinite(fps) or fps <= 0:
+            raise ValueError("fps must be positive and finite")
         self.estimator, self.open_camera, self.receiver = estimator, open_camera, receiver
         self.calibration = calibration
         self.width, self.height = calibration["monitor"]
         self.system = system or System()
         self.period = 1.0 / fps
+        self.target_fps = fps
+        self.timer = timer
+        self._prediction_input: np.ndarray | None = None
         self.supervised = supervised
         self.recalibrated = recalibrated
         self.told_recalibrated = False
@@ -97,6 +107,7 @@ class Tracker:
             "error_px": self.calibration.get("error_px"),
             "monitor": [self.width, self.height],
             "fps": round((frames - 1) / span, 1) if span > 0 else None,
+            "target_fps": self.target_fps,
             "face": round(sum(face for _, face in self.frames) / frames, 2) if frames else None,
         }
 
@@ -131,6 +142,7 @@ class Tracker:
             self.receiver.add(fixation)
         self.smoother.reset()
         self.frames.clear()
+        self._prediction_input = None
 
     def _report(self, now: float) -> None:
         if now - self.reported_at < REPORT_EVERY_S:
@@ -155,7 +167,8 @@ class Tracker:
     # -- loop --------------------------------------------------------------------------------------
 
     def step(self) -> None:
-        started = now = self.clock()
+        started = self.timer()
+        now = self.clock()
         if now - self.checked_at >= CHECK_EVERY_S:
             self.checked_at = now
             reason = self._reason(now)
@@ -193,22 +206,30 @@ class Tracker:
         self.failures = 0
         features, blink = self.estimator.extract_features(frame)
         face = features is not None
-        self.frames.append((now, face))
-        while self.frames and now - self.frames[0][0] > 10:
+        self.frames.append((started, face))
+        while self.frames and started - self.frames[0][0] > 10:
             self.frames.popleft()
         if face:
             self.last_face = now
         if face and not blink:
-            import numpy as np
-
-            x, y = (float(v) for v in self.estimator.predict(np.array([features]))[0])
+            # EyeTrax already returns an ndarray: asarray is a view, and the caller-owned
+            # prediction row is reused until shape/dtype changes or tracking releases it.
+            values = np.asarray(features)
+            if (
+                self._prediction_input is None
+                or self._prediction_input.shape != (1, values.size)
+                or self._prediction_input.dtype != values.dtype
+            ):
+                self._prediction_input = np.empty((1, values.size), dtype=values.dtype)
+            self._prediction_input[0] = values
+            x, y = (float(v) for v in self.estimator.predict(self._prediction_input)[0])
             x, y = self.smoother(now, x, y)
             fx, fy = x / self.width, y / self.height
             if -0.05 <= fx <= 1.05 and -0.05 <= fy <= 1.05:  # off-screen samples end the fixation
                 for fixation in self.detector.add(now, fx, fy):
                     self.receiver.add(fixation)
         self._report(now)
-        self.sleep(max(0.0, self.period - (self.clock() - started)))
+        self.sleep(max(0.0, self.period - (self.timer() - started)))
 
     def run(self, should_stop: Callable[[], bool] = lambda: False) -> None:
         try:
