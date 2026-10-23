@@ -16,8 +16,8 @@ flowchart LR
 - **The eye tracker** turns webcam frames into fixations with EyeTrax (MIT). Frames stay in
   memory; only fixations leave the process. It runs in its own environment because EyeTrax
   needs numpy<2 and the rest of DayCube needs numpy>=2.
-- **The receiver** writes the logs, decides which paragraph each fixation belongs to, and detects
-  dwells. It learns the tracker's live error from clicks (people look at what they click) and
+- **The receiver** writes the logs, decides which paragraph each fixation belongs to and which
+  line is being read, and detects dwells. It learns the tracker's live error from clicks (people look at what they click) and
   corrects for it. It starts the eye tracker and restarts it if it stops.
 
 Nothing goes over the network: the receiver listens on 127.0.0.1 only, and the extension can
@@ -57,11 +57,12 @@ Optional: copy the history Opera already kept (about 90 days) into the vault:
 uv run --project services/capture-win python -m capture import-history
 ```
 
-After pulling a new version, reload the extension at `opera://extensions` and restart the
-receiver (sign out and in, or end its `pythonw.exe` in Task Manager and run
+After pulling a new version, reload the extension at `opera://extensions` (its card shows the
+version, 0.4.0 with line reading), refresh the tabs that were open, and restart the receiver
+(sign out and in, or end its `pythonw.exe` and `python.exe` processes in Task Manager and run
 `python -m capture install-autostart` again), so the extension, receiver and tracker run the same
-code. A newer tracker or extension still works with an older receiver: fields it does not know
-are ignored.
+code; `python -m capture doctor` reports a receiver still running older code. A newer tracker or
+extension still works with an older receiver: fields it does not know are ignored.
 
 Recalibrate when your seat, lighting or monitor changes (`python -m gaze calibrate`). It pauses
 recording for the half minute it takes, which frees the webcam, and the receiver restarts the
@@ -122,6 +123,7 @@ from your usual seat. Every 10 minutes while gaze arrives, the same figures go t
 | Pause everything, including the webcam | Click the toolbar button or press `Alt+Shift+D` (works once the token is saved, even with browser recording off). The badge reads `II`. The webcam is released within about a second |
 | Resume | The same again. The badge reads `REC` |
 | See whether it works | The extension's options page, **Right now**; or `http://127.0.0.1:7700/status` |
+| See which line it has you reading | Extension options, **Show the line I am reading**: a small blue marker beside the line, updated every second, fainter when less sure. **Right now** also shows it |
 | Stop starting at sign-in | `python -m capture uninstall-autostart`, or turn it off in Task Manager > Startup apps |
 | Read the logs | `vault\logs\capture.log` and `vault\logs\gaze.log` |
 
@@ -177,8 +179,9 @@ the dwell is detected. The program runs at once; one runs at a time.
 | File | Records |
 | --- | --- |
 | `browser.jsonl` | `page` (address, how it was reached: link, typed, reload, form submit, back/forward; address changes that only move to a section are left out), `title`, `focus` (tab in front; none when the browser loses focus; no address for an excluded page), `idle` (active, idle after 60 s, locked), `search` (engine and query from result-page addresses), `click` (label, where it landed on the page, and the link address unless it points to an excluded domain), `selection` (selected or copied text), `media` (play, pause, end, with position) |
-| `blocks.jsonl` | The text blocks on screen (up to 150) with their rectangles, and where the viewport is on the monitor. A block's text is sent once per page load, and again if queued text was dropped; later snapshots carry only positions |
-| `gaze.jsonl` | Fixations as fractions of the monitor, with the page point (corrected by clicks), the block the eyes were most likely on and its probability `p` |
+| `blocks.jsonl` | The text blocks on screen (up to 150) with their rectangles, and where the viewport is on the monitor. A block's text and its visual lines (rectangle and text of each, up to 60) are sent once per page load, again if queued text was dropped, and the lines again when the block's wrapping changes or it moves on the page; later snapshots carry only positions |
+| `gaze.jsonl` | Fixations as fractions of the monitor, with the page point (corrected by clicks), the block the eyes were most likely on and its probability `p`, and the line being read: `"line": {"block": "b4", "line": 2, "p": 0.93}` (0 = the block's first line) |
+| `reading.jsonl` | One record per block read: each line read with its text, seconds on it and passes over it, the share of the block's lines read (`coverage`), when the eyes moved to each line (`path`), the tracker offset the decoder found and its mean confidence (see [Which line you are reading](#which-line-you-are-reading)) |
 | `attention.jsonl` | Dwell `start` and `end` records |
 | `health.jsonl` | Every 10 minutes while tracking: the tracker's state (frame rate, face, fixation share, noise) and the live accuracy from clicks |
 | `history.jsonl` | Visits imported from Opera's history |
@@ -231,6 +234,43 @@ a fresh block-position snapshot even when the page has not changed. Block ids re
 already acknowledged text is not duplicated. Reload the unpacked extension and refresh open
 pages after updating the reporter script.
 
+## Which line you are reading
+
+Placing a fixation on a block cannot name the line: at the recalibrated error (69 px median on a
+2560 px monitor) one fixation's spread covers about three lines of body text. The receiver
+decodes the line from the sequence of fixations instead (`services/capture-win/capture/reading.py`):
+
+- The extension measures each block's visual lines (`Range.getClientRects`; a text node that
+  wraps is split where its characters move to the next line) and sends their rectangles in page
+  coordinates with the text on each.
+- The decoder is a hidden Markov model over every line in the viewport, "off the text", and a
+  grid of vertical offsets. Webcam error is mostly an offset that changes slowly, and the decoder
+  learns it from the reading itself: a return sweep (a jump back to the start of the line below)
+  moves the eyes down a line and small steps keep them on it; horizontal steps carry no offset.
+  The page's own shape gives the offset away: a reader placed a line too low soon reads past the
+  end of a short last line, or into the gap between paragraphs.
+- It follows reading across paragraphs and headings by itself, so near a paragraph's edge the
+  line's block can differ from the block in `gaze.jsonl`'s `block` field (the dwell filter's).
+
+| Where | What |
+| --- | --- |
+| `gaze.jsonl` | Each fixation's line, `"line": {"block", "line", "p"}` |
+| `/status` | `"reading": {"block", "line", "lines", "p", "text", "url", "t"}`: the line now; `null` after 10 s without one |
+| `reading.jsonl` | A record per block once the eyes have left it (two fixations decoded on another block), the page changes, the tab or window loses focus, the block's lines are re-measured, or 10 s pass without gaze on the page. Blocks looked at for under 1.5 s or 3 fixations get none. A pass is a stay of 0.4 s or more on a line |
+
+Example `reading.jsonl` record (shortened):
+
+```json
+{"kind": "read", "t": "2026-10-23T21:40:02.103000+00:00", "t_end": "2026-10-23T21:40:24.812000+00:00",
+ "url": "https://example.com/notes", "block": "b4", "tag": "p", "line_count": 6,
+ "lines": [{"line": 0, "text": "The method of loci is old, but the reason it works is still", "seconds": 3.4, "passes": 1}, ...],
+ "coverage": 1.0, "path": [[0.0, 0], [3.6, 1], [7.1, 2], ...], "offset_px": 41.5, "p": 0.91}
+```
+
+In simulation the decoder puts 91-97% of reading time on the right line at the recalibrated error
+and 94-99% with a good webcam session; at the first calibration's error (183 px) it is mostly
+wrong, and `doctor` says to recalibrate ([Simulation](#simulation)).
+
 ## Limits
 
 - **Accuracy.** Webcam gaze is good to roughly 2-4 degrees: paragraphs, not words. Calibration
@@ -246,22 +286,27 @@ pages after updating the reporter script.
   PC, `python -m capture doctor` judges a session from ordinary use. Lock, video-call camera
   handoff and sign-in are covered by the tracker's tests with a scripted computer; the Windows
   calls themselves (`OpenInputDesktop`, the camera privacy records, the `Run` key) are not.
+- **Lines.** Line decoding needs reading: on a block glanced at or stared at, the line is a guess
+  (its `p` says so). It assumes text read top to bottom in columns, the way the page lays it out;
+  lines are measured for the first 60 of a block. At an error above the calibration limit it is
+  unreliable.
 - **Browser only.** Other apps, screenshots and OCR are not captured yet; nor is there a tray
   icon. The toolbar badge and Windows' own camera indicator show that recording is on.
 - **No synthesis yet.** The logs are not yet turned into day events in the viewer.
 
 ## Size
 
-Fixations are about 260 bytes each with the block and its probability; an 8-hour simulated day
-(`eval/capture_soak.py`, 3 fixations a second) wrote 24 MB of `gaze.jsonl`, 4.9 MB of text
-snapshots and 0.6 MB of browser records before compression. Text snapshots depend on how much you
+Fixations are about 260 bytes each with the block and its probability, and about 50 more with
+the line; an 8-hour simulated day (`eval/capture_soak.py`, 3 fixations a second) wrote 24 MB of
+`gaze.jsonl`, 4.9 MB of text snapshots and 0.6 MB of browser records before compression. Line
+rectangles and their text roughly double the text snapshots. Text snapshots depend on how much you
 scroll. `daycube compact` compresses the capture logs of finished days with zstd, for days that
 also have a vault day folder; capture-only days are not compacted yet.
 
 ## Tests
 
 ```powershell
-uv run pytest services/ingest/tests/test_capture.py services/ingest/tests/test_attention.py services/ingest/tests/test_anchors.py services/ingest/tests/test_capture_tools.py
+uv run pytest services/ingest/tests/test_capture.py services/ingest/tests/test_attention.py services/ingest/tests/test_reading.py services/ingest/tests/test_anchors.py services/ingest/tests/test_capture_tools.py
 cd services/gaze; uv run pytest
 npm run test:extension   # Node unit tests, then the extension in Chromium against a scratch vault
 # Reporter lifecycle only: synthetic transport, safe while the live receiver is running.
@@ -273,8 +318,12 @@ npx playwright test --config playwright.extension.config.ts reporter.e2e.spec.ts
 loop fed by simulated eyes staring at the paragraph through the recalibrated session's error
 model, in real time for 20 s. It checks that the reporter measured the zoom, that the paragraph is
 where the browser says it is, that the dwell fires on it and the bar appears, that a 5 s glance
-does not fire, and that clicks carry their position. Headless Chromium needs the full browser
-(`DAYCUBE_CHROMIUM=<path to chrome>`), not the headless shell, for extensions.
+does not fire, and that clicks carry their position. A third test reads a six-line paragraph of
+`reading.html` line by line in real time (the lines the extension measured, 238 wpm, the same
+error model): it checks that `gaze.jsonl` names the right line for most of the reading time
+(100% in the runs so far), that `/status` and the page marker follow every line, and that leaving
+the page writes the paragraph to `reading.jsonl` with all its lines. Headless Chromium needs the
+full browser (`DAYCUBE_CHROMIUM=<path to chrome>`), not the headless shell, for extensions.
 
 A day of capture through the receiver, at the live rates, takes about four minutes:
 
@@ -333,6 +382,22 @@ no other; a no-dwell case passes when none fires.
   the gaze error of the neighbouring blocks, and the filter is deliberately quicker to move on
   once a paragraph's reading time has passed, which is what keeps normal reading from being
   flagged.
+- **Lines**, held-out seeds 1000-1099 (decoder constants chosen on seeds 0-23,
+  `eval/results/gaze-sim-lines.json`, `GAZE_SIM_ONLY=read uv run python eval/gaze_sim.py --output ...`):
+  share of reading time decoded on the right line (within one line), and blocks read for 1.5 s or
+  more that got a `reading.jsonl` record:
+
+  | Case | 183 px, 100% | 183 px, 125% | 69 px, 100% | 69 px, 125% | 40 px, 100% | 40 px, 125% |
+  | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+  | read an article | 21% (41%) | 42% (60%) | **94%** (95%) | **94%** (95%) | **97%** (97%) | **97%** (98%) |
+  | re-read a paragraph 3 times | 28% (55%) | 58% (73%) | **95%** (96%) | **96%** (96%) | **99%** (100%) | **98%** (98%) |
+  | slow read under a heading | 32% (74%) | 57% (82%) | **97%** (97%) | **91%** (92%) | **99%** (99%) | **94%** (94%) |
+  | blocks recorded | 86-97% | 97-98% | 100% | 100% | 100% | 100% |
+
+  Before the page-level decoder (a separate decoder per block, fed by the dwell filter, offset
+  learned afresh in each block) the same cases were 31-39% on the right line at 69 px, 125% (ten
+  tuning seeds): a
+  tracker reading 1-3 lines low was taken for a reader 1-3 lines further on.
 - The simulation measures the code, not the person: the error model, the stare (fixations of
   about 0.45 s anywhere in the middle of the paragraph) and reading (one fixation per 1.2 words
   at 200-280 wpm) are models. `python -m capture doctor` and `health.jsonl` measure real sessions.

@@ -9,7 +9,7 @@ const QUEUE_LIMIT = 5000;
 const GUARD_TTL = 5000; // a frame's "password field visible" report lasts this long without a refresh
 const DEFAULTS = {
   enabled: false, token: '', exclusions: ['localhost', '127.0.0.1'],
-  paused: false, pauseSynced: true, exclusionsSynced: false, dwellAction: 'none', epoch: 0,
+  paused: false, pauseSynced: true, exclusionsSynced: false, dwellAction: 'none', showLine: false, epoch: 0,
 };
 
 const settings = () => chrome.storage.local.get(DEFAULTS);
@@ -346,6 +346,16 @@ function guard(message, sender) {
   }
 }
 
+// Whether the page should show the line being read (the ``showLine`` option), and the line the
+// receiver's decoder has the eyes on.
+async function readingFor(tab) {
+  const s = await settings();
+  const show = Boolean(s.showLine) && recording(s) && !tab.incognito && allowed(tab.url, s.exclusions);
+  if (!show || !tab.active || guarded(tab.id)) return { show, reading: null };
+  const status = await (await fetch(`${RECEIVER}/status`)).json();
+  return { show, reading: status.reading ?? null };
+}
+
 async function fromPage(message, tab) {
   const s = await settings();
   // Any frame of the tab showing a password field (an embedded sign-in, a payment form) silences it.
@@ -389,6 +399,10 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     return false;
   }
   if (sender.frameId !== 0) return false;
+  if (message?.kind === 'reading') {
+    readingFor(sender.tab).then(respond, () => respond({ show: false, reading: null }));
+    return true;
+  }
   // The reply tells the page whether its record was taken, and the text epoch (see dropped()).
   Promise.all([fromPage(message, sender.tab).catch(() => false), settings()])
     .then(([ok, s]) => respond({ ok, epoch: s.epoch }), () => respond({ ok: false }));

@@ -1,13 +1,16 @@
 import { RECEIVER, gazeLabel, normalizeDomains } from './lib.js';
 
 const $ = id => document.getElementById(id);
-const DEFAULTS = { token: '', enabled: false, exclusions: ['localhost', '127.0.0.1'], dwellAction: 'none', paused: false };
+const DEFAULTS = {
+  token: '', enabled: false, exclusions: ['localhost', '127.0.0.1'], dwellAction: 'none', showLine: false, paused: false,
+};
 
 async function load() {
   const s = await chrome.storage.local.get(DEFAULTS);
   $('token').value = s.token;
   $('enabled').checked = s.enabled;
   $('exclusions').value = s.exclusions.join('\n');
+  $('showLine').checked = s.showLine;
   for (const choice of document.querySelectorAll('input[name=dwell]')) choice.checked = choice.value === s.dwellAction;
 }
 
@@ -21,6 +24,7 @@ $('settings').addEventListener('submit', async event => {
   await chrome.storage.local.set({
     token, enabled: $('enabled').checked, exclusions: normalizeDomains($('exclusions').value),
     dwellAction: document.querySelector('input[name=dwell]:checked')?.value || 'none',
+    showLine: $('showLine').checked,
   });
   $('saved').textContent = $('enabled').checked ? 'Saved. Recording is on.' : 'Saved. Recording is off.';
   await load();
@@ -47,9 +51,12 @@ async function refresh() {
     show('receiver', status.paused ? 'Running, paused' : `Running, last record ${ago(status.browser.last)}`, 'good');
     const gaze = status.gaze;
     show('gaze', gazeLabel(gaze, status.accuracy), gaze.tracking ? 'good' : '');
+    const r = status.reading;
+    show('reading', r ? `Line ${r.line + 1} of ${r.lines} (${Math.round(r.p * 100)}%): ${r.text.slice(0, 60)}` : 'No line now');
   } catch {
     show('receiver', 'Not running. Start it with python -m capture run --receive, or install autostart.', 'bad');
     show('gaze', '—');
+    show('reading', '—');
   }
 }
 

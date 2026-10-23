@@ -113,16 +113,27 @@ class Click(Record, Tab):
     geometry: Geometry | None = None
 
 
+class Line(Strict):
+    """One visual line of a block: its rectangle in page coordinates (CSS px, scroll included) and
+    the text on it."""
+
+    rect: Annotated[list[float], Field(min_length=4, max_length=4)]  # left, top, width, height
+    text: str = Field(default="", max_length=300)
+
+
 class Block(Strict):
     """A visible run of text: heading, paragraph, list item, cell. ``text`` (cut to 1,000
     characters) and ``words`` (counted before the cut) are sent the first time a document shows
-    the block or when it changes; later snapshots carry only its id and position."""
+    the block or when it changes; later snapshots carry only its id and position. ``lines`` come
+    with the text, and again when its wrapping changes (width, zoom) or it moves on the page."""
 
+    model_config = TOLERANT
     id: str = Field(min_length=1, max_length=16)
     tag: str = Field(max_length=16)
     text: str | None = Field(default=None, max_length=1000)
     words: int | None = Field(default=None, ge=0)
     rect: Annotated[list[float], Field(min_length=4, max_length=4)]  # left, top, width, height in CSS px
+    lines: list[Line] | None = Field(default=None, max_length=60)
 
 
 class Blocks(Record, Tab):

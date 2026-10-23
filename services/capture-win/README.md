@@ -17,7 +17,8 @@ uv run --project services/capture-win python -m capture doctor              # is
 | --- | --- |
 | `capture/api.py` | `GET /status`, `POST /pause`, `/resume`, `/events` (browser records), `/gaze` (fixations and tracker state) |
 | `capture/records.py` | Record types the receiver accepts |
-| `capture/attention.py` | Which text block the eyes are on (a filter that allows for webcam error); dwell detection |
+| `capture/attention.py` | Which text block the eyes are on (a filter that allows for webcam error); dwell detection; block visits for `reading.jsonl` |
+| `capture/reading.py` | Which line is being read: a decoder over the page's lines and the tracker's offset, using return sweeps and the page's shape |
 | `capture/anchors.py` | Clicks as calibration points: the tracker's live error and an offset correction |
 | `capture/doctor.py` | `python -m capture doctor`: checks receiver, extension, tracker, accuracy, logs and autostart |
 | `capture/supervise.py` | Running the eye tracker from its own environment, restarting it when it stops |

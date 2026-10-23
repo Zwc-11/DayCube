@@ -26,7 +26,7 @@ PASS, WARN, FAIL, INFO = "pass", "warn", "FAIL", "info"
 # Median error at which paragraphs at 100% zoom stop being separable: a 1920 px wide 24" monitor at
 # about 60 cm; scaled by monitor width. Matches services/gaze/gaze/calibrate.py.
 USABLE_PX_AT_1920 = 120.0
-LOGS = ("browser.jsonl", "blocks.jsonl", "gaze.jsonl", "attention.jsonl", "health.jsonl")
+LOGS = ("browser.jsonl", "blocks.jsonl", "gaze.jsonl", "attention.jsonl", "reading.jsonl", "health.jsonl")
 RESTART = "end its python processes in Task Manager, then run python -m capture install-autostart"
 
 
@@ -54,7 +54,7 @@ def checks(status: dict | None, vault: Path, zone: ZoneInfo, now: datetime, auto
     if status is None:
         return [(FAIL, "receiver", "not running on 127.0.0.1:7700: start it, or sign out and in (autostart)")]
     out.append((WARN if status["paused"] else PASS, "receiver", "paused" if status["paused"] else "running"))
-    if "accuracy" not in status:  # added with click calibration: this process runs older code
+    if "reading" not in status:  # added with line decoding: this process runs older code
         out.append((FAIL, "receiver code", "older than this checkout: stop it and start it again (" + RESTART + ")"))
 
     age = _age(status.get("browser", {}).get("last"), now)
@@ -118,6 +118,13 @@ def checks(status: dict | None, vault: Path, zone: ZoneInfo, now: datetime, auto
             with contextlib.suppress(ValueError):
                 dwells += json.loads(line).get("phase") == "start"
     out.append((INFO, "dwells today", str(dwells)))
+    reads = lines_read = 0
+    if (day / "reading.jsonl").is_file():
+        for line in (day / "reading.jsonl").read_text(encoding="utf-8", errors="replace").splitlines():
+            with contextlib.suppress(ValueError, AttributeError, TypeError):
+                lines_read += len(json.loads(line).get("lines") or [])
+                reads += 1
+    out.append((INFO, "reading today", f"{reads} blocks read, {lines_read} lines"))
 
     if sys.platform == "win32":
         if autostart is None:

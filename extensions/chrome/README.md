@@ -7,9 +7,9 @@ paste the vault token in its options and turn recording on. Full setup and what 
 | File | Does |
 | --- | --- |
 | `background.js` | Navigation (with transition type), focus, titles, idle, searches; the delivery queue in extension storage; pause and the `Alt+Shift+D` shortcut; dwell actions |
-| `content.js` | Text on screen with positions, viewport geometry, heartbeats, clicks, selections, media; the dwell mark |
+| `content.js` | Text on screen with positions and each block's visual lines, viewport geometry, heartbeats, clicks, selections, media; the dwell mark and the line-being-read marker |
 | `lib.js` | Search parsing, exclusions, queue bounds (unit-tested in `extensions/tests`) |
-| `options.*` | Token, exclusions, dwell action, live status |
+| `options.*` | Token, exclusions, dwell action, the line marker, live status (with the line being read) |
 
 The toolbar button pauses and resumes (badge `REC`, `II`, `ERR`, `OFF`). The token stays in
 extension storage and is never given to pages. Private windows are not allowed. Pages showing a

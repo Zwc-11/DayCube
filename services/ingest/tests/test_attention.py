@@ -1,9 +1,10 @@
 """Placing fixations on page text and detecting dwells."""
 
 import random
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 
-from capture.attention import Attention
+from capture.attention import Attention, Hit
 from capture.records import Blocks, Click, Fixation, Focus, GazeState, Page, View
 
 T0 = datetime(2026, 10, 22, 14, 0, tzinfo=UTC)
@@ -256,3 +257,79 @@ def test_a_monitor_that_goes_away_mid_run_does_not_break_anything() -> None:
     tracker(attention, monitor=None)  # undocked: the tracker reports no monitor
     assert attention.fixation(fixation(7.5, 8.5, 500, 260)) == (None, [])
     assert attention.health(at(9).timestamp())["planned_error_px"] == PRECISE
+
+
+def lined(top: float, n: int, words: int = 12) -> dict:
+    """A paragraph of ``n`` lines 28.8 px apart from page y ``top``, with its lines measured."""
+    lines = [
+        {"rect": [100, top + 28.8 * i, 700 if i < n - 1 else 260, 20], "text": f"line {i} " + "w " * (words - 2)}
+        for i in range(n)
+    ]
+    return {"rect": [100, top, 700, 28.8 * n], "text": " ".join(line["text"] for line in lines), "lines": lines}
+
+
+def reading_page(seconds: float = 0, **blocks: dict) -> Blocks:
+    return Blocks.model_validate({
+        "id": f"blocks-{seconds}", "t": at(seconds), "kind": "blocks", "tab": 7, "window": 1,
+        "url": "https://example.com/a", "title": "A page", "doc": "doc-1", "geometry": GEOMETRY,
+        "blocks": [{"id": k, "tag": "p", **block} for k, block in blocks.items()],
+    })  # fmt: skip
+
+
+def read_lines(
+    attention: Attention, blocks: dict, start: float, offset: float, rng: random.Random
+) -> Iterator[tuple[Hit | None, list[dict], tuple[str, int]]]:
+    """Fixations along each line, left to right; yields (hit, events, (block, line))."""
+    t = start
+    for block, spec in blocks.items():
+        for i, line in enumerate(spec["lines"]):
+            left, top, width, height = line["rect"]
+            attention.browser(view(t))  # the page's heartbeat
+            for k in range(max(1, round(width / 90))):
+                x = left + width * (k + 0.5) / max(1, round(width / 90)) + rng.gauss(0, 8)
+                y = top + height / 2 + offset + rng.gauss(0, 8)
+                hit, events = attention.fixation(fixation(t, t + 0.25, x, y))
+                yield hit, events, (block, i)
+                t += 0.3
+
+
+def test_the_line_being_read_is_decoded_and_each_paragraph_read_is_recorded() -> None:
+    blocks = {"p1": lined(200, 3), "p2": lined(320, 4)}
+    attention = Attention()
+    tracker(attention, error_px=40.0)  # 22 CSS px per axis here: a line either way is likely
+    attention.browser(reading_page(**blocks))
+    hits, reads = [], []
+    for hit, events, truth in read_lines(attention, blocks, 0.5, 25.0, random.Random(4)):  # reads 25 px low
+        hits.append(((hit.line_block, hit.line), truth))
+        reads += [e for e in events if e["kind"] == "read"]
+    assert sum(got == truth for got, truth in hits) / len(hits) >= 0.9
+    assert attention.reading["block"] == "p2" and attention.reading["line"] == 3
+    assert attention.reading["text"].startswith("line 3")
+    (first,) = reads  # p1 ended when the eyes had been on p2 for two fixations
+    assert first["block"] == "p1" and first["line_count"] == 3 and first["coverage"] == 1.0
+    assert [entry["line"] for entry in first["lines"]] == [0, 1, 2] and first["url"] == "https://example.com/a"
+    assert [line for _, line in first["path"]] == [0, 1, 2]
+    (last,) = attention.browser(
+        Focus(id="focus-30", t=at(30), kind="focus", tab=8, window=1, url="https://b.test", title="B")
+    )
+    assert last["kind"] == "read" and last["block"] == "p2" and last["coverage"] == 1.0
+    assert attention.reading is None
+
+
+def test_re_measured_lines_end_the_visit_on_their_block() -> None:
+    blocks = {"p1": lined(200, 3)}
+    attention = Attention()
+    tracker(attention, error_px=20.0)
+    attention.browser(reading_page(**blocks))
+    for _ in read_lines(attention, blocks, 0.5, 0.0, random.Random(1)):
+        pass
+    narrower = lined(200, 4)  # the window got narrower: four lines now
+    (ended,) = attention.browser(reading_page(10, p1=narrower))
+    assert ended["kind"] == "read" and ended["line_count"] == 3
+    assert attention.page.blocks["p1"][3].text.startswith("line 3")
+
+
+def test_without_lines_no_line_is_decoded() -> None:
+    attention = watching()
+    hits = [attention.fixation(fixation(0.2 + 0.3 * k, 0.45 + 0.3 * k, 500, 260))[0] for k in range(5)]
+    assert hits[-1].block == "b1" and all(hit.line is None for hit in hits) and attention.reading is None

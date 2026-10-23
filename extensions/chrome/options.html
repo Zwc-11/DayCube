@@ -17,6 +17,7 @@
       <div><dt>Recording</dt><dd id="recording">—</dd></div>
       <div><dt>Receiver</dt><dd id="receiver">—</dd></div>
       <div><dt>Eye tracker</dt><dd id="gaze">—</dd></div>
+      <div><dt>Reading</dt><dd id="reading">—</dd></div>
       <div><dt>Waiting to send</dt><dd id="queued">—</dd></div>
     </dl>
   </section>
@@ -40,6 +41,9 @@
       <p class="hint">The bar is added to the page itself, so the site's own scripts can see it and which passage it marks.</p>
     </fieldset>
 
+    <label class="choice toggle"><input id="showLine" type="checkbox"> Show the line I am reading</label>
+    <p class="hint">A small blue marker beside the line the eye tracker decodes, updated every second; fainter when less sure. Like the bar, it is added to the page, so the site's own scripts can see it.</p>
+
     <label class="choice toggle"><input id="enabled" type="checkbox"> Record my browsing</label>
     <button type="submit">Save settings</button>
     <p id="saved" role="status"></p>
@@ -52,7 +56,7 @@
       <li>Which tab is in front, and when the browser loses focus or you are away.</li>
       <li>Searches on Google, Bing, DuckDuckGo, YouTube, GitHub, Wikipedia and others.</li>
       <li>Clicks on links and buttons, text you select or copy, and video or audio you play or pause.</li>
-      <li>The text visible on screen and where it is, so gaze can be matched to paragraphs.</li>
+      <li>The text visible on screen and where it is, line by line, so gaze can be matched to paragraphs and lines.</li>
     </ul>
     <h2>What is not</h2>
     <ul>
