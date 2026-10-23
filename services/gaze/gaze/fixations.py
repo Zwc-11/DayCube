@@ -18,10 +18,11 @@ to measured noise follows Nystrom and Holmqvist (Behavior Research Methods, 2010
 velocity threshold of their detector from the noise of each recording.
 
 The scatter is estimated from second differences at a lag longer than the smoother's memory,
-``x[t] - 2 x[t-L] + x[t-2L]``: noise survives them, steady motion (a slow drift, a pursuit) does
-not, and saccades are brief enough to barely move a median. A threshold never exceeds
-``max_dispersion`` of the screen width, so gaze too noisy to separate even distant targets is
-still split into separate fixations at large jumps.
+``x[t] - 2 x[t-L] + x[t-2L]``: noise survives them and steady motion (a slow drift, a pursuit)
+does not. Saccades inflate the differences that span one, so the estimate comes from their lower
+quartile, and differences that span a gap in the gaze are left out. A threshold never exceeds
+``max_dispersion`` of the screen width (15%), so looks at distant targets stay apart however noisy
+the gaze.
 
 Fixations longer than ``max_duration`` are split, so a long stare is reported while it lasts
 instead of only when it ends.
@@ -95,10 +96,10 @@ class FixationDetector:
         min_duration: float = 0.1,
         max_duration: float = 1.0,
         max_gap: float = 0.25,
-        noise_k: float = 9.0,
+        noise_k: float = 6.0,
         noise_window: float = 8.0,
         noise_lag: float = 0.3,
-        max_dispersion: float = 0.25,
+        max_dispersion: float = 0.15,
     ) -> None:
         self.width, self.height = width, height
         self.base = (dispersion_px if dispersion_px is not None else 0.06 * width) / width  # in x-fractions
@@ -143,20 +144,22 @@ class FixationDetector:
         for i, (ti, xi, yi) in enumerate(samples):  # i is the newest of the three points
             while j < i and times[j + 1] <= ti - lag:
                 j += 1
-            if ti - times[j] < lag:
+            if not lag <= ti - times[j] <= lag + self.max_gap:  # a gap in between (blink, camera off)
                 continue
             tj = times[j]
             while k < j and times[k + 1] <= tj - lag:
                 k += 1
-            if tj - times[k] < lag:
+            if not lag <= tj - times[k] <= lag + self.max_gap:
                 continue
             (_, xj, yj), (_, xk, yk) = samples[j], samples[k]
             diffs += (abs(xi - 2 * xj + xk), abs(yi - 2 * yj + yk))
         if len(diffs) < 40:
             return
         diffs.sort()
-        # For independent noise a second difference has variance 6 sigma^2; MAD to sigma is 1.4826.
-        self.noise = 1.4826 * diffs[len(diffs) // 2] / math.sqrt(6)
+        # For independent noise a second difference has variance 6 sigma^2. The lower quartile of
+        # its size is 0.3186 of its spread, and is left alone by the saccades that make the larger
+        # differences (with short fixations most differences span one), where a median is not.
+        self.noise = diffs[len(diffs) // 4] / (0.3186 * math.sqrt(6))
         self.dispersion = min(max(self.base, self.noise_k * self.noise), self.max_dispersion)
 
     def add(self, t: float, x: float, y: float) -> list[Fixation]:

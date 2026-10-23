@@ -39,8 +39,9 @@ def fixation(start: float, end: float, page_x: float, page_y: float, geometry: d
     return Fixation(id=f"fix-{start:08.2f}", t=at(start), t_end=at(end), x=x, y=y, samples=10)
 
 
-def tracker(attention: Attention, error_px: float | None = PRECISE, monitor: tuple = (2560, 1440)) -> None:
-    attention.gaze_state(GazeState(tracking=True, calibrated=True, error_px=error_px, monitor=list(monitor)))
+def tracker(attention: Attention, error_px: float | None = PRECISE, monitor: tuple | None = (2560, 1440)) -> None:
+    state = GazeState(tracking=True, calibrated=True, error_px=error_px, monitor=list(monitor) if monitor else None)
+    attention.gaze_state(state)
 
 
 def watching(error_px: float = PRECISE, **options: float) -> Attention:
@@ -215,7 +216,43 @@ def test_clicks_learn_a_bias_too_large_for_the_page_to_absorb() -> None:
                 attention.fixation(fixation(t + 0.3, t + 1.0, x + 200, y + 45, EXAMPLE))
             health = attention.health(at(0).timestamp())
             assert health["clicks"] == 6 and abs(health["live_error_px"] - 112.5) < 1  # 45 CSS px at 200%, 125%
-        return [e["block"] for e in noisy_stare(attention, 0, 12, HEADING, (0, 45), 4) if e["phase"] == "start"]
+        return [e["block"] for e in noisy_stare(attention, 0, 16, HEADING, (0, 45), 4) if e["phase"] == "start"]
 
-    assert after(clicks=False) != ["h1"]
+    assert after(clicks=False) == ["body"]  # 16 s on the heading credited to the paragraph under it
     assert after(clicks=True) == ["h1"]
+
+
+def test_looking_at_another_block_is_an_excursion_not_a_gap() -> None:
+    attention = watching(threshold_s=2, factor=1)
+    assert [e["phase"] for e in stare(attention, 0, 3)] == ["start"]
+    # 2.4 s on the other paragraph, with gaze arriving all along: longer than the 2 s gap rule,
+    # shorter than the 2.5 s excursion, so the run on b1 goes on.
+    assert attention.fixation(fixation(3.0, 4.0, 500, 550))[1] == []
+    assert attention.fixation(fixation(4.0, 5.3, 500, 550))[1] == []
+    assert attention.fixation(fixation(5.3, 5.4, 500, 260))[1] == [] and attention.run.block == "b1"
+    ended = stare(attention, 5.5, 3.0, y=550)
+    assert [(e["phase"], e["block"]) for e in ended] == [("end", "b1")]
+
+
+def test_the_block_the_eyes_moved_to_keeps_the_time_since_they_moved() -> None:
+    attention = watching(threshold_s=2, factor=1)
+    stare(attention, 0, 3)
+    events = stare(attention, 3, 6, y=550)  # on to the long paragraph and staying there
+    assert [(e["phase"], e["block"]) for e in events] == [("end", "b1")]
+    assert attention.run.block == "b2" and attention.run.t0 == at(3) and attention.run.dwell == 6.0
+
+
+def test_a_re_rendered_block_is_found_again_quickly() -> None:
+    attention = watching()
+    stare(attention, 0, 5)
+    attention.browser(snapshot(5, b9=([100, 200, 800, 120], SHORT), b2=([100, 400, 800, 300], LONG)))
+    stare(attention, 5, 1.0)  # two fixations on the same line, now called b9
+    assert attention.belief["b9"] > 0.8
+
+
+def test_a_monitor_that_goes_away_mid_run_does_not_break_anything() -> None:
+    attention = watching()
+    stare(attention, 0, 7.5)
+    tracker(attention, monitor=None)  # undocked: the tracker reports no monitor
+    assert attention.fixation(fixation(7.5, 8.5, 500, 260)) == (None, [])
+    assert attention.health(at(9).timestamp())["planned_error_px"] == PRECISE

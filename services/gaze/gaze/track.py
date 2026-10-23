@@ -183,7 +183,8 @@ class Tracker:
         else:
             self.offline_since = None
             if result == "refused":
-                log.warning("the receiver refused gaze data (vault token?)")
+                why = getattr(self.receiver, "refusal", None)
+                log.warning("the receiver refused gaze data: %s", why or "vault token?")
 
     # -- loop --------------------------------------------------------------------------------------
 

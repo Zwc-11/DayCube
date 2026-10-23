@@ -70,7 +70,9 @@ def do_track(args: argparse.Namespace) -> None:
     if result is None:
         log.error("not calibrated: run `python -m gaze calibrate`")
         raise SystemExit(NOT_CALIBRATED)
-    if not result.get("usable") and not args.force:
+    # The limit is applied now rather than read from the file, so a calibration saved under an
+    # older, looser limit is judged by the current one.
+    if result["error_px"] > usable_limit(result["monitor"][0]) and not args.force:
         log.error("calibration error %.0f px is too coarse; recalibrate (or pass --force)", result["error_px"])
         raise SystemExit(NOT_CALIBRATED)
     from eyetrax import GazeEstimator

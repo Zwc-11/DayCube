@@ -45,7 +45,7 @@ class Anchors:
         *,
         before_s: float = 0.45,
         after_s: float = 0.1,
-        wait_s: float = 10.0,
+        wait_s: float = 10.0,  # an anchor dated up to this far after "now" still counts (two clocks)
         keep: int = 40,
         max_age_s: float = 1800.0,
         tau_s: float = 600.0,
@@ -60,20 +60,25 @@ class Anchors:
         self.monitor: tuple[int, int] | None = None
         self.calibrated_px: float | None = None  # held-out median error from the calibration
         self.recent: deque[tuple[float, float, float, float]] = deque()  # fixations: t, t_end, x px, y px
-        self.pending: deque[tuple[float, float, float]] = deque()  # clicks waiting for gaze: t, x, y fractions
+        self.pending: deque[tuple[float, float, float]] = deque(maxlen=50)  # clicks awaiting gaze: t, x, y fractions
         self.anchors: deque[Anchor] = deque(maxlen=keep)
         self.rejected = 0
         self._live: tuple[int, float | None, float | None] | None = None  # cache: version, raw, corrected
         self._version = 0
 
     def set_monitor(self, monitor: tuple[int, int] | None, calibrated_px: float | None) -> None:
+        """The tracker's monitor and held-out error. Another monitor, or a new calibration (its error
+        changes), makes what was learned from clicks wrong for the new gaze model: start over."""
         if monitor is None:
             self.calibrated_px = calibrated_px
             return
-        if self.monitor is not None and monitor != self.monitor:  # another monitor: nothing carries over
+        other = self.monitor is not None and monitor != self.monitor
+        recalibrated = None not in (self.calibrated_px, calibrated_px) and calibrated_px != self.calibrated_px
+        if other or recalibrated:
             self.recent.clear()
             self.pending.clear()
             self.anchors.clear()
+            self.rejected = 0
             self._version += 1
         self.monitor, self.calibrated_px = monitor, calibrated_px
 
@@ -92,7 +97,7 @@ class Anchors:
     def click(self, t: float, fx: float, fy: float) -> None:
         """A click on the calibrated monitor, as monitor fractions. It waits for the gaze around it,
         which arrives a second or two later, and for the tracker to say which monitor it is on."""
-        self.pending.append((t, fx, fy))
+        self.pending.append((t, fx, fy))  # at most 50 wait: with no tracker running, the oldest go
         if self.recent:
             self._resolve(max(f[1] for f in self.recent))
 
@@ -102,20 +107,19 @@ class Anchors:
             return
         w, h = self.monitor
         keep: deque[tuple[float, float, float]] = deque()
-        for t, fx, fy in self.pending:
-            x, y = fx * w, fy * h
+        for t, cx, cy in self.pending:
+            x, y = cx * w, cy * h
             if seen_until < t + self.after_s:
-                if seen_until - t < self.wait_s:
-                    keep.append((t, fx, fy))
+                keep.append((t, cx, cy))
                 continue
             lo, hi = t - self.before_s, t + self.after_s
             weight = gx = gy = 0.0
-            for start, end, fx, fy in self.recent:
+            for start, end, px, py in self.recent:
                 overlap = min(end, hi) - max(start, lo)
                 if overlap > 0:
                     weight += overlap
-                    gx += overlap * fx
-                    gy += overlap * fy
+                    gx += overlap * px
+                    gy += overlap * py
             if weight == 0:
                 continue  # no gaze at the click (a blink, eyes on the keyboard)
             dx, dy = gx / weight - x, gy / weight - y
@@ -125,7 +129,7 @@ class Anchors:
                 continue
             self.anchors.append(Anchor(t, x, y, dx, dy))
             self._version += 1
-        self.pending = keep
+        self.pending = deque(keep, maxlen=self.pending.maxlen)
 
     # -- what was learned --------------------------------------------------------------------------
 
@@ -155,8 +159,9 @@ class Anchors:
         return dx / w, dy / h
 
     def live(self, now: float) -> tuple[int, float | None, float | None]:
-        """Clicks used, median error before correction, and median error after it (each click
-        corrected from the others only, so the figure is not flattered by fitting itself)."""
+        """Clicks used, median error before correction, and median error after it. Each click is
+        corrected only from the clicks before it, as the correction is used live, so the figure is
+        neither flattered by fitting itself nor by knowing the future."""
         anchors = self._usable(now)
         if self._live is not None and self._live[0] == self._version and len(anchors) == len(self.anchors):
             return len(anchors), self._live[1], self._live[2]
@@ -165,9 +170,10 @@ class Anchors:
         raw = statistics.median(math.hypot(a.dx, a.dy) for a in anchors)
         corrected = None
         if len(anchors) >= 2:
+            ordered = sorted(anchors, key=lambda a: a.t)
             errors = []
-            for i, a in enumerate(anchors):
-                ox, oy = self._estimate(anchors[:i] + anchors[i + 1 :], a.x, a.y, a.t)
+            for i, a in enumerate(ordered[1:], start=1):
+                ox, oy = self._estimate(ordered[:i], a.x, a.y, a.t)
                 errors.append(math.hypot(a.dx - ox, a.dy - oy))
             corrected = statistics.median(errors)
         if len(anchors) == len(self.anchors):
@@ -175,9 +181,12 @@ class Anchors:
         return len(anchors), raw, corrected
 
     def error_px(self, now: float) -> float | None:
-        """The median error to plan for now: from clicks once there are enough, else None."""
+        """The median error to plan for now: from clicks once there are enough and they are recent
+        (the correction they support fades over ``tau_s``), else None."""
         n, _, corrected = self.live(now)
-        return corrected if n >= self.min_live else None
+        if n < self.min_live or now - max(a.t for a in self.anchors) > self.tau_s:
+            return None
+        return corrected
 
     def health(self, now: float) -> dict:
         n, raw, corrected = self.live(now)
