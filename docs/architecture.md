@@ -11,14 +11,15 @@ flowchart LR
   receiver --> raw[Raw browser JSONL]
   raw -. future synthesis .-> vault
   vault --> api[FastAPI :7701]
-  vault --> index[Rebuildable FTS5 index]
+  vault --> index[Rebuildable vault database: FTS5 + int8 vectors]
   index --> ask[Extractive ask + citations]
   ask --> api
   api --> viewer[Frontend bridge :3000]
 ```
 
 Solid arrows are implemented. Dashed paths are planned. The default demo uses fictional fixture
-data, local keyword search and no external model calls. Source files are never reconstructed
+data, local keyword search (plus a local embedding model with the vector extra) and no
+external model calls. Source files are never reconstructed
 from an index.
 
 ## Contracts and time

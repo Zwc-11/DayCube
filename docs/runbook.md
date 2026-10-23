@@ -52,7 +52,10 @@ reload automatically. API code edits hot reload when started with `npm run api`.
 - API is offline: start `npm run api`; check `/health` and `/docs`.
 - No days listed: run `npm run demo:seed`. Existing days are preserved.
 - Invalid vault: run `uv run daycube validate --date YYYY-MM-DD` for the exact contract failure.
-- Invalid/stale index: run `uv run daycube index --date YYYY-MM-DD`; it is rebuilt from files.
+- Invalid/stale index: run `uv run daycube index --date YYYY-MM-DD` (or `--all`); the vault database
+  is rebuilt from files. Deleting `vault/daycube.sqlite*` is also safe: the next search rebuilds it.
+- Meaning search off (`vector_search: false` in `/health`): install it with `uv sync --extra vector`;
+  the first search downloads bge-small (about 130 MB). `DAYCUBE_VECTOR_SEARCH=false` turns it off.
 - Disk filling up: `uv run daycube compact` compresses the large logs of every day before today.
   Reads stay transparent, and the next append to a compacted log expands it again.
 - Ask is unauthorized: use the current local `vault/.token`; provider API keys are unrelated.

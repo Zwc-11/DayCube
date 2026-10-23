@@ -69,7 +69,8 @@ export class DaycubeClient {
     const data = await this.request(`/moment/${encodeURIComponent(id)}?date=${encodeURIComponent(date)}`) as Record<string, unknown>;
     return { meta: momentSchema.parse(data.meta), transcript: transcriptSchema.parse(data.transcript), scene: data.scene };
   }
-  async ask(date: string, question: string, signal?: AbortSignal): Promise<AskResult> {
+  /** `date: null` searches every day in the vault. */
+  async ask(date: string | null, question: string, signal?: AbortSignal): Promise<AskResult> {
     return askResultSchema.parse(await this.request('/ask', { method: 'POST', body: JSON.stringify({ date, question }), signal }));
   }
   appendEvents(date: string, events: Event[]) {

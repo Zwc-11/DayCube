@@ -1,28 +1,595 @@
 {
   "kind": "synthetic-fixture-only",
-  "questions": 4,
-  "top1": 1.0,
-  "top3": 1.0,
-  "results": [
-    {
-      "question": "Where was I when we decided the demo order?",
-      "top1": true,
-      "top3": true
+  "model": "BAAI/bge-small-en-v1.5",
+  "min_similarity": 0.55,
+  "methods": {
+    "keyword": {
+      "summary": {
+        "keyword": {
+          "questions": 5,
+          "top1": 1.0,
+          "top3": 1.0
+        },
+        "located": {
+          "questions": 4,
+          "top1": 1.0,
+          "top3": 1.0
+        },
+        "paraphrase": {
+          "questions": 11,
+          "top1": 0.09090909090909091,
+          "top3": 0.09090909090909091
+        },
+        "unanswerable": {
+          "questions": 5,
+          "returned_nothing": 1.0
+        }
+      },
+      "results": [
+        {
+          "question": "Who is presenting the citation panel?",
+          "kind": "paraphrase",
+          "top1": false,
+          "top3": false,
+          "returned": 0
+        },
+        {
+          "question": "In what sequence will we run the presentation?",
+          "kind": "paraphrase",
+          "top1": false,
+          "top3": false,
+          "returned": 2
+        },
+        {
+          "question": "Fallback plan when recording breaks",
+          "kind": "paraphrase",
+          "top1": false,
+          "top3": false,
+          "returned": 0
+        },
+        {
+          "question": "When did I grab an espresso?",
+          "kind": "paraphrase",
+          "top1": false,
+          "top3": false,
+          "returned": 0
+        },
+        {
+          "question": "Which code submission did I look at?",
+          "kind": "paraphrase",
+          "top1": false,
+          "top3": false,
+          "returned": 0
+        },
+        {
+          "question": "Where did I eat in the middle of the day?",
+          "kind": "paraphrase",
+          "top1": false,
+          "top3": false,
+          "returned": 3
+        },
+        {
+          "question": "When did I go upstairs?",
+          "kind": "paraphrase",
+          "top1": false,
+          "top3": false,
+          "returned": 0
+        },
+        {
+          "question": "What principle about the data store did I read?",
+          "kind": "paraphrase",
+          "top1": true,
+          "top3": true,
+          "returned": 2
+        },
+        {
+          "question": "When did I head back to my house?",
+          "kind": "paraphrase",
+          "top1": false,
+          "top3": false,
+          "returned": 0
+        },
+        {
+          "question": "What did I do on the frontend in the afternoon?",
+          "kind": "paraphrase",
+          "top1": false,
+          "top3": false,
+          "returned": 0
+        },
+        {
+          "question": "Which three confidence levels were listed?",
+          "kind": "paraphrase",
+          "top1": false,
+          "top3": false,
+          "returned": 0
+        },
+        {
+          "question": "hinge inference loop",
+          "kind": "keyword",
+          "top1": true,
+          "top3": true,
+          "returned": 2
+        },
+        {
+          "question": "Maple Caf\u00e9",
+          "kind": "keyword",
+          "top1": true,
+          "top3": true,
+          "returned": 4
+        },
+        {
+          "question": "evidence card",
+          "kind": "keyword",
+          "top1": true,
+          "top3": true,
+          "returned": 2
+        },
+        {
+          "question": "Connect the viewer to the local API",
+          "kind": "keyword",
+          "top1": true,
+          "top3": true,
+          "returned": 3
+        },
+        {
+          "question": "Sam will show the evidence card",
+          "kind": "keyword",
+          "top1": true,
+          "top3": true,
+          "returned": 3
+        },
+        {
+          "question": "What did the dentist say about my teeth?",
+          "kind": "unanswerable",
+          "top1": null,
+          "top3": null,
+          "returned": 0
+        },
+        {
+          "question": "How much did the flight to Tokyo cost?",
+          "kind": "unanswerable",
+          "top1": null,
+          "top3": null,
+          "returned": 0
+        },
+        {
+          "question": "Did I go swimming?",
+          "kind": "unanswerable",
+          "top1": null,
+          "top3": null,
+          "returned": 0
+        },
+        {
+          "question": "What was the stock price of Nvidia?",
+          "kind": "unanswerable",
+          "top1": null,
+          "top3": null,
+          "returned": 0
+        },
+        {
+          "question": "Who won the hockey game?",
+          "kind": "unanswerable",
+          "top1": null,
+          "top3": null,
+          "returned": 0
+        },
+        {
+          "question": "Where was I when we decided the demo order?",
+          "kind": "located",
+          "top1": true,
+          "top3": true
+        },
+        {
+          "question": "hinge inference loop",
+          "kind": "located",
+          "top1": true,
+          "top3": true
+        },
+        {
+          "question": "Connect the viewer to the local API",
+          "kind": "located",
+          "top1": true,
+          "top3": true
+        },
+        {
+          "question": "Sam will show the evidence card",
+          "kind": "located",
+          "top1": true,
+          "top3": true
+        }
+      ]
     },
-    {
-      "question": "hinge inference loop",
-      "top1": true,
-      "top3": true
+    "combined": {
+      "summary": {
+        "keyword": {
+          "questions": 5,
+          "top1": 1.0,
+          "top3": 1.0
+        },
+        "located": {
+          "questions": 4,
+          "top1": 1.0,
+          "top3": 1.0
+        },
+        "paraphrase": {
+          "questions": 11,
+          "top1": 0.45454545454545453,
+          "top3": 0.7272727272727273
+        },
+        "unanswerable": {
+          "questions": 5,
+          "returned_nothing": 0.8
+        }
+      },
+      "results": [
+        {
+          "question": "Who is presenting the citation panel?",
+          "kind": "paraphrase",
+          "top1": false,
+          "top3": false,
+          "returned": 1
+        },
+        {
+          "question": "In what sequence will we run the presentation?",
+          "kind": "paraphrase",
+          "top1": false,
+          "top3": true,
+          "returned": 7
+        },
+        {
+          "question": "Fallback plan when recording breaks",
+          "kind": "paraphrase",
+          "top1": true,
+          "top3": true,
+          "returned": 6
+        },
+        {
+          "question": "When did I grab an espresso?",
+          "kind": "paraphrase",
+          "top1": true,
+          "top3": true,
+          "returned": 6
+        },
+        {
+          "question": "Which code submission did I look at?",
+          "kind": "paraphrase",
+          "top1": false,
+          "top3": true,
+          "returned": 3
+        },
+        {
+          "question": "Where did I eat in the middle of the day?",
+          "kind": "paraphrase",
+          "top1": true,
+          "top3": true,
+          "returned": 10
+        },
+        {
+          "question": "When did I go upstairs?",
+          "kind": "paraphrase",
+          "top1": false,
+          "top3": true,
+          "returned": 10
+        },
+        {
+          "question": "What principle about the data store did I read?",
+          "kind": "paraphrase",
+          "top1": true,
+          "top3": true,
+          "returned": 3
+        },
+        {
+          "question": "When did I head back to my house?",
+          "kind": "paraphrase",
+          "top1": true,
+          "top3": true,
+          "returned": 6
+        },
+        {
+          "question": "What did I do on the frontend in the afternoon?",
+          "kind": "paraphrase",
+          "top1": false,
+          "top3": false,
+          "returned": 10
+        },
+        {
+          "question": "Which three confidence levels were listed?",
+          "kind": "paraphrase",
+          "top1": false,
+          "top3": false,
+          "returned": 0
+        },
+        {
+          "question": "hinge inference loop",
+          "kind": "keyword",
+          "top1": true,
+          "top3": true,
+          "returned": 4
+        },
+        {
+          "question": "Maple Caf\u00e9",
+          "kind": "keyword",
+          "top1": true,
+          "top3": true,
+          "returned": 4
+        },
+        {
+          "question": "evidence card",
+          "kind": "keyword",
+          "top1": true,
+          "top3": true,
+          "returned": 2
+        },
+        {
+          "question": "Connect the viewer to the local API",
+          "kind": "keyword",
+          "top1": true,
+          "top3": true,
+          "returned": 5
+        },
+        {
+          "question": "Sam will show the evidence card",
+          "kind": "keyword",
+          "top1": true,
+          "top3": true,
+          "returned": 3
+        },
+        {
+          "question": "What did the dentist say about my teeth?",
+          "kind": "unanswerable",
+          "top1": null,
+          "top3": null,
+          "returned": 0
+        },
+        {
+          "question": "How much did the flight to Tokyo cost?",
+          "kind": "unanswerable",
+          "top1": null,
+          "top3": null,
+          "returned": 0
+        },
+        {
+          "question": "Did I go swimming?",
+          "kind": "unanswerable",
+          "top1": null,
+          "top3": null,
+          "returned": 2
+        },
+        {
+          "question": "What was the stock price of Nvidia?",
+          "kind": "unanswerable",
+          "top1": null,
+          "top3": null,
+          "returned": 0
+        },
+        {
+          "question": "Who won the hockey game?",
+          "kind": "unanswerable",
+          "top1": null,
+          "top3": null,
+          "returned": 0
+        },
+        {
+          "question": "Where was I when we decided the demo order?",
+          "kind": "located",
+          "top1": true,
+          "top3": true
+        },
+        {
+          "question": "hinge inference loop",
+          "kind": "located",
+          "top1": true,
+          "top3": true
+        },
+        {
+          "question": "Connect the viewer to the local API",
+          "kind": "located",
+          "top1": true,
+          "top3": true
+        },
+        {
+          "question": "Sam will show the evidence card",
+          "kind": "located",
+          "top1": true,
+          "top3": true
+        }
+      ]
     },
-    {
-      "question": "Connect the viewer to the local API",
-      "top1": true,
-      "top3": true
-    },
-    {
-      "question": "Sam will show the evidence card",
-      "top1": true,
-      "top3": true
+    "meaning": {
+      "summary": {
+        "keyword": {
+          "questions": 5,
+          "top1": 1.0,
+          "top3": 1.0
+        },
+        "located": {
+          "questions": 4,
+          "top1": 1.0,
+          "top3": 1.0
+        },
+        "paraphrase": {
+          "questions": 11,
+          "top1": 0.5454545454545454,
+          "top3": 0.7272727272727273
+        },
+        "unanswerable": {
+          "questions": 5,
+          "returned_nothing": 0.8
+        }
+      },
+      "results": [
+        {
+          "question": "Who is presenting the citation panel?",
+          "kind": "paraphrase",
+          "top1": false,
+          "top3": false,
+          "returned": 1
+        },
+        {
+          "question": "In what sequence will we run the presentation?",
+          "kind": "paraphrase",
+          "top1": true,
+          "top3": true,
+          "returned": 7
+        },
+        {
+          "question": "Fallback plan when recording breaks",
+          "kind": "paraphrase",
+          "top1": true,
+          "top3": true,
+          "returned": 6
+        },
+        {
+          "question": "When did I grab an espresso?",
+          "kind": "paraphrase",
+          "top1": true,
+          "top3": true,
+          "returned": 6
+        },
+        {
+          "question": "Which code submission did I look at?",
+          "kind": "paraphrase",
+          "top1": false,
+          "top3": true,
+          "returned": 3
+        },
+        {
+          "question": "Where did I eat in the middle of the day?",
+          "kind": "paraphrase",
+          "top1": true,
+          "top3": true,
+          "returned": 7
+        },
+        {
+          "question": "When did I go upstairs?",
+          "kind": "paraphrase",
+          "top1": false,
+          "top3": true,
+          "returned": 10
+        },
+        {
+          "question": "What principle about the data store did I read?",
+          "kind": "paraphrase",
+          "top1": true,
+          "top3": true,
+          "returned": 2
+        },
+        {
+          "question": "When did I head back to my house?",
+          "kind": "paraphrase",
+          "top1": true,
+          "top3": true,
+          "returned": 6
+        },
+        {
+          "question": "What did I do on the frontend in the afternoon?",
+          "kind": "paraphrase",
+          "top1": false,
+          "top3": false,
+          "returned": 10
+        },
+        {
+          "question": "Which three confidence levels were listed?",
+          "kind": "paraphrase",
+          "top1": false,
+          "top3": false,
+          "returned": 0
+        },
+        {
+          "question": "hinge inference loop",
+          "kind": "keyword",
+          "top1": true,
+          "top3": true,
+          "returned": 4
+        },
+        {
+          "question": "Maple Caf\u00e9",
+          "kind": "keyword",
+          "top1": true,
+          "top3": true,
+          "returned": 4
+        },
+        {
+          "question": "evidence card",
+          "kind": "keyword",
+          "top1": true,
+          "top3": true,
+          "returned": 2
+        },
+        {
+          "question": "Connect the viewer to the local API",
+          "kind": "keyword",
+          "top1": true,
+          "top3": true,
+          "returned": 5
+        },
+        {
+          "question": "Sam will show the evidence card",
+          "kind": "keyword",
+          "top1": true,
+          "top3": true,
+          "returned": 3
+        },
+        {
+          "question": "What did the dentist say about my teeth?",
+          "kind": "unanswerable",
+          "top1": null,
+          "top3": null,
+          "returned": 0
+        },
+        {
+          "question": "How much did the flight to Tokyo cost?",
+          "kind": "unanswerable",
+          "top1": null,
+          "top3": null,
+          "returned": 0
+        },
+        {
+          "question": "Did I go swimming?",
+          "kind": "unanswerable",
+          "top1": null,
+          "top3": null,
+          "returned": 2
+        },
+        {
+          "question": "What was the stock price of Nvidia?",
+          "kind": "unanswerable",
+          "top1": null,
+          "top3": null,
+          "returned": 0
+        },
+        {
+          "question": "Who won the hockey game?",
+          "kind": "unanswerable",
+          "top1": null,
+          "top3": null,
+          "returned": 0
+        },
+        {
+          "question": "Where was I when we decided the demo order?",
+          "kind": "located",
+          "top1": true,
+          "top3": true
+        },
+        {
+          "question": "hinge inference loop",
+          "kind": "located",
+          "top1": true,
+          "top3": true
+        },
+        {
+          "question": "Connect the viewer to the local API",
+          "kind": "located",
+          "top1": true,
+          "top3": true
+        },
+        {
+          "question": "Sam will show the evidence card",
+          "kind": "located",
+          "top1": true,
+          "top3": true
+        }
+      ]
     }
-  ]
+  }
 }

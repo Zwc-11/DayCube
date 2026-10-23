@@ -328,7 +328,7 @@ class Vault:
         self._venues: dict[Path, tuple[tuple, Record]] = {}
         self._names: tuple[tuple, dict[str, str]] | None = None
         self._summaries: dict[Path, tuple[tuple, Record]] = {}
-        # day -> key of the inputs the on-disk index was last confirmed fresh for.
+        # day -> key of the inputs the vault database was last confirmed fresh for.
         self.fresh_index: dict[str, tuple] = {}
 
     # -- files -------------------------------------------------------------------------------
@@ -582,7 +582,8 @@ class Vault:
         check_event(event, start, end, start.astimezone(ZoneInfo(timezone)).date().isoformat(), day, places)
 
     def invalidate_index(self, day: str) -> None:
-        (self.day_path(day) / "index.stamp.json").unlink(missing_ok=True)
+        """Make the next search re-check this day's files against the vault database."""
+        self.fresh_index.pop(day, None)
 
     def refresh_stats(self, day: str) -> None:
         snapshot = self.snapshot(day)

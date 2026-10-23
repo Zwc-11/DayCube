@@ -15,7 +15,7 @@ from ingest.api import create_app
 from ingest.ask.retrieve import retrieve
 from ingest.config import PROJECT_ROOT, Settings
 from ingest.contracts import ContractError
-from ingest.index.build import build_index, ensure_index
+from ingest.store import LifeStore
 from ingest.vault import Vault, atomic_text, read_json, read_lines
 
 DAY = "2026-10-20"
@@ -37,13 +37,13 @@ def test_validation_memo_sees_venue_edits(vault: Vault, venue: Path) -> None:
     with pytest.raises(ContractError):
         warm.validate(DAY)
     with pytest.raises(ContractError):
-        build_index(warm, DAY)
+        LifeStore(warm).update(DAY)
 
 
 def test_stray_files_in_moments_are_ignored(vault: Vault) -> None:
     (vault.day_path(DAY) / "moments/.DS_Store").write_bytes(b"\0")
     vault.validate(DAY)
-    with TestClient(create_app(Settings(vault_root=vault.root, _env_file=None))) as client:
+    with TestClient(create_app(Settings(vault_root=vault.root, vector_search=False, _env_file=None))) as client:
         assert client.get(f"/day/{DAY}").status_code == 200
 
 
@@ -88,11 +88,12 @@ def test_validity_is_not_carried_over_a_concurrent_write(vault: Vault, monkeypat
 def test_same_size_rename_within_one_clock_tick_reindexes(vault: Vault) -> None:
     names = vault.root / "places.json"
     vault.write_json(names, {"cafe1": "Zephyr Hut"})
-    ensure_index(vault, DAY)
+    store = LifeStore(vault)
+    store.ensure([DAY])
     before = os.stat(names)
     vault.write_json(names, {"cafe1": "Quasar Hut"})
     os.utime(names, ns=(before.st_atime_ns, before.st_mtime_ns))  # a coarse filesystem clock
-    hits = retrieve(vault, DAY, "Quasar")
+    hits = retrieve(store, "Quasar", day=DAY)
     assert hits and hits[0]["place"] == "cafe1"
 
 

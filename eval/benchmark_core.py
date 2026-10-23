@@ -22,7 +22,8 @@ from typing import Any
 
 from ingest.ask.retrieve import retrieve
 from ingest.config import PROJECT_ROOT
-from ingest.index.build import build_index, collect_units
+from ingest.index.build import UNIT_COLUMNS, collect_units
+from ingest.store import LifeStore
 from ingest.time import instant
 from ingest.vault import Vault, atomic_text, read_json, read_lines
 
@@ -146,14 +147,17 @@ def measure(operation: Callable[[], Any], repeats: int) -> dict:
 
 def operations(vault: Vault) -> list[tuple[str, Callable[[], Any]]]:
     window = (timestamp_at(0.5), timestamp_at(0.5 + 1 / 48))  # 15 minutes at midday
+    store = LifeStore(vault)
     return [
         ("load_day", lambda: vault.load_day(DAY)),
         ("collect_units", lambda: collect_units(vault, DAY)),
         # Unchanged files: validation and parsing are reused from the previous build.
-        ("build_index", lambda: build_index(vault, DAY)),
+        # The vault database replaced the per-day index file, so these carry new names: their
+        # output differs from the old build_index baseline by design.
+        ("store_update", lambda: store.update(DAY)),
         # A fresh Vault has no caches: parse, schema-check and index from scratch.
-        ("build_index_cold", lambda: build_index(Vault(vault.root), DAY)),
-        ("retrieve_warm", lambda: retrieve(vault, DAY, "needlebenchmark")),
+        ("store_update_cold", lambda: LifeStore(Vault(vault.root)).update(DAY)),
+        ("store_retrieve_warm", lambda: retrieve(store, "needlebenchmark", day=DAY)),
         ("events_window", lambda: vault.events_in(DAY, *window, None)),
         ("day_payload_cold", lambda: Vault(vault.root).day_payload(DAY).decode()),
         ("day_payload_warm", lambda: vault.day_payload(DAY).decode()),
@@ -190,6 +194,7 @@ def main() -> None:
                     "services/ingest/ingest/vault.py",
                     "services/ingest/ingest/contracts.py",
                     "services/ingest/ingest/index/build.py",
+                    "services/ingest/ingest/store/db.py",
                     "services/ingest/ingest/index/timeline.py",
                     "services/ingest/ingest/ask/retrieve.py",
                     "eval/benchmark_core.py",
@@ -209,14 +214,15 @@ def main() -> None:
             for label, operation in operations(vault):
                 metrics[label] = measure(operation, args.repeats)
                 print(f"{name}/{label}: {metrics[label]['median_ms']:.2f} ms median", flush=True)
-            hits = retrieve(vault, DAY, "needlebenchmark")
+            store = LifeStore(vault)
+            hits = retrieve(store, "needlebenchmark", day=DAY)
             if len(hits) != 1 or hits[0]["id"] != "event-0":
                 raise RuntimeError("FTS correctness check failed")
             # Verify the entire stored payload and FTS consistency outside the timing region.
-            with closing(sqlite3.connect(vault.day_path(DAY) / "index.sqlite")) as db:
+            with closing(sqlite3.connect(store.path)) as db:
                 db.row_factory = sqlite3.Row
-                rows = [dict(row) for row in db.execute("SELECT * FROM units ORDER BY id")]
-                expected = [dict(unit, id=index) for index, unit in enumerate(collect_units(vault, DAY), start=1)]
+                rows = [{c: row[c] for c in UNIT_COLUMNS} for row in db.execute("SELECT * FROM units ORDER BY id")]
+                expected = collect_units(vault, DAY)
                 if rows != expected:
                     raise RuntimeError("Stored index differs from collected evidence")
                 db.execute("INSERT INTO units_fts(units_fts,rank) VALUES ('integrity-check',1)")
