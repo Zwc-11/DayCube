@@ -10,7 +10,11 @@
   "scripts": {
     "schemas:check": "node scripts/generate-contracts.mjs --check && uv run python scripts/generate-models.py --check",
     "test:contracts": "node --test scripts/contract.test.mjs",
-    "test:api": "npm run schemas:check && npm run test:contracts && tsc -p packages/api-client/tsconfig.json && uv run pytest",
+    "test:api": "npm run schemas:check && npm run test:contracts && npm run test:transport && tsc -p packages/api-client/tsconfig.json && uv run pytest",
+    "test:transport": "node --test packages/api-client/tests/sse.test.mjs",
+    "test:gaze": "uv --directory services/gaze run pytest",
+    "test:extension:unit": "node --test extensions/tests/lib.test.mjs",
+    "check": "npm run lint:api && npm run test:api && npm run test:gaze && npm run test:extension:unit && npm run build",
     "setup:api": "uv sync --locked --python 3.11 && uv run daycube init",
     "test:e2e:api": "playwright test",
     "test:e2e:viewer": "playwright test --config playwright.viewer.config.ts",

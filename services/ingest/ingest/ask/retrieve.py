@@ -18,7 +18,7 @@ from collections.abc import Hashable, Mapping, Sequence
 
 from ..store import LifeStore
 from ..time import tod
-from ..vault import Record
+from ..vault import DaySnapshot, Record
 
 # fmt: off
 STOP_WORDS = frozenset((
@@ -64,13 +64,18 @@ def retrieve(
     coverage = {unit: len(wanted.intersection(terms(rows[unit]["text"]))) / len(wanted) for unit in keyword}
     fused = [unit for unit, _ in reciprocal_rank_fusion([keyword, meaning], weights=[coverage, None])[:limit]]
     found = {"keyword": set(keyword), "meaning": set(meaning)}
-    return [_record(store, rows[unit], found) for unit in fused if unit in rows]
-
-
-def _record(store: LifeStore, unit: Record, found: dict[str, set[int]]) -> Record:
-    snapshot = store.vault.snapshot(unit["day"])
-    place = snapshot.places.get(unit["place"])
+    units = [rows[unit] for unit in fused if unit in rows]
+    if not units:
+        return []
+    # A result set commonly contains several records from one day. Prepare its
+    # snapshot/context once instead of repeating filesystem stamps for each hit.
+    snapshots = {date: store.vault.snapshot(date) for date in dict.fromkeys(unit["day"] for unit in units)}
     names = store.vault.place_names()
+    return [_record(unit, found, snapshots[unit["day"]], names) for unit in units]
+
+
+def _record(unit: Record, found: dict[str, set[int]], snapshot: DaySnapshot, names: dict[str, str]) -> Record:
+    place = snapshot.places.get(unit["place"])
     return {
         "id": unit["evidence_id"],
         "unit_id": unit["id"],
