@@ -29,6 +29,9 @@
   const ids = new WeakMap(); // element -> block id
   const elements = new Map(); // block id -> WeakRef(element)
   const sent = new Map(); // block id -> text the service worker accepted
+  const sentLines = new Map(); // block id -> layout key of the lines the service worker accepted
+  const measured = new Map(); // block id -> its lines as last measured, for the line marker
+  const MAX_LINES = 60;
   let counter = 0;
   let signature = '';
   let timer = null;
@@ -103,6 +106,66 @@
 
   // -- the text on screen ---------------------------------------------------------------------------
 
+  // The visual lines of a block, top to bottom: each line's rectangle in page coordinates (CSS px,
+  // scroll included, so it holds while the page scrolls) and the exact text on it. A text node that
+  // wraps is split where its characters move to the next line, found by binary search on
+  // one-character ranges: about ten measurements a line. Past the time budget, the rest of a node
+  // is shared among its lines by width instead.
+  function linesOf(nodes, deadline) {
+    const range = document.createRange();
+    const fragments = []; // [rect, text] in DOM order
+    for (const node of nodes) {
+      const text = node.nodeValue;
+      range.selectNodeContents(node);
+      const rects = [...range.getClientRects()].filter(rect => rect.width && rect.height);
+      if (!rects.length) continue;
+      if (rects.length === 1) {
+        fragments.push([rects[0], text]);
+        continue;
+      }
+      let start = 0;
+      for (let k = 0; k < rects.length; k++) {
+        let end = text.length;
+        if (k < rects.length - 1) {
+          if (performance.now() > deadline) {
+            const total = rects.slice(k).reduce((sum, rect) => sum + rect.width, 0);
+            end = start + Math.round((text.length - start) * rects[k].width / total);
+          } else {
+            const below = rects[k].top + rects[k].height / 2; // a character at or under this is on a later line
+            let lo = start + 1;
+            let hi = text.length;
+            while (lo < hi) {
+              const mid = (lo + hi) >> 1;
+              range.setStart(node, mid);
+              range.setEnd(node, mid + 1);
+              const box = range.getBoundingClientRect();
+              if (box.height && box.top >= below) hi = mid; else lo = mid + 1;
+            }
+            end = lo;
+          }
+        }
+        fragments.push([rects[k], text.slice(start, end)]);
+        start = end;
+      }
+    }
+    const lines = []; // { l, t, r, b, parts }
+    for (const [rect, text] of fragments) {
+      const line = lines.find(x => Math.min(x.b, rect.bottom) - Math.max(x.t, rect.top) > 0.5 * Math.min(x.b - x.t, rect.height));
+      if (line) {
+        line.l = Math.min(line.l, rect.left); line.r = Math.max(line.r, rect.right);
+        line.t = Math.min(line.t, rect.top); line.b = Math.max(line.b, rect.bottom);
+        line.parts.push(text);
+      } else {
+        lines.push({ l: rect.left, t: rect.top, r: rect.right, b: rect.bottom, parts: [text] });
+      }
+    }
+    lines.sort((a, b) => a.t - b.t);
+    return lines.slice(0, MAX_LINES).map(line => ({
+      rect: [round(line.l + scrollX), round(line.t + scrollY), round(line.r - line.l), round(line.b - line.t)],
+      text: clean(line.parts.join('')).slice(0, 300),
+    }));
+  }
+
   function snapshot() {
     timer = null;
     if (!front() || guarded() || !document.body) return;
@@ -150,14 +213,17 @@
       if (!group) {
         const look = style(element);
         if (look.visibility === 'hidden' || look.opacity === '0') continue;
-        groups.set(element, (group = { parts: [], l, t, r, b }));
+        groups.set(element, (group = { parts: [], nodes: [], l, t, r, b }));
       }
       group.parts.push(node.nodeValue);
+      group.nodes.push(node);
       group.l = Math.min(group.l, l); group.t = Math.min(group.t, t);
       group.r = Math.max(group.r, r); group.b = Math.max(group.b, b);
     }
     const blocks = [];
     const texts = [];
+    const layouts = [];
+    const deadline = started + 25; // line splitting gives way to the rest of the snapshot after 25 ms
     for (const [element, group] of groups) {
       const full = clean(group.parts.join(''));
       if (full.length < 2) continue;
@@ -179,23 +245,38 @@
         block.words = full.split(' ').length;
         texts.push([id, text]);
       }
+      // Lines go with a block's text, and again when the wrapping changes (width, zoom) or the
+      // block moves on the page (an image above it loaded): line rectangles are page coordinates.
+      const box = element.getBoundingClientRect();
+      const layout = `${Math.round(box.width)}:${Math.round(box.top + scrollY)}:${devicePixelRatio}:${text.length}`;
+      if (sentLines.get(id) !== layout) {
+        block.lines = linesOf(group.nodes, deadline);
+        measured.set(id, block.lines);
+        layouts.push([id, layout]);
+      }
       blocks.push(block);
       if (blocks.length === MAX_BLOCKS) break;
     }
     const shape = JSON.stringify([Math.round(scrollY), vw, vh, blocks.map(block => [block.id, ...block.rect])]);
     // Pages that change constantly (chats, tickers) are measured less often if measuring is slow.
     mutationGap = performance.now() - started > 40 ? 10000 : 2000;
-    if (shape === signature && !texts.length) return;
+    if (shape === signature && !texts.length && !layouts.length) return;
     signature = shape;
     send({ kind: 'blocks', doc: DOC, geometry: geometry(), blocks }).then(reply => {
       if (!reply?.ok) { // not taken (paused, excluded): every text goes again with the next snapshot
         sent.clear();
+        sentLines.clear();
         signature = '';
         return;
       }
-      if (!follow(reply)) for (const [id, text] of texts) sent.set(id, text);
+      if (!follow(reply)) {
+        for (const [id, text] of texts) sent.set(id, text);
+        for (const [id, layout] of layouts) sentLines.set(id, layout);
+      }
     });
-    if (elements.size > 5000) for (const [id, ref] of elements) if (!ref.deref()) elements.delete(id);
+    if (elements.size > 5000) {
+      for (const [id, ref] of elements) if (!ref.deref()) { elements.delete(id); measured.delete(id); }
+    }
   }
 
   // The service worker moves its epoch on when queued text was dropped: send every text again.
@@ -205,6 +286,7 @@
     epoch = reply.epoch;
     if (first) return false;
     sent.clear();
+    sentLines.clear();
     signature = '';
     schedule(300);
     return true;
@@ -329,4 +411,50 @@
   chrome.runtime.onMessage.addListener(message => {
     if (message?.signal?.doc === DOC) mark(message.signal);
   });
+
+  // -- the line being read --------------------------------------------------------------------------
+
+  // When chosen in the options: a small marker beside the line the receiver decodes the eyes to be
+  // on, asked for once a second while the page is in front (every 10 s whether it is wanted at all:
+  // storage, where the option lives, is kept from content scripts). Like the dwell bar it is an
+  // element in the page, outside its layout, and ignores the pointer.
+  let marker = null;
+
+  function place(reading) {
+    const rect = reading && reading.doc === DOC && Date.now() - Date.parse(reading.t) < 3000
+      ? measured.get(reading.block)?.[reading.line]?.rect : null;
+    if (!rect) {
+      marker?.remove();
+      marker = null;
+      return;
+    }
+    if (!marker) {
+      marker = document.createElement('div');
+      marker.dataset.daycube = 'line';
+      marker.setAttribute('aria-hidden', 'true');
+      Object.assign(marker.style, {
+        position: 'absolute', width: '4px', background: '#3b82f6', borderRadius: '2px', zIndex: '2147483647',
+        boxShadow: '0 0 0 1px rgba(255,255,255,.6)', pointerEvents: 'none',
+        transition: matchMedia('(prefers-reduced-motion: reduce)').matches ? '' : 'top .15s ease, opacity .3s',
+      });
+    }
+    Object.assign(marker.style, {
+      left: `${Math.max(0, rect[0] - 12)}px`, top: `${rect[1]}px`, height: `${Math.max(12, rect[3])}px`,
+      opacity: `${0.4 + 0.6 * reading.p}`,
+    });
+    if (!marker.isConnected) document.documentElement.appendChild(marker);
+  }
+
+  async function followLine() {
+    let wanted = false;
+    if (front() && !guarded()) {
+      const reply = await chrome.runtime.sendMessage({ kind: 'reading' }).catch(() => null);
+      wanted = Boolean(reply?.show);
+      place(reply?.reading);
+    } else {
+      place(null);
+    }
+    setTimeout(followLine, wanted ? 1000 : 10000);
+  }
+  setTimeout(followLine, 1000);
 })();

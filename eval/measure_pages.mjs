@@ -41,7 +41,7 @@ for (const name of PAGES) {
     await page.waitForFunction(() => window.reporterMessages.some(m => m.kind === 'blocks'));
     const blocks = await page.evaluate(() => {
       const message = window.reporterMessages.find(m => m.kind === 'blocks');
-      return message.blocks.map(({ id, tag, rect, text, words }) => ({ id, tag, rect, text, words }));
+      return message.blocks.map(({ id, tag, rect, text, words, lines }) => ({ id, tag, rect, text, words, lines }));
     });
     const height = await page.evaluate(() => document.documentElement.scrollHeight);
     out.pages[name][width] = { scroll_h: height, blocks };

@@ -227,7 +227,7 @@ class Layout:
                 "rect": [left, round(t, 1), min(width, vw - left), round(bottom - t, 1)],
             }
             if b["id"] not in sent:
-                block |= {"text": b["text"], "words": b["words"]}
+                block |= {"text": b["text"], "words": b["words"], "lines": b.get("lines") or []}
                 sent.add(b["id"])
             out.append(block)
         return out
@@ -242,6 +242,7 @@ class Script:
 
     layout: Layout
     looks: list[tuple[float, float, float | None, float | None]] = field(default_factory=list)
+    truth: list[tuple[str, int] | None] = field(default_factory=list)  # (block, line) being read, per look
     records: list[tuple[float, str, dict]] = field(default_factory=list)
     scroll: list[tuple[float, float]] = field(default_factory=lambda: [(0.0, 0.0)])
     t: float = 0.0
@@ -249,8 +250,9 @@ class Script:
     def scroll_at(self, t: float) -> float:
         return self.scroll[bisect_right([s for s, _ in self.scroll], t) - 1][1]
 
-    def look(self, seconds: float, x: float | None, y: float | None) -> None:
+    def look(self, seconds: float, x: float | None, y: float | None, truth: tuple[str, int] | None = None) -> None:
         self.looks.append((self.t, self.t + seconds, x, y))
+        self.truth.append(truth)
         self.t += seconds
 
     def stare(self, block: dict, seconds: float, rng: random.Random) -> None:
@@ -264,22 +266,23 @@ class Script:
             self.look(d, x, y)
 
     def read(self, block: dict, rng: random.Random, wpm: float = 238.0) -> None:
-        """Line by line at ``wpm``: about one fixation per 1.2 words, a return sweep per line."""
-        left, top, width, height = block["rect"]
-        line = LINE_PX[self.layout.name]
-        lines = max(1, round(height / line))
-        words = block["words"]
-        per_line = [words // lines + (i < words % lines) for i in range(lines)]
-        budget = words * 60.0 / wpm
-        for i, n in enumerate(per_line):
+        """Line by line at ``wpm`` over the block's measured lines: about one fixation per 1.2 words
+        along each line, with one regression (a look back a few words) in ten."""
+        lines = block.get("lines") or [{"rect": block["rect"], "text": block["text"]}]
+        counts = [max(1, len(line["text"].split())) for line in lines]
+        budget = sum(counts) * 60.0 / wpm
+        for i, (line, n) in enumerate(zip(lines, counts, strict=True)):
+            x0, top, width, height = line["rect"]
             stops = max(1, round(n / 1.2))
-            span = width if i < lines - 1 else width * max(0.2, n / max(per_line[0], 1))
-            share = budget * n / words
             weights = [max(0.4, rng.gauss(1.0, 0.3)) for _ in range(stops)]
-            y = top - self.scroll_at(self.t) + line * (i + 0.5)
+            share = budget * n / sum(counts)
+            y = top - self.scroll_at(self.t) + height / 2
             for k, w in enumerate(weights):
-                x = left + span * (0.04 + 0.9 * (k + 0.5) / stops) + rng.gauss(0, 6)
-                self.look(share * w / sum(weights), x, y)
+                position = (k + 0.5) / stops
+                if k and rng.random() < 0.1:
+                    position = max(0.0, position - rng.uniform(0.1, 0.3))
+                x = x0 + width * (0.03 + 0.94 * position) + rng.gauss(0, 6)
+                self.look(share * w / sum(weights), x, y, (block["id"], i))
 
     def scroll_to(self, page_y: float) -> None:
         """Scroll so ``page_y`` is near the top; the reporter re-measures 350 ms after scrolling."""
@@ -539,6 +542,11 @@ class Outcome:
     fixation_s: float  # seconds covered by fixations
     tracked_s: float  # seconds the eyes were on the screen
     on_target_s: float  # fixation seconds placed on the target block
+    reading_s: float = 0.0  # fixation seconds during reading, with a known true line
+    line_s: float = 0.0  # ... placed on the right block and the right line
+    near_s: float = 0.0  # ... on the right block, within one line
+    read: set[str] = field(default_factory=set)  # blocks really read for at least 1.5 s
+    recorded: set[str] = field(default_factory=set)  # blocks with a record in reading.jsonl
 
 
 def run(scenario: Scenario, model: ErrorModel, seed: int, screen: Screen) -> Outcome:
@@ -579,9 +587,12 @@ def run(scenario: Scenario, model: ErrorModel, seed: int, screen: Screen) -> Out
         g = layout.screen.geometry(script.scroll_at(t), layout.scroll_h)
         rid = f"r-{order:06d}"
         if kind == "blocks" and not away:
+            visible = layout.visible(g["scroll_y"], sent)
+            if "lines" not in records.Block.model_fields:  # a revision from before line decoding
+                visible = [{k: v for k, v in b.items() if k != "lines"} for b in visible]
             rec = records.Blocks.model_validate(
                 base | {"id": rid, "t": _at(t), "kind": "blocks", "doc": "doc-0001", "geometry": g,
-                        "blocks": layout.visible(g["scroll_y"], sent)}
+                        "blocks": visible}
             )  # fmt: skip
         elif kind == "view" and not away:
             rec = records.View.model_validate(
@@ -604,11 +615,19 @@ def run(scenario: Scenario, model: ErrorModel, seed: int, screen: Screen) -> Out
         deliveries.append((when, 1, (batch, state)))
     deliveries.sort(key=lambda d: (d[0], d[1]))
 
+    try:
+        from capture import reading as reading_module
+    except ImportError:  # a revision from before line decoding
+        reading_module = None
+    for name, value in json.loads(os.environ.get("GAZE_SIM_READING", "{}")).items():  # tuning only
+        setattr(reading_module, name, value)
     options = json.loads(os.environ.get("GAZE_SIM_ATTENTION", "{}"))
     accepted = attention_module.Attention.__init__.__code__.co_varnames
     attention = attention_module.Attention(**{k: v for k, v in options.items() if k in accepted})
     fired: list[tuple[float, str, float]] = []
-    fixation_s = on_target = 0.0
+    recorded: set[str] = set()
+    fixation_s = on_target = reading_s = line_s = near_s = 0.0
+    starts = [a for a, _, _, _ in script.looks]
     count = 0
     for when, kind, payload in deliveries:
         if kind == 0:
@@ -631,14 +650,33 @@ def run(scenario: Scenario, model: ErrorModel, seed: int, screen: Screen) -> Out
                 fixation_s += f.end - f.start
                 if hit is not None and target is not None and hit.block == target:
                     on_target += f.end - f.start
+                i = bisect_right(starts, (f.start + f.end) / 2) - 1  # the look in the middle of the fixation
+                truth = script.truth[i] if 0 <= i < len(script.truth) else None
+                if truth is not None:
+                    reading_s += f.end - f.start
+                    on = hit is not None and getattr(hit, "line_block", getattr(hit, "block", None)) == truth[0]
+                    line = getattr(hit, "line", None) if on else None
+                    if line is not None:
+                        line_s += (f.end - f.start) * (line == truth[1])
+                        near_s += (f.end - f.start) * (abs(line - truth[1]) <= 1)
             out += attention.advance(_at(when) - timedelta(seconds=3))
         for e in out:
-            if e["phase"] == "start":
+            if e.get("kind") == "read":
+                recorded.add(e["block"])
+            if e.get("kind", "dwell") == "dwell" and e["phase"] == "start":
                 fired.append(
                     (round((datetime.fromisoformat(e["t_end"]) - T0).total_seconds(), 2), e["block"], e["dwell_s"])
                 )
+    if hasattr(attention, "end_visit"):
+        for e in attention.end_visit():
+            recorded.add(e["block"])
     tracked = sum(b - a for a, b, x, _ in script.looks if x is not None)
-    return Outcome(fired, fixation_s, tracked, on_target)
+    per_block: dict[str, float] = {}
+    for (a, b, _, _), truth in zip(script.looks, script.truth, strict=True):
+        if truth is not None:
+            per_block[truth[0]] = per_block.get(truth[0], 0.0) + b - a
+    read = {block for block, seconds in per_block.items() if seconds >= 1.5}
+    return Outcome(fired, fixation_s, tracked, on_target, reading_s, line_s, near_s, read, recorded)
 
 
 def _range(start: float, stop: float, step: float) -> Iterator[float]:
@@ -687,15 +725,19 @@ def _trial(job: tuple[int, str, float, int]) -> dict:
         "scenario": scenario.name, "profile": profile, "dip_scale": dip_scale, "seed": seed,
         "right": bool(right), "wrong": bool(wrong), "first_s": right[0][0] if right else None,
         "coverage": out.fixation_s / out.tracked_s if out.tracked_s else 0.0,
+        "reading_s": out.reading_s, "line_s": out.line_s, "near_s": out.near_s,
+        "read": len(out.read), "recorded": len(out.read & out.recorded), "extra": len(out.recorded - out.read),
         "on_target": out.on_target_s / out.tracked_s if out.tracked_s and target else None,
     }  # fmt: skip
 
 
 def evaluate(seeds: int, profiles: list[str], scales: list[float], workers: int) -> list[dict]:
     first = int(os.environ.get("GAZE_SIM_FIRST_SEED", SEED_BASE))
+    only = os.environ.get("GAZE_SIM_ONLY")  # run only scenarios whose name contains this
     jobs = [
         (i, p, s, seed)
         for i in range(len(SCENARIOS))
+        if not only or only in SCENARIOS[i].name
         for p in profiles
         for s in scales
         for seed in range(first, first + seeds)
@@ -722,6 +764,12 @@ def summarize(trials: list[dict]) -> list[dict]:
             "median_time_to_dwell_s": firsts[len(firsts) // 2] if firsts else None,
             "fixation_coverage": sum(t["coverage"] for t in group) / n,
             "on_target_share": (sum(t["on_target"] for t in group) / n) if scenario.target else None,
+            # Reading time on the right line (and within one line), pooled over sessions.
+            "line_exact": (sum(t["line_s"] for t in group) / reading) if (reading := sum(t["reading_s"] for t in group)) else None,
+            "line_near": (sum(t["near_s"] for t in group) / reading) if reading else None,
+            # Blocks read for 1.5 s or more that got a reading.jsonl record, and records of blocks not read.
+            "reads_recorded": (sum(t.get("recorded", 0) for t in group) / read) if (read := sum(t.get("read", 0) for t in group)) else None,
+            "extra_reads": sum(t.get("extra", 0) for t in group) / n,
         })  # fmt: skip
     return out
 
@@ -729,14 +777,14 @@ def summarize(trials: list[dict]) -> list[dict]:
 def _extract(revision: str) -> Path:
     """The tracker and receiver modules of a revision, importable from a scratch folder."""
     folder = Path(tempfile.mkdtemp(prefix=f"gaze-sim-{revision}-"))
-    files = {
-        "capture": ["__init__.py", "records.py", "attention.py"],
-        "gaze": ["__init__.py", "fixations.py", "track.py", "receiver.py", "system.py"],
-    }
     sources = {"capture": "services/capture-win/capture", "gaze": "services/gaze/gaze"}
-    for package, names in files.items():
+    for package, source in sources.items():
         (folder / package).mkdir()
-        for name in names:
+        listing = subprocess.run(
+            ["git", "ls-tree", "--name-only", f"{revision}:{source}"], cwd=ROOT, check=True, capture_output=True,
+            text=True,
+        ).stdout.split()  # fmt: skip
+        for name in [n for n in listing if n.endswith(".py")]:
             text = subprocess.run(
                 ["git", "show", f"{revision}:{sources[package]}/{name}"], cwd=ROOT, check=True, capture_output=True,
                 text=True,
@@ -779,6 +827,18 @@ def table(rows: list[dict], label: str) -> str:
             f"| {r['scenario']} | {r['profile']} | {r['dip_scale']:.0%} | {r['expect']} | {r['pass']:.0%} | "
             f"{r['fired_on_target']:.0%} | {r['fired_elsewhere']:.0%} | {r['fixation_coverage']:.0%} | {share} | {first} |"
         )
+    reading = [r for r in rows if r.get("line_exact") is not None]
+    if reading:
+        lines += ["", "Line reading: share of reading time decoded on the right line and within one line; blocks",
+                  "read for 1.5 s or more that got a `reading.jsonl` record; records per session for blocks not read.", "",
+                  "| Scenario | Calibration | Scaling | Right line | Within 1 line | Blocks recorded | Extra records |",
+                  "| --- | --- | ---: | ---: | ---: | ---: | ---: |"]  # fmt: skip
+        for r in reading:
+            recorded = "" if r.get("reads_recorded") is None else f"{r['reads_recorded']:.0%}"
+            lines.append(
+                f"| {r['scenario']} | {r['profile']} | {r['dip_scale']:.0%} | {r['line_exact']:.0%} | "
+                f"{r['line_near']:.0%} | {recorded} | {r.get('extra_reads', 0):.1f} |"
+            )
     return "\n".join(lines)
 
 
@@ -810,10 +870,33 @@ class LiveEyes:
         return [list(self.camera.predict(t, point))]
 
 
+def _read_lines(
+    lines: list[list[float]], rng: random.Random, t: float, wpm: float = 238.0
+) -> list[tuple[float, float, float, float, int]]:
+    """Looks that read ``lines`` ([left, top, width, height, words], monitor px) as ``Script.read``
+    does: (start, end, x, y, line)."""
+    budget = sum(max(1, int(line[4])) for line in lines) * 60.0 / wpm
+    total = sum(max(1, int(line[4])) for line in lines)
+    looks = []
+    for i, (x0, top, width, height, words) in enumerate(lines):
+        n = max(1, int(words))
+        stops = max(1, round(n / 1.2))
+        weights = [max(0.4, rng.gauss(1.0, 0.3)) for _ in range(stops)]
+        share = budget * n / total
+        for k, w in enumerate(weights):
+            position = (k + 0.5) / stops
+            if k and rng.random() < 0.1:
+                position = max(0.0, position - rng.uniform(0.1, 0.3))
+            d = share * w / sum(weights)
+            looks.append((t, t + d, x0 + width * (0.03 + 0.94 * position) + rng.gauss(0, 6), top + height / 2, i))
+            t += d
+    return looks
+
+
 def live(args: argparse.Namespace) -> None:
     """Run the real tracker loop in real time against a running receiver, the eyes and camera
-    simulated: a stare at ``--rect`` (monitor px) for ``--seconds``. For the browser end-to-end
-    test (extensions/tests/gaze.e2e.spec.ts)."""
+    simulated: a stare at ``--rect`` (monitor px) for ``--seconds``, or reading ``--lines`` line by
+    line. For the browser end-to-end test (extensions/tests/gaze.e2e.spec.ts)."""
     import time
 
     sys.path[:0] = [str(ROOT / "services/gaze")]
@@ -826,13 +909,17 @@ def live(args: argparse.Namespace) -> None:
     scale = width / MONITOR[0]  # the same error in degrees on a monitor this wide
     model = ErrorModel.fit(held_out[0] * scale, held_out[1] * scale)
     camera = Camera(model, random.Random(args.seed * 7919 + 1), (width, height))
-    left, top, w, h = args.rect
     begin = time.time() + 3.0  # the tracker turns the camera on once the receiver has answered
-    looks, t = [], begin
-    while t < begin + args.seconds:
-        d = min(max(rng.lognormvariate(math.log(0.45), 0.4), 0.12), 2.0)
-        looks.append((t, t + d, left + w * rng.uniform(0.2, 0.8), top + h * rng.uniform(0.25, 0.75)))
-        t += d
+    looks, t, read = [], begin, []
+    if args.lines:
+        read = _read_lines(json.loads(Path(args.lines).read_text(encoding="utf-8")), rng, begin, args.wpm)
+        looks, t = [look[:4] for look in read], read[-1][1]
+    else:
+        left, top, w, h = args.rect
+        while t < begin + args.seconds:
+            d = min(max(rng.lognormvariate(math.log(0.45), 0.4), 0.12), 2.0)
+            looks.append((t, t + d, left + w * rng.uniform(0.2, 0.8), top + h * rng.uniform(0.25, 0.75)))
+            t += d
     blinks, b = [], begin
     while b < t:
         b += rng.expovariate(model.blinks_per_min / 60.0)
@@ -846,7 +933,10 @@ def live(args: argparse.Namespace) -> None:
     tracker._release()
     tracker.reported_at = -1e9
     tracker._report(time.time())
-    print(json.dumps({"looks": len(looks), "seconds": round(t - begin, 1), "error_px": calibration["error_px"]}))
+    print(json.dumps({
+        "looks": len(looks), "seconds": round(t - begin, 1), "error_px": calibration["error_px"],
+        "read": [[round(a, 3), round(b, 3), line] for a, b, _, _, line in read],  # epoch seconds, line read
+    }))  # fmt: skip
 
 
 def main() -> None:
@@ -856,7 +946,9 @@ def main() -> None:
         parser.add_argument("--receiver", default="http://127.0.0.1:7700")
         parser.add_argument("--token-file", required=True)
         parser.add_argument("--monitor", nargs=2, type=int, required=True)
-        parser.add_argument("--rect", nargs=4, type=float, required=True, help="left top width height, monitor px")
+        parser.add_argument("--rect", nargs=4, type=float, help="left top width height, monitor px")
+        parser.add_argument("--lines", help="JSON file: [[left, top, width, height, words], ...] in monitor px")
+        parser.add_argument("--wpm", type=float, default=238.0)
         parser.add_argument("--seconds", type=float, default=20.0)
         parser.add_argument("--profile", default="recalibrated", choices=list(PROFILES))
         parser.add_argument("--seed", type=int, default=1)

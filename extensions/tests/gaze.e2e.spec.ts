@@ -4,7 +4,7 @@
 // recalibrated session's held-out error (69 px median, 133 px p90 on a 2560 px monitor).
 // Needs port 7700 free. npx playwright test --config playwright.extension.config.ts
 import { type ChildProcess, spawn } from 'node:child_process';
-import { mkdtempSync, readFileSync, readdirSync, existsSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, existsSync, rmSync, writeFileSync } from 'node:fs';
 import { type Server, createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -99,18 +99,22 @@ async function open(address: string, zoom: number): Promise<Page> {
   return page;
 }
 
-/** Run the real tracker loop with simulated eyes staring at a rectangle of the monitor. */
-function stare(rect: number[], seconds: number, seed: number): Promise<string> {
+/** Run the real tracker loop with simulated eyes, e.g. staring at a rectangle of the monitor. */
+function track(eyes: string[], seed: number): Promise<string> {
   return new Promise((resolve, reject) => {
     const tracker = spawn('uv', [
       'run', 'python', 'eval/gaze_sim.py', 'live', '--token-file', path.join(vault, '.token'),
-      '--monitor', String(SCREEN.width), String(SCREEN.height), '--rect', ...rect.map(v => v.toFixed(1)),
-      '--seconds', String(seconds), '--profile', 'recalibrated', '--seed', String(seed),
+      '--monitor', String(SCREEN.width), String(SCREEN.height), ...eyes,
+      '--profile', 'recalibrated', '--seed', String(seed),
     ], { cwd: ROOT, stdio: ['ignore', 'pipe', 'inherit'] });
     let out = '';
     tracker.stdout.on('data', chunk => { out += chunk; });
     tracker.on('exit', code => (code === 0 ? resolve(out) : reject(new Error(`tracker exited with ${code}`))));
   });
+}
+
+function stare(rect: number[], seconds: number, seed: number): Promise<string> {
+  return track(['--rect', ...rect.map(v => v.toFixed(1)), '--seconds', String(seconds)], seed);
 }
 
 test('a 20 s stare at the example.com paragraph at 200% zoom becomes a dwell through webcam-grade gaze', async () => {
@@ -186,4 +190,76 @@ test('clicks carry where they landed, and a glance is not a dwell', async () => 
   expect(Math.abs(click.x - (link!.x + 10))).toBeLessThan(1.5); // mouse events land on whole pixels
   expect(Math.abs(click.y - (link!.y + 5))).toBeLessThan(1.5);
   expect(click.geometry).toMatchObject({ scale: 1, exact: true, primary: true });
+});
+
+test('reading a paragraph is followed line by line and recorded', async () => {
+  test.setTimeout(150000);
+  const page = await open(`${SITE}/reading`, 1);
+  // The paragraph's lines as the extension measured and sent them (page px).
+  const isP2 = (x: any) => x.text?.startsWith('The method of loci') && x.lines?.length;
+  const snapshot = (await until(() => lines('blocks.jsonl'), found => found.some(b => b.blocks.some(isP2))))
+    .filter(b => b.blocks.some(isP2)).at(-1);
+  const block = snapshot.blocks.find(isP2);
+  expect(block.lines.length, 'the paragraph wraps onto several lines').toBeGreaterThanOrEqual(4);
+  expect(block.lines.map((l: any) => l.text).join(' ').replace(/\s+/g, ' ')).toContain('Another says that a place');
+
+  await page.evaluate(() => addEventListener('mousemove', e => {
+    (window as any).origin = [e.screenX - e.clientX, e.screenY - e.clientY];
+  }, { once: true }));
+  await page.mouse.move(600, 350);
+  const [ox, oy, sx, sy] = await page.evaluate(() => [...(window as any).origin, scrollX, scrollY]);
+  const onMonitor = block.lines.map((l: any) => [
+    ox + l.rect[0] - sx, oy + l.rect[1] - sy, l.rect[2], l.rect[3], l.text.split(/\s+/).filter(Boolean).length,
+  ]);
+  const file = path.join(vault, 'lines.json');
+  writeFileSync(file, JSON.stringify(onMonitor));
+
+  // While the eyes read, /status says which line they are on, and with the option on a marker
+  // beside the page's text follows them.
+  await worker.evaluate(() => chrome.storage.local.set({ showLine: true }));
+  const seen = new Set<string>();
+  const marked = new Set<number>();
+  let reading = true;
+  const watch = (async () => {
+    while (reading) {
+      const now = await fetch(`${RECEIVER}/status`).then(r => r.json(), () => null);
+      if (now?.reading?.block === block.id) seen.add(`${now.reading.line}`);
+      const top = await page.evaluate(() => (document.querySelector('[data-daycube="line"]') as HTMLElement | null)?.style.top);
+      const at = block.lines.findIndex((l: any) => top && Math.abs(parseFloat(top) - l.rect[1]) < 1);
+      if (at >= 0) marked.add(at);
+      await new Promise(resolve => setTimeout(resolve, 300));
+    }
+  })();
+  const out = JSON.parse(await track(['--lines', file], 5));
+  reading = false;
+  await watch;
+  expect(seen.size, '/status followed the eyes down the paragraph').toBeGreaterThanOrEqual(block.lines.length - 1);
+  expect(marked.size, 'the marker moved down the lines').toBeGreaterThanOrEqual(block.lines.length - 1);
+  await expect(page.locator('[data-daycube="line"]'), 'and goes once the eyes stop').toHaveCount(0, { timeout: 6000 });
+  await worker.evaluate(() => chrome.storage.local.set({ showLine: false }));
+
+  // Each fixation in gaze.jsonl carries the decoded line: compare with the line really read.
+  const read: [number, number, number][] = out.read;
+  let total = 0;
+  let right = 0;
+  for (const f of lines('gaze.jsonl')) {
+    const t0 = Date.parse(f.t) / 1000;
+    const t1 = Date.parse(f.t_end) / 1000;
+    const mid = (t0 + t1) / 2;
+    const look = read.find(([a, b]) => a <= mid && mid < b);
+    if (!look) continue;
+    total += t1 - t0;
+    if (f.line?.block === block.id && f.line.line === look[2]) right += t1 - t0;
+  }
+  console.log(`decoded line: ${(100 * right / total).toFixed(0)}% of ${total.toFixed(1)} s of reading; /status showed lines ${[...seen].sort()}; marker on lines ${[...marked].sort()}`);
+  expect(total, 'fixations arrived while reading').toBeGreaterThan(5);
+  expect(right / total, 'reading time on the right line').toBeGreaterThan(0.75);
+
+  // Leaving the page ends the visit: reading.jsonl has the paragraph, line by line.
+  await page.goto(`${SITE}/example`);
+  const record = await until(() => lines('reading.jsonl').find(r => r.block === block.id), Boolean, 15000);
+  expect(record, 'the paragraph read is recorded').toBeTruthy();
+  expect(record.line_count).toBe(block.lines.length);
+  expect(record.coverage).toBeGreaterThanOrEqual(0.8);
+  expect(record.lines[0].text).toBe(block.lines[0].text);
 });

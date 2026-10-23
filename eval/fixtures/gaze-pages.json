@@ -15,7 +15,18 @@
        39
       ],
       "text": "Example Domain",
-      "words": 2
+      "words": 2,
+      "lines": [
+       {
+        "rect": [
+         126.5,
+         133.4,
+         260.3,
+         39
+        ],
+        "text": "Example Domain"
+       }
+      ]
      },
      {
       "id": "b2",
@@ -27,7 +38,27 @@
        40
       ],
       "text": "This domain is for use in illustrative examples in documents. You may use this domain in literature without prior coordination or asking for permission.",
-      "words": 24
+      "words": 24,
+      "lines": [
+       {
+        "rect": [
+         126.5,
+         193.9,
+         586.3,
+         20
+        ],
+        "text": "This domain is for use in illustrative examples in documents. You may use this"
+       },
+       {
+        "rect": [
+         126.5,
+         213.9,
+         536.1,
+         20
+        ],
+        "text": "domain in literature without prior coordination or asking for permission."
+       }
+      ]
      },
      {
       "id": "b3",
@@ -39,7 +70,18 @@
        20
       ],
       "text": "More information...",
-      "words": 2
+      "words": 2,
+      "lines": [
+       {
+        "rect": [
+         126.5,
+         249.9,
+         143.3,
+         20
+        ],
+        "text": "More information..."
+       }
+      ]
      }
     ]
    },
@@ -56,7 +98,18 @@
        39
       ],
       "text": "Example Domain",
-      "words": 2
+      "words": 2,
+      "lines": [
+       {
+        "rect": [
+         212,
+         133.4,
+         260.3,
+         39
+        ],
+        "text": "Example Domain"
+       }
+      ]
      },
      {
       "id": "b2",
@@ -68,7 +121,27 @@
        40
       ],
       "text": "This domain is for use in illustrative examples in documents. You may use this domain in literature without prior coordination or asking for permission.",
-      "words": 24
+      "words": 24,
+      "lines": [
+       {
+        "rect": [
+         212,
+         193.9,
+         586.3,
+         20
+        ],
+        "text": "This domain is for use in illustrative examples in documents. You may use this"
+       },
+       {
+        "rect": [
+         212,
+         213.9,
+         536.1,
+         20
+        ],
+        "text": "domain in literature without prior coordination or asking for permission."
+       }
+      ]
      },
      {
       "id": "b3",
@@ -80,7 +153,18 @@
        20
       ],
       "text": "More information...",
-      "words": 2
+      "words": 2,
+      "lines": [
+       {
+        "rect": [
+         212,
+         249.9,
+         143.3,
+         20
+        ],
+        "text": "More information..."
+       }
+      ]
      }
     ]
    },
@@ -97,7 +181,18 @@
        39
       ],
       "text": "Example Domain",
-      "words": 2
+      "words": 2,
+      "lines": [
+       {
+        "rect": [
+         340,
+         133.4,
+         260.3,
+         39
+        ],
+        "text": "Example Domain"
+       }
+      ]
      },
      {
       "id": "b2",
@@ -109,7 +204,27 @@
        40
       ],
       "text": "This domain is for use in illustrative examples in documents. You may use this domain in literature without prior coordination or asking for permission.",
-      "words": 24
+      "words": 24,
+      "lines": [
+       {
+        "rect": [
+         340,
+         193.9,
+         586.3,
+         20
+        ],
+        "text": "This domain is for use in illustrative examples in documents. You may use this"
+       },
+       {
+        "rect": [
+         340,
+         213.9,
+         536.1,
+         20
+        ],
+        "text": "domain in literature without prior coordination or asking for permission."
+       }
+      ]
      },
      {
       "id": "b3",
@@ -121,7 +236,18 @@
        20
       ],
       "text": "More information...",
-      "words": 2
+      "words": 2,
+      "lines": [
+       {
+        "rect": [
+         340,
+         249.9,
+         143.3,
+         20
+        ],
+        "text": "More information..."
+       }
+      ]
      }
     ]
    },
@@ -138,7 +264,18 @@
        39
       ],
       "text": "Example Domain",
-      "words": 2
+      "words": 2,
+      "lines": [
+       {
+        "rect": [
+         553.5,
+         133.4,
+         260.3,
+         39
+        ],
+        "text": "Example Domain"
+       }
+      ]
      },
      {
       "id": "b2",
@@ -150,7 +287,27 @@
        40
       ],
       "text": "This domain is for use in illustrative examples in documents. You may use this domain in literature without prior coordination or asking for permission.",
-      "words": 24
+      "words": 24,
+      "lines": [
+       {
+        "rect": [
+         553.5,
+         193.9,
+         586.3,
+         20
+        ],
+        "text": "This domain is for use in illustrative examples in documents. You may use this"
+       },
+       {
+        "rect": [
+         553.5,
+         213.9,
+         536.1,
+         20
+        ],
+        "text": "domain in literature without prior coordination or asking for permission."
+       }
+      ]
      },
      {
       "id": "b3",
@@ -162,7 +319,18 @@
        20
       ],
       "text": "More information...",
-      "words": 2
+      "words": 2,
+      "lines": [
+       {
+        "rect": [
+         553.5,
+         249.9,
+         143.3,
+         20
+        ],
+        "text": "More information..."
+       }
+      ]
      }
     ]
    },
@@ -179,7 +347,18 @@
        39
       ],
       "text": "Example Domain",
-      "words": 2
+      "words": 2,
+      "lines": [
+       {
+        "rect": [
+         724,
+         133.4,
+         260.3,
+         39
+        ],
+        "text": "Example Domain"
+       }
+      ]
      },
      {
       "id": "b2",
@@ -191,7 +370,27 @@
        40
       ],
       "text": "This domain is for use in illustrative examples in documents. You may use this domain in literature without prior coordination or asking for permission.",
-      "words": 24
+      "words": 24,
+      "lines": [
+       {
+        "rect": [
+         724,
+         193.9,
+         586.3,
+         20
+        ],
+        "text": "This domain is for use in illustrative examples in documents. You may use this"
+       },
+       {
+        "rect": [
+         724,
+         213.9,
+         536.1,
+         20
+        ],
+        "text": "domain in literature without prior coordination or asking for permission."
+       }
+      ]
      },
      {
       "id": "b3",
@@ -203,7 +402,18 @@
        20
       ],
       "text": "More information...",
-      "words": 2
+      "words": 2,
+      "lines": [
+       {
+        "rect": [
+         724,
+         249.9,
+         143.3,
+         20
+        ],
+        "text": "More information..."
+       }
+      ]
      }
     ]
    },
@@ -220,7 +430,18 @@
        39
       ],
       "text": "Example Domain",
-      "words": 2
+      "words": 2,
+      "lines": [
+       {
+        "rect": [
+         980,
+         133.4,
+         260.3,
+         39
+        ],
+        "text": "Example Domain"
+       }
+      ]
      },
      {
       "id": "b2",
@@ -232,7 +453,27 @@
        40
       ],
       "text": "This domain is for use in illustrative examples in documents. You may use this domain in literature without prior coordination or asking for permission.",
-      "words": 24
+      "words": 24,
+      "lines": [
+       {
+        "rect": [
+         980,
+         193.9,
+         586.3,
+         20
+        ],
+        "text": "This domain is for use in illustrative examples in documents. You may use this"
+       },
+       {
+        "rect": [
+         980,
+         213.9,
+         536.1,
+         20
+        ],
+        "text": "domain in literature without prior coordination or asking for permission."
+       }
+      ]
      },
      {
       "id": "b3",
@@ -244,7 +485,18 @@
        20
       ],
       "text": "More information...",
-      "words": 2
+      "words": 2,
+      "lines": [
+       {
+        "rect": [
+         980,
+         249.9,
+         143.3,
+         20
+        ],
+        "text": "More information..."
+       }
+      ]
      }
     ]
    }
@@ -263,7 +515,18 @@
        36
       ],
       "text": "Notes on memory and recall",
-      "words": 5
+      "words": 5,
+      "lines": [
+       {
+        "rect": [
+         46.5,
+         41,
+         383.3,
+         36
+        ],
+        "text": "Notes on memory and recall"
+       }
+      ]
      },
      {
       "id": "b2",
@@ -275,7 +538,27 @@
        48.8
       ],
       "text": "People remember places better than lists. When a walk through a familiar street is used as a scaffold, items placed along the way come back in order, and the walk itself becomes the index.",
-      "words": 34
+      "words": 34,
+      "lines": [
+       {
+        "rect": [
+         46.5,
+         106.4,
+         724.6,
+         20
+        ],
+        "text": "People remember places better than lists. When a walk through a familiar street is used as a scaffold,"
+       },
+       {
+        "rect": [
+         46.5,
+         135.2,
+         622.6,
+         20
+        ],
+        "text": "items placed along the way come back in order, and the walk itself becomes the index."
+       }
+      ]
      },
      {
       "id": "b3",
@@ -287,7 +570,18 @@
        25
       ],
       "text": "Places as an index",
-      "words": 4
+      "words": 4,
+      "lines": [
+       {
+        "rect": [
+         46.5,
+         197,
+         169.3,
+         25
+        ],
+        "text": "Places as an index"
+       }
+      ]
      },
      {
       "id": "b4",
@@ -299,7 +593,63 @@
        164
       ],
       "text": "The method of loci is old, but the reason it works is still debated. One account says that spatial memory is shared with navigation, which every animal needs and which is therefore well practised. Another says that a place gives each item a distinct context, so items interfere with each other less. Experiments that vary only the route, keeping the items fixed, find that a novel route helps less than a familiar one, which favours the first account. Experiments that vary the distinctiveness of the stops find the opposite. Both effects are probably real, and they add up.",
-      "words": 98
+      "words": 98,
+      "lines": [
+       {
+        "rect": [
+         46.5,
+         240.6,
+         745.3,
+         20
+        ],
+        "text": "The method of loci is old, but the reason it works is still debated. One account says that spatial memory"
+       },
+       {
+        "rect": [
+         46.5,
+         269.4,
+         749.3,
+         20
+        ],
+        "text": "is shared with navigation, which every animal needs and which is therefore well practised. Another says"
+       },
+       {
+        "rect": [
+         46.5,
+         298.2,
+         738.3,
+         20
+        ],
+        "text": "that a place gives each item a distinct context, so items interfere with each other less. Experiments that"
+       },
+       {
+        "rect": [
+         46.5,
+         327,
+         748.8,
+         20
+        ],
+        "text": "vary only the route, keeping the items fixed, find that a novel route helps less than a familiar one, which"
+       },
+       {
+        "rect": [
+         46.5,
+         355.8,
+         736.4,
+         20
+        ],
+        "text": "favours the first account. Experiments that vary the distinctiveness of the stops find the opposite. Both"
+       },
+       {
+        "rect": [
+         46.5,
+         384.6,
+         302,
+         20
+        ],
+        "text": "effects are probably real, and they add up."
+       }
+      ]
      },
      {
       "id": "b5",
@@ -311,7 +661,36 @@
        77.6
       ],
       "text": "For a personal archive the lesson is practical. A day is easier to search when its moments are tied to where they happened, and a place that is visited often becomes a natural folder for everything that happened there.",
-      "words": 39
+      "words": 39,
+      "lines": [
+       {
+        "rect": [
+         46.5,
+         437.4,
+         713.8,
+         20
+        ],
+        "text": "For a personal archive the lesson is practical. A day is easier to search when its moments are tied to"
+       },
+       {
+        "rect": [
+         46.5,
+         466.2,
+         705.2,
+         20
+        ],
+        "text": "where they happened, and a place that is visited often becomes a natural folder for everything that"
+       },
+       {
+        "rect": [
+         46.5,
+         495,
+         114,
+         20
+        ],
+        "text": "happened there."
+       }
+      ]
      },
      {
       "id": "b6",
@@ -323,7 +702,18 @@
        25
       ],
       "text": "Time as a second index",
-      "words": 5
+      "words": 5,
+      "lines": [
+       {
+        "rect": [
+         46.5,
+         556.8,
+         216,
+         25
+        ],
+        "text": "Time as a second index"
+       }
+      ]
      },
      {
       "id": "b7",
@@ -335,7 +725,81 @@
        221.6
       ],
       "text": "Time is the other axis people use without thinking. Asked what they did last Tuesday, most people first recall where they were, then what came before and after, and only then the details. Reconstructing a day this way is slow but reliable, because each step narrows the next. An archive that lets the user move along the same path, from place to neighbouring time to detail, matches how recall already works. It also suggests what to keep: the transitions between places and activities carry more of the day's structure than long stretches of the same activity, so a budget spent on transitions buys more recall per byte than one spread evenly across the hours. The same idea explains why a photo taken at a doorway is often more useful than ten taken inside the room.",
-      "words": 135
+      "words": 135,
+      "lines": [
+       {
+        "rect": [
+         46.5,
+         600.3,
+         739.6,
+         20
+        ],
+        "text": "Time is the other axis people use without thinking. Asked what they did last Tuesday, most people first"
+       },
+       {
+        "rect": [
+         46.5,
+         629.1,
+         749,
+         20
+        ],
+        "text": "recall where they were, then what came before and after, and only then the details. Reconstructing a day"
+       },
+       {
+        "rect": [
+         46.5,
+         657.9,
+         716.8,
+         20
+        ],
+        "text": "this way is slow but reliable, because each step narrows the next. An archive that lets the user move"
+       },
+       {
+        "rect": [
+         46.5,
+         686.7,
+         755.8,
+         20
+        ],
+        "text": "along the same path, from place to neighbouring time to detail, matches how recall already works. It also"
+       },
+       {
+        "rect": [
+         46.5,
+         715.5,
+         755,
+         20
+        ],
+        "text": "suggests what to keep: the transitions between places and activities carry more of the day's structure than"
+       },
+       {
+        "rect": [
+         46.5,
+         744.3,
+         733.1,
+         20
+        ],
+        "text": "long stretches of the same activity, so a budget spent on transitions buys more recall per byte than one"
+       },
+       {
+        "rect": [
+         46.5,
+         773.1,
+         731,
+         20
+        ],
+        "text": "spread evenly across the hours. The same idea explains why a photo taken at a doorway is often more"
+       },
+       {
+        "rect": [
+         46.5,
+         801.9,
+         270.4,
+         20
+        ],
+        "text": "useful than ten taken inside the room."
+       }
+      ]
      },
      {
       "id": "b8",
@@ -347,7 +811,18 @@
        20
       ],
       "text": "Short notes still matter.",
-      "words": 4
+      "words": 4,
+      "lines": [
+       {
+        "rect": [
+         46.5,
+         854.7,
+         167,
+         20
+        ],
+        "text": "Short notes still matter."
+       }
+      ]
      },
      {
       "id": "b9",
@@ -359,7 +834,36 @@
        77.6
       ],
       "text": "The last point is about forgetting. Most of what is captured will never be looked at again, and that is fine. What matters is that the few moments someone does go back to are complete enough to be useful, and that finding them takes seconds rather than minutes.",
-      "words": 48
+      "words": 48,
+      "lines": [
+       {
+        "rect": [
+         46.5,
+         907.5,
+         756,
+         20
+        ],
+        "text": "The last point is about forgetting. Most of what is captured will never be looked at again, and that is fine."
+       },
+       {
+        "rect": [
+         46.5,
+         936.3,
+         736.3,
+         20
+        ],
+        "text": "What matters is that the few moments someone does go back to are complete enough to be useful, and"
+       },
+       {
+        "rect": [
+         46.5,
+         965.1,
+         374.9,
+         20
+        ],
+        "text": "that finding them takes seconds rather than minutes."
+       }
+      ]
      },
      {
       "id": "ba",
@@ -371,7 +875,18 @@
        20
       ],
       "text": "Read the next note",
-      "words": 4
+      "words": 4,
+      "lines": [
+       {
+        "rect": [
+         46.5,
+         1017.9,
+         134.5,
+         20
+        ],
+        "text": "Read the next note"
+       }
+      ]
      }
     ]
    },
@@ -388,7 +903,18 @@
        36
       ],
       "text": "Notes on memory and recall",
-      "words": 5
+      "words": 5,
+      "lines": [
+       {
+        "rect": [
+         132,
+         41,
+         383.3,
+         36
+        ],
+        "text": "Notes on memory and recall"
+       }
+      ]
      },
      {
       "id": "b2",
@@ -400,7 +926,27 @@
        48.8
       ],
       "text": "People remember places better than lists. When a walk through a familiar street is used as a scaffold, items placed along the way come back in order, and the walk itself becomes the index.",
-      "words": 34
+      "words": 34,
+      "lines": [
+       {
+        "rect": [
+         132,
+         106.4,
+         724.6,
+         20
+        ],
+        "text": "People remember places better than lists. When a walk through a familiar street is used as a scaffold,"
+       },
+       {
+        "rect": [
+         132,
+         135.2,
+         622.6,
+         20
+        ],
+        "text": "items placed along the way come back in order, and the walk itself becomes the index."
+       }
+      ]
      },
      {
       "id": "b3",
@@ -412,7 +958,18 @@
        25
       ],
       "text": "Places as an index",
-      "words": 4
+      "words": 4,
+      "lines": [
+       {
+        "rect": [
+         132,
+         197,
+         169.3,
+         25
+        ],
+        "text": "Places as an index"
+       }
+      ]
      },
      {
       "id": "b4",
@@ -424,7 +981,63 @@
        164
       ],
       "text": "The method of loci is old, but the reason it works is still debated. One account says that spatial memory is shared with navigation, which every animal needs and which is therefore well practised. Another says that a place gives each item a distinct context, so items interfere with each other less. Experiments that vary only the route, keeping the items fixed, find that a novel route helps less than a familiar one, which favours the first account. Experiments that vary the distinctiveness of the stops find the opposite. Both effects are probably real, and they add up.",
-      "words": 98
+      "words": 98,
+      "lines": [
+       {
+        "rect": [
+         132,
+         240.6,
+         745.3,
+         20
+        ],
+        "text": "The method of loci is old, but the reason it works is still debated. One account says that spatial memory"
+       },
+       {
+        "rect": [
+         132,
+         269.4,
+         749.3,
+         20
+        ],
+        "text": "is shared with navigation, which every animal needs and which is therefore well practised. Another says"
+       },
+       {
+        "rect": [
+         132,
+         298.2,
+         738.3,
+         20
+        ],
+        "text": "that a place gives each item a distinct context, so items interfere with each other less. Experiments that"
+       },
+       {
+        "rect": [
+         132,
+         327,
+         748.8,
+         20
+        ],
+        "text": "vary only the route, keeping the items fixed, find that a novel route helps less than a familiar one, which"
+       },
+       {
+        "rect": [
+         132,
+         355.8,
+         736.4,
+         20
+        ],
+        "text": "favours the first account. Experiments that vary the distinctiveness of the stops find the opposite. Both"
+       },
+       {
+        "rect": [
+         132,
+         384.6,
+         302,
+         20
+        ],
+        "text": "effects are probably real, and they add up."
+       }
+      ]
      },
      {
       "id": "b5",
@@ -436,7 +1049,36 @@
        77.6
       ],
       "text": "For a personal archive the lesson is practical. A day is easier to search when its moments are tied to where they happened, and a place that is visited often becomes a natural folder for everything that happened there.",
-      "words": 39
+      "words": 39,
+      "lines": [
+       {
+        "rect": [
+         132,
+         437.4,
+         713.8,
+         20
+        ],
+        "text": "For a personal archive the lesson is practical. A day is easier to search when its moments are tied to"
+       },
+       {
+        "rect": [
+         132,
+         466.2,
+         705.2,
+         20
+        ],
+        "text": "where they happened, and a place that is visited often becomes a natural folder for everything that"
+       },
+       {
+        "rect": [
+         132,
+         495,
+         114,
+         20
+        ],
+        "text": "happened there."
+       }
+      ]
      },
      {
       "id": "b6",
@@ -448,7 +1090,18 @@
        25
       ],
       "text": "Time as a second index",
-      "words": 5
+      "words": 5,
+      "lines": [
+       {
+        "rect": [
+         132,
+         556.8,
+         216,
+         25
+        ],
+        "text": "Time as a second index"
+       }
+      ]
      },
      {
       "id": "b7",
@@ -460,7 +1113,81 @@
        221.6
       ],
       "text": "Time is the other axis people use without thinking. Asked what they did last Tuesday, most people first recall where they were, then what came before and after, and only then the details. Reconstructing a day this way is slow but reliable, because each step narrows the next. An archive that lets the user move along the same path, from place to neighbouring time to detail, matches how recall already works. It also suggests what to keep: the transitions between places and activities carry more of the day's structure than long stretches of the same activity, so a budget spent on transitions buys more recall per byte than one spread evenly across the hours. The same idea explains why a photo taken at a doorway is often more useful than ten taken inside the room.",
-      "words": 135
+      "words": 135,
+      "lines": [
+       {
+        "rect": [
+         132,
+         600.3,
+         739.6,
+         20
+        ],
+        "text": "Time is the other axis people use without thinking. Asked what they did last Tuesday, most people first"
+       },
+       {
+        "rect": [
+         132,
+         629.1,
+         749,
+         20
+        ],
+        "text": "recall where they were, then what came before and after, and only then the details. Reconstructing a day"
+       },
+       {
+        "rect": [
+         132,
+         657.9,
+         716.8,
+         20
+        ],
+        "text": "this way is slow but reliable, because each step narrows the next. An archive that lets the user move"
+       },
+       {
+        "rect": [
+         132,
+         686.7,
+         755.8,
+         20
+        ],
+        "text": "along the same path, from place to neighbouring time to detail, matches how recall already works. It also"
+       },
+       {
+        "rect": [
+         132,
+         715.5,
+         755,
+         20
+        ],
+        "text": "suggests what to keep: the transitions between places and activities carry more of the day's structure than"
+       },
+       {
+        "rect": [
+         132,
+         744.3,
+         733.1,
+         20
+        ],
+        "text": "long stretches of the same activity, so a budget spent on transitions buys more recall per byte than one"
+       },
+       {
+        "rect": [
+         132,
+         773.1,
+         731,
+         20
+        ],
+        "text": "spread evenly across the hours. The same idea explains why a photo taken at a doorway is often more"
+       },
+       {
+        "rect": [
+         132,
+         801.9,
+         270.4,
+         20
+        ],
+        "text": "useful than ten taken inside the room."
+       }
+      ]
      },
      {
       "id": "b8",
@@ -472,7 +1199,18 @@
        20
       ],
       "text": "Short notes still matter.",
-      "words": 4
+      "words": 4,
+      "lines": [
+       {
+        "rect": [
+         132,
+         854.7,
+         167,
+         20
+        ],
+        "text": "Short notes still matter."
+       }
+      ]
      },
      {
       "id": "b9",
@@ -484,7 +1222,36 @@
        77.6
       ],
       "text": "The last point is about forgetting. Most of what is captured will never be looked at again, and that is fine. What matters is that the few moments someone does go back to are complete enough to be useful, and that finding them takes seconds rather than minutes.",
-      "words": 48
+      "words": 48,
+      "lines": [
+       {
+        "rect": [
+         132,
+         907.5,
+         756,
+         20
+        ],
+        "text": "The last point is about forgetting. Most of what is captured will never be looked at again, and that is fine."
+       },
+       {
+        "rect": [
+         132,
+         936.3,
+         736.3,
+         20
+        ],
+        "text": "What matters is that the few moments someone does go back to are complete enough to be useful, and"
+       },
+       {
+        "rect": [
+         132,
+         965.1,
+         374.9,
+         20
+        ],
+        "text": "that finding them takes seconds rather than minutes."
+       }
+      ]
      },
      {
       "id": "ba",
@@ -496,7 +1263,18 @@
        20
       ],
       "text": "Read the next note",
-      "words": 4
+      "words": 4,
+      "lines": [
+       {
+        "rect": [
+         132,
+         1017.9,
+         134.5,
+         20
+        ],
+        "text": "Read the next note"
+       }
+      ]
      }
     ]
    },
@@ -513,7 +1291,18 @@
        36
       ],
       "text": "Notes on memory and recall",
-      "words": 5
+      "words": 5,
+      "lines": [
+       {
+        "rect": [
+         260,
+         41,
+         383.3,
+         36
+        ],
+        "text": "Notes on memory and recall"
+       }
+      ]
      },
      {
       "id": "b2",
@@ -525,7 +1314,27 @@
        48.8
       ],
       "text": "People remember places better than lists. When a walk through a familiar street is used as a scaffold, items placed along the way come back in order, and the walk itself becomes the index.",
-      "words": 34
+      "words": 34,
+      "lines": [
+       {
+        "rect": [
+         260,
+         106.4,
+         724.6,
+         20
+        ],
+        "text": "People remember places better than lists. When a walk through a familiar street is used as a scaffold,"
+       },
+       {
+        "rect": [
+         260,
+         135.2,
+         622.6,
+         20
+        ],
+        "text": "items placed along the way come back in order, and the walk itself becomes the index."
+       }
+      ]
      },
      {
       "id": "b3",
@@ -537,7 +1346,18 @@
        25
       ],
       "text": "Places as an index",
-      "words": 4
+      "words": 4,
+      "lines": [
+       {
+        "rect": [
+         260,
+         197,
+         169.3,
+         25
+        ],
+        "text": "Places as an index"
+       }
+      ]
      },
      {
       "id": "b4",
@@ -549,7 +1369,63 @@
        164
       ],
       "text": "The method of loci is old, but the reason it works is still debated. One account says that spatial memory is shared with navigation, which every animal needs and which is therefore well practised. Another says that a place gives each item a distinct context, so items interfere with each other less. Experiments that vary only the route, keeping the items fixed, find that a novel route helps less than a familiar one, which favours the first account. Experiments that vary the distinctiveness of the stops find the opposite. Both effects are probably real, and they add up.",
-      "words": 98
+      "words": 98,
+      "lines": [
+       {
+        "rect": [
+         260,
+         240.6,
+         745.3,
+         20
+        ],
+        "text": "The method of loci is old, but the reason it works is still debated. One account says that spatial memory"
+       },
+       {
+        "rect": [
+         260,
+         269.4,
+         749.3,
+         20
+        ],
+        "text": "is shared with navigation, which every animal needs and which is therefore well practised. Another says"
+       },
+       {
+        "rect": [
+         260,
+         298.2,
+         738.3,
+         20
+        ],
+        "text": "that a place gives each item a distinct context, so items interfere with each other less. Experiments that"
+       },
+       {
+        "rect": [
+         260,
+         327,
+         748.8,
+         20
+        ],
+        "text": "vary only the route, keeping the items fixed, find that a novel route helps less than a familiar one, which"
+       },
+       {
+        "rect": [
+         260,
+         355.8,
+         736.4,
+         20
+        ],
+        "text": "favours the first account. Experiments that vary the distinctiveness of the stops find the opposite. Both"
+       },
+       {
+        "rect": [
+         260,
+         384.6,
+         302,
+         20
+        ],
+        "text": "effects are probably real, and they add up."
+       }
+      ]
      },
      {
       "id": "b5",
@@ -561,7 +1437,36 @@
        77.6
       ],
       "text": "For a personal archive the lesson is practical. A day is easier to search when its moments are tied to where they happened, and a place that is visited often becomes a natural folder for everything that happened there.",
-      "words": 39
+      "words": 39,
+      "lines": [
+       {
+        "rect": [
+         260,
+         437.4,
+         713.8,
+         20
+        ],
+        "text": "For a personal archive the lesson is practical. A day is easier to search when its moments are tied to"
+       },
+       {
+        "rect": [
+         260,
+         466.2,
+         705.2,
+         20
+        ],
+        "text": "where they happened, and a place that is visited often becomes a natural folder for everything that"
+       },
+       {
+        "rect": [
+         260,
+         495,
+         114,
+         20
+        ],
+        "text": "happened there."
+       }
+      ]
      },
      {
       "id": "b6",
@@ -573,7 +1478,18 @@
        25
       ],
       "text": "Time as a second index",
-      "words": 5
+      "words": 5,
+      "lines": [
+       {
+        "rect": [
+         260,
+         556.8,
+         216,
+         25
+        ],
+        "text": "Time as a second index"
+       }
+      ]
      },
      {
       "id": "b7",
@@ -585,7 +1501,81 @@
        221.6
       ],
       "text": "Time is the other axis people use without thinking. Asked what they did last Tuesday, most people first recall where they were, then what came before and after, and only then the details. Reconstructing a day this way is slow but reliable, because each step narrows the next. An archive that lets the user move along the same path, from place to neighbouring time to detail, matches how recall already works. It also suggests what to keep: the transitions between places and activities carry more of the day's structure than long stretches of the same activity, so a budget spent on transitions buys more recall per byte than one spread evenly across the hours. The same idea explains why a photo taken at a doorway is often more useful than ten taken inside the room.",
-      "words": 135
+      "words": 135,
+      "lines": [
+       {
+        "rect": [
+         260,
+         600.3,
+         739.6,
+         20
+        ],
+        "text": "Time is the other axis people use without thinking. Asked what they did last Tuesday, most people first"
+       },
+       {
+        "rect": [
+         260,
+         629.1,
+         749,
+         20
+        ],
+        "text": "recall where they were, then what came before and after, and only then the details. Reconstructing a day"
+       },
+       {
+        "rect": [
+         260,
+         657.9,
+         716.8,
+         20
+        ],
+        "text": "this way is slow but reliable, because each step narrows the next. An archive that lets the user move"
+       },
+       {
+        "rect": [
+         260,
+         686.7,
+         755.8,
+         20
+        ],
+        "text": "along the same path, from place to neighbouring time to detail, matches how recall already works. It also"
+       },
+       {
+        "rect": [
+         260,
+         715.5,
+         755,
+         20
+        ],
+        "text": "suggests what to keep: the transitions between places and activities carry more of the day's structure than"
+       },
+       {
+        "rect": [
+         260,
+         744.3,
+         733.1,
+         20
+        ],
+        "text": "long stretches of the same activity, so a budget spent on transitions buys more recall per byte than one"
+       },
+       {
+        "rect": [
+         260,
+         773.1,
+         731,
+         20
+        ],
+        "text": "spread evenly across the hours. The same idea explains why a photo taken at a doorway is often more"
+       },
+       {
+        "rect": [
+         260,
+         801.9,
+         270.4,
+         20
+        ],
+        "text": "useful than ten taken inside the room."
+       }
+      ]
      },
      {
       "id": "b8",
@@ -597,7 +1587,18 @@
        20
       ],
       "text": "Short notes still matter.",
-      "words": 4
+      "words": 4,
+      "lines": [
+       {
+        "rect": [
+         260,
+         854.7,
+         167,
+         20
+        ],
+        "text": "Short notes still matter."
+       }
+      ]
      },
      {
       "id": "b9",
@@ -609,7 +1610,36 @@
        77.6
       ],
       "text": "The last point is about forgetting. Most of what is captured will never be looked at again, and that is fine. What matters is that the few moments someone does go back to are complete enough to be useful, and that finding them takes seconds rather than minutes.",
-      "words": 48
+      "words": 48,
+      "lines": [
+       {
+        "rect": [
+         260,
+         907.5,
+         756,
+         20
+        ],
+        "text": "The last point is about forgetting. Most of what is captured will never be looked at again, and that is fine."
+       },
+       {
+        "rect": [
+         260,
+         936.3,
+         736.3,
+         20
+        ],
+        "text": "What matters is that the few moments someone does go back to are complete enough to be useful, and"
+       },
+       {
+        "rect": [
+         260,
+         965.1,
+         374.9,
+         20
+        ],
+        "text": "that finding them takes seconds rather than minutes."
+       }
+      ]
      },
      {
       "id": "ba",
@@ -621,7 +1651,18 @@
        20
       ],
       "text": "Read the next note",
-      "words": 4
+      "words": 4,
+      "lines": [
+       {
+        "rect": [
+         260,
+         1017.9,
+         134.5,
+         20
+        ],
+        "text": "Read the next note"
+       }
+      ]
      }
     ]
    },
@@ -638,7 +1679,18 @@
        36
       ],
       "text": "Notes on memory and recall",
-      "words": 5
+      "words": 5,
+      "lines": [
+       {
+        "rect": [
+         473.5,
+         41,
+         383.3,
+         36
+        ],
+        "text": "Notes on memory and recall"
+       }
+      ]
      },
      {
       "id": "b2",
@@ -650,7 +1702,27 @@
        48.8
       ],
       "text": "People remember places better than lists. When a walk through a familiar street is used as a scaffold, items placed along the way come back in order, and the walk itself becomes the index.",
-      "words": 34
+      "words": 34,
+      "lines": [
+       {
+        "rect": [
+         473.5,
+         106.4,
+         724.6,
+         20
+        ],
+        "text": "People remember places better than lists. When a walk through a familiar street is used as a scaffold,"
+       },
+       {
+        "rect": [
+         473.5,
+         135.2,
+         622.6,
+         20
+        ],
+        "text": "items placed along the way come back in order, and the walk itself becomes the index."
+       }
+      ]
      },
      {
       "id": "b3",
@@ -662,7 +1734,18 @@
        25
       ],
       "text": "Places as an index",
-      "words": 4
+      "words": 4,
+      "lines": [
+       {
+        "rect": [
+         473.5,
+         197,
+         169.3,
+         25
+        ],
+        "text": "Places as an index"
+       }
+      ]
      },
      {
       "id": "b4",
@@ -674,7 +1757,63 @@
        164
       ],
       "text": "The method of loci is old, but the reason it works is still debated. One account says that spatial memory is shared with navigation, which every animal needs and which is therefore well practised. Another says that a place gives each item a distinct context, so items interfere with each other less. Experiments that vary only the route, keeping the items fixed, find that a novel route helps less than a familiar one, which favours the first account. Experiments that vary the distinctiveness of the stops find the opposite. Both effects are probably real, and they add up.",
-      "words": 98
+      "words": 98,
+      "lines": [
+       {
+        "rect": [
+         473.5,
+         240.6,
+         745.3,
+         20
+        ],
+        "text": "The method of loci is old, but the reason it works is still debated. One account says that spatial memory"
+       },
+       {
+        "rect": [
+         473.5,
+         269.4,
+         749.3,
+         20
+        ],
+        "text": "is shared with navigation, which every animal needs and which is therefore well practised. Another says"
+       },
+       {
+        "rect": [
+         473.5,
+         298.2,
+         738.3,
+         20
+        ],
+        "text": "that a place gives each item a distinct context, so items interfere with each other less. Experiments that"
+       },
+       {
+        "rect": [
+         473.5,
+         327,
+         748.8,
+         20
+        ],
+        "text": "vary only the route, keeping the items fixed, find that a novel route helps less than a familiar one, which"
+       },
+       {
+        "rect": [
+         473.5,
+         355.8,
+         736.4,
+         20
+        ],
+        "text": "favours the first account. Experiments that vary the distinctiveness of the stops find the opposite. Both"
+       },
+       {
+        "rect": [
+         473.5,
+         384.6,
+         302,
+         20
+        ],
+        "text": "effects are probably real, and they add up."
+       }
+      ]
      },
      {
       "id": "b5",
@@ -686,7 +1825,36 @@
        77.6
       ],
       "text": "For a personal archive the lesson is practical. A day is easier to search when its moments are tied to where they happened, and a place that is visited often becomes a natural folder for everything that happened there.",
-      "words": 39
+      "words": 39,
+      "lines": [
+       {
+        "rect": [
+         473.5,
+         437.4,
+         713.8,
+         20
+        ],
+        "text": "For a personal archive the lesson is practical. A day is easier to search when its moments are tied to"
+       },
+       {
+        "rect": [
+         473.5,
+         466.2,
+         705.2,
+         20
+        ],
+        "text": "where they happened, and a place that is visited often becomes a natural folder for everything that"
+       },
+       {
+        "rect": [
+         473.5,
+         495,
+         114,
+         20
+        ],
+        "text": "happened there."
+       }
+      ]
      },
      {
       "id": "b6",
@@ -698,7 +1866,18 @@
        25
       ],
       "text": "Time as a second index",
-      "words": 5
+      "words": 5,
+      "lines": [
+       {
+        "rect": [
+         473.5,
+         556.8,
+         216,
+         25
+        ],
+        "text": "Time as a second index"
+       }
+      ]
      },
      {
       "id": "b7",
@@ -710,7 +1889,81 @@
        221.6
       ],
       "text": "Time is the other axis people use without thinking. Asked what they did last Tuesday, most people first recall where they were, then what came before and after, and only then the details. Reconstructing a day this way is slow but reliable, because each step narrows the next. An archive that lets the user move along the same path, from place to neighbouring time to detail, matches how recall already works. It also suggests what to keep: the transitions between places and activities carry more of the day's structure than long stretches of the same activity, so a budget spent on transitions buys more recall per byte than one spread evenly across the hours. The same idea explains why a photo taken at a doorway is often more useful than ten taken inside the room.",
-      "words": 135
+      "words": 135,
+      "lines": [
+       {
+        "rect": [
+         473.5,
+         600.3,
+         739.6,
+         20
+        ],
+        "text": "Time is the other axis people use without thinking. Asked what they did last Tuesday, most people first"
+       },
+       {
+        "rect": [
+         473.5,
+         629.1,
+         749,
+         20
+        ],
+        "text": "recall where they were, then what came before and after, and only then the details. Reconstructing a day"
+       },
+       {
+        "rect": [
+         473.5,
+         657.9,
+         716.8,
+         20
+        ],
+        "text": "this way is slow but reliable, because each step narrows the next. An archive that lets the user move"
+       },
+       {
+        "rect": [
+         473.5,
+         686.7,
+         755.8,
+         20
+        ],
+        "text": "along the same path, from place to neighbouring time to detail, matches how recall already works. It also"
+       },
+       {
+        "rect": [
+         473.5,
+         715.5,
+         755,
+         20
+        ],
+        "text": "suggests what to keep: the transitions between places and activities carry more of the day's structure than"
+       },
+       {
+        "rect": [
+         473.5,
+         744.3,
+         733.1,
+         20
+        ],
+        "text": "long stretches of the same activity, so a budget spent on transitions buys more recall per byte than one"
+       },
+       {
+        "rect": [
+         473.5,
+         773.1,
+         731,
+         20
+        ],
+        "text": "spread evenly across the hours. The same idea explains why a photo taken at a doorway is often more"
+       },
+       {
+        "rect": [
+         473.5,
+         801.9,
+         270.4,
+         20
+        ],
+        "text": "useful than ten taken inside the room."
+       }
+      ]
      },
      {
       "id": "b8",
@@ -722,7 +1975,18 @@
        20
       ],
       "text": "Short notes still matter.",
-      "words": 4
+      "words": 4,
+      "lines": [
+       {
+        "rect": [
+         473.5,
+         854.7,
+         167,
+         20
+        ],
+        "text": "Short notes still matter."
+       }
+      ]
      },
      {
       "id": "b9",
@@ -734,7 +1998,36 @@
        77.6
       ],
       "text": "The last point is about forgetting. Most of what is captured will never be looked at again, and that is fine. What matters is that the few moments someone does go back to are complete enough to be useful, and that finding them takes seconds rather than minutes.",
-      "words": 48
+      "words": 48,
+      "lines": [
+       {
+        "rect": [
+         473.5,
+         907.5,
+         756,
+         20
+        ],
+        "text": "The last point is about forgetting. Most of what is captured will never be looked at again, and that is fine."
+       },
+       {
+        "rect": [
+         473.5,
+         936.3,
+         736.3,
+         20
+        ],
+        "text": "What matters is that the few moments someone does go back to are complete enough to be useful, and"
+       },
+       {
+        "rect": [
+         473.5,
+         965.1,
+         374.9,
+         20
+        ],
+        "text": "that finding them takes seconds rather than minutes."
+       }
+      ]
      },
      {
       "id": "ba",
@@ -746,7 +2039,18 @@
        20
       ],
       "text": "Read the next note",
-      "words": 4
+      "words": 4,
+      "lines": [
+       {
+        "rect": [
+         473.5,
+         1017.9,
+         134.5,
+         20
+        ],
+        "text": "Read the next note"
+       }
+      ]
      }
     ]
    },
@@ -763,7 +2067,18 @@
        36
       ],
       "text": "Notes on memory and recall",
-      "words": 5
+      "words": 5,
+      "lines": [
+       {
+        "rect": [
+         644,
+         41,
+         383.3,
+         36
+        ],
+        "text": "Notes on memory and recall"
+       }
+      ]
      },
      {
       "id": "b2",
@@ -775,7 +2090,27 @@
        48.8
       ],
       "text": "People remember places better than lists. When a walk through a familiar street is used as a scaffold, items placed along the way come back in order, and the walk itself becomes the index.",
-      "words": 34
+      "words": 34,
+      "lines": [
+       {
+        "rect": [
+         644,
+         106.4,
+         724.6,
+         20
+        ],
+        "text": "People remember places better than lists. When a walk through a familiar street is used as a scaffold,"
+       },
+       {
+        "rect": [
+         644,
+         135.2,
+         622.6,
+         20
+        ],
+        "text": "items placed along the way come back in order, and the walk itself becomes the index."
+       }
+      ]
      },
      {
       "id": "b3",
@@ -787,7 +2122,18 @@
        25
       ],
       "text": "Places as an index",
-      "words": 4
+      "words": 4,
+      "lines": [
+       {
+        "rect": [
+         644,
+         197,
+         169.3,
+         25
+        ],
+        "text": "Places as an index"
+       }
+      ]
      },
      {
       "id": "b4",
@@ -799,7 +2145,63 @@
        164
       ],
       "text": "The method of loci is old, but the reason it works is still debated. One account says that spatial memory is shared with navigation, which every animal needs and which is therefore well practised. Another says that a place gives each item a distinct context, so items interfere with each other less. Experiments that vary only the route, keeping the items fixed, find that a novel route helps less than a familiar one, which favours the first account. Experiments that vary the distinctiveness of the stops find the opposite. Both effects are probably real, and they add up.",
-      "words": 98
+      "words": 98,
+      "lines": [
+       {
+        "rect": [
+         644,
+         240.6,
+         745.3,
+         20
+        ],
+        "text": "The method of loci is old, but the reason it works is still debated. One account says that spatial memory"
+       },
+       {
+        "rect": [
+         644,
+         269.4,
+         749.3,
+         20
+        ],
+        "text": "is shared with navigation, which every animal needs and which is therefore well practised. Another says"
+       },
+       {
+        "rect": [
+         644,
+         298.2,
+         738.3,
+         20
+        ],
+        "text": "that a place gives each item a distinct context, so items interfere with each other less. Experiments that"
+       },
+       {
+        "rect": [
+         644,
+         327,
+         748.8,
+         20
+        ],
+        "text": "vary only the route, keeping the items fixed, find that a novel route helps less than a familiar one, which"
+       },
+       {
+        "rect": [
+         644,
+         355.8,
+         736.4,
+         20
+        ],
+        "text": "favours the first account. Experiments that vary the distinctiveness of the stops find the opposite. Both"
+       },
+       {
+        "rect": [
+         644,
+         384.6,
+         302,
+         20
+        ],
+        "text": "effects are probably real, and they add up."
+       }
+      ]
      },
      {
       "id": "b5",
@@ -811,7 +2213,36 @@
        77.6
       ],
       "text": "For a personal archive the lesson is practical. A day is easier to search when its moments are tied to where they happened, and a place that is visited often becomes a natural folder for everything that happened there.",
-      "words": 39
+      "words": 39,
+      "lines": [
+       {
+        "rect": [
+         644,
+         437.4,
+         713.8,
+         20
+        ],
+        "text": "For a personal archive the lesson is practical. A day is easier to search when its moments are tied to"
+       },
+       {
+        "rect": [
+         644,
+         466.2,
+         705.2,
+         20
+        ],
+        "text": "where they happened, and a place that is visited often becomes a natural folder for everything that"
+       },
+       {
+        "rect": [
+         644,
+         495,
+         114,
+         20
+        ],
+        "text": "happened there."
+       }
+      ]
      },
      {
       "id": "b6",
@@ -823,7 +2254,18 @@
        25
       ],
       "text": "Time as a second index",
-      "words": 5
+      "words": 5,
+      "lines": [
+       {
+        "rect": [
+         644,
+         556.8,
+         216,
+         25
+        ],
+        "text": "Time as a second index"
+       }
+      ]
      },
      {
       "id": "b7",
@@ -835,7 +2277,81 @@
        221.6
       ],
       "text": "Time is the other axis people use without thinking. Asked what they did last Tuesday, most people first recall where they were, then what came before and after, and only then the details. Reconstructing a day this way is slow but reliable, because each step narrows the next. An archive that lets the user move along the same path, from place to neighbouring time to detail, matches how recall already works. It also suggests what to keep: the transitions between places and activities carry more of the day's structure than long stretches of the same activity, so a budget spent on transitions buys more recall per byte than one spread evenly across the hours. The same idea explains why a photo taken at a doorway is often more useful than ten taken inside the room.",
-      "words": 135
+      "words": 135,
+      "lines": [
+       {
+        "rect": [
+         644,
+         600.3,
+         739.6,
+         20
+        ],
+        "text": "Time is the other axis people use without thinking. Asked what they did last Tuesday, most people first"
+       },
+       {
+        "rect": [
+         644,
+         629.1,
+         749,
+         20
+        ],
+        "text": "recall where they were, then what came before and after, and only then the details. Reconstructing a day"
+       },
+       {
+        "rect": [
+         644,
+         657.9,
+         716.8,
+         20
+        ],
+        "text": "this way is slow but reliable, because each step narrows the next. An archive that lets the user move"
+       },
+       {
+        "rect": [
+         644,
+         686.7,
+         755.8,
+         20
+        ],
+        "text": "along the same path, from place to neighbouring time to detail, matches how recall already works. It also"
+       },
+       {
+        "rect": [
+         644,
+         715.5,
+         755,
+         20
+        ],
+        "text": "suggests what to keep: the transitions between places and activities carry more of the day's structure than"
+       },
+       {
+        "rect": [
+         644,
+         744.3,
+         733.1,
+         20
+        ],
+        "text": "long stretches of the same activity, so a budget spent on transitions buys more recall per byte than one"
+       },
+       {
+        "rect": [
+         644,
+         773.1,
+         731,
+         20
+        ],
+        "text": "spread evenly across the hours. The same idea explains why a photo taken at a doorway is often more"
+       },
+       {
+        "rect": [
+         644,
+         801.9,
+         270.4,
+         20
+        ],
+        "text": "useful than ten taken inside the room."
+       }
+      ]
      },
      {
       "id": "b8",
@@ -847,7 +2363,18 @@
        20
       ],
       "text": "Short notes still matter.",
-      "words": 4
+      "words": 4,
+      "lines": [
+       {
+        "rect": [
+         644,
+         854.7,
+         167,
+         20
+        ],
+        "text": "Short notes still matter."
+       }
+      ]
      },
      {
       "id": "b9",
@@ -859,7 +2386,36 @@
        77.6
       ],
       "text": "The last point is about forgetting. Most of what is captured will never be looked at again, and that is fine. What matters is that the few moments someone does go back to are complete enough to be useful, and that finding them takes seconds rather than minutes.",
-      "words": 48
+      "words": 48,
+      "lines": [
+       {
+        "rect": [
+         644,
+         907.5,
+         756,
+         20
+        ],
+        "text": "The last point is about forgetting. Most of what is captured will never be looked at again, and that is fine."
+       },
+       {
+        "rect": [
+         644,
+         936.3,
+         736.3,
+         20
+        ],
+        "text": "What matters is that the few moments someone does go back to are complete enough to be useful, and"
+       },
+       {
+        "rect": [
+         644,
+         965.1,
+         374.9,
+         20
+        ],
+        "text": "that finding them takes seconds rather than minutes."
+       }
+      ]
      },
      {
       "id": "ba",
@@ -871,7 +2427,18 @@
        20
       ],
       "text": "Read the next note",
-      "words": 4
+      "words": 4,
+      "lines": [
+       {
+        "rect": [
+         644,
+         1017.9,
+         134.5,
+         20
+        ],
+        "text": "Read the next note"
+       }
+      ]
      }
     ]
    },
@@ -888,7 +2455,18 @@
        36
       ],
       "text": "Notes on memory and recall",
-      "words": 5
+      "words": 5,
+      "lines": [
+       {
+        "rect": [
+         900,
+         41,
+         383.3,
+         36
+        ],
+        "text": "Notes on memory and recall"
+       }
+      ]
      },
      {
       "id": "b2",
@@ -900,7 +2478,27 @@
        48.8
       ],
       "text": "People remember places better than lists. When a walk through a familiar street is used as a scaffold, items placed along the way come back in order, and the walk itself becomes the index.",
-      "words": 34
+      "words": 34,
+      "lines": [
+       {
+        "rect": [
+         900,
+         106.4,
+         724.6,
+         20
+        ],
+        "text": "People remember places better than lists. When a walk through a familiar street is used as a scaffold,"
+       },
+       {
+        "rect": [
+         900,
+         135.2,
+         622.6,
+         20
+        ],
+        "text": "items placed along the way come back in order, and the walk itself becomes the index."
+       }
+      ]
      },
      {
       "id": "b3",
@@ -912,7 +2510,18 @@
        25
       ],
       "text": "Places as an index",
-      "words": 4
+      "words": 4,
+      "lines": [
+       {
+        "rect": [
+         900,
+         197,
+         169.3,
+         25
+        ],
+        "text": "Places as an index"
+       }
+      ]
      },
      {
       "id": "b4",
@@ -924,7 +2533,63 @@
        164
       ],
       "text": "The method of loci is old, but the reason it works is still debated. One account says that spatial memory is shared with navigation, which every animal needs and which is therefore well practised. Another says that a place gives each item a distinct context, so items interfere with each other less. Experiments that vary only the route, keeping the items fixed, find that a novel route helps less than a familiar one, which favours the first account. Experiments that vary the distinctiveness of the stops find the opposite. Both effects are probably real, and they add up.",
-      "words": 98
+      "words": 98,
+      "lines": [
+       {
+        "rect": [
+         900,
+         240.6,
+         745.3,
+         20
+        ],
+        "text": "The method of loci is old, but the reason it works is still debated. One account says that spatial memory"
+       },
+       {
+        "rect": [
+         900,
+         269.4,
+         749.3,
+         20
+        ],
+        "text": "is shared with navigation, which every animal needs and which is therefore well practised. Another says"
+       },
+       {
+        "rect": [
+         900,
+         298.2,
+         738.3,
+         20
+        ],
+        "text": "that a place gives each item a distinct context, so items interfere with each other less. Experiments that"
+       },
+       {
+        "rect": [
+         900,
+         327,
+         748.8,
+         20
+        ],
+        "text": "vary only the route, keeping the items fixed, find that a novel route helps less than a familiar one, which"
+       },
+       {
+        "rect": [
+         900,
+         355.8,
+         736.4,
+         20
+        ],
+        "text": "favours the first account. Experiments that vary the distinctiveness of the stops find the opposite. Both"
+       },
+       {
+        "rect": [
+         900,
+         384.6,
+         302,
+         20
+        ],
+        "text": "effects are probably real, and they add up."
+       }
+      ]
      },
      {
       "id": "b5",
@@ -936,7 +2601,36 @@
        77.6
       ],
       "text": "For a personal archive the lesson is practical. A day is easier to search when its moments are tied to where they happened, and a place that is visited often becomes a natural folder for everything that happened there.",
-      "words": 39
+      "words": 39,
+      "lines": [
+       {
+        "rect": [
+         900,
+         437.4,
+         713.8,
+         20
+        ],
+        "text": "For a personal archive the lesson is practical. A day is easier to search when its moments are tied to"
+       },
+       {
+        "rect": [
+         900,
+         466.2,
+         705.2,
+         20
+        ],
+        "text": "where they happened, and a place that is visited often becomes a natural folder for everything that"
+       },
+       {
+        "rect": [
+         900,
+         495,
+         114,
+         20
+        ],
+        "text": "happened there."
+       }
+      ]
      },
      {
       "id": "b6",
@@ -948,7 +2642,18 @@
        25
       ],
       "text": "Time as a second index",
-      "words": 5
+      "words": 5,
+      "lines": [
+       {
+        "rect": [
+         900,
+         556.8,
+         216,
+         25
+        ],
+        "text": "Time as a second index"
+       }
+      ]
      },
      {
       "id": "b7",
@@ -960,7 +2665,81 @@
        221.6
       ],
       "text": "Time is the other axis people use without thinking. Asked what they did last Tuesday, most people first recall where they were, then what came before and after, and only then the details. Reconstructing a day this way is slow but reliable, because each step narrows the next. An archive that lets the user move along the same path, from place to neighbouring time to detail, matches how recall already works. It also suggests what to keep: the transitions between places and activities carry more of the day's structure than long stretches of the same activity, so a budget spent on transitions buys more recall per byte than one spread evenly across the hours. The same idea explains why a photo taken at a doorway is often more useful than ten taken inside the room.",
-      "words": 135
+      "words": 135,
+      "lines": [
+       {
+        "rect": [
+         900,
+         600.3,
+         739.6,
+         20
+        ],
+        "text": "Time is the other axis people use without thinking. Asked what they did last Tuesday, most people first"
+       },
+       {
+        "rect": [
+         900,
+         629.1,
+         749,
+         20
+        ],
+        "text": "recall where they were, then what came before and after, and only then the details. Reconstructing a day"
+       },
+       {
+        "rect": [
+         900,
+         657.9,
+         716.8,
+         20
+        ],
+        "text": "this way is slow but reliable, because each step narrows the next. An archive that lets the user move"
+       },
+       {
+        "rect": [
+         900,
+         686.7,
+         755.8,
+         20
+        ],
+        "text": "along the same path, from place to neighbouring time to detail, matches how recall already works. It also"
+       },
+       {
+        "rect": [
+         900,
+         715.5,
+         755,
+         20
+        ],
+        "text": "suggests what to keep: the transitions between places and activities carry more of the day's structure than"
+       },
+       {
+        "rect": [
+         900,
+         744.3,
+         733.1,
+         20
+        ],
+        "text": "long stretches of the same activity, so a budget spent on transitions buys more recall per byte than one"
+       },
+       {
+        "rect": [
+         900,
+         773.1,
+         731,
+         20
+        ],
+        "text": "spread evenly across the hours. The same idea explains why a photo taken at a doorway is often more"
+       },
+       {
+        "rect": [
+         900,
+         801.9,
+         270.4,
+         20
+        ],
+        "text": "useful than ten taken inside the room."
+       }
+      ]
      },
      {
       "id": "b8",
@@ -972,7 +2751,18 @@
        20
       ],
       "text": "Short notes still matter.",
-      "words": 4
+      "words": 4,
+      "lines": [
+       {
+        "rect": [
+         900,
+         854.7,
+         167,
+         20
+        ],
+        "text": "Short notes still matter."
+       }
+      ]
      },
      {
       "id": "b9",
@@ -984,7 +2774,36 @@
        77.6
       ],
       "text": "The last point is about forgetting. Most of what is captured will never be looked at again, and that is fine. What matters is that the few moments someone does go back to are complete enough to be useful, and that finding them takes seconds rather than minutes.",
-      "words": 48
+      "words": 48,
+      "lines": [
+       {
+        "rect": [
+         900,
+         907.5,
+         756,
+         20
+        ],
+        "text": "The last point is about forgetting. Most of what is captured will never be looked at again, and that is fine."
+       },
+       {
+        "rect": [
+         900,
+         936.3,
+         736.3,
+         20
+        ],
+        "text": "What matters is that the few moments someone does go back to are complete enough to be useful, and"
+       },
+       {
+        "rect": [
+         900,
+         965.1,
+         374.9,
+         20
+        ],
+        "text": "that finding them takes seconds rather than minutes."
+       }
+      ]
      },
      {
       "id": "ba",
@@ -996,7 +2815,18 @@
        20
       ],
       "text": "Read the next note",
-      "words": 4
+      "words": 4,
+      "lines": [
+       {
+        "rect": [
+         900,
+         1017.9,
+         134.5,
+         20
+        ],
+        "text": "Read the next note"
+       }
+      ]
      }
     ]
    }

@@ -41,6 +41,12 @@ is. Average adult silent reading of English non-fiction is about 238 words a min
 current error (``resolve``): when the error is larger than the space between blocks, a dwell on a
 heading or a one-line paragraph would be a guess between it and its neighbours.
 
+Each fixation also goes to the line decoder (``reading.py``), which follows reading line by line
+over the whole page, independently of the runs; the hit carries the line it decodes. A *visit* is
+the decoder's stay on one block: when the eyes move on (two fixations decoded on another block),
+the page changes, the block is re-measured or gaze stops for ``VISIT_GAP_S``, the visit becomes a
+``reading.jsonl`` record of the lines read, with the time on each.
+
 The parameters were chosen with ``eval/gaze_sim.py``, which runs this, with the tracker's own
 fixation detector, against simulated webcam gaze fitted to the calibration error the tracker
 reports (results in ``docs/capture.md``).
@@ -55,9 +61,12 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from .anchors import RAYLEIGH_MEDIAN, Anchors
+from .reading import OFF, OFFSET, SCATTER, LineBox, PageReader, Visit
 from .records import Block, Blocks, Click, Fixation, GazeState, Geometry, Record, View
 
 TEXT_CACHE = 20_000
+LAYOUT_CACHE = 5_000
+VISIT_GAP_S = 10.0  # a block visit ends after this long without a fixation decoded on the page
 NOTHING = ""  # the "on no text block" state; block ids are never empty
 DEFAULT_ERROR_PX = 90.0  # a typical webcam calibration, when the tracker has not said
 SQRT2 = math.sqrt(2)
@@ -71,6 +80,11 @@ class Hit:
     y: float
     block: str | None  # the leading block, when it leads with at least ``lead``
     p: float | None = None  # its posterior
+    # The line being read, from the line decoder (``reading.py``), which follows reading across
+    # blocks on its own: its block can differ from ``block`` near a paragraph's edge.
+    line_block: str | None = None
+    line: int | None = None  # 0 = the block's first line
+    line_p: float | None = None
 
 
 @dataclass
@@ -163,6 +177,11 @@ class Attention:
         self.last_t: datetime | None = None  # start of the last fixation the filter took
         self.last_end: datetime | None = None  # end of the last fixation, for bridging blinks
         self.texts: OrderedDict[tuple[str, str], tuple[str, str, int]] = OrderedDict()  # tag, text, words
+        self.layouts: OrderedDict[tuple[str, str], list[LineBox]] = OrderedDict()  # each block's lines
+        self.page: PageReader | None = None  # line decoding on the page in front
+        self.visit: Visit | None = None  # the block the line decoder has the eyes on, line by line
+        self.pending: Visit | None = None  # another block the decoder moved to, until it holds
+        self.reading: dict | None = None  # the line being read now, for /status
 
     # -- the page in front -------------------------------------------------------------------------
 
@@ -170,11 +189,13 @@ class Attention:
         """Follow the browser; returns dwell records that the change ended."""
         kind = getattr(record, "kind", None)
         if isinstance(record, Blocks | View):
-            ended = self.end() if self.front and self.front.doc != record.doc else []
+            ended = self.end() + self.end_visit() if self.front and self.front.doc != record.doc else []
             if isinstance(record, Blocks):
                 for block in record.blocks:
                     if block.text is not None:
                         self._remember(record.doc, block)
+                    if block.lines is not None:
+                        ended += self._layout(record.doc, block)
                 blocks, measured = record.blocks, record.geometry.scroll_y
             elif self.front and self.front.doc == record.doc:
                 blocks, measured = self.front.blocks, self.front.blocks_scroll
@@ -202,7 +223,8 @@ class Attention:
         if leaves:
             self.front = None
             self.belief, self.belief_doc = {}, None
-            return self.end()
+            self.reading = None
+            return self.end() + self.end_visit()
         return []
 
     def gaze_state(self, state: GazeState) -> None:
@@ -225,6 +247,23 @@ class Attention:
         fx = (g.vx + click.x * g.scale) / g.screen_w
         fy = (g.vy + click.y * g.scale) / g.screen_h
         self.anchors.click(click.t.timestamp(), fx, fy)
+
+    def _layout(self, doc: str, block: Block) -> list[dict]:
+        """A block's lines, new or re-measured; returns the record of a visit the change ended."""
+        key = (doc, block.id)
+        lines = [LineBox(*line.rect, line.text) for line in block.lines or []]
+        if self.layouts.get(key) == lines:
+            return []
+        self.layouts[key] = lines
+        self.layouts.move_to_end(key)
+        while len(self.layouts) > LAYOUT_CACHE:
+            self.layouts.popitem(last=False)
+        ended = []
+        if self.visit is not None and (self.visit.doc, self.visit.block) == key:
+            ended = self.end_visit()  # the wrapping changed: its line numbers mean other lines now
+        if self.page is not None and self.page.doc == doc:
+            self.page.set_block(block.id, lines)
+        return ended
 
     def _remember(self, doc: str, block: Block) -> None:
         self.remember(doc, block.id, block.tag, block.text or "", block.words)
@@ -389,6 +428,11 @@ class Attention:
                         self.run = challenger  # it led all along the excursion: that time is its own
         if self.run is None and key is not None and self.front is not None:
             self.run = self._run(key, fixation, duration)
+        if located is not None:
+            line, ended = self._read(located, fixation, duration)
+            events += ended
+            if line is not None and hit is not None:
+                hit = Hit(hit.tab, hit.doc, hit.x, hit.y, hit.block, hit.p, line[0], line[1], round(line[2], 2))
         if self.monitor is not None:
             self.anchors.fixation(fixation.t.timestamp(), fixation.t_end.timestamp(), fixation.x, fixation.y)
         run = self.run
@@ -396,6 +440,64 @@ class Attention:
             run.fired = True
             events.append(self._record(run, "start"))
         return hit, events
+
+    def _read(
+        self, located: tuple[Front, float, float], fixation: Fixation, duration: float
+    ) -> tuple[tuple[str, int, float] | None, list[dict]]:
+        """Feed the line decoder; returns the line it has the eyes on (block, line, probability),
+        if any, and the record of a block visit that ended."""
+        front, x, y = located
+        g = front.geometry
+        if self.monitor is None or not (0 <= x <= g.inner_w and 0 <= y <= g.inner_h):
+            return None, []  # off the page: the toolbar, another window
+        reader = self._reader(front, fixation.t.timestamp())
+        if not reader.blocks:
+            return None, []
+        t, t_end = fixation.t.timestamp(), fixation.t_end.timestamp()
+        reader.update(x, y + g.scroll_y, t, (g.scroll_y, g.scroll_y + g.inner_h, g.inner_w))
+        key, p = reader.best()
+        if key is OFF:
+            return None, []
+        block, line = key
+        ended: list[dict] = []
+        visit = self.visit
+        if visit is not None and t - visit.t1 > VISIT_GAP_S:
+            ended, visit = self.end_visit(), None
+        if visit is not None and visit.block == block:
+            visit.add(line, t, t_end, duration, p)
+            visit.offset_px, self.pending = reader.offset(), None
+        else:
+            # Another block: a new visit once two fixations in a row are decoded there.
+            pending = self.pending
+            if pending is None or pending.block != block:
+                texts = [b.text for b in reader.blocks[block]]
+                pending = self.pending = Visit(
+                    reader.doc, block, len(texts), t, texts=texts, tab=front.tab, url=front.url, title=front.title
+                )
+            pending.add(line, t, t_end, duration, p)
+            pending.offset_px = reader.offset()
+            if visit is None or pending.fixations >= 2:
+                ended += self.end_visit()
+                self.visit, self.pending = pending, None
+        tag, _, _ = self.texts.get((reader.doc, block), (None, None, None))
+        self.reading = {
+            "t": fixation.t_end.isoformat(), "url": front.url, "doc": reader.doc, "block": block, "tag": tag,
+            "line": line, "lines": len(reader.blocks[block]), "p": round(p, 2), "text": reader.text(key),
+        }  # fmt: skip
+        return (block, line, p), ended
+
+    def _reader(self, front: Front, now: float) -> PageReader:
+        """The line decoder for the page in front, made anew for another page or another scale."""
+        g = front.geometry
+        sigma = self.error_px(now) / RAYLEIGH_MEDIAN * (g.screen_w / self.monitor[0]) / g.scale  # CSS px
+        reader = self.page
+        if reader is None or reader.doc != front.doc or abs(reader.spread / sigma - 1) > 0.25:
+            reader = self.page = PageReader(front.doc, max(SCATTER * sigma, 4.0), max(OFFSET * sigma, 4.0))
+            reader.spread = sigma
+            for (doc, block), lines in self.layouts.items():
+                if doc == front.doc:
+                    reader.set_block(block, lines)
+        return reader
 
     def _run(self, key: tuple[str, str], fixation: Fixation, duration: float) -> Run:
         front = self.front
@@ -428,13 +530,32 @@ class Attention:
         """End the run if no gaze at all has arrived for longer than ``max_gap_s`` (eyes closed, off
         the screen, face lost). Gaze elsewhere on the screen is ``excursion_s``'s business."""
         last = self.last_end if self.last_end is not None else (self.run.t1 if self.run else None)
+        out = []
         if self.run is not None and last is not None and (now - last).total_seconds() > self.max_gap_s:
-            return self.end()
-        return []
+            out += self.end()
+        if self.visit is not None and now.timestamp() - self.visit.t1 > VISIT_GAP_S:
+            out += self.end_visit()
+        return out
 
     def end(self) -> list[dict]:
         run, self.run, self.away, self.challenger = self.run, None, None, None
         return [self._record(run, "end")] if run is not None and run.fired else []
+
+    def end_visit(self) -> list[dict]:
+        """End the line decoder's visit to a block: what was read on it, line by line, if the eyes
+        were there long enough to call it reading (3 fixations, 1.5 s)."""
+        visit, self.visit, self.pending = self.visit, None, None
+        if visit is None or visit.fixations < 3 or visit.t1 - visit.t0 < 1.5:
+            return []
+        tag, _, _ = self.texts.get((visit.doc, visit.block), (None, None, None))
+        zone = self.last_end.tzinfo if self.last_end is not None else None
+        return [{
+            "id": uuid.uuid4().hex[:16] + "-read", "kind": "read",
+            "t": datetime.fromtimestamp(visit.t0, zone).isoformat(),
+            "t_end": datetime.fromtimestamp(visit.t1, zone).isoformat(),
+            "tab": visit.tab, "url": visit.url, "title": visit.title, "doc": visit.doc, "block": visit.block,
+            "tag": tag, **visit.summary(),
+        }]  # fmt: skip
 
     def health(self, now: float) -> dict:
         """How well gaze is placed now, for /status."""

@@ -6,6 +6,8 @@ Writes append-only logs to ``vault/capture/<local date>/``:
 - ``blocks.jsonl``: snapshots of the text on screen and where the viewport sits
 - ``gaze.jsonl``: fixations, each with the page point and text block it landed on
 - ``attention.jsonl``: dwells (see ``attention.py``), a start and an end record per dwell
+- ``reading.jsonl``: what was read on each block the eyes went through, line by line (see
+  ``reading.py``); ``gaze.jsonl`` has the line decoded for each fixation, ``/status`` the current one
 - ``health.jsonl``: every 10 minutes while gaze arrives, the tracker's state (frame rate, face,
   how much gaze became fixations, noise) and the live accuracy measured from clicks, so a session
   can be judged afterwards without a test
@@ -106,6 +108,9 @@ class Receiver:
         a = self.attention
         with self.lock:  # the click calibration is updated by gaze batches on other threads
             accuracy = a.health(datetime.now(UTC).timestamp())
+            reading = a.reading
+        if reading and datetime.now(UTC) - datetime.fromisoformat(reading["t"]) > timedelta(seconds=10):
+            reading = None  # the line being read now, not the last one ever read
         gaze = self.gaze or {"tracking": False, "reason": "not running"}
         if self.gaze and datetime.now(UTC) - datetime.fromisoformat(self.gaze["at"]) > GAZE_SILENT:
             gaze = {**self.gaze, "tracking": False, "reason": "no reports"}
@@ -119,6 +124,7 @@ class Receiver:
             "gaze": {"last": self.last.get("gaze"), **gaze},
             "dwell": {"threshold_s": a.threshold_s, "factor": a.factor, "wpm": a.wpm},
             "accuracy": accuracy,
+            "reading": reading,
             "capabilities": ["browser", "gaze", "attention"],
         }
 
@@ -160,13 +166,15 @@ class Receiver:
         return moment.astimezone(self.zone).date().isoformat()
 
     def _write(self, lines: dict[tuple[str, str], list[dict]], dwells: list[dict]) -> None:
+        """``dwells``: what attention returned, dwell start/end records and line-by-line reads."""
         for event in dwells:
-            lines.setdefault((self._day(event["t"]), "attention.jsonl"), []).append(event)
+            name = "reading.jsonl" if event["kind"] == "read" else "attention.jsonl"
+            lines.setdefault((self._day(event["t"]), name), []).append(event)
         for (day, name), records in lines.items():
             # Appending costs the batch, not the day: rewriting the log made capture O(n^2).
             self.vault.append_lines(self.vault.root / "capture" / day / name, records)
         for event in dwells:
-            if event["phase"] == "start":
+            if event["kind"] == "dwell" and event["phase"] == "start":
                 self._signal(event)
 
     # -- dwell actions -----------------------------------------------------------------------------
@@ -255,6 +263,8 @@ class Receiver:
                 line = fixation.model_dump(mode="json")
                 if hit is not None:
                     line |= {"tab": hit.tab, "doc": hit.doc, "page": [hit.x, hit.y], "block": hit.block, "p": hit.p}
+                    if hit.line is not None:
+                        line |= {"line": {"block": hit.line_block, "line": hit.line, "p": hit.line_p}}
                 lines.setdefault((self._day(fixation.t), "gaze.jsonl"), []).append(line)
             dwells += self.attention.advance(now - GAZE_LATENCY)
             settled = batch.state.tracking and batch.state.coverage is not None  # a few seconds of gaze

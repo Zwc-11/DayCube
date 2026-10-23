@@ -222,6 +222,52 @@ def test_clicks_measure_live_accuracy_and_health_is_logged(vault: Vault, auth: d
     assert health["gaze"]["coverage"] == 0.9 and health["accuracy"]["clicks"] == 6
 
 
+def test_the_line_being_read_is_logged_shown_and_recorded(vault: Vault, auth: dict[str, str]) -> None:
+    """A three-line paragraph read line by line: each fixation in gaze.jsonl names the line,
+    /status shows the current one, and leaving the page writes the paragraph to reading.jsonl."""
+    state = {"tracking": True, "calibrated": True, "error_px": 30.0, "monitor": [1920, 1080]}
+    start = datetime.now(UTC) - timedelta(seconds=7)
+    texts = ["People remember places better", "than lists, and a walk through a", "street is an index."]
+    lines = [{"rect": [100, 200 + 28.8 * i, 700 if i < 2 else 300, 20], "text": text} for i, text in enumerate(texts)]
+    paragraph = {
+        "id": "p1",
+        "tag": "p",
+        "text": " ".join(texts),
+        "words": 17,
+        "rect": [100, 200, 700, 77.6],
+        "lines": lines,
+    }
+    blocks = {**record("blocks", doc="doc-1", geometry=GEOMETRY, blocks=[paragraph], **TAB), "t": start.isoformat()}
+    fixations, truth, t = [], [], start + timedelta(seconds=0.5)
+    for i, line in enumerate(lines):
+        left, top, width, height = line["rect"]
+        for k in range(6):
+            fixations.append({
+                "id": uuid.uuid4().hex, "t": t.isoformat(), "t_end": (t + timedelta(seconds=0.25)).isoformat(),
+                "x": (left + width * (k + 0.5) / 6) / 1920, "y": (100 + top + height / 2 + 8) / 1080, "samples": 8,
+            })  # fmt: skip
+            truth.append(i)
+            t += timedelta(seconds=0.3)
+    with TestClient(create_capture_app(settings(vault), receive=True)) as client:
+        assert client.post("/events", json=[blocks], headers=auth).json()["accepted"] == 1
+        assert client.post("/gaze", json={"state": state, "fixations": fixations}, headers=auth).status_code == 200
+        reading = client.get("/status").json()["reading"]
+        assert reading["block"] == "p1" and reading["line"] == 2 and reading["text"] == texts[2]
+        placed = [f["line"] for f in logged(vault, "gaze.jsonl")]
+        assert (
+            sum(p is not None and (p["block"], p["line"]) == ("p1", i) for p, i in zip(placed, truth, strict=True))
+            >= 16
+        )
+        assert logged(vault, "reading.jsonl") == []  # still on the paragraph
+        other = {**record("blocks", doc="doc-2", geometry=GEOMETRY, blocks=[], **TAB), "t": t.isoformat()}
+        assert client.post("/events", json=[other], headers=auth).json()["accepted"] == 1
+    (read,) = logged(vault, "reading.jsonl")
+    assert read["kind"] == "read" and read["block"] == "p1" and read["url"] == TAB["url"]
+    assert read["line_count"] == 3 and read["coverage"] == 1.0
+    assert [entry["text"] for entry in read["lines"]] == texts
+    assert logged(vault, "attention.jsonl") == []  # a read is not a dwell
+
+
 def test_the_doctor_judges_capture_from_what_it_recorded(vault: Vault, monkeypatch: pytest.MonkeyPatch) -> None:
     from zoneinfo import ZoneInfo
 
@@ -233,11 +279,13 @@ def test_the_doctor_judges_capture_from_what_it_recorded(vault: Vault, monkeypat
     day.mkdir(parents=True)
     (day / "attention.jsonl").write_text('{"phase": "start"}\n{"phase": "end"}\n', encoding="utf-8")
     (day / "gaze.jsonl").write_text('{"x": 1}\nnot json\n{"x": 2', encoding="utf-8")  # last line still being written
+    (day / "reading.jsonl").write_text('{"lines": [{"line": 0}, {"line": 1}]}\n{"lines": [{"line": 3}]}\n', encoding="utf-8")
     status = {
         "paused": False, "browser": {"last": (now - timedelta(minutes=2)).isoformat()},
         "gaze": {"tracking": True, "fps": 29.4, "target_fps": 30.0, "face": 1.0, "coverage": 0.88, "noise_px": 24.0,
                  "error_px": 69.1, "monitor": [2560, 1440]},
         "accuracy": {"clicks": 7, "rejected": 0, "live_error_px": 120.0, "corrected_error_px": 58.0},
+        "reading": None,
     }  # fmt: skip
     monkeypatch.setattr(doctor.sys, "platform", "linux")
     results = {name: (verdict, detail) for verdict, name, detail in doctor.checks(status, vault.root, zone, now, None)}
@@ -245,12 +293,13 @@ def test_the_doctor_judges_capture_from_what_it_recorded(vault: Vault, monkeypat
     assert results["calibration"][0] == doctor.PASS and results["live accuracy"][0] == doctor.PASS
     assert results["today's logs"][0] == doctor.FAIL and "1 malformed" in results["today's logs"][1]
     assert results["dwells today"] == (doctor.INFO, "1")
+    assert results["reading today"] == (doctor.INFO, "2 blocks read, 3 lines") and "receiver code" not in results
     worse = status | {"accuracy": {"clicks": 7, "rejected": 9, "live_error_px": 300.0, "corrected_error_px": 260.0}}
     results = {name: verdict for verdict, name, _ in doctor.checks(worse, vault.root, zone, now, None)}
     assert results["live accuracy"] == doctor.FAIL and results["clicks"] == doctor.WARN
     assert doctor.checks(None, vault.root, zone, now, None)[0][0] == doctor.FAIL
     # A receiver or tracker started before a pull runs the old code: say so.
-    old = {k: v for k, v in status.items() if k != "accuracy"} | {
+    old = {k: v for k, v in status.items() if k != "reading"} | {
         "gaze": status["gaze"] | {"coverage": None, "noise_px": None}
     }
     results = {name: verdict for verdict, name, _ in doctor.checks(old, vault.root, zone, now, None)}
