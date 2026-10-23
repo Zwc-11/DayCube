@@ -90,6 +90,26 @@ def checks(status: dict | None, vault: Path, zone: ZoneInfo, now: datetime, auto
         verdict = PASS if error <= limit else FAIL
         out.append((verdict, "calibration", f"{error:.0f} px median held-out error (limit {limit:.0f})"))
 
+    decoding = status.get("line_decoding") or {}
+    seen = decoding.get("fixations", 0)
+    if gaze.get("tracking") and seen >= 30:
+        on_page, on_line, page = decoding.get("on_page", 0), decoding.get("on_line", 0), decoding.get("page")
+        detail = f"last {seen} fixations: {on_page} on a page, {on_line} on a line"
+        if page:
+            detail += f"; {page['host']}: {page['with_lines']} of {page['blocks']} text blocks with lines"
+        if on_page < 0.2 * seen:
+            verdict, detail = (
+                WARN,
+                detail + ": gaze is not landing on pages (is the browser on the calibrated monitor?)",
+            )
+        elif page and page["blocks"] and not page["with_lines"]:
+            verdict, detail = WARN, detail + ": the page sent no lines (reload the extension, then the tab)"
+        elif on_line < 0.3 * on_page:
+            verdict = WARN
+        else:
+            verdict = PASS
+        out.append((verdict, "line reading", detail))
+
     accuracy = status.get("accuracy") or {}
     clicks, corrected = accuracy.get("clicks", 0), accuracy.get("corrected_error_px")
     if clicks < 5 or corrected is None:

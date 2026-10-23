@@ -56,9 +56,10 @@ from __future__ import annotations
 
 import math
 import uuid
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from dataclasses import dataclass
 from datetime import datetime
+from urllib.parse import urlsplit
 
 from .anchors import RAYLEIGH_MEDIAN, Anchors
 from .reading import OFF, OFFSET, SCATTER, LineBox, PageReader, Visit
@@ -182,6 +183,10 @@ class Attention:
         self.visit: Visit | None = None  # the block the line decoder has the eyes on, line by line
         self.pending: Visit | None = None  # another block the decoder moved to, until it holds
         self.reading: dict | None = None  # the line being read now, for /status
+        # Where the last fixations went (0 off any page, 1 on the page, 2 on a line decoded), and the
+        # text the last page sent: why no line is shown, for /status and the doctor.
+        self.outcomes: deque[int] = deque(maxlen=300)
+        self.last_page: dict | None = None
 
     # -- the page in front -------------------------------------------------------------------------
 
@@ -195,7 +200,7 @@ class Attention:
                     if block.text is not None:
                         self._remember(record.doc, block)
                     if block.lines is not None:
-                        ended += self._layout(record.doc, block)
+                        ended += self.layout(record.doc, block.id, [LineBox(*x.rect, x.text) for x in block.lines])
                 blocks, measured = record.blocks, record.geometry.scroll_y
             elif self.front and self.front.doc == record.doc:
                 blocks, measured = self.front.blocks, self.front.blocks_scroll
@@ -204,6 +209,13 @@ class Attention:
             self.front = Front(
                 record.tab, record.url, record.title, record.doc, record.geometry, blocks, measured, record.t
             )
+            if isinstance(record, Blocks):
+                lined = sum(bool(self.layouts.get((record.doc, b.id))) for b in record.blocks)
+                self.last_page = {
+                    "host": urlsplit(record.url).hostname,
+                    "blocks": len(record.blocks),
+                    "with_lines": lined,
+                }
             return ended
         if isinstance(record, Click):
             self._click(record)
@@ -248,10 +260,9 @@ class Attention:
         fy = (g.vy + click.y * g.scale) / g.screen_h
         self.anchors.click(click.t.timestamp(), fx, fy)
 
-    def _layout(self, doc: str, block: Block) -> list[dict]:
+    def layout(self, doc: str, block: str, lines: list[LineBox]) -> list[dict]:
         """A block's lines, new or re-measured; returns the record of a visit the change ended."""
-        key = (doc, block.id)
-        lines = [LineBox(*line.rect, line.text) for line in block.lines or []]
+        key = (doc, block)
         if self.layouts.get(key) == lines:
             return []
         self.layouts[key] = lines
@@ -262,7 +273,7 @@ class Attention:
         if self.visit is not None and (self.visit.doc, self.visit.block) == key:
             ended = self.end_visit()  # the wrapping changed: its line numbers mean other lines now
         if self.page is not None and self.page.doc == doc:
-            self.page.set_block(block.id, lines)
+            self.page.set_block(block, lines)
         return ended
 
     def _remember(self, doc: str, block: Block) -> None:
@@ -428,11 +439,13 @@ class Attention:
                         self.run = challenger  # it led all along the excursion: that time is its own
         if self.run is None and key is not None and self.front is not None:
             self.run = self._run(key, fixation, duration)
+        line = None
         if located is not None:
             line, ended = self._read(located, fixation, duration)
             events += ended
             if line is not None and hit is not None:
                 hit = Hit(hit.tab, hit.doc, hit.x, hit.y, hit.block, hit.p, line[0], line[1], round(line[2], 2))
+        self.outcomes.append(2 if line is not None else 1 if hit is not None else 0)
         if self.monitor is not None:
             self.anchors.fixation(fixation.t.timestamp(), fixation.t_end.timestamp(), fixation.x, fixation.y)
         run = self.run
@@ -556,6 +569,15 @@ class Attention:
             "tab": visit.tab, "url": visit.url, "title": visit.title, "doc": visit.doc, "block": visit.block,
             "tag": tag, **visit.summary(),
         }]  # fmt: skip
+
+    def lines_health(self) -> dict:
+        """Why a line is or is not being decoded: the last fixations, and the last page's text."""
+        return {
+            "fixations": len(self.outcomes),
+            "on_page": sum(o >= 1 for o in self.outcomes),
+            "on_line": sum(o == 2 for o in self.outcomes),
+            "page": self.last_page,
+        }
 
     def health(self, now: float) -> dict:
         """How well gaze is placed now, for /status."""

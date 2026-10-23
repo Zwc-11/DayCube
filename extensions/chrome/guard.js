@@ -3,15 +3,23 @@
 // clicks, selections or media. Covers embedded sign-in and payment frames the top page cannot see.
 
 (() => {
-  if (window.__daycubeGuard) return;
-  window.__daycubeGuard = true;
-
   const live = () => { try { return Boolean(chrome.runtime?.id); } catch { return false; } };
+  // Injected again into open tabs after an extension update; a copy from before it has stopped.
+  const previous = window.__daycubeGuard;
+  if (typeof previous === 'function' && previous()) return;
+  window.__daycubeGuard = live;
+
   const visible = element => element.getClientRects().length > 0;
+  const shadowOf = element => {
+    try { return element.shadowRoot ?? chrome.dom?.openOrClosedShadowRoot?.(element) ?? null; } catch { return null; }
+  };
 
   function shows(root) {
     for (const input of root.querySelectorAll('input[type="password" i]')) if (visible(input)) return true;
-    for (const element of root.querySelectorAll('*')) if (element.shadowRoot && shows(element.shadowRoot)) return true;
+    for (const element of root.querySelectorAll('*')) {
+      const inner = shadowOf(element);
+      if (inner && shows(inner)) return true;
+    }
     return false;
   }
 

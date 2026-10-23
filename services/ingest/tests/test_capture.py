@@ -251,8 +251,11 @@ def test_the_line_being_read_is_logged_shown_and_recorded(vault: Vault, auth: di
     with TestClient(create_capture_app(settings(vault), receive=True)) as client:
         assert client.post("/events", json=[blocks], headers=auth).json()["accepted"] == 1
         assert client.post("/gaze", json={"state": state, "fixations": fixations}, headers=auth).status_code == 200
-        reading = client.get("/status").json()["reading"]
+        status = client.get("/status").json()
+        reading, decoding = status["reading"], status["line_decoding"]
         assert reading["block"] == "p1" and reading["line"] == 2 and reading["text"] == texts[2]
+        assert decoding["fixations"] == 18 and decoding["on_page"] == 18 and decoding["on_line"] >= 16
+        assert decoding["page"] == {"host": "example.com", "blocks": 1, "with_lines": 1}
         placed = [f["line"] for f in logged(vault, "gaze.jsonl")]
         assert (
             sum(p is not None and (p["block"], p["line"]) == ("p1", i) for p, i in zip(placed, truth, strict=True))
@@ -266,6 +269,9 @@ def test_the_line_being_read_is_logged_shown_and_recorded(vault: Vault, auth: di
     assert read["line_count"] == 3 and read["coverage"] == 1.0
     assert [entry["text"] for entry in read["lines"]] == texts
     assert logged(vault, "attention.jsonl") == []  # a read is not a dwell
+    # A restarted receiver has the lines of pages already open: they are sent once per page load.
+    restarted = create_capture_app(settings(vault), receive=True)
+    assert [line.text for line in restarted.state.receiver.attention.layouts[("doc-1", "p1")]] == texts
 
 
 def test_the_doctor_judges_capture_from_what_it_recorded(vault: Vault, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -279,7 +285,9 @@ def test_the_doctor_judges_capture_from_what_it_recorded(vault: Vault, monkeypat
     day.mkdir(parents=True)
     (day / "attention.jsonl").write_text('{"phase": "start"}\n{"phase": "end"}\n', encoding="utf-8")
     (day / "gaze.jsonl").write_text('{"x": 1}\nnot json\n{"x": 2', encoding="utf-8")  # last line still being written
-    (day / "reading.jsonl").write_text('{"lines": [{"line": 0}, {"line": 1}]}\n{"lines": [{"line": 3}]}\n', encoding="utf-8")
+    (day / "reading.jsonl").write_text(
+        '{"lines": [{"line": 0}, {"line": 1}]}\n{"lines": [{"line": 3}]}\n', encoding="utf-8"
+    )
     status = {
         "paused": False, "browser": {"last": (now - timedelta(minutes=2)).isoformat()},
         "gaze": {"tracking": True, "fps": 29.4, "target_fps": 30.0, "face": 1.0, "coverage": 0.88, "noise_px": 24.0,
@@ -294,6 +302,22 @@ def test_the_doctor_judges_capture_from_what_it_recorded(vault: Vault, monkeypat
     assert results["today's logs"][0] == doctor.FAIL and "1 malformed" in results["today's logs"][1]
     assert results["dwells today"] == (doctor.INFO, "1")
     assert results["reading today"] == (doctor.INFO, "2 blocks read, 3 lines") and "receiver code" not in results
+    # Why no line is decoded, from the receiver's record of where the last fixations went.
+    page = {"host": "learn.uwaterloo.ca", "blocks": 14, "with_lines": 0}
+    for decoding, verdict, reason in (
+        ({"fixations": 300, "on_page": 12, "on_line": 0, "page": page}, doctor.WARN, "not landing on pages"),
+        ({"fixations": 300, "on_page": 280, "on_line": 0, "page": page}, doctor.WARN, "sent no lines"),
+        (
+            {"fixations": 300, "on_page": 280, "on_line": 250, "page": page | {"with_lines": 14}},
+            doctor.PASS,
+            "250 on a line",
+        ),
+    ):
+        found = {
+            name: (v, d)
+            for v, name, d in doctor.checks(status | {"line_decoding": decoding}, vault.root, zone, now, None)
+        }
+        assert found["line reading"][0] == verdict and reason in found["line reading"][1]
     worse = status | {"accuracy": {"clicks": 7, "rejected": 9, "live_error_px": 300.0, "corrected_error_px": 260.0}}
     results = {name: verdict for verdict, name, _ in doctor.checks(worse, vault.root, zone, now, None)}
     assert results["live accuracy"] == doctor.FAIL and results["clicks"] == doctor.WARN

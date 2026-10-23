@@ -1,4 +1,4 @@
-import { RECEIVER, gazeLabel, normalizeDomains } from './lib.js';
+import { RECEIVER, gazeLabel, normalizeDomains, readingLabel } from './lib.js';
 
 const $ = id => document.getElementById(id);
 const DEFAULTS = {
@@ -51,8 +51,7 @@ async function refresh() {
     show('receiver', status.paused ? 'Running, paused' : `Running, last record ${ago(status.browser.last)}`, 'good');
     const gaze = status.gaze;
     show('gaze', gazeLabel(gaze, status.accuracy), gaze.tracking ? 'good' : '');
-    const r = status.reading;
-    show('reading', r ? `Line ${r.line + 1} of ${r.lines} (${Math.round(r.p * 100)}%): ${r.text.slice(0, 60)}` : 'No line now');
+    show('reading', readingLabel(status.reading, status.line_decoding), status.reading ? 'good' : '');
   } catch {
     show('receiver', 'Not running. Start it with python -m capture run --receive, or install autostart.', 'bad');
     show('gaze', '—');

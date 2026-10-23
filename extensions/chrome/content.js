@@ -9,8 +9,13 @@
 // domains and pausing are enforced by the service worker.
 
 (() => {
-  if (window.top !== window || window.__daycubeReporter) return;
-  window.__daycubeReporter = true;
+  const live = () => { try { return Boolean(chrome.runtime?.id); } catch { return false; } };
+  // After an extension update the service worker injects this script into tabs already open. A
+  // copy from before the update may still be in the page, cut off from the extension: it stays
+  // inert, and this one takes over. (Versions before 0.5.0 left `true` here.)
+  const previous = window.__daycubeReporter;
+  if (window.top !== window || (typeof previous === 'function' && previous())) return;
+  window.__daycubeReporter = live;
 
   // One load of this page. crypto.randomUUID exists only on https pages; this works on http too.
   const DOC = [...crypto.getRandomValues(new Uint8Array(8))].map(b => b.toString(16).padStart(2, '0')).join('');
@@ -42,11 +47,15 @@
   let mouse = null;
   let zoom = null;
 
-  const live = () => { try { return Boolean(chrome.runtime?.id); } catch { return false; } };
   const send = message => (live() ? chrome.runtime.sendMessage(message).catch(() => null) : Promise.resolve(null));
   const front = () => document.visibilityState === 'visible' && document.hasFocus() && !document.prerendering;
+  // Web components (D2L Brightspace, YouTube, Reddit, Salesforce) keep their text in shadow roots,
+  // open or closed; chrome.dom reaches closed ones from a content script.
+  const shadowOf = element => {
+    try { return element.shadowRoot ?? chrome.dom?.openOrClosedShadowRoot?.(element) ?? null; } catch { return null; }
+  };
   const shows = root => [...root.querySelectorAll('input[type="password" i]')].some(input => input.getClientRects().length)
-    || [...root.querySelectorAll('*')].some(element => element.shadowRoot && shows(element.shadowRoot));
+    || [...root.querySelectorAll('*')].some(element => { const inner = shadowOf(element); return inner && shows(inner); });
   const guarded = () => shows(document);
   const clean = text => text.replace(/\s+/g, ' ').trim();
   const round = value => Math.round(value * 10) / 10;
@@ -178,8 +187,10 @@
       if (!value) styles.set(element, (value = getComputedStyle(element)));
       return value;
     };
+    // The parent across a shadow boundary: the top of a shadow tree belongs to its host.
+    const up = node => node.parentElement ?? (node.parentNode instanceof ShadowRoot ? node.parentNode.host : null);
     const blockOf = node => {
-      for (let element = node.parentElement; element; element = element.parentElement) {
+      for (let element = up(node); element; element = up(element)) {
         if (element === document.body) return element;
         const display = style(element).display;
         if (!display.startsWith('inline') && display !== 'contents' && display !== 'ruby') return element;
@@ -187,19 +198,28 @@
       return null;
     };
     const offscreen = rect => rect.bottom < 0 || rect.top > vh || rect.right < 0 || rect.left > vw;
-    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
+    const filter = {
       acceptNode(node) {
         if (node.nodeType === Node.TEXT_NODE) return node.nodeValue.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
         if (node.matches(SKIP)) return NodeFilter.FILTER_REJECT;
         const rect = node.getBoundingClientRect();
         // A box with a size that lies wholly off screen shows nothing, except positioned children.
         if (rect.width > 0 && rect.height > 0 && offscreen(rect)) return NodeFilter.FILTER_REJECT;
-        return NodeFilter.FILTER_SKIP;
+        // A shadow host is handed to the loop, which walks its shadow tree; its slotted children follow.
+        return shadowOf(node) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
       },
-    });
+    };
     const range = document.createRange();
     const groups = new Map();
-    for (let node = walker.nextNode(); node && groups.size < MAX_BLOCKS * 2; node = walker.nextNode()) {
+    const textNodes = function* walk(root, depth = 0) {
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, filter);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        if (node.nodeType === Node.TEXT_NODE) yield node;
+        else if (depth < 30) yield* walk(shadowOf(node), depth + 1);
+      }
+    };
+    for (const node of textNodes(document.body)) {
+      if (groups.size >= MAX_BLOCKS * 2) break;
       range.selectNodeContents(node);
       let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
       for (const rect of range.getClientRects()) {
@@ -334,13 +354,24 @@
   const CLICKABLE = 'a[href], button, summary, label, [role="button"], [role="link"], [role="tab"], [role="menuitem"], '
     + 'input[type="submit"], input[type="button"], input[type="checkbox"], input[type="radio"]';
 
+  // closest() that continues from a shadow tree to its host: a click inside a web component reaches
+  // the document with the host as its target.
+  const closestDeep = (start, selector) => {
+    for (let element = start; element; element = element.parentElement ?? element.getRootNode()?.host) {
+      if (element.matches?.(selector)) return element;
+    }
+    return null;
+  };
+
   document.addEventListener('click', event => {
     if (!event.isTrusted || guarded()) return;
-    const element = event.target instanceof Element ? event.target.closest(CLICKABLE) : null;
-    if (!element || element.closest(TYPING)) return;
+    const origin = event.composedPath?.()[0] ?? event.target;
+    const start = origin instanceof Element ? origin : origin?.parentElement;
+    const element = start ? closestDeep(start, CLICKABLE) : null;
+    if (!element || closestDeep(element, TYPING)) return;
     const button = element instanceof HTMLInputElement && ['submit', 'button'].includes(element.type);
     const label = element.getAttribute('aria-label') || (element instanceof HTMLInputElement ? (button ? element.value : '') : element.innerText);
-    const link = element.closest('a[href]');
+    const link = closestDeep(element, 'a[href]');
     const href = link && /^https?:/.test(link.href) ? link.href : null;
     // Where the click landed: the eyes are almost always on what is clicked, so the receiver uses
     // each click to measure, and correct, the eye tracker's live error (anchors.py). A click made
@@ -446,9 +477,10 @@
   }
 
   async function followLine() {
+    if (!live()) return place(null); // the extension was updated or removed: this copy stops
     let wanted = false;
     if (front() && !guarded()) {
-      const reply = await chrome.runtime.sendMessage({ kind: 'reading' }).catch(() => null);
+      const reply = await send({ kind: 'reading' });
       wanted = Boolean(reply?.show);
       place(reply?.reading);
     } else {

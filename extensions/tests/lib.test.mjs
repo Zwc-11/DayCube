@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { allowed, gazeLabel, normalizeDomains, searchOf, trim } from '../chrome/lib.js';
+import { allowed, gazeLabel, normalizeDomains, readingLabel, searchOf, trim } from '../chrome/lib.js';
 
 test('gaze label distinguishes measured rate, target and pause state', () => {
   assert.equal(gazeLabel({ tracking: true, fps: 29.8, target_fps: 30, face: 0.98, error_px: 182.9 }),
@@ -61,4 +61,12 @@ test('fragment-only address changes are the same page', async () => {
   assert.equal(sameDocument('https://docs.example/guide', 'https://docs.example/guide/2'), false);
   assert.equal(sameDocument('https://docs.example/?q=a', 'https://docs.example/?q=b'), false);
   assert.equal(sameDocument(undefined, 'https://docs.example/'), false);
+});
+
+test('reading label names the line, or why there is none', () => {
+  assert.equal(readingLabel({ line: 2, lines: 6, p: 0.914, text: 'The method of loci is old' }, null),
+    'Line 3 of 6 (91%): The method of loci is old');
+  assert.equal(readingLabel(null, { fixations: 0 }), 'No line now: no gaze on pages yet');
+  assert.equal(readingLabel(null, { fixations: 300, on_page: 280, on_line: 0, page: { host: 'learn.uwaterloo.ca', blocks: 14, with_lines: 0 } }),
+    'No line now. Last 300 fixations: 280 on a page, 0 on a line. learn.uwaterloo.ca: 0 of 14 text blocks have lines.');
 });
