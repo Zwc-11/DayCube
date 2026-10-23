@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "DayCube Capture",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Records your browsing into your local DayCube vault. Nothing leaves this computer.",
   "minimum_chrome_version": "116",
   "permissions": [
@@ -11,10 +11,13 @@
     "webNavigation",
     "idle",
     "alarms",
-    "notifications"
+    "notifications",
+    "scripting"
   ],
   "host_permissions": [
-    "http://127.0.0.1:7700/*"
+    "http://127.0.0.1:7700/*",
+    "http://*/*",
+    "https://*/*"
   ],
   "background": {
     "service_worker": "background.js",

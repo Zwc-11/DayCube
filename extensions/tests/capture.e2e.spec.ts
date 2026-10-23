@@ -32,6 +32,22 @@ const add = text => { const p = document.createElement('p'); p.textContent = tex
 setTimeout(() => add('First late paragraph.'), 2500);
 setTimeout(() => add('Second late paragraph.'), 4000);
 </script>`;
+// Text kept in web components, as D2L Brightspace does: an open shadow root filled from a template
+// (its light-DOM copy is never shown), a link inside it, and a closed shadow root.
+const COMPONENTS = `<!doctype html><title>Assignment</title>
+<style>body{font:18px/1.6 serif;max-width:760px;margin:40px auto}</style>
+<h1>Assignment 2</h1>
+<html-block><template><p>${'Open shadow text that wraps over several lines of this paragraph. '.repeat(5)}</p>
+<p><a href="/second">Inner link</a></p></template></html-block>
+<closed-block></closed-block>
+<script>
+customElements.define('html-block', class extends HTMLElement {
+  connectedCallback() { this.attachShadow({ mode: 'open' }).append(this.querySelector('template').content.cloneNode(true)); }
+});
+customElements.define('closed-block', class extends HTMLElement {
+  connectedCallback() { this.attachShadow({ mode: 'closed' }).innerHTML = '<p>Closed shadow paragraph text.</p>'; }
+});
+</script>`;
 // A sign-in form in a frame from another site.
 const FRAMED = `<!doctype html><title>Framed</title><p>Checkout summary for the framed page.</p>
 <a id="buy" href="/second">Continue</a><iframe src="http://pay.test:8765/login" width="400" height="200"></iframe>`;
@@ -80,7 +96,7 @@ test.beforeAll(async () => {
   site = createServer((request, response) => {
     const pages: Record<string, [string, string | Buffer]> = {
       '/article': ['text/html', ARTICLE], '/second': ['text/html', SECOND], '/login': ['text/html', LOGIN],
-      '/mixed': ['text/html', MIXED], '/framed': ['text/html', FRAMED],
+      '/mixed': ['text/html', MIXED], '/framed': ['text/html', FRAMED], '/components': ['text/html', COMPONENTS],
       '/tone.wav': ['audio/wav', tone()],
     };
     const page = pages[new URL(request.url || '/', SITE).pathname];
@@ -225,6 +241,24 @@ test('a sign-in form inside a frame silences the page', async () => {
     found => found.some(r => r.kind === 'page' && r.url === 'http://example.test:8765/second'));
   expect(recent.some(r => r.kind === 'click')).toBe(false);
   expect(lines('blocks.jsonl').some(b => b.url === 'http://example.test:8765/framed')).toBe(false);
+});
+
+test('text inside web components is recorded with its lines, and links in them carry their address', async () => {
+  const page = await open(`${SITE}/components`);
+  const ours = (b: any) => b.url.endsWith('/components');
+  const found = await until(() => lines('blocks.jsonl').filter(ours).flatMap(b => b.blocks),
+    blocks => blocks.some((x: any) => x.text?.startsWith('Open shadow text')) && blocks.some((x: any) => x.text?.startsWith('Closed shadow')));
+  const shadowed = found.find((x: any) => x.text?.startsWith('Open shadow text'));
+  expect(shadowed, 'the open shadow root').toBeTruthy();
+  expect(shadowed.lines.length, 'with its lines').toBeGreaterThanOrEqual(2);
+  expect(shadowed.lines[0].text).toMatch(/^Open shadow text/);
+  expect(found.some((x: any) => x.text === 'Closed shadow paragraph text.'), 'the closed shadow root').toBe(true);
+  expect(found.filter((x: any) => x.text?.startsWith('Open shadow text')).length, 'not the template copy too').toBe(1);
+  await page.locator('html-block a').click();
+  await page.waitForURL(/\/second$/);
+  const click = await until(() => lines('browser.jsonl').find(r => r.kind === 'click' && ours(r)), Boolean);
+  expect(click).toMatchObject({ text: 'Inner link', href: `${SITE}/second` });
+  expect(click.x).not.toBeNull();
 });
 
 test('records wait in the queue while the receiver refuses them, and pausing stops recording', async () => {

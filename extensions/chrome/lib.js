@@ -84,3 +84,12 @@ export function gazeLabel(gaze = {}, accuracy = {}) {
     ? `, ${Math.round(accuracy.corrected_error_px)} px now (${accuracy.clicks} clicks)` : '';
   return `Tracking${rate}${face}${error}${live}`;
 }
+
+// The line being read now (/status `reading`), or why there is none (`line_decoding`).
+export function readingLabel(reading, decoding) {
+  if (reading) return `Line ${reading.line + 1} of ${reading.lines} (${Math.round(reading.p * 100)}%): ${reading.text.slice(0, 60)}`;
+  if (!decoding?.fixations) return 'No line now: no gaze on pages yet';
+  const page = decoding.page;
+  const text = page ? ` ${page.host}: ${page.with_lines} of ${page.blocks} text blocks have lines.` : '';
+  return `No line now. Last ${decoding.fixations} fixations: ${decoding.on_page} on a page, ${decoding.on_line} on a line.${text}`;
+}

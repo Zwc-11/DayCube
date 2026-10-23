@@ -20,6 +20,7 @@ cannot bring back what was paused or excluded.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import secrets
@@ -39,6 +40,7 @@ from ingest.vault import Vault, read_lines
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
 from .attention import Attention
+from .reading import LineBox
 from .records import Blocks, BrowserRecord, GazeBatch, View
 
 log = logging.getLogger("capture")
@@ -83,8 +85,9 @@ class Receiver:
         self._warm_texts()
 
     def _warm_texts(self) -> None:
-        """Reload block texts from today's and yesterday's snapshots: the extension sends a block's
-        text once per page load, so pages open across a restart still have it for dwells."""
+        """Reload block texts and lines from today's and yesterday's snapshots: the extension sends
+        a block's text and lines once per page load, so pages open across a restart still have them
+        for dwells and line decoding."""
         today = datetime.now(self.zone).date()
         for day in (today - timedelta(days=1), today):
             path = self.vault.root / "capture" / day.isoformat() / "blocks.jsonl"
@@ -101,6 +104,10 @@ class Receiver:
                         self.attention.remember(
                             record["doc"], block["id"], block["tag"], block["text"], block.get("words")
                         )
+                    if block.get("lines"):
+                        with contextlib.suppress(TypeError, ValueError, KeyError):
+                            lines = [LineBox(*line["rect"], line.get("text", "")) for line in block["lines"]]
+                            self.attention.layout(record["doc"], block["id"], lines)
 
     # -- state -------------------------------------------------------------------------------------
 
@@ -109,6 +116,7 @@ class Receiver:
         with self.lock:  # the click calibration is updated by gaze batches on other threads
             accuracy = a.health(datetime.now(UTC).timestamp())
             reading = a.reading
+            decoding = a.lines_health()
         if reading and datetime.now(UTC) - datetime.fromisoformat(reading["t"]) > timedelta(seconds=10):
             reading = None  # the line being read now, not the last one ever read
         gaze = self.gaze or {"tracking": False, "reason": "not running"}
@@ -125,6 +133,7 @@ class Receiver:
             "dwell": {"threshold_s": a.threshold_s, "factor": a.factor, "wpm": a.wpm},
             "accuracy": accuracy,
             "reading": reading,
+            "line_decoding": decoding,
             "capabilities": ["browser", "gaze", "attention"],
         }
 

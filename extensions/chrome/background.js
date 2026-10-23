@@ -411,13 +411,24 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
 
 // -- start ----------------------------------------------------------------------------------------
 
-chrome.runtime.onInstalled.addListener(async () => {
+// Pages open when the extension is installed or updated have no page script of this version (an
+// update cuts the old one off), so nothing would be recorded from them until they are reloaded.
+async function injectOpenTabs() {
+  const tabs = await chrome.tabs.query({ url: ['http://*/*', 'https://*/*'] }).catch(() => []);
+  await Promise.all(tabs.filter(tab => !tab.discarded).map(async tab => {
+    await chrome.scripting.executeScript({ target: { tabId: tab.id, allFrames: true }, files: ['guard.js'] }).catch(() => {});
+    await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] }).catch(() => {});
+  }));
+}
+
+chrome.runtime.onInstalled.addListener(async details => {
   // Only settings that are missing: an update keeps everything the user chose.
   const stored = await chrome.storage.local.get(Object.keys(DEFAULTS));
   await chrome.storage.local.set(Object.fromEntries(Object.entries(DEFAULTS).filter(([key]) => !(key in stored))));
   ensureAlarm();
   await refreshBadge();
   syncExclusions();
+  if (details.reason === 'install' || details.reason === 'update') await injectOpenTabs();
 });
 chrome.runtime.onStartup.addListener(() => { ensureAlarm(); focusSoon(); tick(); });
 chrome.storage.onChanged.addListener((changes, area) => {
