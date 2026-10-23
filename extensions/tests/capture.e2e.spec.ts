@@ -24,6 +24,17 @@ const ARTICLE = `<!doctype html><title>Checkpointing notes</title>
 <div style="height:2400px"></div><p id="far">Far below the fold.</p>`;
 const SECOND = '<!doctype html><title>Second page</title><h1>Second</h1><p id="body">The second page.</p>';
 const LOGIN = '<!doctype html><title>Sign in</title><p id="greeting">Welcome back</p><input type="password"><button id="go">Sign in</button>';
+// Content that keeps arriving, and a code editor whose typed text is drawn in plain elements.
+const MIXED = `<!doctype html><title>Mixed</title><p>Opening paragraph of the mixed page.</p>
+<div class="cm-editor"><div class="cm-content"><div class="cm-line">secret typed code</div></div></div>
+<div id="feed"></div><script>
+const add = text => { const p = document.createElement('p'); p.textContent = text; feed.append(p); };
+setTimeout(() => add('First late paragraph.'), 2500);
+setTimeout(() => add('Second late paragraph.'), 4000);
+</script>`;
+// A sign-in form in a frame from another site.
+const FRAMED = `<!doctype html><title>Framed</title><p>Checkout summary for the framed page.</p>
+<a id="buy" href="/second">Continue</a><iframe src="http://pay.test:8765/login" width="400" height="200"></iframe>`;
 
 /** Four seconds of silence, so the page has something real to play. */
 function tone(): Buffer {
@@ -69,6 +80,7 @@ test.beforeAll(async () => {
   site = createServer((request, response) => {
     const pages: Record<string, [string, string | Buffer]> = {
       '/article': ['text/html', ARTICLE], '/second': ['text/html', SECOND], '/login': ['text/html', LOGIN],
+      '/mixed': ['text/html', MIXED], '/framed': ['text/html', FRAMED],
       '/tone.wav': ['audio/wav', tone()],
     };
     const page = pages[new URL(request.url || '/', SITE).pathname];
@@ -86,12 +98,17 @@ test.beforeAll(async () => {
     headless: true,
     executablePath: process.env.DAYCUBE_CHROMIUM || undefined,
     viewport: { width: 1280, height: 800 },
-    args: [`--disable-extensions-except=${EXTENSION}`, `--load-extension=${EXTENSION}`, '--autoplay-policy=no-user-gesture-required'],
+    args: [
+      `--disable-extensions-except=${EXTENSION}`, `--load-extension=${EXTENSION}`, '--autoplay-policy=no-user-gesture-required',
+      '--host-resolver-rules=MAP *.test 127.0.0.1', // plain-http sites that are not localhost
+    ],
   });
   const ours = (w: Worker) => w.url().endsWith('/background.js');
   worker = context.serviceWorkers().find(ours) ?? (await context.waitForEvent('serviceworker', { predicate: ours }));
   // Extension APIs appear a moment after the worker itself.
   await until(() => worker.evaluate(() => typeof chrome.storage), type => type === 'object');
+  // Settings written before the install handler has stored its defaults would be overwritten.
+  await until(() => worker.evaluate(() => chrome.storage.local.get('epoch').then(s => s.epoch !== undefined)), ok => ok);
   await settings({ enabled: true, token, exclusions: ['localhost'], dwellAction: 'mark', paused: false, pauseSynced: true });
 });
 
@@ -175,6 +192,29 @@ test('excluded domains and password pages are left out', async () => {
   expect(recent.some(r => r.kind === 'click')).toBe(false); // the click on the sign-in page
   expect(recent.some(r => r.kind === 'page' && r.url === `${SITE}/login`)).toBe(true); // the address is still a page visit
   expect(lines('blocks.jsonl').some(b => b.url === `${SITE}/login`)).toBe(false);
+});
+
+test('plain-http pages report text as it arrives, but not what is typed in a code editor', async () => {
+  await open('http://example.test:8765/mixed');
+  const texts = () => lines('blocks.jsonl').filter(b => b.url.startsWith('http://example.test'))
+    .flatMap(b => b.blocks.map((x: any) => x.text).filter(Boolean));
+  const seen = await until(texts, found => found.includes('Second late paragraph.'), 12000);
+  expect(seen).toContain('Opening paragraph of the mixed page.');
+  expect(seen).toContain('First late paragraph.');
+  expect(seen).toContain('Second late paragraph.'); // arrived inside the snapshot gap, still captured
+  expect(seen.join(' ')).not.toContain('secret typed code');
+});
+
+test('a sign-in form inside a frame silences the page', async () => {
+  const before = lines('browser.jsonl').length;
+  const page = await open('http://example.test:8765/framed');
+  await page.waitForTimeout(2500);
+  await page.click('#buy');
+  await page.waitForURL('http://example.test:8765/second');
+  const recent = await until(() => lines('browser.jsonl').slice(before),
+    found => found.some(r => r.kind === 'page' && r.url === 'http://example.test:8765/second'));
+  expect(recent.some(r => r.kind === 'click')).toBe(false);
+  expect(lines('blocks.jsonl').some(b => b.url === 'http://example.test:8765/framed')).toBe(false);
 });
 
 test('records wait in the queue while the receiver refuses them, and pausing stops recording', async () => {

@@ -3,7 +3,9 @@
 Frames are processed in memory and dropped; only fixations leave this process. The webcam is
 released, and nothing is recorded, while:
 
-- the receiver is paused (from the extension's toolbar button or shortcut) or unreachable;
+- the receiver is paused (from the extension's toolbar button or shortcut), or has not confirmed
+  in the last few seconds that it is running and not paused (so a start while paused, or a
+  receiver that stops answering, never turns the camera on);
 - the session is locked;
 - another app is using the webcam (a video call);
 - you are away: no keyboard or mouse input for 5 minutes and no face for the last minute.
@@ -29,6 +31,7 @@ AWAY_IDLE_S = 300
 AWAY_NO_FACE_S = 60
 BACK_IDLE_S = 5
 OFFLINE_EXIT_S = 120  # a supervised tracker outlives a stopped receiver by this much
+CONFIRM_S = 5.0  # the camera stays on only this long after the receiver last said "recording"
 CHECK_EVERY_S = 2.0
 REPORT_EVERY_S = 1.0
 
@@ -73,6 +76,7 @@ class Tracker:
         self.hold: str | None = None  # why the camera is off on purpose
         self.problem: str | None = None  # why it is off against our wishes
         self.paused = False
+        self.confirmed_at = -1e9  # when the receiver last accepted a report (running, not paused)
         self.failures = 0
         self.retry_at = 0.0
         self.checked_at = -1e9
@@ -106,7 +110,7 @@ class Tracker:
                 log.warning("a new calibration was saved; restart the tracker to use it")
         if self.paused:
             return "paused"
-        if self.offline_since is not None and now - self.offline_since > 10:
+        if now - self.confirmed_at > CONFIRM_S:
             return "receiver not running"
         if self.system.locked():
             return "locked"
@@ -133,9 +137,12 @@ class Tracker:
             return
         self.reported_at = now
         result = self.receiver.send(self.state())
-        if (result == "paused") != self.paused:
+        if result in ("ok", "paused"):  # only an answer from the receiver changes the pause state
+            if result == "ok":
+                self.confirmed_at = now
+            if (result == "paused") != self.paused or self.hold == "receiver not running":
+                self.checked_at = -1e9  # act on a pause or resume at the next frame, not the next check
             self.paused = result == "paused"
-            self.checked_at = -1e9  # act on a pause or resume at the next frame, not the next check
         if result == "offline":
             self.offline_since = self.offline_since or now
             if self.supervised and now - self.offline_since > OFFLINE_EXIT_S:

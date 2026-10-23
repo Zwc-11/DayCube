@@ -34,9 +34,10 @@
     <fieldset>
       <legend>When your eyes stay on one passage</legend>
       <p class="hint">A dwell is fixation time of at least 8 seconds and twice the time the passage takes to read. Every dwell is recorded whichever you choose.</p>
-      <label class="choice"><input type="radio" name="dwell" value="mark"> Mark the passage with a bar beside it</label>
+      <label class="choice"><input type="radio" name="dwell" value="none"> Only record it</label>
       <label class="choice"><input type="radio" name="dwell" value="notify"> Show a notification</label>
-      <label class="choice"><input type="radio" name="dwell" value="none"> Do nothing</label>
+      <label class="choice"><input type="radio" name="dwell" value="mark"> Mark the passage with a bar beside it</label>
+      <p class="hint">The bar is added to the page itself, so the site's own scripts can see it and which passage it marks.</p>
     </fieldset>
 
     <label class="choice toggle"><input id="enabled" type="checkbox"> Record my browsing</label>
@@ -55,9 +56,10 @@
     </ul>
     <h2>What is not</h2>
     <ul>
-      <li>Private windows, excluded domains, and any page while it shows a password field.</li>
-      <li>Anything you type into fields or editable areas.</li>
-      <li>Anything while paused. Click the toolbar button or press <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd> to pause or resume; this also stops the eye tracker and releases the webcam.</li>
+      <li>Private windows and excluded domains (links to them are recorded without their address).</li>
+      <li>The text, clicks, selections and media of a page while it or a frame in it shows a password field. Its address and title are still recorded.</li>
+      <li>Anything you type, in fields, editable areas or code editors.</li>
+      <li>Anything while paused. Click the toolbar button or press <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd> to pause or resume; this also stops the eye tracker and releases the webcam, even when browser recording is off.</li>
     </ul>
   </section>
 </main>

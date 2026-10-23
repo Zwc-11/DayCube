@@ -25,6 +25,7 @@ def chromium_time(iso: str) -> int:
 
 def history_file(path: Path, visits: list[tuple]) -> Path:
     """A History file with Chromium's columns: (id, url, title, time, transition, duration s, from)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
     with closing(sqlite3.connect(path)) as db, db:
         db.executescript(
             "CREATE TABLE urls (id INTEGER PRIMARY KEY, url TEXT, title TEXT);"
@@ -42,27 +43,64 @@ def history_file(path: Path, visits: list[tuple]) -> Path:
 
 
 def test_history_import_keeps_top_level_visits_by_local_day(vault: Vault, tmp_path: Path) -> None:
-    history = history_file(tmp_path / "History", [
+    history = history_file(tmp_path / "Opera Stable" / "History", [
         (1, "https://arxiv.org/abs/2406.01234", "A paper", "2026-10-21T03:30:00+00:00", 0x30000001, 42.5, 0),
         (2, "https://arxiv.org/pdf/2406.01234", "PDF", "2026-10-21T03:31:00+00:00", 0x00000000, 0, 1),
         (3, "https://ads.example.com/frame", "", "2026-10-21T03:31:01+00:00", 0x00000003, 0, 0),
         (4, "https://www.mybank.com/login", "Bank", "2026-10-21T15:00:00+00:00", 0x02000001, 0, 0),
         (5, "chrome://settings/", "Settings", "2026-10-21T15:01:00+00:00", 0x00000001, 0, 0),
         (6, "https://news.ycombinator.com/", "HN", "2026-10-21T16:00:00+00:00", 0x80000008, 3, 0),
+        (7, "https://example.org/reset", "Reset your password", "2026-10-21T16:05:00+00:00", 0x00000000, 0, 0),
     ])  # fmt: skip
-    exclusions = Exclusions(domains=["mybank.com"])
-    assert import_history(vault, TORONTO, history, exclusions=exclusions) == {"2026-10-20": 2, "2026-10-21": 1}
+    exclusions = Exclusions(domains=["mybank.com"], title_patterns=["(?i)password"])
+    assert import_history(vault, TORONTO, [history], exclusions=exclusions) == {"2026-10-20": 2, "2026-10-21": 1}
     evening = [json.loads(line) for line in (vault.root / "capture/2026-10-20/history.jsonl").open()]
-    assert [(v["id"], v["transition"], v["qualifiers"], v["duration_s"], v["from"]) for v in evening] == [
-        ("visit-1", "typed", ["chain_start", "chain_end"], 42.5, None),
-        ("visit-2", "link", [], None, "visit-1"),
-    ]
-    assert evening[0]["t"] == "2026-10-20T23:30:00-04:00"  # 03:30 UTC is the previous evening in Toronto
+    first, second = evening
+    assert (first["transition"], first["qualifiers"], first["duration_s"], first["from"]) == (
+        "typed", ["chain_start", "chain_end"], 42.5, None
+    )  # fmt: skip
+    assert (second["transition"], second["from"], second["source"]) == ("link", first["id"], "Opera Stable")
+    assert first["t"] == "2026-10-20T23:30:00-04:00"  # 03:30 UTC is the previous evening in Toronto
     later = json.loads((vault.root / "capture/2026-10-21/history.jsonl").read_text())
     assert (later["transition"], later["qualifiers"]) == ("reload", ["server_redirect"])
     # Importing again rewrites those days rather than appending duplicates.
-    assert import_history(vault, TORONTO, history, since=date(2026, 10, 21), exclusions=exclusions) == {"2026-10-21": 1}
+    again = import_history(vault, TORONTO, [history], since=date(2026, 10, 21), exclusions=exclusions)
+    assert again == {"2026-10-21": 1}
     assert len((vault.root / "capture/2026-10-20/history.jsonl").read_text().splitlines()) == 2
+
+
+def test_history_import_leaves_out_paused_and_excluded_visits_and_follows_deletions(
+    vault: Vault, tmp_path: Path
+) -> None:
+    history = history_file(tmp_path / "History", [
+        (1, "https://a.example/", "A", "2026-10-21T14:00:00+00:00", 0, 0, 0),
+        (2, "https://b.example/", "B", "2026-10-21T15:30:00+00:00", 0, 0, 0),  # during the pause
+        (3, "https://c.example/", "C", "2026-10-22T14:00:00+00:00", 0, 0, 0),
+    ])  # fmt: skip
+    vault.append_lines(vault.root / "capture/pauses.jsonl", [
+        {"t": "2026-10-21T11:00:00-04:00", "paused": True},
+        {"t": "2026-10-21T12:00:00-04:00", "paused": False},
+    ])  # fmt: skip
+    assert import_history(vault, TORONTO, [history]) == {"2026-10-21": 1, "2026-10-22": 1}
+    assert "b.example" not in (vault.root / "capture/2026-10-21/history.jsonl").read_text()
+    # The extension now excludes c.example: its only day loses its file on the next import.
+    vault.write_json(vault.root / "capture/exclusions.json", {"domains": ["c.example"]})
+    exclusions = Exclusions.for_vault(vault, path=tmp_path / "none.yaml")
+    assert import_history(vault, TORONTO, [history], exclusions=exclusions) == {"2026-10-21": 1, "2026-10-22": 0}
+    assert not (vault.root / "capture/2026-10-22/history.jsonl").exists()
+
+
+def test_two_browsers_on_one_day_are_merged_not_overwritten(vault: Vault, tmp_path: Path) -> None:
+    stable = history_file(
+        tmp_path / "Opera Stable" / "History", [(1, "https://a.example/", "A", "2026-10-21T14:00:00+00:00", 0, 0, 0)]
+    )
+    gx = history_file(
+        tmp_path / "Opera GX Stable" / "History", [(1, "https://b.example/", "B", "2026-10-21T15:00:00+00:00", 0, 0, 0)]
+    )
+    assert import_history(vault, TORONTO, [stable, gx]) == {"2026-10-21": 2}
+    visits = [json.loads(line) for line in (vault.root / "capture/2026-10-21/history.jsonl").open()]
+    assert [v["source"] for v in visits] == ["Opera Stable", "Opera GX Stable"]
+    assert len({v["id"] for v in visits}) == 2  # the same visit number in two files is two visits
 
 
 class FakeRegistry(SimpleNamespace):
@@ -139,6 +177,15 @@ def test_the_supervisor_waits_for_calibration_then_runs_and_stops_the_tracker(
     supervisor.stop()
     supervisor.join(10)
     assert supervisor.process.poll() is not None and not supervisor.is_alive()
+
+
+def test_a_hook_path_with_spaces_survives_on_windows(monkeypatch: pytest.MonkeyPatch) -> None:
+    import capture.__main__ as cli
+
+    monkeypatch.setattr(cli.os, "name", "nt")
+    assert cli._split(r'"C:\Program Files\Hook\hook.exe" --flag "two words"') == [
+        r"C:\Program Files\Hook\hook.exe", "--flag", "two words"
+    ]  # fmt: skip
 
 
 def test_old_capture_command_line_still_starts_the_receiver(monkeypatch: pytest.MonkeyPatch) -> None:

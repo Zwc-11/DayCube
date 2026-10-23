@@ -42,6 +42,19 @@ export function allowed(address, exclusions = []) {
   return !exclusions.some(domain => host === domain || host.endsWith(`.${domain}`));
 }
 
+/** Whether two addresses differ only in the fragment (#section), i.e. are the same page. */
+export function sameDocument(a, b) {
+  if (!a || !b) return false;
+  try {
+    const [x, y] = [new URL(a), new URL(b)];
+    x.hash = '';
+    y.hash = '';
+    return x.href === y.href;
+  } catch {
+    return false;
+  }
+}
+
 export function normalizeDomains(text) {
   return [...new Set(text.split(/[\s,]+/).map(value => value.trim().toLowerCase()
     .replace(/^[a-z]+:\/\//, '').replace(/[/:].*$/, '').replace(/^\*?\./, '')).filter(Boolean))];

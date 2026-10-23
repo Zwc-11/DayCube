@@ -14,6 +14,7 @@ from . import calibrate as calibration
 from .calibrate import usable_limit
 
 NOT_CALIBRATED = 3  # the capture service's supervisor waits for a new calibration on this code
+OTHER_MONITOR = 4  # ... and retries every minute on this one (a laptop undocked, a monitor off)
 DEFAULT_VAULT = Path(os.environ.get("DAYCUBE_VAULT_ROOT") or Path(__file__).resolve().parents[3] / "vault")
 
 
@@ -78,8 +79,8 @@ def do_track(args: argparse.Namespace) -> None:
     from .track import Tracker
 
     if list(primary_monitor()) != result["monitor"]:
-        log.error("the primary monitor is now %s, calibrated on %s: recalibrate", primary_monitor(), result["monitor"])
-        raise SystemExit(NOT_CALIBRATED)
+        log.error("the primary monitor is now %s, calibrated on %s", primary_monitor(), result["monitor"])
+        raise SystemExit(OTHER_MONITOR)
     estimator = GazeEstimator(model_name=result["model"])
     estimator.load_model(args.vault / "calibration" / result["model_file"])
     receiver = Receiver(args.receiver, args.vault / ".token")

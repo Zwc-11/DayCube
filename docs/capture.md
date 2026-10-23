@@ -64,24 +64,32 @@ tracker with the new calibration.
 
 | To | Do |
 | --- | --- |
-| Pause everything, including the webcam | Click the toolbar button or press `Alt+Shift+D`. The badge reads `II`. The webcam is released within about a second |
+| Pause everything, including the webcam | Click the toolbar button or press `Alt+Shift+D` (works once the token is saved, even with browser recording off). The badge reads `II`. The webcam is released within about a second |
 | Resume | The same again. The badge reads `REC` |
 | See whether it works | The extension's options page, **Right now**; or `http://127.0.0.1:7700/status` |
 | Stop starting at sign-in | `python -m capture uninstall-autostart`, or turn it off in Task Manager > Startup apps |
 | Read the logs | `vault\logs\capture.log` and `vault\logs\gaze.log` |
 
 A pause is remembered across restarts: the receiver keeps it in `vault/capture/paused` until you
-resume. A pause made while the receiver was down is sent to it when it comes back.
+resume, and logs every pause and resume in `vault/capture/pauses.jsonl`. A pause made while the
+receiver was unreachable is retried every 3 seconds for a minute, then every 30 seconds while
+Opera is open. If Opera closes before the receiver hears of it, the pause applies at the next
+start of Opera with the receiver running; until then the eye tracker keeps recording.
 
-The webcam is also released, and nothing is recorded, while the session is locked, while another
-app uses the camera (a video call), and when you are away: no keyboard or mouse input for 5
-minutes and no face for the last minute. Reading without touching anything keeps tracking.
+The webcam turns on only after the receiver has confirmed that it is running and not paused,
+and turns off within about 5 seconds of the receiver stopping or a pause. It is also released,
+and nothing is recorded, while the session is locked, while another app uses the camera (a
+video call), and when you are away: no keyboard or mouse input for 5 minutes and no face for
+the last minute. Reading without touching anything keeps tracking. When the primary monitor is
+not the calibrated one (a laptop undocked, a monitor off), tracking stops and is retried every
+minute.
 
 ## Dwells: when your eyes stay too long
 
 A *dwell* is a run of fixations on one block of text (a paragraph, heading, list item or cell).
 Glances away of up to 1 second do not end it; a gap in gaze of 2 seconds, a tab switch or a
-navigation does. A run becomes a dwell when its fixation time reaches both:
+navigation to another page does (an address change within the page, such as a section link,
+does not). A run becomes a dwell when its fixation time reaches both:
 
 - 8 seconds (`--dwell-seconds`), and
 - twice the time the block takes to read at 238 words a minute (`--dwell-factor`), the average
@@ -96,9 +104,9 @@ the page, the block's text, fixation time and reading time. What happens at `sta
 
 | Action | Where to set it |
 | --- | --- |
-| A thin bar beside the paragraph, fading after 4 s (default) | Extension options |
+| Only record it (default) | Extension options |
 | A notification with the passage | Extension options |
-| Nothing (still recorded) | Extension options |
+| A thin bar beside the paragraph, fading after 4 s. It is an element added to the page, so the site's scripts can see it | Extension options |
 | Any program: it receives the dwell record as JSON on stdin | `python -m capture install-autostart --on-dwell "C:\path\to\program.exe --flag"` |
 
 The bar and the notification arrive with the page's next heartbeat, so up to 5 seconds after
@@ -110,21 +118,34 @@ the dwell is detected. The program runs at once; one runs at a time.
 
 | File | Records |
 | --- | --- |
-| `browser.jsonl` | `page` (address, how it was reached: link, typed, reload, form submit, back/forward), `title`, `focus` (tab in front; none when the browser loses focus; no address for an excluded page), `idle` (active, idle after 60 s, locked), `search` (engine and query from result-page addresses), `click` (link address and label), `selection` (selected or copied text), `media` (play, pause, end, with position) |
-| `blocks.jsonl` | The text blocks on screen (up to 150) with their rectangles, and where the viewport is on the monitor. A block's text is sent once per page load; later snapshots carry only positions |
+| `browser.jsonl` | `page` (address, how it was reached: link, typed, reload, form submit, back/forward; address changes that only move to a section are left out), `title`, `focus` (tab in front; none when the browser loses focus; no address for an excluded page), `idle` (active, idle after 60 s, locked), `search` (engine and query from result-page addresses), `click` (label, and the link address unless it points to an excluded domain), `selection` (selected or copied text), `media` (play, pause, end, with position) |
+| `blocks.jsonl` | The text blocks on screen (up to 150) with their rectangles, and where the viewport is on the monitor. A block's text is sent once per page load, and again if queued text was dropped; later snapshots carry only positions |
 | `gaze.jsonl` | Fixations as fractions of the monitor, with the page point and block each landed on |
 | `attention.jsonl` | Dwell `start` and `end` records |
 | `history.jsonl` | Visits imported from Opera's history |
 
-Not recorded: private windows; domains excluded in the extension options (subdomains included);
-anything on a page while it shows a password field; anything typed into fields or editable
-areas; anything while paused. `import-history` skips the domains and URL patterns in
-`services/capture-win/config/exclude.yaml`.
+Not recorded:
+
+- private windows, and domains excluded in the extension options (subdomains included);
+- the text, clicks, selections and media of a page while it, a frame in it (an embedded sign-in
+  or payment form) or an open shadow root shows a password field. The page's address and title
+  are still recorded;
+- anything typed: fields, editable areas, and code editors that draw typed text in plain
+  elements (Monaco, CodeMirror, Ace);
+- anything while paused.
+
+`import-history` leaves out the same things the extension would: the extension's excluded
+domains (mirrored to `vault/capture/exclusions.json`), the domains, URL patterns and title
+patterns in `services/capture-win/config/exclude.yaml`, and visits made while recording was
+paused. It merges Opera Stable and Opera GX, and each run mirrors the browser's current history:
+a day whose visits are all gone loses its file.
 
 Every record has an id. The extension keeps records in its storage until the receiver
-acknowledges them (up to 5,000; the oldest text snapshots are dropped first), and the receiver
-ignores an id it has already stored, so a resend after a lost reply is stored once per receiver
-run. Records older than 24 hours are refused.
+acknowledges them (up to 5,000; the oldest text snapshots are dropped first). The receiver
+ignores an id it has already stored, and stores an id only once its record is written, so a
+resend after a lost reply or a failed write is stored once per receiver run. Records older than
+24 hours are refused. After a restart the receiver reloads block texts from today's and
+yesterday's snapshots, so dwells on pages already open still know their text.
 
 ## How gaze is placed on a page
 

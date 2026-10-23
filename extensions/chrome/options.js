@@ -1,7 +1,7 @@
 import { RECEIVER, normalizeDomains } from './lib.js';
 
 const $ = id => document.getElementById(id);
-const DEFAULTS = { token: '', enabled: false, exclusions: ['localhost', '127.0.0.1'], dwellAction: 'mark', paused: false };
+const DEFAULTS = { token: '', enabled: false, exclusions: ['localhost', '127.0.0.1'], dwellAction: 'none', paused: false };
 
 async function load() {
   const s = await chrome.storage.local.get(DEFAULTS);
@@ -20,7 +20,7 @@ $('settings').addEventListener('submit', async event => {
   }
   await chrome.storage.local.set({
     token, enabled: $('enabled').checked, exclusions: normalizeDomains($('exclusions').value),
-    dwellAction: document.querySelector('input[name=dwell]:checked')?.value || 'mark',
+    dwellAction: document.querySelector('input[name=dwell]:checked')?.value || 'none',
   });
   $('saved').textContent = $('enabled').checked ? 'Saved. Recording is on.' : 'Saved. Recording is off.';
   await load();

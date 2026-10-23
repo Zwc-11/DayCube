@@ -38,3 +38,12 @@ test('the offline queue drops old text snapshots before anything else', () => {
   assert.deepEqual(trim(queue, 2).map(item => item.id), [3, 5]);
   assert.equal(trim(queue, 10), queue);
 });
+
+test('fragment-only address changes are the same page', async () => {
+  const { sameDocument } = await import('../chrome/lib.js');
+  assert.equal(sameDocument('https://docs.example/guide#intro', 'https://docs.example/guide#setup'), true);
+  assert.equal(sameDocument('https://docs.example/guide', 'https://docs.example/guide#setup'), true);
+  assert.equal(sameDocument('https://docs.example/guide', 'https://docs.example/guide/2'), false);
+  assert.equal(sameDocument('https://docs.example/?q=a', 'https://docs.example/?q=b'), false);
+  assert.equal(sameDocument(undefined, 'https://docs.example/'), false);
+});
