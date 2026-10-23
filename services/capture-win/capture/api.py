@@ -117,8 +117,11 @@ class Receiver:
             accuracy = a.health(datetime.now(UTC).timestamp())
             reading = a.reading
             decoding = a.lines_health()
+            point = a.gaze_point
         if reading and datetime.now(UTC) - datetime.fromisoformat(reading["t"]) > timedelta(seconds=10):
             reading = None  # the line being read now, not the last one ever read
+        if point and datetime.now(UTC) - datetime.fromisoformat(point["t"]) > timedelta(seconds=10):
+            point = None
         gaze = self.gaze or {"tracking": False, "reason": "not running"}
         if self.gaze and datetime.now(UTC) - datetime.fromisoformat(self.gaze["at"]) > GAZE_SILENT:
             gaze = {**self.gaze, "tracking": False, "reason": "no reports"}
@@ -134,14 +137,16 @@ class Receiver:
             "accuracy": accuracy,
             "reading": reading,
             "line_decoding": decoding,
+            "gaze_point": point,  # the last fixation placed on a page: viewport CSS px, with that page's scroll
             "capabilities": ["browser", "gaze", "attention"],
         }
 
     def set_paused(self, paused: bool) -> None:
         with self.lock:
             changed = paused != self.paused
-            ending = self.attention.end() if paused and changed else []
-            self.attention.front = None if paused else self.attention.front
+            ending = self.attention.clear() if paused and changed else []
+            if paused:
+                self.attention.clear()  # nothing on screen is placed while paused
             self.paused = paused  # the pause holds even if a write below fails
             if changed:
                 self.gaze = None  # a resume needs a fresh tracker report, not pre-pause telemetry

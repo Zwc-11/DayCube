@@ -308,6 +308,11 @@ def test_the_doctor_judges_capture_from_what_it_recorded(vault: Vault, monkeypat
         ({"fixations": 300, "on_page": 12, "on_line": 0, "page": page}, doctor.WARN, "not landing on pages"),
         ({"fixations": 300, "on_page": 280, "on_line": 0, "page": page}, doctor.WARN, "sent no lines"),
         (
+            {"fixations": 95, "on_page": 7, "on_line": 4, "no_page": 58, "outside": 30, "page": page},
+            doctor.WARN,
+            "58 with no browser page on screen",
+        ),
+        (
             {"fixations": 300, "on_page": 280, "on_line": 250, "page": page | {"with_lines": 14}},
             doctor.PASS,
             "250 on a line",

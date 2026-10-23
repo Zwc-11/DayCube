@@ -219,12 +219,17 @@ test('reading a paragraph is followed line by line and recorded', async () => {
   await worker.evaluate(() => chrome.storage.local.set({ showLine: true }));
   const seen = new Set<string>();
   const marked = new Set<number>();
+  const rings: number[] = []; // page y of the gaze ring
   let reading = true;
   const watch = (async () => {
     while (reading) {
       const now = await fetch(`${RECEIVER}/status`).then(r => r.json(), () => null);
       if (now?.reading?.block === block.id) seen.add(`${now.reading.line}`);
-      const top = await page.evaluate(() => (document.querySelector('[data-daycube="line"]') as HTMLElement | null)?.style.top);
+      const [top, ring] = await page.evaluate(() => [
+        (document.querySelector('[data-daycube="line"]') as HTMLElement | null)?.style.top,
+        (document.querySelector('[data-daycube="gaze"]') as HTMLElement | null)?.style.top,
+      ]);
+      if (ring) rings.push(parseFloat(ring));
       const at = block.lines.findIndex((l: any) => top && Math.abs(parseFloat(top) - l.rect[1]) < 1);
       if (at >= 0) marked.add(at);
       await new Promise(resolve => setTimeout(resolve, 300));
@@ -235,7 +240,14 @@ test('reading a paragraph is followed line by line and recorded', async () => {
   await watch;
   expect(seen.size, '/status followed the eyes down the paragraph').toBeGreaterThanOrEqual(block.lines.length - 1);
   expect(marked.size, 'the marker moved down the lines').toBeGreaterThanOrEqual(block.lines.length - 1);
+  // The ring shows where gaze was placed: around the paragraph, within the tracker's error.
+  const top = block.lines[0].rect[1];
+  const bottom = block.lines.at(-1).rect[1] + block.lines.at(-1).rect[3];
+  const near = rings.filter(y => y > top - 120 && y < bottom + 120);
+  expect(rings.length, 'the gaze ring showed').toBeGreaterThan(10);
+  expect(near.length / rings.length, 'mostly around the paragraph').toBeGreaterThan(0.8);
   await expect(page.locator('[data-daycube="line"]'), 'and goes once the eyes stop').toHaveCount(0, { timeout: 6000 });
+  await expect(page.locator('[data-daycube="gaze"]')).toHaveCount(0, { timeout: 6000 });
   await worker.evaluate(() => chrome.storage.local.set({ showLine: false }));
 
   // Each fixation in gaze.jsonl carries the decoded line: compare with the line really read.
@@ -251,7 +263,7 @@ test('reading a paragraph is followed line by line and recorded', async () => {
     total += t1 - t0;
     if (f.line?.block === block.id && f.line.line === look[2]) right += t1 - t0;
   }
-  console.log(`decoded line: ${(100 * right / total).toFixed(0)}% of ${total.toFixed(1)} s of reading; /status showed lines ${[...seen].sort()}; marker on lines ${[...marked].sort()}`);
+  console.log(`decoded line: ${(100 * right / total).toFixed(0)}% of ${total.toFixed(1)} s of reading; /status showed lines ${[...seen].sort()}; marker on lines ${[...marked].sort()}; ${rings.length} ring positions`);
   expect(total, 'fixations arrived while reading').toBeGreaterThan(5);
   expect(right / total, 'reading time on the right line').toBeGreaterThan(0.75);
 

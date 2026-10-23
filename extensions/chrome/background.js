@@ -346,14 +346,14 @@ function guard(message, sender) {
   }
 }
 
-// Whether the page should show the line being read (the ``showLine`` option), and the line the
-// receiver's decoder has the eyes on.
+// Whether the page should show where the eyes are and the line being read (the ``showLine``
+// option), the last fixation the receiver placed, and the line its decoder has the eyes on.
 async function readingFor(tab) {
   const s = await settings();
   const show = Boolean(s.showLine) && recording(s) && !tab.incognito && allowed(tab.url, s.exclusions);
-  if (!show || !tab.active || guarded(tab.id)) return { show, reading: null };
+  if (!show || !tab.active || guarded(tab.id)) return { show, reading: null, point: null };
   const status = await (await fetch(`${RECEIVER}/status`)).json();
-  return { show, reading: status.reading ?? null };
+  return { show, reading: status.reading ?? null, point: status.gaze_point ?? null };
 }
 
 async function fromPage(message, tab) {
@@ -364,7 +364,13 @@ async function fromPage(message, tab) {
   switch (message?.kind) {
     case 'view':
     case 'blocks': {
-      if (!tab.active || !(await chrome.windows.get(tab.windowId)).focused) return false;
+      if (message.kind === 'view' && message.hidden === true) {
+        enqueue(record('view', { ...base, doc: clip(message.doc, 40), geometry: message.geometry, hidden: true }));
+        return true;
+      }
+      // The tab a window shows, whether or not the window has focus: a page read beside another
+      // app or another window is on screen too. A minimized window shows nothing.
+      if (!tab.active || (await chrome.windows.get(tab.windowId)).state === 'minimized') return false;
       const extra = message.kind === 'blocks' ? { blocks: message.blocks } : {};
       enqueue(record(message.kind, { ...base, doc: clip(message.doc, 40), geometry: message.geometry, ...extra }));
       return true;
@@ -400,7 +406,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
   }
   if (sender.frameId !== 0) return false;
   if (message?.kind === 'reading') {
-    readingFor(sender.tab).then(respond, () => respond({ show: false, reading: null }));
+    readingFor(sender.tab).then(respond, () => respond({ show: false, reading: null, point: null }));
     return true;
   }
   // The reply tells the page whether its record was taken, and the text epoch (see dropped()).

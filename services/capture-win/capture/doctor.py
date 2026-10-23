@@ -94,14 +94,19 @@ def checks(status: dict | None, vault: Path, zone: ZoneInfo, now: datetime, auto
     seen = decoding.get("fixations", 0)
     if gaze.get("tracking") and seen >= 30:
         on_page, on_line, page = decoding.get("on_page", 0), decoding.get("on_line", 0), decoding.get("page")
+        reasons = {
+            "outside": "outside the browser page (looking at another app, or the calibration is off)",
+            "no_page": "with no browser page on screen (reload the extension, then the tab)",
+            "stale": "while the page was not reporting (reload the extension, then the tab)",
+            "other_monitor": "with the page on another monitor (gaze is calibrated on the primary one)",
+        }
+        missed = sorted(((decoding.get(k, 0), why) for k, why in reasons.items() if decoding.get(k, 0)), reverse=True)
         detail = f"last {seen} fixations: {on_page} on a page, {on_line} on a line"
         if page:
             detail += f"; {page['host']}: {page['with_lines']} of {page['blocks']} text blocks with lines"
         if on_page < 0.2 * seen:
-            verdict, detail = (
-                WARN,
-                detail + ": gaze is not landing on pages (is the browser on the calibrated monitor?)",
-            )
+            why = f"; {missed[0][0]} {missed[0][1]}" if missed else ""
+            verdict, detail = WARN, detail + ": gaze is not landing on pages" + why
         elif page and page["blocks"] and not page["with_lines"]:
             verdict, detail = WARN, detail + ": the page sent no lines (reload the extension, then the tab)"
         elif on_line < 0.3 * on_page:

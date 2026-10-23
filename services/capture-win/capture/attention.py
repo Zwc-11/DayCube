@@ -1,8 +1,10 @@
 """Live attention: which text block the eyes are on, and when they stay on one too long.
 
-The extension reports the page in front: heartbeats and snapshots of the visible text blocks,
-with where the viewport sits on the monitor. The eye tracker reports fixations as fractions of
-the same monitor. Each fixation is placed on the page.
+The extension reports the page each browser window shows, whether or not the window has focus
+(a page read beside a terminal is on screen too): heartbeats and snapshots of the visible text
+blocks, with where the viewport sits on the monitor, and a notice when the page leaves the
+screen. The eye tracker reports fixations as fractions of the same monitor. Each fixation is
+placed on the page whose window it falls in.
 
 Which block a fixation belongs to is decided by a filter, not by the rectangle under it. Webcam
 gaze is off by more than the gap between two paragraphs: a 69 px median error on a 2560 px monitor
@@ -98,6 +100,11 @@ class Front:
     blocks: list[Block]
     blocks_scroll: float  # scroll position when the blocks were measured
     seen: datetime
+    window: int | None = None  # the browser window showing it
+
+
+# Why a fixation was or was not placed on a page, for /status and the doctor.
+NO_PAGE, STALE, OTHER_MONITOR, OUTSIDE, ON_PAGE, ON_LINE = range(6)
 
 
 @dataclass
@@ -167,7 +174,11 @@ class Attention:
         self.base_words, self.evidence, self.keep, self.resolve = base_words, evidence, keep, resolve
         self.restless = restless
         self.anchors = anchors or Anchors()
+        # The page each browser window shows (a window that is not focused still shows its page,
+        # beside another app or another window), and the one gaze was last placed on.
+        self.fronts: dict[int | None, Front] = {}
         self.front: Front | None = None
+        self.focused: int | None = None  # the focused browser window; None when another app has focus
         self.monitor: tuple[int, int] | None = None
         self.calibrated_px: float | None = None
         self.run: Run | None = None
@@ -183,18 +194,23 @@ class Attention:
         self.visit: Visit | None = None  # the block the line decoder has the eyes on, line by line
         self.pending: Visit | None = None  # another block the decoder moved to, until it holds
         self.reading: dict | None = None  # the line being read now, for /status
-        # Where the last fixations went (0 off any page, 1 on the page, 2 on a line decoded), and the
-        # text the last page sent: why no line is shown, for /status and the doctor.
+        # Where the last fixations went (NO_PAGE ... ON_LINE), the text the last page sent, and the
+        # last point placed on a page: why no line is shown, and where the eyes are, for /status.
         self.outcomes: deque[int] = deque(maxlen=300)
         self.last_page: dict | None = None
+        self.gaze_point: dict | None = None
 
     # -- the page in front -------------------------------------------------------------------------
 
     def browser(self, record: Record) -> list[dict]:
         """Follow the browser; returns dwell records that the change ended."""
         kind = getattr(record, "kind", None)
+        if isinstance(record, View) and record.hidden:
+            old = self.fronts.get(record.window)
+            return self._leave(old) if old is not None and old.doc == record.doc else []
         if isinstance(record, Blocks | View):
-            ended = self.end() + self.end_visit() if self.front and self.front.doc != record.doc else []
+            old = self.fronts.get(record.window)
+            ended = self._leave(old) if old is not None and old.doc != record.doc else []
             if isinstance(record, Blocks):
                 for block in record.blocks:
                     if block.text is not None:
@@ -202,13 +218,20 @@ class Attention:
                     if block.lines is not None:
                         ended += self.layout(record.doc, block.id, [LineBox(*x.rect, x.text) for x in block.lines])
                 blocks, measured = record.blocks, record.geometry.scroll_y
-            elif self.front and self.front.doc == record.doc:
-                blocks, measured = self.front.blocks, self.front.blocks_scroll
+            elif old is not None and old.doc == record.doc:
+                blocks, measured = old.blocks, old.blocks_scroll
             else:
                 blocks, measured = [], record.geometry.scroll_y
-            self.front = Front(
-                record.tab, record.url, record.title, record.doc, record.geometry, blocks, measured, record.t
-            )
+            front = Front(
+                record.tab, record.url, record.title, record.doc, record.geometry, blocks, measured, record.t,
+                record.window,
+            )  # fmt: skip
+            for window, other in list(self.fronts.items()):  # a tab dragged to another window
+                if other.tab == record.tab and window != record.window:
+                    ended += self._leave(other)
+            self.fronts[record.window] = front
+            if self.front is None or self.front.window == record.window:
+                self.front = front
             if isinstance(record, Blocks):
                 lined = sum(bool(self.layouts.get((record.doc, b.id))) for b in record.blocks)
                 self.last_page = {
@@ -220,24 +243,46 @@ class Attention:
         if isinstance(record, Click):
             self._click(record)
             return []
-        leaves = (
-            (kind == "focus" and (self.front is None or record.tab != self.front.tab))
-            # A same-document URL change (pushState, scroll-spy pages) keeps the page; new
-            # content shows up in the next snapshot.
-            or (
-                kind == "page"
-                and self.front is not None
-                and record.tab == self.front.tab
-                and "history_state" not in record.qualifiers
-            )
-            or (kind == "idle" and record.state == "locked")
-        )
-        if leaves:
-            self.front = None
-            self.belief, self.belief_doc = {}, None
-            self.reading = None
-            return self.end() + self.end_visit()
+        if kind == "focus":
+            # Another app taking focus leaves the browser's windows on screen: their pages stay. A
+            # window that now shows another tab no longer shows its old page.
+            self.focused = record.window
+            old = self.fronts.get(record.window) if record.window is not None else None
+            return self._leave(old) if old is not None and old.tab != record.tab else []
+        if kind == "page" and "history_state" not in record.qualifiers:
+            # A same-document URL change (pushState, scroll-spy pages) keeps the page; new content
+            # shows up in the next snapshot.
+            ended = []
+            for other in [f for f in self.fronts.values() if f.tab == record.tab]:
+                ended += self._leave(other)
+            return ended
+        if kind == "idle" and record.state == "locked":
+            return self.clear()
         return []
+
+    def _leave(self, front: Front) -> list[dict]:
+        """A page is no longer on screen: its run and block visit end."""
+        if self.fronts.get(front.window) is front:
+            del self.fronts[front.window]
+        ended = []
+        if self.run is not None and self.run.doc == front.doc:
+            ended += self.end()
+        if self.visit is not None and self.visit.doc == front.doc:
+            ended += self.end_visit()
+        if self.belief_doc == front.doc:
+            self.belief, self.belief_doc = {}, None
+        if self.reading is not None and self.reading["doc"] == front.doc:
+            self.reading = None
+        if self.front is front:
+            self.front = None
+        return ended
+
+    def clear(self) -> list[dict]:
+        """No page is on screen any more (locked, paused)."""
+        self.fronts, self.front = {}, None
+        self.belief, self.belief_doc = {}, None
+        self.reading = None
+        return self.end() + self.end_visit()
 
     def gaze_state(self, state: GazeState) -> None:
         """The tracker's report: which monitor it is calibrated on and how well."""
@@ -293,20 +338,36 @@ class Attention:
         return self.anchors.error_px(now) or self.calibrated_px or DEFAULT_ERROR_PX
 
     def _locate(self, fixation: Fixation) -> tuple[Front, float, float] | None:
-        """The fixation as a viewport point (CSS px), corrected by clicks, if the page in front is
+        """The fixation as a viewport point (CSS px), corrected by clicks, on the page whose
+        window it falls in (the focused window's, when windows overlap), if any page on screen is
         on the tracker's monitor."""
-        front, monitor = self.front, self.monitor
-        if front is None or monitor is None:
-            return None
-        if abs((fixation.t - front.seen).total_seconds()) > self.view_ttl_s:
-            return None
-        g = front.geometry
-        if not g.primary or abs(monitor[0] / monitor[1] - g.screen_w / g.screen_h) > 0.02:
-            return None
+        located, _ = self._place(fixation)
+        return located
+
+    def _place(self, fixation: Fixation) -> tuple[tuple[Front, float, float] | None, int]:
+        """``_locate``, and why it found nothing (NO_PAGE, STALE, OTHER_MONITOR) or where the
+        point fell (OUTSIDE every page's viewport, ON_PAGE)."""
+        monitor = self.monitor
+        if not self.fronts or monitor is None:
+            return None, NO_PAGE
+        fresh = [f for f in self.fronts.values() if abs((fixation.t - f.seen).total_seconds()) <= self.view_ttl_s]
+        if not fresh:
+            return None, STALE
         dx, dy = self.anchors.offset(fixation.x, fixation.y, fixation.t.timestamp())
-        x = ((fixation.x - dx) * g.screen_w - g.vx) / g.scale
-        y = ((fixation.y - dy) * g.screen_h - g.vy) / g.scale
-        return front, x, y
+        best, rank = None, None
+        for front in fresh:
+            g = front.geometry
+            if not g.primary or abs(monitor[0] / monitor[1] - g.screen_w / g.screen_h) > 0.02:
+                continue
+            x = ((fixation.x - dx) * g.screen_w - g.vx) / g.scale
+            y = ((fixation.y - dy) * g.screen_h - g.vy) / g.scale
+            inside = 0 <= x <= g.inner_w and 0 <= y <= g.inner_h
+            key = (inside, front.window == self.focused, front is self.front, front.seen)
+            if rank is None or key > rank:
+                best, rank = (front, x, y), key
+        if best is None:
+            return None, OTHER_MONITOR
+        return best, ON_PAGE if rank[0] else OUTSIDE
 
     def _likelihoods(self, front: Front, x: float, y: float, now: float) -> dict[str, float]:
         g = front.geometry
@@ -391,7 +452,9 @@ class Attention:
 
     def fixation(self, fixation: Fixation) -> tuple[Hit | None, list[dict]]:
         """Place one fixation and advance the run; returns the hit and any dwell records."""
-        located = self._locate(fixation)
+        located, where = self._place(fixation)
+        if located is not None:
+            self.front = located[0]
         events = self.advance(fixation.t)  # gaze absent since the last fixation ended
         duration = (fixation.t_end - fixation.t).total_seconds()
         if self.last_end is not None:
@@ -445,7 +508,12 @@ class Attention:
             events += ended
             if line is not None and hit is not None:
                 hit = Hit(hit.tab, hit.doc, hit.x, hit.y, hit.block, hit.p, line[0], line[1], round(line[2], 2))
-        self.outcomes.append(2 if line is not None else 1 if hit is not None else 0)
+        self.outcomes.append(ON_LINE if line is not None else where)
+        if hit is not None:
+            self.gaze_point = {
+                "t": fixation.t_end.isoformat(), "doc": hit.doc, "x": hit.x, "y": hit.y,
+                "scroll_y": located[0].geometry.scroll_y, "block": hit.block,
+            }  # fmt: skip
         if self.monitor is not None:
             self.anchors.fixation(fixation.t.timestamp(), fixation.t_end.timestamp(), fixation.x, fixation.y)
         run = self.run
@@ -571,11 +639,19 @@ class Attention:
         }]  # fmt: skip
 
     def lines_health(self) -> dict:
-        """Why a line is or is not being decoded: the last fixations, and the last page's text."""
+        """Why a line is or is not being decoded: where the last fixations went, and the last
+        page's text."""
+        count = [0] * 6
+        for outcome in self.outcomes:
+            count[outcome] += 1
         return {
             "fixations": len(self.outcomes),
-            "on_page": sum(o >= 1 for o in self.outcomes),
-            "on_line": sum(o == 2 for o in self.outcomes),
+            "on_page": count[ON_PAGE] + count[ON_LINE],
+            "on_line": count[ON_LINE],
+            "outside": count[OUTSIDE],  # on the monitor, but outside every page shown
+            "no_page": count[NO_PAGE],  # no browser page on screen (or no monitor from the tracker)
+            "stale": count[STALE],  # pages not heard from for a while (minimized, hidden)
+            "other_monitor": count[OTHER_MONITOR],  # the page is on another monitor
             "page": self.last_page,
         }
 
