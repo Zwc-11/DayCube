@@ -20,6 +20,9 @@ jobs:
       - run: npm ci
       - run: npm run lint:api
       - run: npm run test:api
+      - run: uv run python scripts/check-capture-package.py
+      - run: uv sync --locked --project services/capture-win --python 3.11
+      - run: uv run --project services/capture-win python -m capture --help
       - run: npm run build
       - if: runner.os == 'Linux'
         run: npx playwright install --with-deps chromium
