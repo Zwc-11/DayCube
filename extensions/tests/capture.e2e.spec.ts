@@ -169,7 +169,7 @@ test('a reading session reaches the vault, and a stare marks the paragraph', asy
     // An exact synthetic tracker: 12 px of error, so every fixation belongs to the line it is on.
     body: JSON.stringify({ state: { tracking: true, calibrated: true, error_px: 12, monitor: [g.screen_w, g.screen_h] }, fixations }),
   });
-  expect(await gaze.json()).toEqual({ accepted: 18, duplicates: 0, stale: 0 });
+  expect(await gaze.json()).toEqual({ accepted: 18, duplicates: 0, stale: 0, live: false });
   const placed = lines('gaze.jsonl');
   expect(placed.every(f => f.block === block.id), 'every fixation landed on the short paragraph').toBe(true);
   const dwell = lines('attention.jsonl').find(d => d.phase === 'start');

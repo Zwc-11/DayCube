@@ -1,6 +1,8 @@
 """The tracking loop: webcam frames -> EyeTrax gaze -> One Euro -> I-DT fixations -> receiver.
 
-Frames are processed in memory and dropped; only fixations leave this process. The webcam is
+Frames are processed in memory and dropped; only fixations leave this process, and, while the
+receiver says the extension's gaze ring is on screen, the smoothed gaze point ten times a second
+(shown, never stored). A completed fixation is reported within a quarter second. The webcam is
 released, and nothing is recorded, while:
 
 - the receiver is paused (from the extension's toolbar button or shortcut), or has not confirmed
@@ -37,6 +39,8 @@ OFFLINE_EXIT_S = 120  # a supervised tracker outlives a stopped receiver by this
 CONFIRM_S = 5.0  # the camera stays on only this long after the receiver last said "recording"
 CHECK_EVERY_S = 2.0
 REPORT_EVERY_S = 1.0
+PROMPT_REPORT_S = 0.25  # a completed fixation goes out this soon after the last report, not a second later
+LIVE_EVERY_S = 0.09  # live gaze points while the receiver asks for them: every third frame at 30 fps
 DEFAULT_FPS = 30.0
 
 
@@ -91,6 +95,8 @@ class Tracker:
         self.retry_at = 0.0
         self.checked_at = -1e9
         self.reported_at = -1e9
+        self.pending = False  # fixations completed since the last report
+        self.live_at = -1e9
         self.offline_since: float | None = None
         self.last_face = clock()
         self.frames: deque[tuple[float, bool]] = deque()  # (time, had a face) over the last 10 s
@@ -127,6 +133,7 @@ class Tracker:
         for fixation in found:
             self.receiver.add(fixation)
             self.fixated.append((now, fixation.samples))
+            self.pending = True
         while self.fixated and now - self.fixated[0][0] > 30:
             self.fixated.popleft()
 
@@ -166,9 +173,10 @@ class Tracker:
         self._prediction_input = None
 
     def _report(self, now: float) -> None:
-        if now - self.reported_at < REPORT_EVERY_S:
+        since = now - self.reported_at
+        if since < REPORT_EVERY_S and not (self.pending and since >= PROMPT_REPORT_S):
             return
-        self.reported_at = now
+        self.reported_at, self.pending = now, False
         result = self.receiver.send(self.state())
         if result in ("ok", "paused"):  # only an answer from the receiver changes the pause state
             if result == "ok":
@@ -248,6 +256,9 @@ class Tracker:
             x, y = self.smoother(now, x, y)
             fx, fy = x / self.width, y / self.height
             if -0.05 <= fx <= 1.05 and -0.05 <= fy <= 1.05:  # off-screen samples end the fixation
+                if getattr(self.receiver, "live", False) and now - self.live_at >= LIVE_EVERY_S:
+                    self.live_at = now
+                    self.receiver.send_live(now, fx, fy)
                 self.samples.append(now)
                 while now - self.samples[0] > 30:
                     self.samples.popleft()
