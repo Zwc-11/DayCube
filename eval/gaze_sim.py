@@ -446,6 +446,14 @@ SCENARIOS = [
         "Top to bottom at 200-280 wpm with scrolling: reading is not a dwell.",
     ),
     Scenario(
+        "read an article, 200% zoom",
+        "reading",
+        2.0,
+        _reading,
+        None,
+        "The same article at 200% zoom: about two screens, so the reader scrolls on the way.",
+    ),
+    Scenario(
         "slow read under a heading",
         "reading",
         1.0,

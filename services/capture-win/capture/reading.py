@@ -130,7 +130,7 @@ class PageReader:
             pitch = gaps[len(gaps) // 2] if gaps else None
             for i, b in enumerate(boxes):
                 pad = max(((pitch or 1.45 * b.h) - b.h) / 2, 0.0)
-                lines.append(_Line((block, i), b, (b.y - pad, b.h + 2 * pad), b.w, i == 0))
+                lines.append(_Line((block, i), b, (b.y - pad, max(b.h + 2 * pad, 1.0)), max(b.w, 1.0), i == 0))
         lines.sort(key=lambda line: (line.box.y, line.box.x))
         self.lines, self.index = lines, {line.key: i for i, line in enumerate(lines)}
         self.tops = [line.band[0] for line in lines]

@@ -267,8 +267,8 @@ Example `reading.jsonl` record (shortened):
  "coverage": 1.0, "path": [[0.0, 0], [3.6, 1], [7.1, 2], ...], "offset_px": 41.5, "p": 0.91}
 ```
 
-In simulation the decoder puts 91-97% of reading time on the right line at the recalibrated error
-and 94-99% with a good webcam session; at the first calibration's error (183 px) it is mostly
+In simulation the decoder puts 91-98% of reading time on the right line at the recalibrated error
+and 94-99% with a good webcam session, scrolling included; at the first calibration's error (183 px) it is mostly
 wrong, and `doctor` says to recalibrate ([Simulation](#simulation)).
 
 ## Limits
@@ -362,10 +362,11 @@ no other; a no-dwell case passes when none fires.
 | stare 20 s, 200% zoom, after 6 clicks | dwell on target | 0% → **89%** | 0% → **94%** | 81% → **100%** | 92% → **98%** | 96% → **100%** | 99% → **99%** |
 | stare 20 s, 100% zoom | dwell on target | 0% → **62%** | 0% → **70%** | 39% → **91%** | 55% → **95%** | 70% → **98%** | 79% → **99%** |
 | look away 1.5 s mid-stare | dwell on target | 0% → **75%** | 0% → **81%** | 69% → **98%** | 83% → **100%** | 97% → **99%** | 99% → **99%** |
-| re-read a paragraph 3 times | dwell on target | 0% → **0%** | 0% → **9%** | 27% → **39%** | 33% → **55%** | 53% → **80%** | 64% → **90%** |
+| re-read a paragraph 3 times | dwell on target | 0% → **0%** | 0% → **8%** | 29% → **55%** | 39% → **67%** | 51% → **93%** | 64% → **99%** |
 | glance 5 s | no dwell | 100% → **100%** | 100% → **100%** | 100% → **100%** | 100% → **100%** | 100% → **100%** | 100% → **100%** |
 | tab switch mid-stare | no dwell | 100% → **100%** | 100% → **100%** | 100% → **100%** | 100% → **100%** | 100% → **100%** | 100% → **100%** |
-| read an article | no dwell | 100% → **100%** | 100% → **97%** | 100% → **99%** | 100% → **99%** | 100% → **100%** | 100% → **100%** |
+| read an article | no dwell | 100% → **100%** | 100% → **99%** | 100% → **97%** | 100% → **100%** | 100% → **99%** | 100% → **100%** |
+| read an article, 200% zoom | no dwell | 100% → **99%** | 100% → **100%** | 100% → **100%** | 100% → **100%** | 100% → **100%** | 100% → **100%** |
 | slow read under a heading | no dwell | 100% → **100%** | 100% → **100%** | 100% → **100%** | 100% → **100%** | 100% → **100%** | 100% → **100%** |
 
 | Share of tracked time in fixations | | 34% → **66%** | 33% → **66%** | 83% → **88%** | 82% → **88%** | 88% → **88%** | 87% → **87%** |
@@ -378,7 +379,10 @@ no other; a no-dwell case passes when none fires.
 - **Clicks** matter most when the calibration is coarse: six clicks before the stare take the
   183 px calibration from 84-90% to 89-94%, even with clicks that miss by about 15 px and one in
   seven made without looking.
-- **Re-reading** a paragraph three times is the weakest case (39-55% at 69 px): its first and last lines sit within
+- The reading rows (one new: the article at 200% zoom, which needs scrolling) were run for both revisions once reading followed each block's
+  measured lines (one fixation per 1.2 words along each line, one regression in ten;
+  `eval/results/gaze-sim-lines.json`).
+- **Re-reading** a paragraph three times is the weakest dwell case (55-67% at 69 px): its first and last lines sit within
   the gaze error of the neighbouring blocks, and the filter is deliberately quicker to move on
   once a paragraph's reading time has passed, which is what keeps normal reading from being
   flagged.
@@ -392,6 +396,7 @@ no other; a no-dwell case passes when none fires.
   | read an article | 21% (41%) | 42% (60%) | **94%** (95%) | **94%** (95%) | **97%** (97%) | **97%** (98%) |
   | re-read a paragraph 3 times | 28% (55%) | 58% (73%) | **95%** (96%) | **96%** (96%) | **99%** (100%) | **98%** (98%) |
   | slow read under a heading | 32% (74%) | 57% (82%) | **97%** (97%) | **91%** (92%) | **99%** (99%) | **94%** (94%) |
+  | read an article, 200% zoom (two screens: scrolls on the way) | 81% (87%) | 88% (91%) | **96%** (98%) | **98%** (98%) | **98%** (99%) | **99%** (99%) |
   | blocks recorded | 86-97% | 97-98% | 100% | 100% | 100% | 100% |
 
   Before the page-level decoder (a separate decoder per block, fed by the dwell filter, offset
