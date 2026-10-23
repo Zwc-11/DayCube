@@ -249,3 +249,9 @@ def test_the_doctor_judges_capture_from_what_it_recorded(vault: Vault, monkeypat
     results = {name: verdict for verdict, name, _ in doctor.checks(worse, vault.root, zone, now, None)}
     assert results["live accuracy"] == doctor.FAIL and results["clicks"] == doctor.WARN
     assert doctor.checks(None, vault.root, zone, now, None)[0][0] == doctor.FAIL
+    # A receiver or tracker started before a pull runs the old code: say so.
+    old = {k: v for k, v in status.items() if k != "accuracy"} | {
+        "gaze": status["gaze"] | {"coverage": None, "noise_px": None}
+    }
+    results = {name: verdict for verdict, name, _ in doctor.checks(old, vault.root, zone, now, None)}
+    assert results["receiver code"] == doctor.FAIL and results["tracker code"] == doctor.WARN

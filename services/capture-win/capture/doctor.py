@@ -27,6 +27,7 @@ PASS, WARN, FAIL, INFO = "pass", "warn", "FAIL", "info"
 # about 60 cm; scaled by monitor width. Matches services/gaze/gaze/calibrate.py.
 USABLE_PX_AT_1920 = 120.0
 LOGS = ("browser.jsonl", "blocks.jsonl", "gaze.jsonl", "attention.jsonl", "health.jsonl")
+RESTART = "end its python processes in Task Manager, then run python -m capture install-autostart"
 
 
 def _age(iso: str | None, now: datetime) -> float | None:
@@ -53,6 +54,8 @@ def checks(status: dict | None, vault: Path, zone: ZoneInfo, now: datetime, auto
     if status is None:
         return [(FAIL, "receiver", "not running on 127.0.0.1:7700: start it, or sign out and in (autostart)")]
     out.append((WARN if status["paused"] else PASS, "receiver", "paused" if status["paused"] else "running"))
+    if "accuracy" not in status:  # added with click calibration: this process runs older code
+        out.append((FAIL, "receiver code", "older than this checkout: stop it and start it again (" + RESTART + ")"))
 
     age = _age(status.get("browser", {}).get("last"), now)
     if age is None:
@@ -66,6 +69,9 @@ def checks(status: dict | None, vault: Path, zone: ZoneInfo, now: datetime, auto
         normal = reason in ("paused", "away", "locked", "camera busy")
         out.append((INFO if normal else FAIL, "eye tracker", f"not tracking: {reason}"))
     else:
+        if gaze.get("fps") and gaze.get("coverage") is None and gaze.get("noise_px") is None:
+            # A current tracker reports both within seconds of turning the camera on.
+            out.append((WARN, "tracker code", "older than this checkout: restarting the receiver restarts it"))
         fps, target = gaze.get("fps"), gaze.get("target_fps") or 30
         out.append((PASS if fps and fps >= 0.8 * target else WARN, "frame rate", f"{fps} of {target} frames/s"))
         face = gaze.get("face")
