@@ -1,4 +1,4 @@
-import { RECEIVER, normalizeDomains } from './lib.js';
+import { RECEIVER, gazeLabel, normalizeDomains } from './lib.js';
 
 const $ = id => document.getElementById(id);
 const DEFAULTS = { token: '', enabled: false, exclusions: ['localhost', '127.0.0.1'], dwellAction: 'none', paused: false };
@@ -46,7 +46,7 @@ async function refresh() {
     const status = await (await fetch(`${RECEIVER}/status`)).json();
     show('receiver', status.paused ? 'Running, paused' : `Running, last record ${ago(status.browser.last)}`, 'good');
     const gaze = status.gaze;
-    show('gaze', gaze.tracking ? `Tracking${gaze.error_px ? `, calibrated to ${Math.round(gaze.error_px)} px` : ''}` : `Not tracking: ${gaze.reason || 'unknown'}`, gaze.tracking ? 'good' : '');
+    show('gaze', gazeLabel(gaze), gaze.tracking ? 'good' : '');
   } catch {
     show('receiver', 'Not running. Start it with python -m capture run --receive, or install autostart.', 'bad');
     show('gaze', '—');

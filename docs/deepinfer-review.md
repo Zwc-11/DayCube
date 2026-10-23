@@ -89,6 +89,24 @@ Two more changes came out of profiling rather than from the reference:
 The lint configuration now matches the reference rule families: `E`, `F`, `UP`, `B`, `SIM`, `I` and
 `ANN`, without its CUDA-specific ignores. Measurements are in [performance notes](performance.md#second-pass-measurements).
 
+## Gaze processing rate
+
+The Windows gaze pass revisited the pinned CUDA graph runner's separation of owned buffers from
+per-step work. DAYCUBE keeps EyeTrax's native landmark extraction and calibrated model unchanged;
+the tracker reuses one prediction input matrix, releasing it with the camera. Pacing and FPS
+telemetry use a monotonic timer, while evidence timestamps keep their wall-clock timebase.
+
+Profiling at 640×480 found about 4.7–4.9 ms/frame in native landmarks and 0.25–0.30 ms/frame
+in prediction. The existing synchronous path processed about 30 frames/s with either Windows
+backend, so adding capture threads or a GPU inference dependency was not justified. The live
+tracker's 14.8 frames/s reflected its configured 15 frames/s cap. Its default target is now 30,
+with a separate measured rate, invalid-rate checks and tests for unchanged synthetic positions.
+The gain from raising the cap must not be attributed to the small input-buffer allocation saving.
+
+This pass also fixes stale "tracking" status during pause and adds measured/target FPS and face
+percentage to the extension options. See [capture rate checks](capture.md#processing-rate-and-live-checks).
+These are camera/CPU workload improvements, not evidence of accelerator throughput parity.
+
 The [engineering standard](engineering.md) defines the ongoing expectations and remaining gaps.
 The earlier viewer fixes and idle measurements are documented separately in
 [performance notes](performance.md). Neither pass establishes general performance parity

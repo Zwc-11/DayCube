@@ -80,7 +80,7 @@ def tracker(**options: object) -> tuple[Tracker, Scene, Receiver, Computer, Cloc
     scene, receiver, computer, clock, log = Scene(), Receiver(), Computer(), Clock(), []
     t = Tracker(
         Estimator(), lambda: Camera(scene, log), receiver, CALIBRATION, system=computer, clock=clock,
-        sleep=clock.sleep, **options,
+        sleep=clock.sleep, timer=clock, **options,
     )  # fmt: skip
     return t, scene, receiver, computer, clock, log
 
@@ -97,7 +97,8 @@ def test_a_steady_look_becomes_fixations_at_its_screen_fraction() -> None:
     assert len(receiver.fixations) == 3
     assert all(abs(f.x - 0.5) < 1e-6 and abs(f.y - 0.5) < 1e-6 for f in receiver.fixations)
     state = receiver.states[-1]
-    assert state["tracking"] is True and state["face"] == 1.0 and 14 <= state["fps"] <= 15.5
+    assert state["tracking"] is True and state["face"] == 1.0 and 29 <= state["fps"] <= 30.5
+    assert state["target_fps"] == 30.0
     assert log == ["open"]
 
 
@@ -193,3 +194,55 @@ def test_a_supervised_tracker_restarts_for_a_new_calibration() -> None:
     changed.append(True)
     with pytest.raises(SystemExit):
         run_for(t, clock, 3)
+
+
+@pytest.mark.parametrize("fps", [15.0, 30.0])
+def test_configured_target_controls_pacing_without_changing_positions(fps: float) -> None:
+    t, scene, receiver, *_, clock, log = tracker(fps=fps)
+    run_for(t, clock, 4)
+    assert abs(t.state()["fps"] - fps) < 0.1
+    assert t.state()["target_fps"] == fps
+    assert len(receiver.fixations) == 3
+    assert all((fixation.x, fixation.y) == (0.5, 0.5) for fixation in receiver.fixations)
+
+
+@pytest.mark.parametrize("fps", [0.0, -1.0, float("inf"), float("nan")])
+def test_invalid_rate_fails_before_opening_camera(fps: float) -> None:
+    with pytest.raises(ValueError, match="positive and finite"):
+        tracker(fps=fps)
+
+
+def test_prediction_row_is_reused_and_released_with_camera() -> None:
+    import numpy as np
+
+    class InspectEstimator(Estimator):
+        def __init__(self) -> None:
+            self.rows = []
+            self.values = []
+
+        def predict(self, features: np.ndarray) -> np.ndarray:
+            self.rows.append(features)
+            self.values.append(features.copy())
+            return features
+
+    t, scene, receiver, *_, clock, log = tracker()
+    estimator = InspectEstimator()
+    t.estimator = estimator
+    run_for(t, clock, 1.5)
+    assert len(estimator.rows) > 10
+    assert all(row is estimator.rows[0] for row in estimator.rows)
+    assert all(np.array_equal(row, [[960.0, 540.0]]) for row in estimator.values)
+    scene.point = (800.0, 400.0)
+    run_for(t, clock, 0.5)
+    assert np.array_equal(estimator.values[-1], [[800.0, 400.0]])
+    assert estimator.rows[-1] is estimator.rows[0]
+    t._release()
+    assert t._prediction_input is None and log[-1] == "release"
+
+
+def test_fps_and_pacing_do_not_follow_wall_clock_corrections() -> None:
+    t, scene, receiver, *_, clock, log = tracker()
+    run_for(t, clock, 1)
+    t.clock = lambda: clock() - 100.0
+    run_for(t, clock, 2)
+    assert 29 <= t.state()["fps"] <= 30.5

@@ -60,6 +60,33 @@ Recalibrate when your seat, lighting or monitor changes (`python -m gaze calibra
 recording for the half minute it takes, which frees the webcam, and the receiver restarts the
 tracker with the new calibration.
 
+### Processing rate and live checks
+
+The tracker now targets **30 processed frames/s** by default, including when started by the
+receiver at sign-in. The camera keeps its existing mode: this setting does not request 1080p,
+change calibration geometry or create a faster hardware capture mode. A manual override is:
+
+```powershell
+uv run --project services/gaze python -m gaze track --fps 15
+```
+
+`/status` reports `gaze.target_fps` separately from the rolling measured `gaze.fps` and face
+detection fraction (`gaze.face`, from 0 to 1). Refresh the extension's options page after updating:
+**Right now** shows measured/target FPS, face percentage and calibration error. For example,
+`29.8/30 fps` means a measured 29.8 with a target of 30; it does not round the measurement up.
+Pausing hides old active telemetry, and resuming waits for a fresh tracker report.
+
+Collect a rate report without opening the camera, reading recordings or changing pause state:
+
+```powershell
+uv run python eval/profile_gaze.py --seconds 15 --output test-results/gaze-rate.json
+```
+
+The report samples status only. Its rate values share the tracker's rolling ten-second window,
+so consecutive samples are correlated. Allow ten seconds after startup for that window to settle.
+Processing rate and face detection establish that the tracker is working on frames; matched block
+hits and the reading tests below are still needed to establish page placement and useful dwells.
+
 ## Everyday use
 
 | To | Do |
