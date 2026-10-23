@@ -44,6 +44,17 @@ unambiguous source instant. API metadata uses snake_case; viewer layer shapes us
 Speaker confirmation currently updates the transcript map only. It does not regenerate quote
 events or the graph. Unsupported ingest stages return 501 instead of reporting success.
 
+Index jobs are process-local and bounded: at most eight distinct jobs may be queued/running,
+and at most 100 records are retained. A repeated index request for the same day and source
+version shares the active job id. A changed source version or a completed/failed job allows a
+new rebuild. If all eight active slots are occupied, a distinct request gets `429` with
+`Retry-After: 1`; an identical active request can still share its job. Finished records are
+evicted first, and all job history disappears on restart. Job state reads are detached snapshots.
+Source keys cover the day's snapshot inputs and global place names, including vault write
+counters. A queued job reads the current sources when it runs; submission does not freeze them.
+The existing FastAPI background runner executes jobs under the vault's single-writer lock;
+this is not a durable queue and does not add cancellation or capture backpressure.
+
 `packages/api-client` provides `DaycubeClient` to the frontend bridge. Its base URL defaults
 to `/api`, which Vite proxies to loopback port 7701. It validates day/event/moment/search payloads
 using shared contracts. A token callback keeps token acquisition in the caller's UI.

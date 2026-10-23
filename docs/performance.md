@@ -167,3 +167,43 @@ conditional day loads, path simplification, OCR runs and compaction are in
 Every other output hash matches. Use [core-storage.json](../eval/results/core-storage.json) as the
 `--compare` baseline from here on.
 
+## Queued index burst
+
+The scheduled follow-up measured repeated same-day index submissions. Previously, every request
+created a background task that repeated the full rebuild behind the vault's single-writer lock.
+`IndexJobs` now shares active requests for the same source version, synchronizes admission/status
+changes, caps distinct active jobs at eight and retains at most 100 records. Source changes get
+their own job; completed or failed work never suppresses a later explicit rebuild.
+
+Same Windows workstation, Python 3.11.9 and SQLite 3.45.1. The workload is 50 visits, 5,000
+events, 10,000 fixes and 1,000 screenshots. Each sample first submits 20 requests to the API
+handler, then runs their background tasks concurrently. App construction and a warm index build
+are excluded. One warmup burst precedes five measured bursts; the table reports medians.
+
+| Queued burst of 20 requests | Before | After |
+| --- | ---: | ---: |
+| Rebuilds executed | 20 | 1 |
+| Distinct returned job ids | 20 | 1 |
+| Submission + background completion | 994.15 ms | 58.91 ms |
+
+Every returned job reaches `complete`. All stored unit rows have the same SHA-256 fingerprint
+before and after, and FTS external-content integrity checks pass. Raw samples, source hashes and
+runtime metadata are in [before](../eval/results/jobs-before.json) and
+[after](../eval/results/jobs-after.json). This is a queued-burst measurement through direct handler
+calls, not HTTP/auth latency, individual click latency, browser frame rate or DeepInfer throughput.
+Requests arriving after a job completes intentionally start another build. Jobs read current
+files when they run; they do not retain a frozen snapshot or survive process restart.
+
+```powershell
+npm run bench:jobs -- --output test-results/jobs-current.json --compare eval/results/jobs-before.json
+uv run pytest services/ingest/tests/test_jobs.py services/ingest/tests/test_job_api.py
+```
+
+Deterministic tests cover 16 competing submitters, exactly one scheduling owner, concurrent
+capacity limits, non-blocking status/admission during a build, source-version changes, failure
+recovery, detached result ownership and history eviction when keys are reused. HTTP tests verify
+duplicate ids, source changes and `429`/`Retry-After` admission behavior. The full validation run
+passed 107 Python tests, four contract tests, two API browser tests, eight viewer browser tests,
+Ruff and the production build. Durable queueing, cancellation and continuous-capture
+backpressure remain separate work.
+
