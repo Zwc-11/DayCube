@@ -44,7 +44,7 @@ STATE = {
 
 def soak(hours: float, seed: int) -> dict:
     from capture.api import SEEN_IDS, create_capture_app
-    from capture.attention import TEXT_CACHE
+    from capture.attention import LAYOUT_CACHE, TEXT_CACHE
     from fastapi.testclient import TestClient
     from ingest.config import Settings
     from ingest.vault import Vault
@@ -80,7 +80,13 @@ def soak(hours: float, seed: int) -> dict:
                     {"id": f"b{i}", "tag": "p", "rect": [300, 60 + 80 * i, 900, 60]}
                     for i in range(12)
                 ]  # fmt: skip
-                first = [b | {"text": f"Paragraph {i} of page {page} " * 6, "words": 30} for i, b in enumerate(blocks)]
+                first = [
+                    b | {"text": f"Paragraph {i} of page {page} " * 6, "words": 30, "lines": [
+                        {"rect": [300, 60 + 80 * i + 30 * k, 900 if k == 0 else 400, 20],
+                         "text": f"Paragraph {i} of page {page} " * (3 if k == 0 else 2)} for k in range(2)
+                    ]}
+                    for i, b in enumerate(blocks)
+                ]  # fmt: skip
                 records.append({"kind": "blocks", "doc": doc, "geometry": GEOMETRY, "blocks": first})
             elif s % 10 == 0:
                 records.append(
@@ -145,7 +151,8 @@ def soak(hours: float, seed: int) -> dict:
     a = receiver.attention
     memory = {
         "seen_ids": len(receiver.seen), "seen_ids_cap": SEEN_IDS, "block_texts": len(a.texts),
-        "block_texts_cap": TEXT_CACHE, "anchors": len(a.anchors.anchors), "anchor_fixations": len(a.anchors.recent),
+        "block_texts_cap": TEXT_CACHE, "block_layouts": len(a.layouts), "block_layouts_cap": LAYOUT_CACHE,
+        "page_lines": len(a.page.lines) if a.page else 0, "anchors": len(a.anchors.anchors), "anchor_fixations": len(a.anchors.recent),
         "pending_clicks": len(a.anchors.pending), "signals": len(receiver.signals),
     }  # fmt: skip
 
@@ -163,7 +170,7 @@ def soak(hours: float, seed: int) -> dict:
         "hours": hours, "sent": sent,
         "logged": {"browser": counts.get("browser.jsonl", 0), "blocks": counts.get("blocks.jsonl", 0),
                    "gaze": counts.get("gaze.jsonl", 0), "attention": counts.get("attention.jsonl", 0),
-                   "health": counts.get("health.jsonl", 0)},
+                   "health": counts.get("health.jsonl", 0), "reading": counts.get("reading.jsonl", 0)},
         "malformed": malformed, "bytes": sizes, "memory": memory,
         "events": stats(timings["events"]), "gaze": stats(timings["gaze"]),
         "accuracy": a.health(end.timestamp()),
@@ -175,6 +182,7 @@ def soak(hours: float, seed: int) -> dict:
         and malformed == 0
         and memory["seen_ids"] <= SEEN_IDS
         and memory["block_texts"] <= TEXT_CACHE
+        and memory["block_layouts"] <= LAYOUT_CACHE
         and memory["anchors"] <= 40
         and memory["pending_clicks"] < 10
     )
