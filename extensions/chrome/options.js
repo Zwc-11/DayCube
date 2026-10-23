@@ -1,19 +1,58 @@
-const form = document.getElementById('settings');
-const token = document.getElementById('token');
-const enabled = document.getElementById('enabled');
-const exclusions = document.getElementById('exclusions');
-chrome.storage.local.get(['token', 'enabled', 'exclusions']).then(settings => {
-  token.value = settings.token || '';
-  enabled.checked = Boolean(settings.enabled);
-  exclusions.value = (settings.exclusions || ['localhost', '127.0.0.1']).join('\n');
-});
-form.addEventListener('submit', async event => {
+import { RECEIVER, normalizeDomains } from './lib.js';
+
+const $ = id => document.getElementById(id);
+const DEFAULTS = { token: '', enabled: false, exclusions: ['localhost', '127.0.0.1'], dwellAction: 'mark', paused: false };
+
+async function load() {
+  const s = await chrome.storage.local.get(DEFAULTS);
+  $('token').value = s.token;
+  $('enabled').checked = s.enabled;
+  $('exclusions').value = s.exclusions.join('\n');
+  for (const choice of document.querySelectorAll('input[name=dwell]')) choice.checked = choice.value === s.dwellAction;
+}
+
+$('settings').addEventListener('submit', async event => {
   event.preventDefault();
-  if (enabled.checked && !token.value.trim()) {
-    document.getElementById('status').textContent = 'A vault token is required to enable capture.';
+  const token = $('token').value.trim();
+  if ($('enabled').checked && !token) {
+    $('saved').textContent = 'Paste the vault token before turning recording on.';
     return;
   }
-  await chrome.storage.local.set({ token: token.value.trim(), enabled: enabled.checked,
-    exclusions: exclusions.value.split('\n').map(value => value.trim().toLowerCase()).filter(Boolean) });
-  document.getElementById('status').textContent = enabled.checked ? 'Saved. Browser metadata capture is enabled.' : 'Saved. Capture is disabled.';
+  await chrome.storage.local.set({
+    token, enabled: $('enabled').checked, exclusions: normalizeDomains($('exclusions').value),
+    dwellAction: document.querySelector('input[name=dwell]:checked')?.value || 'mark',
+  });
+  $('saved').textContent = $('enabled').checked ? 'Saved. Recording is on.' : 'Saved. Recording is off.';
+  await load();
+  refresh();
 });
+
+function show(id, text, tone) {
+  $(id).textContent = text;
+  $(id).className = tone || '';
+}
+
+const ago = iso => {
+  if (!iso) return 'never';
+  const seconds = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
+  return seconds < 60 ? `${seconds} s ago` : `${Math.round(seconds / 60)} min ago`;
+};
+
+async function refresh() {
+  const s = await chrome.storage.local.get({ ...DEFAULTS, queue: [], delivery: null });
+  show('recording', !s.enabled || !s.token ? 'Off' : s.paused ? 'Paused' : 'On', s.enabled && s.token && !s.paused ? 'good' : '');
+  show('queued', `${s.queue.length} record${s.queue.length === 1 ? '' : 's'}`);
+  try {
+    const status = await (await fetch(`${RECEIVER}/status`)).json();
+    show('receiver', status.paused ? 'Running, paused' : `Running, last record ${ago(status.browser.last)}`, 'good');
+    const gaze = status.gaze;
+    show('gaze', gaze.tracking ? `Tracking${gaze.error_px ? `, calibrated to ${Math.round(gaze.error_px)} px` : ''}` : `Not tracking: ${gaze.reason || 'unknown'}`, gaze.tracking ? 'good' : '');
+  } catch {
+    show('receiver', 'Not running. Start it with python -m capture run --receive, or install autostart.', 'bad');
+    show('gaze', '—');
+  }
+}
+
+load();
+refresh();
+setInterval(refresh, 3000);

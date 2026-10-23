@@ -58,8 +58,9 @@ apps/viewer/                 React/Vite frontend with a vault/API bridge and ill
 packages/schemas/            Canonical JSON Schemas, generated TypeScript types, Zod validators
 packages/api-client/         Typed browser client with response validation
 services/ingest/             FastAPI, vault storage, FTS search, adapters and tests
-services/capture-win/        Opt-in browser metadata receiver and optional native-library groups
-extensions/chrome/          Disabled-by-default Chrome MV3 starter
+services/capture-win/        Capture receiver: browser records, gaze placement, dwells, sign-in autostart
+services/gaze/               Webcam eye tracker (EyeTrax), its own environment
+extensions/chrome/          DayCube Capture browser extension (Opera, Chrome, Edge; MV3)
 jobs/modal/                 Optional transcription/depth cloud job definitions
 fixtures/sample-day/        Fictional day with 5 visits, 60 fixes and 14 events
 venues/                     Fictional venue pack
@@ -82,13 +83,16 @@ client and converts the API's seconds-since-midnight into the renderer's decimal
   extractive cited answers and SSE responses. See [search](docs/search.md).
 - Eight shared JSON Schema contracts with generated Pydantic and TypeScript models.
 - GPX parser, attention helper, FFmpeg probe/audio helpers, optional integration adapters.
+- Browser and gaze capture from sign-in to shutdown: a browser extension, a webcam eye tracker
+  and a local receiver that places gaze on the paragraph under it and flags dwells. See
+  [capture](docs/capture.md).
 - A character that walks the day: routes go around furniture and through doorways, climb
   stairs step by step between floors, and cut away the floor above while it is indoors.
   Playback slows while it walks. Visits without measured indoor positions get an
   illustrative walk between the spots where their records happened.
 - Python tests, JavaScript contract tests, real-browser API checks and a CI workflow.
 
-Native capture, OCR execution, gaze calibration, visit/floor inference, raw-browser synthesis,
+Native window capture, OCR execution, visit/floor inference, turning capture logs into day events,
 generative answers, deletion, splats and full moment reconstruction remain
 future milestones. Unimplemented ingest stages and hour deletion return HTTP 501.
 The sample moment has a synthetic transcript and **no source video/audio or GLB**.
