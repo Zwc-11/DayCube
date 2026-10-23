@@ -362,43 +362,18 @@ export class BackendBridge {
     if (this.token) {
       try {
         if (useSseStream) {
-          const response = await globalThis.fetch(`/api/ask?stream=1`, {
+          const answerPayload = await this.client.askStream(date, question,
+            (layer, seconds) => onEarlyLocation?.(layer, seconds / 3600));
+          const latencyMs = Number((performance.now() - t0).toFixed(2));
+          this.emitLog({
             method: 'POST',
-            cache: 'no-store',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${this.token}`,
-            },
-            body: JSON.stringify({ date, question }),
+            endpoint: '/api/ask?stream=1 (SSE)',
+            status: 200,
+            latencyMs,
+            mode: 'live-backend',
+            summary: `SSE stream teleported to L${answerPayload.layer_index ?? 0} (${answerPayload.sentences.length} citations)`,
           });
-          if (response.ok && response.body) {
-            const text = await response.text();
-            const lines = text.split(/\r?\n/);
-            let answerPayload: SchemaAskResult | null = null;
-            for (const line of lines) {
-              if (line.startsWith('data: ')) {
-                const parsed = JSON.parse(line.slice(6));
-                if (parsed.layer_index != null && parsed.t != null && parsed.sentences === undefined && onEarlyLocation) {
-                  onEarlyLocation(parsed.layer_index, parsed.t / 3600);
-                }
-                if (parsed.sentences !== undefined) {
-                  answerPayload = parsed as SchemaAskResult;
-                }
-              }
-            }
-            if (answerPayload) {
-              const latencyMs = Number((performance.now() - t0).toFixed(2));
-              this.emitLog({
-                method: 'POST',
-                endpoint: '/api/ask?stream=1 (SSE)',
-                status: 200,
-                latencyMs,
-                mode: 'live-backend',
-                summary: `SSE stream teleported to L${answerPayload.layer_index ?? 0} (${answerPayload.sentences.length} citations)`,
-              });
-              return this.adaptSchemaAskResult(answerPayload, layers, latencyMs);
-            }
-          }
+          return this.adaptSchemaAskResult(answerPayload, layers, latencyMs);
         }
 
         const schemaRes = await this.client.ask(date, question);

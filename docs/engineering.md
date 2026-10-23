@@ -62,6 +62,17 @@ also capture before/after measurements on the same machine and compare results, 
 Keep correctness checks deterministic; use timing reports for machine-dependent latency rather than
 flaky wall-clock assertions in ordinary unit tests.
 
+The standard applies to the whole repository, including the viewer, shared API client,
+capture/gaze environments, extensions, scripts and optional jobs. The common deterministic
+gate is `npm run check`; CI runs it on Windows and Linux. Browser suites add interaction and
+rendering checks. See the [codebase review](efficiency-review.md) for coverage, measurements
+and unresolved limits. Performance benchmarks remain separate from this gate.
+
+Transport owns stream readers: process complete events incrementally, bound event buffering,
+validate final payloads against canonical contracts, and cancel/release readers on early exit.
+Do not buffer a whole stream before using an early event or repeat a failed request as a
+different transport path without an explicit retry policy.
+
 ```powershell
 npm run lint:api
 npm run test:api

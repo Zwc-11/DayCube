@@ -107,6 +107,15 @@ This pass also fixes stale "tracking" status during pause and adds measured/targ
 percentage to the extension options. See [capture rate checks](capture.md#processing-rate-and-live-checks).
 These are camera/CPU workload improvements, not evidence of accelerator throughput parity.
 
+## Codebase-wide follow-up
+
+The [codebase efficiency review](efficiency-review.md) covers every source area at the architecture
+and hot-path level. It adds scoped, size-bounded vector caching, grouped evidence enrichment,
+incremental validated API streaming and a shared Windows/Linux check command. It retains named
+synthetic before/after workloads with unchanged ranked-output checks and records the unmeasured
+areas. This extends the standard across the project; it is not a whole-repository line audit or
+proof of equal accelerator efficiency.
+
 The [engineering standard](engineering.md) defines the ongoing expectations and remaining gaps.
 The earlier viewer fixes and idle measurements are documented separately in
 [performance notes](performance.md). Neither pass establishes general performance parity

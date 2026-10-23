@@ -77,8 +77,9 @@ What the simulation showed about the failed stare, with the first calibration's 
   of the stare landed inside the paragraph. A filter now weighs every block by how likely the
   tracker was to report each point if the eyes were on it.
 - The 0 of 100 simulated stares that became dwells with the old code is consistent with the two
-  live failures; with the recalibrated error the old code passed 75-89 of 100, so the unscored
-  third stare most likely passed.
+  live failures; with the recalibrated error the old code passed 75-89 of 100. The third live
+  stare was not scored at the time. A later audit of the available log window found no
+  matching paragraph dwell. Simulation probabilities do not establish a live acceptance pass.
 
 Pending on the PC, and not replaced by simulation: shortcut timing (7c), a real lock (7d), a real
 video call (7e) and a real sign-in (7f). Their logic is covered by tests with a scripted computer

@@ -2,6 +2,7 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir: './apps/viewer/e2e',
+  outputDir: './test-results/viewer',
   timeout: 30000,
   workers: 1,
   use: { baseURL: 'http://127.0.0.1:13000', headless: true,
