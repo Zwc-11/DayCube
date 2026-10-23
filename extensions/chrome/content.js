@@ -214,10 +214,17 @@
     timer = setTimeout(snapshot, delay);
   }
 
+  function refreshBlocks() {
+    // The receiver forgets its front page on focus loss. Send positions again even
+    // if this document is unchanged; its stable block ids and text cache still apply.
+    signature = '';
+    schedule(200);
+  }
+
   addEventListener('scroll', () => schedule(350), { passive: true, capture: true });
   addEventListener('resize', () => { mouse = null; schedule(350); }, { passive: true });
-  addEventListener('focus', () => schedule(200));
-  document.addEventListener('visibilitychange', () => { if (front()) schedule(200); });
+  addEventListener('focus', refreshBlocks);
+  document.addEventListener('visibilitychange', () => { if (front()) refreshBlocks(); });
   if (document.prerendering) document.addEventListener('prerenderingchange', () => schedule(300), { once: true });
   // At most one snapshot per gap for changing pages, with one more after the gap so content that
   // arrives later in it is not missed.
