@@ -55,9 +55,12 @@ export const evidenceSchema = z.object({
   floor: z.number().nullable(), x: z.number().nullable(), y: z.number().nullable(), text: z.string(),
   source_ref: z.string(), fidelity: z.enum(['known', 'estimated', 'illustrative']), confidence: z.number(),
   attention: z.number().nullable(), moment_id: z.string().nullable(), offset_s: z.number().nullable(),
+  // Searches across days say which day each record is from and which method found it.
+  day: z.string().optional(), matched: z.array(z.enum(['keyword', 'meaning'])).optional(),
 });
 export const askResultSchema = z.object({
-  mode: z.literal('extractive'), question: z.string(), layer_index: z.number().nullable(),
+  mode: z.literal('extractive'), question: z.string(), day: z.string().nullable().optional(),
+  layer_index: z.number().nullable(),
   t: z.number().nullable(), floor: z.number().nullable(), x: z.number().nullable(), y: z.number().nullable(),
   moment_id: z.string().nullable(), offset_s: z.number().nullable(),
   sentences: z.array(z.object({ text: z.string(), evidence: z.array(z.string()) })),

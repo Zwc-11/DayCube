@@ -8,12 +8,12 @@ This is a foundation milestone, not a claim that the complete technical spec has
 | Contracts | 8 JSON Schemas, generated Pydantic/TypeScript, full runtime validation, fixture checks | Production schemas for scenes, capture logs, derived API payloads |
 | Vault | Initialize/seed/read/validate, atomic file writes, reference checks, stats, name overrides | Transactional multi-file writes, cross-process locking, full deletion/export UI |
 | Fixture | 5 visits, 60 fixes, 14 events, 2 OCR records/6 blocks, 1 synthetic transcript moment | Licensed real media and a reconstructed scene |
-| Skeleton | Timestamp/coordinate model and Arc-compatible GPX parser | Health/Timeline/recorder parsers, DBSCAN visits, floors, indoor PDR/map matching |
+| Skeleton | Timestamp/coordinate model, Arc-compatible GPX parser, barometric floor estimator (`skeleton/floors.py`, [floors.md](floors.md)) | Health/Timeline/recorder parsers, DBSCAN visits, wiring floors into the day build, indoor PDR/map matching |
 | Mind | Tested interval-clipped attention calculation | Native sampler, OCR execution, fixation detection, gaze calibration, event synthesis |
 | Capture | Authenticated opt-in raw browser receiver, pause/resume | Tray/hotkey, native collectors, reliable queues, exclusions end-to-end, deletion |
 | Chrome | Disabled-by-default active/focused URL/title/scroll, exclusions, options, badge | DOM blocks, batching, persistent queue, live Chrome execution verification |
 | Moments | FFmpeg metadata/audio helpers, transcript and moment reads | Consent/blur, WhisperX diarization, scenes, speaker event regeneration, synchronized playback |
-| Search | Repeatable FTS5 rebuilds, quoted-token queries, source-stamp invalidation, tested RRF helper | sqlite-vec index and hybrid fusion in the live query route |
+| Search | One vault database across days (`vault/daycube.sqlite`): per-day transactional replace by source stamp, FTS5, int8 bge-small vectors with a sign-bit first pass and day/time scoping, vector reuse for unchanged text, coverage-weighted rank fusion ([search.md](search.md)) | Entity, mention and link tables; evaluation on real questions |
 | Ask | Source excerpts/citations, place/time/moment offset, SSE, explicit no-match results | Query rewrite, soft hints, generated phrasing with semantic verification |
 | Integrations | Lazy Anthropic/FastEmbed/Modal adapters, cached Overpass adapter | Authenticated account validation and live integration tests |
 | GPU jobs | Optional transcription and relative-depth function definitions | Deployment, GPU validation, splats, consent-gated ingestion |

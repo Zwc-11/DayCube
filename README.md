@@ -77,7 +77,9 @@ client and converts the API's seconds-since-midnight into the renderer's decimal
 - Atomic vault JSON/JSONL writes, schema validation and reference checks.
 - Day, layer, event, skeleton, graph, moment and allowlisted media reads.
 - Authenticated event writes, place renaming, speaker-map saves and index jobs.
-- Rebuildable SQLite FTS5 search, extractive cited answers and SSE responses.
+- One rebuildable vault database (`vault/daycube.sqlite`) across all days: keyword search
+  (FTS5) plus meaning search (bge-small int8 vectors, two-pass numpy scan) merged by rank, with
+  extractive cited answers and SSE responses. See [search](docs/search.md).
 - Eight shared JSON Schema contracts with generated Pydantic and TypeScript models.
 - GPX parser, attention helper, FFmpeg probe/audio helpers, optional integration adapters.
 - A character that walks the day: routes go around furniture and through doorways, climb
@@ -87,7 +89,7 @@ client and converts the API's seconds-since-midnight into the renderer's decimal
 - Python tests, JavaScript contract tests, real-browser API checks and a CI workflow.
 
 Native capture, OCR execution, gaze calibration, visit/floor inference, raw-browser synthesis,
-semantic retrieval, generative answers, deletion, splats and full moment reconstruction remain
+generative answers, deletion, splats and full moment reconstruction remain
 future milestones. Unimplemented ingest stages and hour deletion return HTTP 501.
 The sample moment has a synthetic transcript and **no source video/audio or GLB**.
 See [implementation status](docs/implementation-status.md) for exact boundaries.
@@ -99,7 +101,8 @@ npm run api                   # API only, loopback port 7701
 npm run dev                   # Starter viewer only, loopback port 3000
 npm run demo:seed             # Seed if absent, then rebuild local index
 uv run daycube validate --date 2026-10-20
-uv run daycube index --date 2026-10-20
+uv run daycube index --date 2026-10-20   # or --all; `uv sync --extra vector` adds meaning search
+uv run daycube stats
 uv run daycube doctor
 npm run schemas               # Regenerate Pydantic + TypeScript contracts
 npm run test:api               # Drift checks, JS contracts and Python tests
@@ -109,7 +112,8 @@ npm run bench:core -- --output test-results/core-current.json # Isolated synthet
 npx playwright install chromium
 npm run test:e2e:api           # Real-browser API checks on an isolated test vault/port
 npm run test:e2e:viewer        # Token binding, reindex and live Ask through the frontend
-uv run python eval/score_retrieval.py
+uv run --extra vector python eval/score_retrieval.py   # keyword vs meaning vs combined, sample day
+uv run python eval/vector_bench.py                     # vector search latency at vault scale
 ```
 
 Make targets mirror the main commands when Make is available. On Windows the npm/uv commands

@@ -5,7 +5,8 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from .config import Settings
-from .index.build import build_index
+from .index.embed import default_embedder
+from .store import LifeStore
 from .vault import Vault
 
 
@@ -15,9 +16,13 @@ def main() -> None:
     commands.add_parser("init", help="Initialize vault and private bearer token")
     commands.add_parser("seed", help="Copy the synthetic fixture; never overwrite existing days")
     commands.add_parser("doctor", help="Check local runtime and optional integrations")
-    for name in ("validate", "index"):
-        child = commands.add_parser(name)
-        child.add_argument("--date", required=True)
+    commands.add_parser("stats", help="Days, units and size of the vault database")
+    validate = commands.add_parser("validate")
+    validate.add_argument("--date", required=True)
+    index = commands.add_parser("index", help="Index a day, or every day, into the vault database")
+    which = index.add_mutually_exclusive_group(required=True)
+    which.add_argument("--date")
+    which.add_argument("--all", action="store_true")
     compact = commands.add_parser("compact", help="Compress large logs of finished days; reads stay transparent")
     compact.add_argument("--before", help="Compact every day before this date (default: today)")
     args = parser.parse_args()
@@ -33,8 +38,12 @@ def main() -> None:
             result = {"seeded": False, "message": str(error)}
     elif args.command == "validate":
         result = vault.validate(args.date)
-    elif args.command == "index":
-        result = build_index(vault, args.date)
+    elif args.command in {"index", "stats"}:
+        store = LifeStore(vault, default_embedder(settings.vector_search, settings.embedding_model))
+        if args.command == "stats":
+            result = store.stats()
+        else:
+            result = [store.update(d["date"]) for d in vault.list_days()] if args.all else store.update(args.date)
     elif args.command == "compact":
         before = args.before or datetime.now(ZoneInfo(settings.timezone)).date().isoformat()
         result = {d["date"]: vault.compact_day(d["date"]) for d in vault.list_days() if d["date"] < before}
@@ -54,8 +63,7 @@ def main() -> None:
             "vault": str(vault.root),
             "days": len(vault.list_days()),
             "optional_libraries": {
-                name: importlib.util.find_spec(name) is not None
-                for name in ("anthropic", "modal", "fastembed", "sqlite_vec")
+                name: importlib.util.find_spec(name) is not None for name in ("anthropic", "modal", "fastembed")
             },
         }
     print(json.dumps(result, indent=2))

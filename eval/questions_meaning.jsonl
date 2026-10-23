@@ -1,0 +1,21 @@
+{"q":"Who is presenting the citation panel?","date":"2026-10-20","kind":"paraphrase","gold":["ev_quote_1","transcript:mo_001:1"]}
+{"q":"In what sequence will we run the presentation?","date":"2026-10-20","kind":"paraphrase","gold":["ev_quote_0","transcript:mo_001:0"]}
+{"q":"Fallback plan when recording breaks","date":"2026-10-20","kind":"paraphrase","gold":["ev_quote_2","transcript:mo_001:2"]}
+{"q":"When did I grab an espresso?","date":"2026-10-20","kind":"paraphrase","gold":["ev_003","place:cafe1","ev_008","place:cafe2"]}
+{"q":"Which code submission did I look at?","date":"2026-10-20","kind":"paraphrase","gold":["ev_007","ocr:1005_00:b0","ocr:1005_00:b1","ocr:1005_00:b2"]}
+{"q":"Where did I eat in the middle of the day?","date":"2026-10-20","kind":"paraphrase","gold":["ev_008","place:cafe2"]}
+{"q":"When did I go upstairs?","date":"2026-10-20","kind":"paraphrase","gold":["ev_006"]}
+{"q":"What principle about the data store did I read?","date":"2026-10-20","kind":"paraphrase","gold":["ev_004","ocr:0910_00:b1"]}
+{"q":"When did I head back to my house?","date":"2026-10-20","kind":"paraphrase","gold":["ev_010","place:home2"]}
+{"q":"What did I do on the frontend in the afternoon?","date":"2026-10-20","kind":"paraphrase","gold":["ev_011"]}
+{"q":"Which three confidence levels were listed?","date":"2026-10-20","kind":"paraphrase","gold":["ocr:0910_00:b2"]}
+{"q":"hinge inference loop","date":"2026-10-20","kind":"keyword","gold":["ev_007","ocr:1005_00:b0"]}
+{"q":"Maple Café","date":"2026-10-20","kind":"keyword","gold":["ev_003","ev_008","place:cafe1","place:cafe2"]}
+{"q":"evidence card","date":"2026-10-20","kind":"keyword","gold":["ev_quote_1","transcript:mo_001:1"]}
+{"q":"Connect the viewer to the local API","date":"2026-10-20","kind":"keyword","gold":["ev_011"]}
+{"q":"Sam will show the evidence card","date":"2026-10-20","kind":"keyword","gold":["ev_quote_1","transcript:mo_001:1"]}
+{"q":"What did the dentist say about my teeth?","date":"2026-10-20","kind":"unanswerable","gold":[]}
+{"q":"How much did the flight to Tokyo cost?","date":"2026-10-20","kind":"unanswerable","gold":[]}
+{"q":"Did I go swimming?","date":"2026-10-20","kind":"unanswerable","gold":[]}
+{"q":"What was the stock price of Nvidia?","date":"2026-10-20","kind":"unanswerable","gold":[]}
+{"q":"Who won the hockey game?","date":"2026-10-20","kind":"unanswerable","gold":[]}
