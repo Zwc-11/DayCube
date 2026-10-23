@@ -89,6 +89,26 @@ Two more changes came out of profiling rather than from the reference:
 The lint configuration now matches the reference rule families: `E`, `F`, `UP`, `B`, `SIM`, `I` and
 `ANN`, without its CUDA-specific ignores. Measurements are in [performance notes](performance.md#second-pass-measurements).
 
+## Scheduled follow-up: bounded index jobs
+
+The follow-up revisited the pinned performance-cache implementation and its configuration-complete
+keys, alongside the previously reviewed ownership and synchronization patterns. DAYCUBE's API
+still scheduled a full rebuild for every repeated request and mutated its process-local job map
+without synchronization. A queued burst of 20 identical index requests confirmed 20 builds.
+
+`IndexJobs` now owns admission, state transitions and detached snapshots. It shares an active job
+only for matching `(day, source version)` keys, caps queued/running work at eight and retained
+history at 100, and evicts only terminal records. Source versions include snapshot stamps/write
+counters plus global place names. Completed/failed jobs permit a new explicit rebuild. Builders
+run outside the registry lock, and failures are logged while the API keeps its diagnostic message.
+
+Concurrency tests cover competing scheduling owners, capacity, state reads during a build,
+failure recovery, source changes and history eviction when an older job reused an active key.
+The API wire shape stays the same; limits and process-local lifetime are in [API notes](api.md).
+The measured burst comparison is in [performance notes](performance.md#queued-index-burst).
+This applies the reference's key/ownership discipline; it does not port its accelerator scheduler
+or replace FastAPI's background runner with a durable queue.
+
 The [engineering standard](engineering.md) defines the ongoing expectations and remaining gaps.
 The earlier viewer fixes and idle measurements are documented separately in
 [performance notes](performance.md). Neither pass establishes general performance parity

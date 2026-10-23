@@ -1,0 +1,64 @@
+{
+  "kind": "queued-same-day-index-burst",
+  "timestamp": "2026-10-23T04:56:20.002165+00:00",
+  "boundaries": "Direct API handler submission, then concurrent background execution; excludes HTTP, auth, app setup and warmup",
+  "workload": {
+    "places": 50,
+    "events": 5000,
+    "fixes": 10000,
+    "screenshots": 1000
+  },
+  "requests": 20,
+  "repeats": 5,
+  "environment": {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "processor": "AMD64 Family 26 Model 68 Stepping 0, AuthenticAMD",
+    "python": "3.11.9 (tags/v3.11.9:de54cf5, Apr  2 2024, 10:12:12) [MSC v.1938 64 bit (AMD64)]",
+    "sqlite": "3.45.1",
+    "revision": "47c910e3d73d529c2b52f957df2732f27176611c",
+    "dirty": true,
+    "source_sha256": {
+      "services/ingest/ingest/api.py": "0c58d3b7253349a65a5974e3cb1dbebd43bd20d0e5586e253fa8c7df9200b378",
+      "services/ingest/ingest/jobs.py": "5d870697e8ed028ef496247da82ad053434d25d45437333dd1efa8fe32de413c",
+      "services/ingest/ingest/index/build.py": "0879c697b284054f73ce1661c20d83721b6667e36498f6cd83b9eb371fc1a61e",
+      "services/ingest/ingest/vault.py": "30f7383fa44691a296916cc77ee12b8794c7aa470381a3fb122a2ae04b82660a",
+      "eval/benchmark_core.py": "65172b42bf8d84642b48145b4dd1822c1ce3ed18d69c685e1994cf433942a469",
+      "eval/benchmark_jobs.py": "f143b7d9fc41ce99c11953d6f0d061ede389490ff0574743217093c9db47abed"
+    }
+  },
+  "median_ms": 58.912199980113655,
+  "samples": [
+    {
+      "elapsed_ms": 58.82380000548437,
+      "builds": 1,
+      "distinct_job_ids": 1,
+      "index_sha256": "aa8f2305ef09091a66d1ca32393bb4608a84272ce62e95cf66268cbf80a3a46b"
+    },
+    {
+      "elapsed_ms": 58.912199980113655,
+      "builds": 1,
+      "distinct_job_ids": 1,
+      "index_sha256": "aa8f2305ef09091a66d1ca32393bb4608a84272ce62e95cf66268cbf80a3a46b"
+    },
+    {
+      "elapsed_ms": 63.25519998790696,
+      "builds": 1,
+      "distinct_job_ids": 1,
+      "index_sha256": "aa8f2305ef09091a66d1ca32393bb4608a84272ce62e95cf66268cbf80a3a46b"
+    },
+    {
+      "elapsed_ms": 58.47430002177134,
+      "builds": 1,
+      "distinct_job_ids": 1,
+      "index_sha256": "aa8f2305ef09091a66d1ca32393bb4608a84272ce62e95cf66268cbf80a3a46b"
+    },
+    {
+      "elapsed_ms": 59.54739998560399,
+      "builds": 1,
+      "distinct_job_ids": 1,
+      "index_sha256": "aa8f2305ef09091a66d1ca32393bb4608a84272ce62e95cf66268cbf80a3a46b"
+    }
+  ],
+  "baseline_median_ms": 994.1536000114866,
+  "speedup": 16.87517356926192
+}

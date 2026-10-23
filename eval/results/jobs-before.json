@@ -1,0 +1,58 @@
+{
+  "kind": "queued-same-day-index-burst",
+  "boundaries": "Direct API handler submission, then concurrent background execution; excludes HTTP, auth, app setup and warmup",
+  "workload": {
+    "places": 50,
+    "events": 5000,
+    "fixes": 10000,
+    "screenshots": 1000
+  },
+  "requests": 20,
+  "repeats": 5,
+  "environment": {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "processor": "AMD64 Family 26 Model 68 Stepping 0, AuthenticAMD",
+    "python": "3.11.9 (tags/v3.11.9:de54cf5, Apr  2 2024, 10:12:12) [MSC v.1938 64 bit (AMD64)]",
+    "sqlite": "3.45.1",
+    "revision": "47c910e3d73d529c2b52f957df2732f27176611c",
+    "dirty": true,
+    "source_sha256": {
+      "services/ingest/ingest/api.py": "1fb4b3f87c28f103dafbe87f264bf450808b7374a2014dab7bd85522f5eb72ad",
+      "services/ingest/ingest/index/build.py": "0879c697b284054f73ce1661c20d83721b6667e36498f6cd83b9eb371fc1a61e",
+      "eval/benchmark_jobs.py": "78b0aad15535ef95dc2ce7972f9f05135fd463807815dc232222ba27c6d6c5fb"
+    }
+  },
+  "median_ms": 994.1536000114866,
+  "samples": [
+    {
+      "elapsed_ms": 986.9844999921042,
+      "builds": 20,
+      "distinct_job_ids": 20,
+      "index_sha256": "aa8f2305ef09091a66d1ca32393bb4608a84272ce62e95cf66268cbf80a3a46b"
+    },
+    {
+      "elapsed_ms": 993.9130000129808,
+      "builds": 20,
+      "distinct_job_ids": 20,
+      "index_sha256": "aa8f2305ef09091a66d1ca32393bb4608a84272ce62e95cf66268cbf80a3a46b"
+    },
+    {
+      "elapsed_ms": 1028.7488000176381,
+      "builds": 20,
+      "distinct_job_ids": 20,
+      "index_sha256": "aa8f2305ef09091a66d1ca32393bb4608a84272ce62e95cf66268cbf80a3a46b"
+    },
+    {
+      "elapsed_ms": 994.1536000114866,
+      "builds": 20,
+      "distinct_job_ids": 20,
+      "index_sha256": "aa8f2305ef09091a66d1ca32393bb4608a84272ce62e95cf66268cbf80a3a46b"
+    },
+    {
+      "elapsed_ms": 1475.095700006932,
+      "builds": 20,
+      "distinct_job_ids": 20,
+      "index_sha256": "aa8f2305ef09091a66d1ca32393bb4608a84272ce62e95cf66268cbf80a3a46b"
+    }
+  ]
+}

@@ -53,6 +53,9 @@ the revision and files inspected. Its accelerator throughput is not a benchmark 
   Cache invalidation must cover every input that affects the cached output.
 - Bound work and memory by an explicit input size or capacity. Add cancellation/backpressure before
   enabling continuous capture, reconstruction or cloud processing.
+- Job admission and state transitions share one owner and lock; slow work runs outside that lock.
+  Share active work only when every relevant source version matches. Bound both active jobs and
+  retained history, and preserve active records during eviction. See [API job limits](api.md).
 - Introduce native, vector or GPU dependencies only when a measured bottleneck justifies them.
 
 ## Evidence required for a change

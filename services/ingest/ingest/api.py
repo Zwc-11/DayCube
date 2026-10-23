@@ -6,8 +6,6 @@ import re
 import secrets
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
-from uuid import uuid4
 
 import httpx
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request
@@ -21,11 +19,11 @@ from .config import Settings
 from .contracts import ContractError
 from .generated.event import Event
 from .index.build import build_index
+from .jobs import IndexJobs, JobsFull
 from .vault import Record, Vault, read_json
 
 MEDIA_SUFFIXES = frozenset({".jpg", ".jpeg", ".png", ".svg", ".mp4", ".wav", ".glb", ".ply", ".spz"})
 SAFE_ID = re.compile(r"[A-Za-z0-9_-]+")
-MAX_JOBS = 100
 
 
 class RequestModel(BaseModel):
@@ -65,7 +63,7 @@ def sse(event: str, value: Record) -> str:
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings()
     vault = Vault(settings.vault_root)
-    jobs: dict[str, Record] = {}
+    jobs = IndexJobs(lambda date: build_index(vault, date))
     bearer = HTTPBearer(auto_error=False)
 
     @asynccontextmanager
@@ -198,49 +196,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         return {"accepted": accepted}
 
-    def run_job(job_id: str, date: str) -> None:
-        jobs[job_id].update(status="running", stage="index", pct=10)
-        try:
-            result = build_index(vault, date)
-            jobs[job_id].update(status="complete", pct=100, result=result, message="Local FTS5 index rebuilt")
-        except Exception:
-            jobs[job_id].update(status="failed", message="Index build failed; run daycube validate for diagnostics")
-
     @app.post("/ingest/{date}", dependencies=[Depends(authorize)], status_code=202)
     def ingest_day(date: str, body: IngestRequest, tasks: BackgroundTasks) -> Record:
         vault.day_path(date)
         if set(body.steps) != {"index"}:
             raise HTTPException(501, "Only the index stage is implemented. Capture/moments/summaries are planned.")
-        job_id = uuid4().hex
-        if len(jobs) >= MAX_JOBS:
-            finished = next((key for key, value in jobs.items() if value["status"] in {"complete", "failed"}), None)
-            if finished:
-                del jobs[finished]
-            else:
-                raise HTTPException(429, "Too many active jobs")
-        jobs[job_id] = {
-            "id": job_id,
-            "date": date,
-            "status": "queued",
-            "stage": "index",
-            "pct": 0,
-            "message": "Queued",
-            "created_at": datetime.now(UTC).isoformat(),
-        }
-        tasks.add_task(run_job, job_id, date)
+        # Index output/stamp writes do not change this version; edits to any source do.
+        version = (vault.snapshot_key(date), vault.stamp(vault.root / "places.json"))
+        try:
+            job_id, schedule = jobs.submit(date, version)
+        except JobsFull as error:
+            raise HTTPException(429, "Too many active jobs", headers={"Retry-After": "1"}) from error
+        if schedule:
+            tasks.add_task(jobs.run, job_id)
         return {"job_id": job_id}
 
     @app.get("/jobs/{job_id}", response_model=None)
     def job(job_id: str, stream: bool = False) -> Record | StreamingResponse:
-        if job_id not in jobs:
+        state = jobs.snapshot(job_id)
+        if state is None:
             raise HTTPException(404, "Job not found; jobs are process-local and expire on restart")
         if not stream:
-            return jobs[job_id]
+            return state
 
         async def generate() -> AsyncIterator[str]:
             previous = ""
-            while job_id in jobs:
-                state = dict(jobs[job_id])
+            while (state := jobs.snapshot(job_id)) is not None:
                 serialized = json.dumps(state)
                 if serialized != previous:
                     yield sse("progress", state)
