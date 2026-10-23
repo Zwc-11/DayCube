@@ -1,1 +1,41 @@
-body { background: #101722; color: #dfe5ed; font: 14px/1.7 system-ui; margin: 40px; } main { max-width: 650px; margin: auto; }h1 { color: #ffb454; }label { display: block; margin: 22px 0; }input[type=password], textarea { display: block; width: 100%; box-sizing: border-box; background: #1c2635; border: 1px solid #455166; color: #e3e8ef; padding: 12px; margin-top: 8px; border-radius: 5px; }button { background: #ffb454; color: #141923; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; }p { color: #acb8c9; }
+:root {
+  color-scheme: dark;
+  --ground: #101722;
+  --panel: #182231;
+  --line: #2c3a4f;
+  --text: #dfe5ed;
+  --quiet: #9fadc0;
+  --amber: #ffb454;
+  --good: #7fc79a;
+  --bad: #ef8a7d;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--ground); color: var(--text); font: 15px/1.6 system-ui, "Segoe UI", sans-serif; }
+main { max-width: 680px; margin: 0 auto; padding: 40px 16px 64px; }
+h1 { color: var(--amber); font-size: 26px; margin: 0 0 6px; font-weight: 650; }
+h2 { font-size: 17px; margin: 32px 0 10px; font-weight: 620; }
+.lede, .hint { color: var(--quiet); }
+.hint { margin: 2px 0 8px; font-size: 13.5px; }
+code, kbd { font: 13px ui-monospace, Consolas, monospace; background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+.state { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 4px 18px 14px; margin-top: 24px; }
+.state h2 { margin-top: 14px; }
+dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px 20px; margin: 0; }
+dt { color: var(--quiet); font-size: 13px; }
+dd { margin: 0; }
+dd.good { color: var(--good); }
+dd.bad { color: var(--bad); }
+label { display: block; font-weight: 560; margin-top: 22px; }
+input[type=password], textarea {
+  display: block; width: 100%; margin-top: 4px; padding: 10px 12px; border-radius: 6px;
+  background: var(--panel); border: 1px solid var(--line); color: var(--text); font: 14px ui-monospace, Consolas, monospace;
+}
+fieldset { border: 1px solid var(--line); border-radius: 8px; margin: 26px 0 0; padding: 8px 16px 14px; }
+legend { font-weight: 560; padding: 0 6px; }
+.choice { font-weight: 400; margin-top: 8px; display: flex; gap: 10px; align-items: center; }
+.toggle { margin-top: 24px; font-weight: 560; }
+input[type=radio], input[type=checkbox] { accent-color: var(--amber); width: 16px; height: 16px; }
+button { margin-top: 22px; background: var(--amber); color: #141923; border: 0; border-radius: 6px; padding: 10px 20px; font: 600 14px system-ui, sans-serif; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+ul { padding-left: 20px; margin: 0; }
+li { margin: 4px 0; }
+#saved { color: var(--quiet); min-height: 1.6em; }

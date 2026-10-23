@@ -14,6 +14,7 @@
     "setup:api": "uv sync --locked --python 3.11 && uv run daycube init",
     "test:e2e:api": "playwright test",
     "test:e2e:viewer": "playwright test --config playwright.viewer.config.ts",
+    "test:extension": "node --test extensions/tests/lib.test.mjs && playwright test --config playwright.extension.config.ts",
     "lint:api": "uv run ruff check services scripts eval jobs",
     "bench:core": "uv run python eval/benchmark_core.py",
     "setup": "npm install && uv sync",

@@ -1,2 +1,66 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><title>DAYCUBE capture settings</title><link rel="stylesheet" href="options.css"></head>
-<body><main><h1>DAYCUBE local capture</h1><p>This starter sends the active tab's URL, title, scroll position and viewport size to your local receiver. It does not collect page text, screenshots or webcam video.</p><p>Capture is disabled by default. URLs and titles can still contain private information. Configure exclusions before enabling.</p><form id="settings"><label>Vault token <input id="token" type="password" autocomplete="off" placeholder="From vault/.token"></label><label>Excluded domains (one per line)<textarea id="exclusions" rows="6"></textarea></label><label class="toggle"><input id="enabled" type="checkbox"> Enable browser metadata capture</label><button>Save settings</button><p id="status" role="status"></p></form><p>The token is kept in this browser's local extension storage. Add the extension ID to DAYCUBE_EXTENSION_ID in your .env and restart the receiver. The toolbar badge reads ON while enabled and ERR when delivery fails.</p></main><script src="options.js"></script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DayCube Capture settings</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+<main>
+  <h1>DayCube Capture</h1>
+  <p class="lede">Records your browsing into the DayCube vault on this computer. Records go only to the receiver at 127.0.0.1:7700; nothing is sent anywhere else.</p>
+
+  <section class="state" aria-labelledby="state-heading">
+    <h2 id="state-heading">Right now</h2>
+    <dl>
+      <div><dt>Recording</dt><dd id="recording">—</dd></div>
+      <div><dt>Receiver</dt><dd id="receiver">—</dd></div>
+      <div><dt>Eye tracker</dt><dd id="gaze">—</dd></div>
+      <div><dt>Waiting to send</dt><dd id="queued">—</dd></div>
+    </dl>
+  </section>
+
+  <form id="settings">
+    <h2>Settings</h2>
+    <label for="token">Vault token</label>
+    <p class="hint">The text in <code>vault/.token</code>. It stays in this browser's extension storage and is never given to web pages.</p>
+    <input id="token" type="password" autocomplete="off" spellcheck="false">
+
+    <label for="exclusions">Domains never to record</label>
+    <p class="hint">One per line. Subdomains are included: <code>mybank.com</code> also covers <code>online.mybank.com</code>.</p>
+    <textarea id="exclusions" rows="6" spellcheck="false"></textarea>
+
+    <fieldset>
+      <legend>When your eyes stay on one passage</legend>
+      <p class="hint">A dwell is fixation time of at least 8 seconds and twice the time the passage takes to read. Every dwell is recorded whichever you choose.</p>
+      <label class="choice"><input type="radio" name="dwell" value="mark"> Mark the passage with a bar beside it</label>
+      <label class="choice"><input type="radio" name="dwell" value="notify"> Show a notification</label>
+      <label class="choice"><input type="radio" name="dwell" value="none"> Do nothing</label>
+    </fieldset>
+
+    <label class="choice toggle"><input id="enabled" type="checkbox"> Record my browsing</label>
+    <button type="submit">Save settings</button>
+    <p id="saved" role="status"></p>
+  </form>
+
+  <section aria-labelledby="what-heading">
+    <h2 id="what-heading">What is recorded</h2>
+    <ul>
+      <li>Each page you open: its address, title and how you got there (a link, typed, back, reload).</li>
+      <li>Which tab is in front, and when the browser loses focus or you are away.</li>
+      <li>Searches on Google, Bing, DuckDuckGo, YouTube, GitHub, Wikipedia and others.</li>
+      <li>Clicks on links and buttons, text you select or copy, and video or audio you play or pause.</li>
+      <li>The text visible on screen and where it is, so gaze can be matched to paragraphs.</li>
+    </ul>
+    <h2>What is not</h2>
+    <ul>
+      <li>Private windows, excluded domains, and any page while it shows a password field.</li>
+      <li>Anything you type into fields or editable areas.</li>
+      <li>Anything while paused. Click the toolbar button or press <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd> to pause or resume; this also stops the eye tracker and releases the webcam.</li>
+    </ul>
+  </section>
+</main>
+<script type="module" src="options.js"></script>
+</body>
+</html>

@@ -1,0 +1,161 @@
+"""What the capture service accepts: browser records from the extension and fixations from the
+eye tracker. Every record carries a client-made ``id``, so a batch resent after a lost
+acknowledgement is stored once."""
+
+from __future__ import annotations
+
+from typing import Annotated, Literal
+
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+
+
+class Strict(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class Record(Strict):
+    id: str = Field(min_length=8, max_length=64)
+    t: AwareDatetime
+
+
+class Tab(Strict):
+    tab: int
+    window: int
+    url: str = Field(max_length=4096)
+    title: str = Field(default="", max_length=1000)
+
+
+class Page(Record, Tab):
+    """A navigation committed in a tab's top frame, with how it was reached."""
+
+    kind: Literal["page"]
+    transition: str = Field(max_length=40)  # link, typed, reload, auto_bookmark, form_submit, ...
+    qualifiers: list[str] = Field(default_factory=list, max_length=10)  # forward_back, from_address_bar, ...
+
+
+class Focus(Record):
+    """The tab in front changed. ``tab`` is None when the browser lost focus; ``url`` is None
+    when the tab in front is excluded."""
+
+    kind: Literal["focus"]
+    tab: int | None = None
+    window: int | None = None
+    url: str | None = Field(default=None, max_length=4096)
+    title: str | None = Field(default=None, max_length=1000)
+
+
+class Title(Record, Tab):
+    kind: Literal["title"]
+
+
+class Idle(Record):
+    kind: Literal["idle"]
+    state: Literal["active", "idle", "locked"]
+
+
+class Search(Record, Tab):
+    kind: Literal["search"]
+    engine: str = Field(max_length=40)
+    query: str = Field(max_length=1000)
+
+
+class Click(Record, Tab):
+    kind: Literal["click"]
+    href: str | None = Field(default=None, max_length=4096)
+    text: str = Field(default="", max_length=300)
+
+
+class Selection(Record, Tab):
+    kind: Literal["selection"]
+    text: str = Field(max_length=2000)
+    copied: bool = False
+
+
+class Media(Record, Tab):
+    kind: Literal["media"]
+    state: Literal["playing", "paused", "ended"]
+    position_s: float = Field(ge=0)
+    duration_s: float | None = Field(default=None, ge=0)
+
+
+class Geometry(Strict):
+    """Where the page's viewport is on its monitor.
+
+    Screen values are DIP (Windows logical pixels) relative to the monitor's top-left corner;
+    page values are CSS pixels; ``scale`` is DIP per CSS pixel (the page zoom). ``exact`` is
+    true when the viewport origin was measured from a mouse event rather than estimated from
+    window sizes."""
+
+    vx: float
+    vy: float
+    scale: float = Field(gt=0, le=10)
+    inner_w: float = Field(gt=0)
+    inner_h: float = Field(gt=0)
+    screen_w: float = Field(gt=0)
+    screen_h: float = Field(gt=0)
+    primary: bool  # on the primary monitor, the one the eye tracker is calibrated on
+    exact: bool
+    scroll_y: float = Field(ge=0)
+    scroll_h: float = Field(ge=0)
+
+
+class Block(Strict):
+    """A visible run of text: heading, paragraph, list item, cell. ``text`` (cut to 1,000
+    characters) and ``words`` (counted before the cut) are sent the first time a document shows
+    the block or when it changes; later snapshots carry only its id and position."""
+
+    id: str = Field(min_length=1, max_length=16)
+    tag: str = Field(max_length=16)
+    text: str | None = Field(default=None, max_length=1000)
+    words: int | None = Field(default=None, ge=0)
+    rect: Annotated[list[float], Field(min_length=4, max_length=4)]  # left, top, width, height in CSS px
+
+
+class Blocks(Record, Tab):
+    """The text on screen. ``doc`` names one load of a page, and block ids are unique within it."""
+
+    kind: Literal["blocks"]
+    doc: str = Field(min_length=4, max_length=40)
+    geometry: Geometry
+    blocks: list[Block] = Field(max_length=150)
+
+
+class View(Record, Tab):
+    """A heartbeat from the page in front: used live to place gaze, never stored."""
+
+    kind: Literal["view"]
+    doc: str = Field(min_length=4, max_length=40)
+    geometry: Geometry
+
+
+BrowserRecord = Annotated[
+    Page | Focus | Title | Idle | Search | Click | Selection | Media | Blocks | View,
+    Field(discriminator="kind"),
+]
+
+
+class Fixation(Strict):
+    """A fixation from the eye tracker. ``x`` and ``y`` are fractions of the calibrated
+    (primary) monitor, so they do not depend on display scaling."""
+
+    id: str = Field(min_length=8, max_length=64)
+    t: AwareDatetime
+    t_end: AwareDatetime
+    x: float = Field(ge=-0.5, le=1.5)
+    y: float = Field(ge=-0.5, le=1.5)
+    samples: int = Field(ge=1)
+
+
+class GazeState(Strict):
+    tracking: bool
+    reason: str | None = Field(default=None, max_length=80)  # why not tracking: paused, away, camera busy, ...
+    calibrated: bool = False
+    error_px: float | None = None
+    monitor: Annotated[list[int], Field(min_length=2, max_length=2)] | None = None  # calibrated monitor, pixels
+    fps: float | None = None
+    face: float | None = Field(default=None, ge=0, le=1)  # share of recent frames with a usable face
+
+
+class GazeBatch(Strict):
+    state: GazeState
+    fixations: list[Fixation] = Field(default_factory=list, max_length=1000)

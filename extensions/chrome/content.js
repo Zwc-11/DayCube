@@ -1,18 +1,282 @@
+// DayCube page reporter. Runs in each page's top frame and sends the service worker:
+// - what text is on screen ("blocks") and where the viewport sits on the monitor, so the
+//   receiver can tell which paragraph the eye tracker's gaze falls on;
+// - a heartbeat every 5 s while the page is in front;
+// - clicks on links and buttons, text selected or copied, and media play/pause/end.
+// It never reads what is typed into fields or editable areas, and reports nothing while the
+// page shows a password field. Excluded domains and pausing are enforced by the service worker.
+
 (() => {
-  let lastSent = 0;
-  function report() {
-    if (document.visibilityState !== 'visible' || !document.hasFocus()) return;
-    // Suppress metadata for pages with a visible password input, not just a focused one.
-    if ([...document.querySelectorAll('input[type="password"]')].some(input => input.getClientRects().length)) return;
-    const now = Date.now();
-    if (now - lastSent < 5000) return;
-    lastSent = now;
-    chrome.runtime.sendMessage({ kind: 'page', scroll_y: window.scrollY,
-      viewport: [window.innerWidth, window.innerHeight] }).catch(() => {});
+  if (window.top !== window || window.__daycubeReporter) return;
+  window.__daycubeReporter = true;
+
+  const DOC = crypto.randomUUID().replace(/-/g, '').slice(0, 16); // one load of this page
+  const MAX_BLOCKS = 150;
+  const SKIP = [
+    'script', 'style', 'noscript', 'template', 'textarea', 'input', 'select', 'option', 'svg', 'canvas',
+    'video', 'audio', 'iframe', 'object', '[contenteditable=""]', '[contenteditable="true"]',
+    '[contenteditable="plaintext-only"]', '[aria-hidden="true"]', '[data-daycube]',
+  ].join(',');
+
+  const ids = new WeakMap(); // element -> block id
+  const elements = new Map(); // block id -> WeakRef(element)
+  const sent = new Map(); // block id -> text the service worker accepted
+  let counter = 0;
+  let signature = '';
+  let timer = null;
+  let lastMutation = 0;
+  let mutationGap = 2000;
+  let mouse = null;
+  let zoom = null;
+
+  const live = () => { try { return Boolean(chrome.runtime?.id); } catch { return false; } };
+  const send = message => (live() ? chrome.runtime.sendMessage(message).catch(() => null) : Promise.resolve(null));
+  const front = () => document.visibilityState === 'visible' && document.hasFocus() && !document.prerendering;
+  const guarded = () => [...document.querySelectorAll('input[type="password"]')].some(input => input.getClientRects().length);
+  const clean = text => text.replace(/\s+/g, ' ').trim();
+  const round = value => Math.round(value * 10) / 10;
+
+  // -- where the viewport is on the screen ----------------------------------------------------------
+
+  // DIP per CSS pixel. Two mouse samples measure it exactly; otherwise it is estimated from the
+  // window's outer and inner widths, which differ by little more than the borders at 100% zoom.
+  function scale() {
+    if (zoom && zoom.dpr === devicePixelRatio) return zoom.value;
+    const ratio = outerWidth / innerWidth;
+    return Math.abs(ratio - 1) < 0.06 ? 1 : ratio;
   }
-  window.addEventListener('scroll', report, { passive: true });
-  window.addEventListener('focus', report);
-  window.addEventListener('popstate', report);
-  document.addEventListener('visibilitychange', report);
-  report();
+
+  addEventListener('mousemove', event => {
+    if (!event.isTrusted) return;
+    const now = performance.now();
+    if (mouse && now - mouse.at < 250) return;
+    const sample = {
+      sx: event.screenX, sy: event.screenY, cx: event.clientX, cy: event.clientY,
+      wx: screenX, wy: screenY, dpr: devicePixelRatio, at: now,
+    };
+    if (mouse && mouse.dpr === sample.dpr && mouse.wx === sample.wx && mouse.wy === sample.wy
+        && Math.abs(sample.cx - mouse.cx) >= 100) {
+      const value = (sample.sx - mouse.sx) / (sample.cx - mouse.cx);
+      if (value > 0.2 && value < 6) zoom = { value: Math.round(value * 100) / 100, dpr: sample.dpr };
+    }
+    mouse = sample;
+  }, { passive: true, capture: true });
+
+  function geometry() {
+    const z = scale();
+    let vx;
+    let vy;
+    let exact = false;
+    if (mouse && mouse.dpr === devicePixelRatio) {
+      // Screen point minus client point is the viewport's origin; follow window moves since.
+      vx = mouse.sx - mouse.cx * z + (screenX - mouse.wx);
+      vy = mouse.sy - mouse.cy * z + (screenY - mouse.wy);
+      exact = true;
+    } else {
+      const border = Math.max(0, (outerWidth - innerWidth * z) / 2);
+      vx = screenX + border;
+      vy = screenY + Math.max(0, outerHeight - innerHeight * z - border);
+    }
+    // The primary monitor's origin is (0, 0); its available area starts after any taskbar.
+    const s = screen;
+    const left = s.availLeft ?? 0;
+    const top = s.availTop ?? 0;
+    const primary = left >= 0 && left <= s.width - s.availWidth && top >= 0 && top <= s.height - s.availHeight;
+    return {
+      vx: round(primary ? vx : vx - left), vy: round(primary ? vy : vy - top), scale: z,
+      inner_w: innerWidth, inner_h: innerHeight, screen_w: s.width, screen_h: s.height, primary, exact,
+      scroll_y: Math.max(0, round(scrollY)), scroll_h: document.documentElement.scrollHeight,
+    };
+  }
+
+  // -- the text on screen ---------------------------------------------------------------------------
+
+  function snapshot() {
+    timer = null;
+    if (!front() || guarded() || !document.body) return;
+    const started = performance.now();
+    const vw = innerWidth;
+    const vh = innerHeight;
+    const styles = new Map();
+    const style = element => {
+      let value = styles.get(element);
+      if (!value) styles.set(element, (value = getComputedStyle(element)));
+      return value;
+    };
+    const blockOf = node => {
+      for (let element = node.parentElement; element; element = element.parentElement) {
+        if (element === document.body) return element;
+        const display = style(element).display;
+        if (!display.startsWith('inline') && display !== 'contents' && display !== 'ruby') return element;
+      }
+      return null;
+    };
+    const offscreen = rect => rect.bottom < 0 || rect.top > vh || rect.right < 0 || rect.left > vw;
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
+      acceptNode(node) {
+        if (node.nodeType === Node.TEXT_NODE) return node.nodeValue.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+        if (node.matches(SKIP)) return NodeFilter.FILTER_REJECT;
+        const rect = node.getBoundingClientRect();
+        // A box with a size that lies wholly off screen shows nothing, except positioned children.
+        if (rect.width > 0 && rect.height > 0 && offscreen(rect)) return NodeFilter.FILTER_REJECT;
+        return NodeFilter.FILTER_SKIP;
+      },
+    });
+    const range = document.createRange();
+    const groups = new Map();
+    for (let node = walker.nextNode(); node && groups.size < MAX_BLOCKS * 2; node = walker.nextNode()) {
+      range.selectNodeContents(node);
+      let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
+      for (const rect of range.getClientRects()) {
+        if (!rect.width || !rect.height || offscreen(rect)) continue;
+        l = Math.min(l, rect.left); t = Math.min(t, rect.top); r = Math.max(r, rect.right); b = Math.max(b, rect.bottom);
+      }
+      if (l === Infinity) continue;
+      const element = blockOf(node);
+      if (!element) continue;
+      let group = groups.get(element);
+      if (!group) {
+        const look = style(element);
+        if (look.visibility === 'hidden' || look.opacity === '0') continue;
+        groups.set(element, (group = { parts: [], l, t, r, b }));
+      }
+      group.parts.push(node.nodeValue);
+      group.l = Math.min(group.l, l); group.t = Math.min(group.t, t);
+      group.r = Math.max(group.r, r); group.b = Math.max(group.b, b);
+    }
+    const blocks = [];
+    const texts = [];
+    for (const [element, group] of groups) {
+      const full = clean(group.parts.join(''));
+      if (full.length < 2) continue;
+      let id = ids.get(element);
+      if (!id) {
+        id = `b${(++counter).toString(36)}`;
+        ids.set(element, id);
+        elements.set(id, new WeakRef(element));
+      }
+      const left = Math.max(0, group.l);
+      const top = Math.max(0, group.t);
+      const block = {
+        id, tag: element.tagName.toLowerCase().slice(0, 16),
+        rect: [round(left), round(top), round(Math.min(vw, group.r) - left), round(Math.min(vh, group.b) - top)],
+      };
+      const text = full.slice(0, 1000);
+      if (sent.get(id) !== text) {
+        block.text = text;
+        block.words = full.split(' ').length;
+        texts.push([id, text]);
+      }
+      blocks.push(block);
+      if (blocks.length === MAX_BLOCKS) break;
+    }
+    const shape = JSON.stringify([Math.round(scrollY), vw, vh, blocks.map(block => [block.id, ...block.rect])]);
+    // Pages that change constantly (chats, tickers) are measured less often if measuring is slow.
+    mutationGap = performance.now() - started > 40 ? 10000 : 2000;
+    if (shape === signature && !texts.length) return;
+    signature = shape;
+    send({ kind: 'blocks', doc: DOC, geometry: geometry(), blocks }).then(reply => {
+      if (reply?.ok) for (const [id, text] of texts) sent.set(id, text);
+      else signature = ''; // not taken (paused, excluded): send the text again later
+    });
+    if (elements.size > 5000) for (const [id, ref] of elements) if (!ref.deref()) elements.delete(id);
+  }
+
+  function schedule(delay) {
+    clearTimeout(timer);
+    timer = setTimeout(snapshot, delay);
+  }
+
+  addEventListener('scroll', () => schedule(350), { passive: true, capture: true });
+  addEventListener('resize', () => { mouse = null; schedule(350); }, { passive: true });
+  addEventListener('focus', () => schedule(200));
+  document.addEventListener('visibilitychange', () => { if (front()) schedule(200); });
+  if (document.prerendering) document.addEventListener('prerenderingchange', () => schedule(300), { once: true });
+  new MutationObserver(() => {
+    const now = performance.now();
+    if (now - lastMutation < mutationGap) return;
+    lastMutation = now;
+    schedule(1000);
+  }).observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+  setInterval(() => {
+    if (front() && !guarded()) send({ kind: 'view', doc: DOC, geometry: geometry() });
+  }, 5000);
+  schedule(600);
+
+  // -- actions --------------------------------------------------------------------------------------
+
+  const CLICKABLE = 'a[href], button, summary, label, [role="button"], [role="link"], [role="tab"], [role="menuitem"], '
+    + 'input[type="submit"], input[type="button"], input[type="checkbox"], input[type="radio"]';
+
+  document.addEventListener('click', event => {
+    if (!event.isTrusted || guarded()) return;
+    const element = event.target instanceof Element ? event.target.closest(CLICKABLE) : null;
+    if (!element || element.closest('[contenteditable="true"], [contenteditable=""]')) return;
+    const button = element instanceof HTMLInputElement && ['submit', 'button'].includes(element.type);
+    const label = element.getAttribute('aria-label') || (element instanceof HTMLInputElement ? (button ? element.value : '') : element.innerText);
+    const link = element.closest('a[href]');
+    const href = link && /^https?:/.test(link.href) ? link.href : null;
+    send({ kind: 'click', href, text: clean(label || '').slice(0, 300) });
+  }, true);
+
+  let selectionTimer = null;
+  let lastSelection = '';
+  function selection(copied) {
+    if (!front() || guarded()) return;
+    const current = getSelection();
+    if (!current || current.isCollapsed) return;
+    const anchor = current.anchorNode instanceof Element ? current.anchorNode : current.anchorNode?.parentElement;
+    if (anchor?.isContentEditable) return; // the user's own writing
+    const text = clean(current.toString());
+    if (text.length < 3 || (!copied && text === lastSelection)) return;
+    lastSelection = text;
+    send({ kind: 'selection', text: text.slice(0, 2000), copied });
+  }
+  document.addEventListener('selectionchange', () => {
+    clearTimeout(selectionTimer);
+    selectionTimer = setTimeout(() => selection(false), 900);
+  });
+  document.addEventListener('copy', () => selection(true), true);
+
+  const MEDIA = { play: 'playing', pause: 'paused', ended: 'ended' };
+  for (const type of Object.keys(MEDIA)) {
+    document.addEventListener(type, event => {
+      const media = event.target;
+      // Muted autoplay (previews, ads) and short clips are not something being watched.
+      if (!(media instanceof HTMLMediaElement) || media.muted || (Number.isFinite(media.duration) && media.duration < 3)) return;
+      send({
+        kind: 'media', state: MEDIA[type], position_s: media.currentTime,
+        duration_s: Number.isFinite(media.duration) ? media.duration : null,
+      });
+    }, true);
+  }
+
+  // -- dwell marks ----------------------------------------------------------------------------------
+
+  // A thin bar beside the paragraph the eyes stayed on. It sits outside the page's layout and
+  // ignores the pointer, and fades after a few seconds.
+  function mark(signal) {
+    const element = elements.get(signal.block)?.deref();
+    if (!element?.isConnected) return;
+    const rect = element.getBoundingClientRect();
+    const bar = document.createElement('div');
+    bar.dataset.daycube = 'dwell';
+    bar.setAttribute('aria-hidden', 'true');
+    Object.assign(bar.style, {
+      position: 'absolute', left: `${Math.max(0, rect.left + scrollX - 12)}px`, top: `${rect.top + scrollY}px`,
+      width: '4px', height: `${Math.max(16, rect.height)}px`, background: '#d9a441', borderRadius: '2px',
+      boxShadow: '0 0 0 1px rgba(255,255,255,.6)', zIndex: '2147483647', pointerEvents: 'none', opacity: '0.95',
+    });
+    document.documentElement.appendChild(bar);
+    const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!calm) {
+      bar.style.transition = 'opacity 1.2s ease 3s';
+      requestAnimationFrame(() => requestAnimationFrame(() => { bar.style.opacity = '0'; }));
+    }
+    setTimeout(() => bar.remove(), calm ? 4000 : 4500);
+  }
+
+  chrome.runtime.onMessage.addListener(message => {
+    if (message?.signal?.doc === DOC) mark(message.signal);
+  });
 })();
