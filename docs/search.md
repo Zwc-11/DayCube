@@ -106,6 +106,28 @@ links among them; `GET /entity/{id}` one entity with its records (newest first) 
 On the synthetic large day (5,053 units, every event a visit and so a place mention) writing the
 graph adds 45 ms to the day's update (107 to 152 ms); a real day names far fewer entities.
 
+## Question filters
+
+A question's time, kind and site words narrow the search and are taken out of it
+(`ingest/ask/query.py`, patterns only, no language model):
+
+| Words | Filter |
+| --- | --- |
+| today, tonight, yesterday, last night, *N* days ago, on Monday, last Friday, October 22, Oct 22nd, 2026-10-22 | that day (a date ahead of today means last year) |
+| morning, afternoon, evening, night after a day; this morning | 5-12, 12-17, 17-24, 18-24 h of it |
+| this week, last week, this month, last month, since Tuesday, past 3 days, past 2 hours | the range up to now |
+| read / searched, googled, looked up / stared at / clicked / copied / watched, videos / visited, opened / said, talked about | reads, dwells, looks, on-screen text and pages read; searches; dwells; clicks; copies; media; visits; conversations |
+| on YouTube, in D2L, on Wikipedia, on GitHub, on example.com | records on that site (or its subdomains), through the site's mentions |
+
+"What did I read about hash tables yesterday on Wikipedia" searches for "hash tables" in reads,
+dwells and looks between yesterday's midnights, on wikipedia.org. A question that is all filters
+("what did I search yesterday") lists the records instead (up to 20, in time order). When the
+words match nothing within the filters, the filtered records are listed and the answer says so
+("Nothing matched “quantum”; showing yesterday, reading instead."). Ask reports what it read the
+question as in `filters` (labels, window, kinds, site, the words searched). Meaning search embeds
+the question without its filter words and drops hits outside the kinds and site afterwards. Notes
+are searched only by questions without filters, since they have no time, kind or site.
+
 ## Retrieval
 
 1. **Keywords.** FTS5 with every question word quoted, so punctuation can never become an

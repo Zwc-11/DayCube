@@ -375,21 +375,80 @@ class LifeStore:
 
     # -- queries -----------------------------------------------------------------------------
 
-    def keyword(
-        self, expression: str, *, day: str | None = None, since: float | None = None, until: float | None = None, k: int
-    ) -> list[int]:
-        """Unit ids matching an FTS5 expression, best BM25 first."""
+    @staticmethod
+    def _filters(
+        day: str | None, since: float | None, until: float | None, types: Sequence[str] | None, site: str | None
+    ) -> tuple[str, list]:
+        """SQL conditions on ``u`` (a units row) for a day, a time window, record kinds and a site."""
         clauses, values = [], []
         for clause, value in (("u.day = ?", day), ("u.ts >= ?", since), ("u.ts < ?", until)):
             if value is not None:
                 clauses.append(f" AND {clause}")
                 values.append(value)
+        if types:
+            clauses.append(f" AND u.type IN ({','.join('?' for _ in types)})")
+            values += list(types)
+        if site:
+            clauses.append(
+                " AND u.id IN (SELECT m.unit_id FROM mentions m JOIN entities e ON e.id = m.entity_id "
+                "WHERE e.kind = 'site' AND (e.key = ? OR e.key LIKE ?))"
+            )
+            values += [site, f"%.{site}"]
+        return "".join(clauses), values
+
+    def keyword(
+        self,
+        expression: str,
+        *,
+        day: str | None = None,
+        since: float | None = None,
+        until: float | None = None,
+        types: Sequence[str] | None = None,
+        site: str | None = None,
+        k: int,
+    ) -> list[int]:
+        """Unit ids matching an FTS5 expression, best BM25 first."""
+        clauses, values = self._filters(day, since, until, types, site)
         sql = (
             "SELECT u.id FROM units_fts JOIN units u ON u.id = units_fts.rowid "
-            f"WHERE units_fts MATCH ?{''.join(clauses)} ORDER BY bm25(units_fts), u.ts LIMIT ?"
+            f"WHERE units_fts MATCH ?{clauses} ORDER BY bm25(units_fts), u.ts LIMIT ?"
         )
         with self.connect() as db:
             return [row[0] for row in db.execute(sql, (expression, *values, k))]
+
+    def listing(
+        self,
+        *,
+        day: str | None = None,
+        since: float | None = None,
+        until: float | None = None,
+        types: Sequence[str] | None = None,
+        site: str | None = None,
+        k: int,
+    ) -> list[int]:
+        """Unit ids within the filters, the latest ``k`` in time order (a question that is all filters)."""
+        clauses, values = self._filters(day, since, until, types, site)
+        sql = f"SELECT id FROM (SELECT u.id, u.ts FROM units u WHERE 1{clauses} ORDER BY u.ts DESC LIMIT ?) ORDER BY ts"
+        with self.connect() as db:
+            return [row[0] for row in db.execute(sql, (*values, k))]
+
+    def allowed(self, ids: Sequence[int], *, types: Sequence[str] | None, site: str | None) -> set[int]:
+        """Which of ``ids`` pass the kind and site filters (meaning search filters after the fact)."""
+        if not ids or (not types and not site):
+            return set(ids)
+        clauses, values = self._filters(None, None, None, types, site)
+        out: set[int] = set()
+        with self.connect() as db:
+            for start in range(0, len(ids), CHUNK):
+                chunk = ids[start : start + CHUNK]
+                marks = ",".join("?" for _ in chunk)
+                out.update(
+                    row[0]
+                    for row in db.execute(
+                        f"SELECT u.id FROM units u WHERE u.id IN ({marks}){clauses}", (*chunk, *values)
+                    )
+                )
+        return out
 
     def nearest(
         self, question: str, *, day: str | None = None, since: float | None = None, until: float | None = None, k: int
