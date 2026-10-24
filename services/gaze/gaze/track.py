@@ -38,6 +38,7 @@ AWAY_IDLE_S = 300
 AWAY_NO_FACE_S = 60
 BACK_IDLE_S = 5
 OFFLINE_EXIT_S = 120  # a supervised tracker outlives a stopped receiver by this much
+CAMERA_STALL_S = 5.0  # no frame for this long: the camera is reopened (also after 30 failed reads)
 CONFIRM_S = 5.0  # the camera stays on only this long after the receiver last said "recording"
 CHECK_EVERY_S = 2.0
 REPORT_EVERY_S = 1.0
@@ -58,37 +59,57 @@ class Estimator(Protocol):
 
 
 class LatestFrame:
-    """The camera read on its own thread, keeping only the newest frame.
+    """The camera opened, read and released on its own thread, keeping only the newest frame.
 
-    ``read`` returns the newest frame not yet returned, waiting for one if needed, so frames do
-    not queue up in the driver's buffer while a frame is processed (each queued frame is another
-    33 ms between the eyes moving and the gaze following), and the next frame is captured while
-    this one is processed. A camera that stops delivering makes ``read`` fail as it did before."""
+    ``read`` returns the newest frame not yet returned, waiting up to ``timeout`` for one, so
+    frames do not queue up in the driver's buffer while a frame is processed (each queued frame is
+    another 33 ms between the eyes moving and the gaze following), and the next frame is captured
+    while this one is processed. A failed read is not passed on: webcams often fail their first
+    reads while they start, and a read fails only when no frame came for ``timeout``.
 
-    def __init__(self, camera: Camera, timeout: float = 1.0) -> None:
-        self.camera, self.timeout = camera, timeout
+    The camera is opened on the reading thread because Windows' camera backends (Media Foundation,
+    DirectShow) are COM objects that belong to the thread that created them."""
+
+    def __init__(self, opener: Callable[[], Camera], timeout: float = 1.0, open_timeout: float = 15.0) -> None:
+        self.timeout = timeout
+        self._opener = opener
         self._ready = threading.Condition()
         self._frame: Any = None
-        self._ok = True
         self._made = self._taken = 0
         self._stop = False
+        self._opened = threading.Event()
+        self._error: BaseException | None = None
         self._thread = threading.Thread(target=self._read_forever, name="camera", daemon=True)
         self._thread.start()
+        if not self._opened.wait(open_timeout):
+            self._stop = True
+            raise RuntimeError("the camera did not open")
+        if self._error is not None:
+            raise self._error
 
     def _read_forever(self) -> None:
-        while not self._stop:
-            ok, frame = self.camera.read()
-            with self._ready:
-                self._ok = ok
+        try:
+            camera = self._opener()
+        except BaseException as error:  # noqa: BLE001 - reported to the opener's caller
+            self._error = error
+            self._opened.set()
+            return
+        self._opened.set()
+        try:
+            while not self._stop:
+                ok, frame = camera.read()
                 if ok:
-                    self._frame, self._made = frame, self._made + 1
-                self._ready.notify_all()
-            if not ok:
-                time.sleep(0.02)
+                    with self._ready:
+                        self._frame, self._made = frame, self._made + 1
+                        self._ready.notify_all()
+                else:
+                    time.sleep(0.02)
+        finally:
+            camera.release()
 
     def read(self) -> tuple[bool, Any]:
         with self._ready:
-            self._ready.wait_for(lambda: self._made > self._taken or not self._ok or self._stop, self.timeout)
+            self._ready.wait_for(lambda: self._made > self._taken or self._stop, self.timeout)
             if self._made > self._taken:
                 self._taken = self._made
                 return True, self._frame
@@ -96,8 +117,9 @@ class LatestFrame:
 
     def release(self) -> None:
         self._stop = True
+        with self._ready:
+            self._ready.notify_all()
         self._thread.join(timeout=2.0)
-        self.camera.release()
 
 
 class Tracker:
@@ -138,6 +160,7 @@ class Tracker:
         self.paused = False
         self.confirmed_at = -1e9  # when the receiver last accepted a report (running, not paused)
         self.failures = 0
+        self.frame_at = 0.0  # when the camera last gave a frame (or was opened)
         self.retry_at = 0.0
         self.checked_at = -1e9
         self.reported_at = -1e9
@@ -287,7 +310,7 @@ class Tracker:
                 return
             try:
                 self.camera = self.open_camera()
-                self.failures, self.problem = 0, None
+                self.failures, self.problem, self.frame_at = 0, None, now
             except Exception as error:  # noqa: BLE001 - any camera failure means try again later
                 log.warning("camera unavailable: %s", error)
                 self.problem, self.retry_at = "camera unavailable", now + 10
@@ -297,13 +320,13 @@ class Tracker:
         read = self.timer()
         if not ok:
             self.failures += 1
-            if self.failures >= 30:  # unplugged, or lost across sleep: reopen
+            if self.failures >= 30 or now - self.frame_at > CAMERA_STALL_S:  # unplugged, or lost across sleep: reopen
                 log.warning("camera stopped delivering frames; reopening")
                 self._release()
                 self.problem, self.retry_at = "camera stopped", now + 5
             self._report(now)
             return
-        self.failures = 0
+        self.failures, self.frame_at = 0, now
         features, blink = self.estimator.extract_features(frame)
         extracted = self.timer()
         face = features is not None
