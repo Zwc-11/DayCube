@@ -7,7 +7,10 @@ carries it to the screen (`gaze/head.py`). Then a One Euro filter and fixations 
 dispersion threshold that rises with the measured gaze noise), sent to the capture receiver; the
 ring and the live point get their own filter (`gaze/stabilize.py`: a fixation estimate that holds
 still, ignores single bad frames and jumps on confirmed saccades: half the jitter of One Euro,
-[docs/capture.md](../../docs/capture.md#a-steady-ring), `eval/ring_filter.py`).
+[docs/capture.md](../../docs/capture.md#a-steady-ring), `eval/ring_filter.py`), and sits on the line
+being read while the receiver's decoder is sure of it. A slow slide of the gaze during long looks
+(a drooping lid) is measured with what moved with it (`gaze/drift.py`, reported by `doctor`;
+[docs/capture.md](../../docs/capture.md#when-the-ring-slides-down)).
 Frames are processed in memory and never stored. Its own environment, because
 [EyeTrax](https://github.com/ck-zhang/eyetrax) 0.4.0 (MIT; calibration screens, the camera, and
 the older ridge models) pins numpy<2.

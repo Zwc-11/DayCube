@@ -212,6 +212,7 @@ class Attention:
         self.pending: Visit | None = None  # another block the decoder moved to, until it holds
         self.reading: dict | None = None  # the line being read now, for /status
         self.labels = LineLabels()  # lines confirmed by reading order: calibration labels for the tracker
+        self.line_now: dict | None = None  # the decoded line, where it is on the monitor, for the ring
         # Where the last fixations went (NO_PAGE ... ON_LINE), the text the last page sent, and the
         # last point placed on a page: why no line is shown, and where the eyes are, for /status.
         self.outcomes: deque[int] = deque(maxlen=300)
@@ -307,6 +308,7 @@ class Attention:
         self.reading = None
         self.page = None
         self.labels.off()
+        self.line_now = None
         return self.end() + self.end_visit()
 
     def gaze_state(self, state: GazeState) -> None:
@@ -586,6 +588,7 @@ class Attention:
         g = front.geometry
         if self.monitor is None or not (0 <= x <= g.inner_w and 0 <= y <= g.inner_h):
             self.labels.off()
+            self.line_now = None
             return None, []  # off the page: the toolbar, another window
         reader = self._reader(front, fixation.t.timestamp())
         if not reader.blocks:
@@ -595,10 +598,17 @@ class Attention:
         key, p = reader.best()
         if key is OFF:
             self.labels.off()
+            self.line_now = None
             return None, []
         block, line = key
         box = reader.blocks[block][line]
-        self.labels.add(fixation.id, reader.doc, block, line, p, _on_monitor(box, g) if g.exact else None)
+        place = _on_monitor(box, g) if g.exact else None
+        self.labels.add(fixation.id, reader.doc, block, line, p, place)
+        # The line for the tracker's ring to sit on (sent with the next /gaze reply).
+        self.line_now = None if place is None else {
+            "t": round(t_end, 3), "y": round(place[0], 5), "x0": round(place[1], 5), "x1": round(place[2], 5),
+            "p": round(p, 3),
+        }  # fmt: skip
         ended: list[dict] = []
         visit = self.visit
         if visit is not None and t - visit.t1 > VISIT_GAP_S:

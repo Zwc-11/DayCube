@@ -573,6 +573,39 @@ def test_the_ring_over_every_window_gets_every_frame_in_memory() -> None:
     assert ring.closed
 
 
+def test_the_ring_sits_on_the_line_being_read_while_the_decoder_is_fresh_and_sure() -> None:
+    made: list[FakeRing] = []
+
+    def factory() -> FakeRing:
+        made.append(FakeRing())
+        return made[-1]
+
+    t, scene, receiver, *_, clock, log = tracker(overlay=factory)
+    receiver.ring = True
+    run_for(t, clock, 1)  # the gaze rests at (0.5, 0.5)
+
+    def shown(line: dict | None, seconds: float = 0.5) -> tuple[float, float]:
+        receiver.reading = line
+        run_for(t, clock, seconds)
+        return made[0].points[-1]
+
+    # A line 22 px below the gaze, ending left of it: on the line, at its end.
+    line = {"t": clock.now, "y": 0.52, "x0": 0.3, "x1": 0.45, "p": 0.9}
+    assert shown(line) == pytest.approx((0.45, 0.52))
+    # The eyes have rested on the spot since: the line grows old (2.5 s) but the ring stays on it.
+    assert shown(line, 2.0) == pytest.approx((0.45, 0.52))
+    assert shown(dict(line, t=clock.now - 2.0, y=0.53)) == pytest.approx((0.5, 0.5))  # an old line never seen fresh
+    assert shown(dict(line, t=clock.now, p=0.4)) == pytest.approx((0.5, 0.5))  # unsure
+    assert shown(dict(line, t=clock.now, y=0.7)) == pytest.approx((0.5, 0.5))  # 216 px away: left the line
+    assert shown(None) == pytest.approx((0.5, 0.5))
+    stale = dict(line, t=clock.now)
+    assert shown(stale) == pytest.approx((0.45, 0.52))
+    scene.point = (1500.0, 540.0)  # the eyes go 600 px past the line's end: off it
+    assert shown(stale, 1.5) == pytest.approx((1500 / 1920, 0.5))
+    scene.point = (960.0, 540.0)  # and back, with the line old by now: it is let go
+    assert shown(stale, 0.5) == pytest.approx((0.5, 0.5))
+
+
 def test_a_ring_window_that_cannot_open_leaves_tracking_alone() -> None:
     t, scene, receiver, *_, clock, log = tracker(overlay=lambda: FakeRing(running=False))
     receiver.ring = True

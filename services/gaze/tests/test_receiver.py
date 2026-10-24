@@ -125,3 +125,19 @@ def test_line_labels_in_a_reply_are_kept_for_the_learner_and_bad_ones_dropped(se
     assert receiver.send({"tracking": True}) == "ok"
     assert receiver.take_lines() == [{"id": "a", "y": 0.4, "x0": 0.1, "x1": 0.6}]
     assert receiver.take_lines() == []
+
+
+def test_the_line_being_read_comes_with_the_reply_and_a_bad_one_is_dropped(server: tuple, tmp_path: Path) -> None:
+    url, calls, answer = server
+    (tmp_path / ".token").write_text("secret")
+    receiver = Receiver(url, tmp_path / ".token")
+    line = {"t": 1_800_000_000.5, "y": 0.42, "x0": 0.1, "x1": 0.55, "p": 0.93}
+    answer["body"] = {"ring": True, "reading": line}
+    assert receiver.send({"tracking": True}) == "ok" and receiver.reading == line
+    for bad in ({**line, "y": 4.0}, {**line, "p": "sure"}, {**line, "x1": float("nan")}, {"y": 0.4}, [0.4], None):
+        answer["body"] = {"ring": True, "reading": bad}
+        assert receiver.send({"tracking": True}) == "ok" and receiver.reading is None, bad
+    answer["body"] = {"ring": True, "reading": line}
+    receiver.send({"tracking": True})
+    answer["code"] = 409  # paused: no line
+    assert receiver.send({"tracking": True}) == "paused" and receiver.reading is None

@@ -2,10 +2,11 @@
 
 The learner's settings (``gaze.learn.Settings``: how far off a click may be and still count, how
 fast old labels fade, how hard the head terms and the eye's resting direction are held, how many
-clicks the head terms wait for, how often to fit, how much a line being read counts) were chosen
-on MPIIFaceGaze, 15 people on laptops. One desk, one webcam and one person's habits can want
-others. ``vault/calibration/clicks.jsonl`` keeps every click's frame vector and pixel, and
-``lines.jsonl`` every reading-line label with its line's extent, so learning can be run again from
+clicks the head terms wait for, how often to fit, how much a line being read and a stare count)
+were chosen on MPIIFaceGaze, 15 people on laptops. One desk, one webcam and one person's habits can
+want others. ``vault/calibration/clicks.jsonl`` keeps every click's frame vector and pixel,
+``lines.jsonl`` every reading-line label with its line's extent and ``stares.jsonl`` every stare's
+start and end, so learning can be run again from
 the calibration on them, exactly as it ran live: each click predicted by the model of that moment
 before anything learns from it (``replay``). That makes every setting comparable on the person's
 own data.
@@ -44,12 +45,16 @@ from .learn import (
     LINES_FILE,
     MAX_CLICKS,
     MAX_LINES,
+    MAX_STARES,
+    STARES_FILE,
     TUNED_FILE,
     Click,
     Learner,
     Settings,
+    Stare,
     history,
     load_labels,
+    load_stares,
 )
 
 SEARCH: dict[str, tuple[float, ...]] = {
@@ -60,6 +65,7 @@ SEARCH: dict[str, tuple[float, ...]] = {
     "pose_min_clicks": (40, 60, 120),
     "refit_every": (10, 20, 40),
     "line_weight": (0.0, 0.1, 0.25, 0.5),
+    "stare_weight": (0.0, 0.3, 1.0, 3.0),
 }
 MIN_CLICKS = 300  # clicks since calibration before tuning means anything
 NEW_CLICKS = 200  # new clicks since the last tuning before another
@@ -84,23 +90,35 @@ class _Estimator:
 
 
 def replay(
-    model_json: dict, monitor: tuple[int, int], clicks: list[Click], lines: list[Click], settings: Settings
+    model_json: dict,
+    monitor: tuple[int, int],
+    clicks: list[Click],
+    lines: list[Click],
+    settings: Settings,
+    stares: list[Stare] | None = None,
 ) -> np.ndarray:
-    """Learning run again from the calibration over ``clicks`` and ``lines`` in time order with
-    ``settings``: each click's error (monitor px) against where it was clicked, measured by the
-    model of that moment before anything learned from it."""
+    """Learning run again from the calibration over ``clicks``, ``lines`` and ``stares`` in time
+    order with ``settings``: each click's error (monitor px) against where it was clicked, measured
+    by the model of that moment before anything learned from it."""
     estimator = _Estimator(GazeModel.from_json(model_json))
     learner = Learner(estimator, monitor, None, None, settings=settings)
-    events = sorted([(c.t, 0, i) for i, c in enumerate(clicks)] + [(c.t, 1, i) for i, c in enumerate(lines)])
+    stares = stares or []
+    events = sorted(
+        [(c.t, 0, i) for i, c in enumerate(clicks)] + [(c.t, 1, i) for i, c in enumerate(lines)]
+        + [(v.t + v.seconds, 2, i) for i, v in enumerate(stares)]
+    )  # fmt: skip
     errors = np.full(len(clicks), np.nan)
     for _, kind, i in events:
         if kind == 0:
             c = clicks[i]
             learner.add(c.t, c.x, c.y, c.X)
             errors[i] = learner.clicks[-1].error_px
-        elif settings.line_weight > 0 and lines[i].span is not None:
+        elif kind == 1 and settings.line_weight > 0 and lines[i].span is not None:
             line = lines[i]
             learner.add_line(line.t, line.y, line.span[0], line.span[1], line.X)
+        elif kind == 2 and settings.stare_weight > 0:
+            stare = stares[i]
+            learner.add_stare(stare.t, stare.A, stare.B, stare.seconds)
     return errors
 
 
@@ -160,6 +178,7 @@ def tune(vault: Path, *, say: Callable[[str], None] = print, grid: dict[str, tup
     shape = (18 + 2 * len(eyes[0]["mean"]),)
     clicks = load_labels(folder / CLICKS_FILE, since, shape, "click", MAX_CLICKS)
     lines = load_labels(folder / LINES_FILE, since, shape, "line", MAX_LINES)
+    stares = load_stares(folder / STARES_FILE, since, shape, MAX_STARES)
     if len(clicks) < MIN_CLICKS:
         return {"tuned": False, "reason": f"{len(clicks)} clicks since calibrating; tuning needs {MIN_CLICKS}"}
     current = _current(folder)
@@ -171,15 +190,18 @@ def tune(vault: Path, *, say: Callable[[str], None] = print, grid: dict[str, tup
     grid = dict(grid or SEARCH)
     if not lines:
         grid.pop("line_weight", None)  # nothing to weigh
-    say(f"replaying {len(clicks)} clicks and {len(lines)} reading lines since {calibration.get('t')}")
+    if not stares:
+        grid.pop("stare_weight", None)
+    say(f"replaying {len(clicks)} clicks, {len(lines)} reading lines and {len(stares)} stares since "
+        f"{calibration.get('t')}")  # fmt: skip
 
     def run(s: Settings) -> np.ndarray:
-        return replay(model_json, monitor, clicks, lines, s)
+        return replay(model_json, monitor, clicks, lines, s, stares)
 
     best, best_seen, trials = search(run, current, seen, grid)
     before, after = run(current), run(best)
     report = {
-        "t": datetime.now(UTC).isoformat(), "clicks": len(clicks), "lines": len(lines),
+        "t": datetime.now(UTC).isoformat(), "clicks": len(clicks), "lines": len(lines), "stares": len(stares),
         "calibration": calibration.get("t"),
         "replay": {
             "search_px": {"in_use": round(_median(before[seen]), 1), "best": round(best_seen, 1)},

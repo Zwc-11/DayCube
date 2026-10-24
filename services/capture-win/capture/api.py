@@ -432,9 +432,10 @@ class Receiver:
             grid = self.offset_grid(now.timestamp()) if self.ring else None
             # Lines confirmed by reading order: labels for the tracker's learning (capture/labels.py).
             read = self.attention.labels.drain()
+            line = self.attention.line_now if self.ring else None
         return {
             "accepted": accepted, "duplicates": duplicates, "stale": stale, "live": live,
-            "ring": self.ring and not self.paused, "offset_grid": grid, "lines": read,
+            "ring": self.ring and not self.paused, "offset_grid": grid, "lines": read, "reading": line,
         }  # fmt: skip
 
     def live_point(self, point: LivePoint) -> None:
