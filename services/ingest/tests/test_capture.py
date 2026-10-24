@@ -360,6 +360,42 @@ def test_the_live_gaze_point_streams_only_while_the_ring_is_shown(vault: Vault, 
         view = client.get("/live", params={"doc": "doc-1"}, headers=auth).json()
         assert (view["point"]["x"], view["point"]["y"], view["point"]["inside"]) == (500.0, 260.0, True)
         assert client.get("/live", params={"doc": "another-doc"}, headers=auth).json()["point"] is None
+        ring = client.get("/status").json()["ring"]
+        # 3 asks, 1 answered with a live point (the first came before any point, the last was for another page)
+        assert ring == {"points_per_s": 0.1, "asks_per_s": 0.3, "live_share": 0.33, "ever_asked": True}
         client.post("/pause", headers=auth)
         assert client.post("/gaze/live", json=point, headers=auth).status_code == 409
     assert not any(path.name == "live.jsonl" for path in (vault.root / "capture").rglob("*"))  # never stored
+
+
+def test_the_doctor_says_which_side_of_the_gaze_ring_is_missing(vault: Vault, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A ring that jumps once a second is either an extension that never asks for the live point
+    (older than 0.7.0) or a tracker that does not stream it; doctor tells them apart."""
+    from zoneinfo import ZoneInfo
+
+    from capture import doctor
+
+    now = datetime.now(UTC)
+    zone = ZoneInfo("America/Toronto")
+    monkeypatch.setattr(doctor.sys, "platform", "linux")
+    base = {
+        "paused": False, "browser": {"last": now.isoformat()}, "reading": None,
+        "gaze": {"tracking": True, "fps": 30.0, "target_fps": 30.0, "face": 1.0, "coverage": 0.8, "noise_px": 20.0},
+    }  # fmt: skip
+
+    def ring(**values: object) -> tuple[str, str]:
+        status = base | {
+            "ring": {"points_per_s": 0.0, "asks_per_s": 0.0, "live_share": None, "ever_asked": False} | values
+        }
+        return next((v, d) for v, name, d in doctor.checks(status, vault.root, zone, now, None) if name == "gaze ring")
+
+    verdict, detail = ring()
+    assert verdict == doctor.INFO and "older than 0.7.0" in detail
+    verdict, detail = ring(ever_asked=True, asks_per_s=9.8, live_share=0.0)
+    assert verdict == doctor.WARN and "sends 0 live points/s" in detail
+    verdict, detail = ring(ever_asked=True, asks_per_s=9.8, points_per_s=10.1, live_share=0.1)
+    assert verdict == doctor.WARN and "10%" in detail
+    assert ring(ever_asked=True, asks_per_s=9.8, points_per_s=10.1, live_share=0.97) == (
+        doctor.PASS,
+        "10 live points/s, the page asks 10 times/s",
+    )

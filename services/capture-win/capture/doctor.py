@@ -83,6 +83,33 @@ def checks(status: dict | None, vault: Path, zone: ZoneInfo, now: datetime, auto
             noise = gaze.get("noise_px")
             out.append((verdict, "fixations", f"{coverage:.0%} of gaze" + (f", noise {noise:.0f} px" if noise else "")))
 
+    ring = status.get("ring")
+    if gaze.get("tracking") and ring is not None:
+        points, asks, share = ring.get("points_per_s", 0), ring.get("asks_per_s", 0), ring.get("live_share")
+        if not ring.get("ever_asked"):
+            out.append((
+                INFO,
+                "gaze ring",
+                "no page has asked for the live gaze point. If the ring is on and jumps about once a second, "
+                "the extension is older than 0.7.0: reload it at opera://extensions",
+            ))  # fmt: skip
+        elif asks and points < 3:
+            out.append((
+                WARN,
+                "gaze ring",
+                f"the page asks {asks:.0f} times/s but the tracker sends {points:.0f} live points/s, so the ring "
+                "falls back to fixations (about one a second): restart the receiver (" + RESTART + ")",
+            ))  # fmt: skip
+        elif asks and share is not None and share < 0.5:
+            out.append((
+                WARN,
+                "gaze ring",
+                f"live points arrive ({points:.0f}/s) but only {share:.0%} land on the page's window: "
+                "is the page on the calibrated monitor?",
+            ))  # fmt: skip
+        elif asks:
+            out.append((PASS, "gaze ring", f"{points:.0f} live points/s, the page asks {asks:.0f} times/s"))
+
     model = gaze.get("model")
     if model == "head":
         moved, turned = gaze.get("head_moved_mm"), gaze.get("head_turned_deg")
