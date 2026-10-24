@@ -1,5 +1,8 @@
 # Camera and gaze follow-up, 2026-10-24
 
+The later [blink guard](blink-guard-2026-10-24.md) changes blink decisions and reopening behavior.
+Strict full-extraction output comparisons below apply to their pinned measured sources.
+
 This pass covers prediction cost, frame freshness during calibration and recovery when gaze
 continuity breaks. Head-pose compensation, neural landmark inference, the regression/calibration
 format, camera resolution and the 30 FPS target retain their existing behavior. The changes use
@@ -114,7 +117,7 @@ lock/unlock behavior, and long-session CPU/RSS need device acceptance testing.
 Repeat from the repository root:
 
 ```powershell
-uv run --project services/gaze python eval/benchmark_gaze_pipeline.py --output test-results/gaze-pipeline.json --compare eval/results/gaze-pipeline-before.json
+uv run --project services/gaze python eval/benchmark_gaze_pipeline.py --output test-results/gaze-pipeline.json
 uv run --project services/gaze python eval/profile_camera_freshness.py --output test-results/camera-freshness.json
 uv run python eval/gaze_sim.py --seeds 10 --workers 4 --compare abb6f48 --output test-results/gaze-regression.json
 uv --directory services/gaze run pytest

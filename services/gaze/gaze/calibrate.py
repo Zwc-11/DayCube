@@ -289,7 +289,7 @@ def _blinks(frames: list[Frame], stream: str) -> np.ndarray:
     blinks, out = Blinks(), np.zeros(len(frames), dtype=bool)
     for i, f in enumerate(frames):
         points = getattr(f, stream)
-        out[i] = points is not None and blinks(points)
+        out[i] = points is not None and blinks(points, now=f.t)
     return out
 
 

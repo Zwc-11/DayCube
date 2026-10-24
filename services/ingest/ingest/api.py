@@ -30,7 +30,7 @@ from .contracts import ContractError
 from .generated.event import Event
 from .index.embed import Embedder, default_embedder
 from .notes.read import DayNotes, attach_notes, read_note
-from .store import LifeStore
+from .store import EmbeddingModelChanged, LifeStore
 from .time import instant
 from .vault import Record, Vault, read_json
 
@@ -136,6 +136,10 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
     @app.exception_handler(ValueError)
     async def invalid(request: Request, error: ValueError) -> JSONResponse:
         return JSONResponse(status_code=400, content={"detail": str(error)})
+
+    @app.exception_handler(EmbeddingModelChanged)
+    async def model_changed(request: Request, error: EmbeddingModelChanged) -> JSONResponse:
+        return JSONResponse(status_code=503, content={"detail": str(error)})
 
     @app.exception_handler(ContractError)
     async def contract_error(request: Request, error: ContractError) -> JSONResponse:
@@ -262,6 +266,20 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
         from .datacenter import report
 
         return report(store)
+
+    @app.get("/gaze/learning")
+    def gaze_learning(request: Request) -> Response:
+        """The eye tracker's learning from clicks for the current calibration: every click's live
+        error (the model in use and the calibration alone, on clicks neither had learned from), each
+        fit with its held-out errors, and when each update reached the tracker's frames. Tagged: a
+        client holding the current copy gets an empty 304."""
+        from .gaze_learning import tagged
+
+        body, etag = tagged(store.vault.root)
+        headers = {"ETag": etag, "Cache-Control": "no-cache"}
+        if etag in (tag.strip().removeprefix("W/") for tag in request.headers.get("if-none-match", "").split(",")):
+            return Response(status_code=304, headers=headers)
+        return Response(body, media_type="application/json", headers=headers)
 
     @app.post("/notes/{date}", dependencies=[Depends(authorize)])
     def write_notes(date: str) -> Record:

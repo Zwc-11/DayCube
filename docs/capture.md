@@ -1,12 +1,13 @@
 # Capture: browser and gaze on your PC
 
-From sign-in to shutdown, three pieces record what you do in the browser and where you look:
+From sign-in to shutdown, three pieces record what you do on the computer and where you look:
 
 ```mermaid
 flowchart LR
   ext[DayCube extension in Opera] -- "records every 1 s, queued until acknowledged" --> rx
   gaze[Eye tracker, services/gaze] -- "fixations every 1 s" --> rx
   rx[Receiver 127.0.0.1:7700, services/capture-win] --> logs[(vault/capture/date/*.jsonl)]
+  scr[Screen reader, in the receiver] -- "the window under the gaze, as a page" --> rx
   rx -- "dwell signal with the next heartbeat" --> ext
   rx -. "--on-dwell command" .-> hook[Your program]
 ```
@@ -22,6 +23,10 @@ flowchart LR
 - **The receiver** writes the logs, decides which paragraph each fixation belongs to and which
   line is being read, and detects dwells. It learns the tracker's live error from clicks (people look at what they click) and
   corrects for it. It starts the eye tracker and restarts it if it stops.
+- **The screen reader** (in the receiver, Windows) reads the text of the window your eyes are on
+  in any other app, with Windows' own OCR, and hands it to the receiver as a page, so reading,
+  lines and dwells work in an editor, a PDF reader or a chat app as on a web page
+  ([Reading other apps](#reading-other-apps)). It also logs which app is in front.
 
 Nothing goes over the network: the receiver listens on 127.0.0.1 only, and the extension can
 reach no other host.
@@ -116,6 +121,44 @@ moving 140 times/s between 60 gaze points/s`). Without the tracker or a camera,
 frames drawn per second. Checked in Wine 9 on a virtual display: the window opens, draws the ring
 and its dashed variant, and moves on every one of 60 frames a second from 30 points a second.
 
+### A steady ring
+
+The ring and the live point no longer follow the One Euro filter that fixations are found in: at
+webcam noise its speed adaptation reads jitter as movement, and the ring shook ("too
+sensitive"). Feit et al. (CHI 2017, 80 people on two trackers) found the same of One Euro for
+gaze cursors, and that the best filters keep a fixation estimate with saccade detection and
+outlier correction; Spakov (ETRA 2012) and Tobii's zero-delay filter (US11915521B2) work the same
+way. `services/gaze/gaze/stabilize.py`:
+
+- **Resting:** each sample pulls the estimate by `max(1/n, 1 - exp(-dt/0.2 s))`: the plain mean of
+  a fixation's first samples, then an exponential average, so reading along a line glides.
+- **A far jump:** a sample more than 4.5 times the noise away (within 1-12% of the screen width) is
+  held back; a single one is a bad frame and ignored; two in a row that agree are a saccade, and
+  the ring jumps to them.
+- **A near jump** (the next button): the median of the last 4, 6 or 8 samples farther than 3 times
+  what such a median usually is, when they are one look, moves the estimate there.
+- The noise is measured as it goes (median distances tracked with multiplicative steps over 3 s),
+  so a sharper calibration gets a quicker ring. A blink resumes from one frame's pull; a gap or a
+  long blink starts over.
+
+On simulated webcam gaze with the PC's error model (`eval/ring_filter.py`, 10 two-minute sessions
+of reading, looking around and nearby targets; `eval/results/ring-filter.json`), measured at
+240 Hz the way the overlay draws it:
+
+| | One Euro (before), 30 fps | ring filter, 30 fps | One Euro, 60 fps | ring filter, 60 fps |
+| --- | --- | --- | --- | --- |
+| shake while resting (RMS per display frame) | 6.0 px | **3.3 px** | 8.3 px | **3.6 px** |
+| wander within a fixation (RMS) | 38 px | **20 px** | 38 px | **19 px** |
+| to 70% of a jump of 300+ px (median) | 104 ms | 123 ms | 79 ms | 85 ms |
+| to 70% of a jump of 120-300 px | 119 ms | 182 ms | 80 ms | 94 ms |
+| median distance from the eyes | 103 px | 116 px | 96 px | 113 px |
+| cost per sample | 2 us | 7 us | 2 us | 7 us |
+
+The ring is half as jittery; the price is one more frame before a far jump (the second sample
+that confirms it is not a bad frame) and about 60 ms on near ones at 30 fps, both a third of
+that at 60 fps (`python -m gaze calibrate --fps 60` where the webcam offers it). Fixations are
+still found in the One Euro output, whose thresholds the detector was measured on.
+
 ### Processing rate and live checks
 
 The gaze rate is the webcam's frame rate: one gaze point per frame. Calibration asks the webcam
@@ -192,6 +235,80 @@ clicks over. A live error above the calibration limit means: recalibrate
 from your usual seat. Every 10 minutes while gaze arrives, the same figures go to
 `vault/capture/<date>/health.jsonl`, so a session can be judged afterwards.
 
+### Reading other apps
+
+The extension sees web pages. For everything else on the screen, the receiver reads the window
+under your gaze (`services/capture-win/capture/screen.py`):
+
+1. **Which window.** Twice a second it takes the newest gaze point (the last fixation or the live
+   point, corrected by clicks) and finds the top-level window shown there: the first in z-order
+   that is visible at that point, skipping minimized and cloaked windows (other virtual desktops)
+   and click-through overlays such as the gaze ring. That is the window your eyes are on, which
+   need not be the one with focus.
+2. **Its text.** It captures that window's pixels and reads them with `Windows.Media.Ocr` (the
+   OCR in Windows, local; RapidOCR with `uv sync --extra ocr` where Windows has no OCR language).
+   Windows OCR reads one language at a time, and a Chinese recogniser reads English badly
+   (`PowerSheII`, `t0`, `10 ． 0`). When Windows has a CJK recogniser and an English one (a
+   Chinese Windows usually has both), each window is judged by the share of CJK characters the
+   CJK recogniser finds in it: under 5% English text (read in English), 50% or more CJK text,
+   between both (a Chinese interface around English content: both read, each line kept from the
+   recogniser of its script). The judgement is redone every 5 reads of the window. Only when the window changed since the last read (1 in 8
+   pixels compared; a blinking cursor is not a change), at most once a second, less often while
+   reads find no new text (a video: 2, 4, ... up to 16 s), and at least every 30 s. Lines are
+   grouped into paragraphs: a line joins the one right above it when they overlap sideways, so
+   columns stay apart.
+3. **As a page.** The window is sent to the receiver like a browser tab, with its position on the
+   monitor, paragraphs and lines, under `app://<program>/<window title>`. From there fixations are
+   placed on paragraphs and lines, `reading.jsonl` and dwells are written, and search, notes and
+   the graph see it as "Read in paper.pdf - SumatraPDF (SumatraPDF): ...".
+4. **Scrolling.** A paragraph seen before is recognised by its text (the same letters and digits,
+   or mostly the same three-letter runs, because OCR reads a moved paragraph a little
+   differently) and keeps its id and its place in the window's content; the scroll is measured
+   from where the recognised paragraphs moved. Its text is sent once, and reading a paragraph
+   goes on across a scroll. A retitled window ("● unsaved", an unread count) stays the same page;
+   when nothing on screen matches what was there before (another file or chat in the same
+   window, a jump of more than a screen), it becomes a new page. Returning after the eyes left
+   starts a new document lifetime, since the content may have changed in the meantime.
+
+Where a page and an app window overlap, the window read from the screen wins: it is read only
+while it is the one shown under the gaze. Fixations arrive about a second after they end, so the
+window keeps taking the ones from before the eyes left it for 3 s.
+Pixels belonging to covering windows are masked before OCR. The reader checks the selected
+window and covering rectangles before and after taking the screenshot; a changed or vanished
+selection fails explicitly. Moving and retitling together refreshes the gaze coordinates.
+Failed text writes stay visible in `/status.screen.error` and retry at the normal read interval,
+even when the window's pixels have not changed.
+
+The app in front is logged in `windows.jsonl` each time it changes, and `away` when the screen
+locks or there has been no input for 5 minutes and no gaze; a pause ends it too. The vault turns
+it into time per app (`screen.app` units, "Used Visual Studio Code for 25 min: screen.py -
+daycube") and an **Apps** section in the daily note; "which apps did I use yesterday" and "what
+did I read in VS Code" filter to them.
+
+Never read: browsers (the extension covers their pages, with its own exclusions), password
+managers (1Password, Bitwarden, KeePass and others), Windows' lock, sign-in and permission
+screens, the taskbar, Start and search, menus and tooltips, and windows whose title says they
+are private (InPrivate, Incognito). For a password manager only the app's name and time are
+logged, never its window title. Screenshots stay in memory; only the recognised text is kept, as
+for web pages. `python -m capture screen --exclude slack` adds an app to never read (kept in
+`vault/capture/screen.json`), `python -m capture screen off` stops reading, `screen check` reads
+the window in front once and prints what OCR found, and the receiver's `--no-screen` leaves it
+out.
+
+After `git pull`, `python -m capture restart` stops the running receiver and eye tracker and
+starts them on the new code (`install-autostart` does it too when the running receiver is older;
+`/status` reports a stamp of the code it loaded, and `doctor` says "receiver code: older than this
+checkout" until then).
+
+`doctor` reports it: `screen reading: windows OCR (zh-Hans-CN + en-US), 14 reads in 10 min of code.exe,
+sumatrapdf.exe, 182 ms each; reading code.exe now`. Checked here: the window-finding, capture and
+reader loop in Wine 9 (a window on top wins over the one beneath, the desktop is
+none, a click-through overlay is looked through); reading a paragraph across a scroll with real
+OCR (RapidOCR on rendered text: one read record with all three lines and no text sent twice);
+and the receiver path in `services/ingest/tests/test_screen.py` with a simulated Windows and OCR.
+`Windows.Media.Ocr` itself runs only on Windows: `python -m capture screen check` and `doctor`
+show it working there.
+
 ## Everyday use
 
 | To | Do |
@@ -200,6 +317,8 @@ from your usual seat. Every 10 minutes while gaze arrives, the same figures go t
 | Resume | The same again. The badge reads `REC` |
 | See whether it works | The extension's options page, **Right now**; or `http://127.0.0.1:7700/status` |
 | See where it has you looking, and which line | Extension options, **Show where I am looking and the line I am reading**: a red ring where the tracker has your eyes now, drawn by the tracker over every window at the display's refresh rate on Windows ([The gaze ring over every window](#the-gaze-ring-over-every-window)), else inside the page (fed about 30 times a second, about 0.1 s behind in the end-to-end test; dashed at the window's edge when gaze is off the page); it fades in a blink instead of vanishing, and a blue marker beside the decoded line (fainter when less sure; a second or two behind, since lines are decoded from finished fixations). **Right now** shows the line, or why there is none: where the last fixations went (on a page, on a line, outside the browser page, no page on screen, page not reporting, another monitor) and how many of the last page's text blocks sent their lines |
+| Stop reading other apps, or one app | `python -m capture screen off` (`on` again), `python -m capture screen --exclude slack` (`--include slack` to undo) |
+| See what OCR reads in a window | `python -m capture screen check`, then bring the window to the front within 3 s |
 | Stop starting at sign-in | `python -m capture uninstall-autostart`, or turn it off in Task Manager > Startup apps |
 | Read the logs | `vault\logs\capture.log` and `vault\logs\gaze.log` |
 
@@ -255,11 +374,12 @@ the dwell is detected. The program runs at once; one runs at a time.
 | File | Records |
 | --- | --- |
 | `browser.jsonl` | `page` (address, how it was reached: link, typed, reload, form submit, back/forward; address changes that only move to a section are left out), `title`, `focus` (tab in front; none when the browser loses focus; no address for an excluded page), `idle` (active, idle after 60 s, locked), `search` (engine and query from result-page addresses), `click` (label, where it landed on the page, and the link address unless it points to an excluded domain), `selection` (selected or copied text), `media` (play, pause, end, with position) |
-| `blocks.jsonl` | The text blocks on screen (up to 150, including text inside web components' shadow roots, as on D2L Brightspace) with their rectangles, and where the viewport is on the monitor. A block's text and its visual lines (rectangle and text of each, up to 60) are sent once per page load, again if queued text was dropped, and the lines again when the block's wrapping changes or it moves on the page; later snapshots carry only positions |
+| `blocks.jsonl` | The text blocks on screen (up to 150, including text inside web components' shadow roots, as on D2L Brightspace) with their rectangles, and where the viewport is on the monitor; for an app window read from the screen, its paragraphs as OCR found them (`app://` address, `scr-` document). A block's text and its visual lines (rectangle and text of each, up to 60) are sent once per page load, again if queued text was dropped, and the lines again when the block's wrapping changes or it moves on the page; later snapshots carry only positions |
 | `gaze.jsonl` | Fixations as fractions of the monitor, with the page point (corrected by clicks), the block the eyes were most likely on and its probability `p`, and the line being read: `"line": {"block": "b4", "line": 2, "p": 0.93}` (0 = the block's first line) |
 | `reading.jsonl` | One record per block read: each line read with its text, seconds on it and passes over it, the share of the block's lines read (`coverage`), when the eyes moved to each line (`path`), the tracker offset the decoder found and its mean confidence (see [Which line you are reading](#which-line-you-are-reading)) |
 | `attention.jsonl` | Dwell `start` and `end` records |
 | `health.jsonl` | Every 10 minutes while tracking: the tracker's state (frame rate, face, fixation share, noise) and the live accuracy from clicks |
+| `windows.jsonl` | The app in front each time it changes (program, window title and `app://` address; only the program for a browser or a private app), and `away` (locked, idle with `since`, paused, reading turned off, no window) |
 | `history.jsonl` | Visits imported from Opera's history |
 
 Not recorded:
@@ -269,7 +389,8 @@ Not recorded:
   or payment form) or an open shadow root shows a password field. The page's address and title
   are still recorded;
 - anything typed: fields, editable areas, and code editors that draw typed text in plain
-  elements (Monaco, CodeMirror, Ace);
+  elements (Monaco, CodeMirror, Ace). In other apps, text on screen is read as shown, typed or
+  not, except in the apps and windows that are never read ([Reading other apps](#reading-other-apps));
 - anything while paused.
 
 `import-history` leaves out the same things the extension would: the extension's excluded
@@ -380,6 +501,107 @@ calibration (`gaze.head_moved_mm`, `gaze.head_turned_deg`); `doctor` prints them
 image may come mirrored from some drivers and virtual cameras; the calibration notices (the eyes
 seem to turn the wrong way) and the tracker flips the frames back.
 
+## Learning from clicks
+
+People look at what they click, so every click is a calibration point given without noticing.
+The tracker watches clicks in every app (the primary button's state each frame, and where the
+pointer is; never what was clicked) and keeps learning from them after calibration, as head
+positions, light and posture change through the day (`services/gaze/gaze/learn.py`). WebGazer
+(Papoutsaki et al., IJCAI 2016) adds clicks to its gaze regression the same way, and PACE (Huang
+et al., CHI 2016) reached 2.56 degrees from everyday clicks and typing alone.
+
+1. **The label is the look before the click.** Gaze lines up with a click best before it: 70 ms
+   for large targets, 200-250 ms for small ones (PACE). Taking the gaze at the click gave labels
+   184 px off on average there, a steady look before it 74 px. So each click takes the eyes' last
+   steady period of at least 80 ms (raw gaze within 5% of the screen width) ending within 0.5 s
+   before it, averages its frames' head pose and eye measurements, and pairs them with the pixel
+   clicked. A click with no steady look before it is skipped.
+2. **Clicks made without looking are left out:** a click farther from where the model already put
+   the gaze than 1/12 of the screen's diagonal (245 px on a 2560 x 1440 monitor), or than 3 times
+   the model's median error on the last 100 clicks if that is larger (so a coarse calibration can
+   still learn), at most a third of the diagonal. After every update the left-out clicks are
+   checked again.
+3. **The loss.** For each click, the head pose gives the direction each eye must have had in the
+   head to look at the clicked pixel; the loss is the squared difference from the direction the
+   model gives, which is the click's error on screen seen through the geometry. Each eye's
+   regression is refitted toward the clicks starting from the calibrated weights (the ridge
+   penalty pulls toward them rather than toward zero), with newer clicks weighted more (half-life
+   a week) and clicks still far off after a first fit weighted less (Huber, two rounds).
+4. **The head's place, distance and turn as inputs too.** The geometry carries the head's pose
+   to the screen, but rests on assumptions (the webcam's field of view, the screen centred under
+   it, the eyeball's depth) that are slightly off for any one desk, and the error they leave
+   changes as the head moves. From 60 usable clicks on, each eye's regression also takes where the
+   head is against where it was over the first clicks (right, down, and nearer or farther, in cm)
+   and how it is turned (pitch, yaw, roll, in tenths of a radian), with weights pulled toward zero,
+   so a part of the error that follows the head is learned too. On synthetic faces seen through a
+   webcam of 50 degrees assumed to be 65 (`tests/test_learn.py`), the calibration alone was 79 px
+   off, learning the eye terms alone 71 px, with the head terms 15 px.
+5. **A change is kept only if it is better.** Every 20 usable clicks, the newest clicks the model in
+   use has not learned from (at least 10, and at least a fifth of all) are held out. Candidates
+   for 8 penalty strengths are fitted on the rest and judged by their median error in pixels on
+   the held-out clicks. The best is refitted on all clicks and replaces the model only if it beats
+   the model in use and the calibration alone by 3%, and is less than half as far off as one fixed
+   guess at the clicks' middle. The last test is the one that stops clicks made without looking:
+   fitted to labels unrelated to the eyes, a model learns to point at the middle of the screen,
+   which can beat a good model on such labels but not the fixed guess. The fit runs on its own
+   thread, so frames never wait for it.
+
+**Is it learning, live?** Every click is predicted before anything learns from it, by the model in
+use and by the calibration alone, so each click carries two errors on data neither model had
+seen. Their medians over the last 300 clicks, and their ratio (the loss ratio: under 1, learning
+helps), are the live answer, on your own desk, to whether learning works; the dataset numbers
+below are the controlled one. An update swaps the eye weights in one reference, so the next frame
+predicts with all of them; the tracker logs the first frame that used each update and how long
+after the fit it came (one frame, about 33 ms). **Your data > Eye tracking** in the viewer
+(`GET /gaze/learning`) shows it, refreshed every 5 s: the live error and the calibration's on the
+same clicks (px and degrees, from the head's distance in each click), the loss ratio, the model in
+use and when it reached the gaze, the error on every click (median of 30) for both with each
+update marked, and every fit with its held-out errors and why it was or was not taken.
+
+Clicks are kept in `vault/calibration/clicks.jsonl` (time, the pixel, the look's head pose and eye
+measurements as numbers, both errors, the model version in use, whether it passed the gate),
+each fit and each update's first frame in `learning.jsonl`, and what was learned in
+`gaze-learned.json`, all for the current calibration only: a new calibration starts over. The receiver's click correction (the offsets of
+[How gaze is placed on a page](#how-gaze-is-placed-on-a-page)) starts over at each update, since
+it was measured on the old model. `doctor` reports it: `learning: from clicks: update 3 at 17:40
+UTC; on clicks it had not seen, 168 px with the calibration alone, 121 px now; 260 clicks since
+calibration, 46 made without looking at the spot`, then `learning applied: update 3 reached the
+gaze 34 ms after it was fitted` and `loss ratio: last 300 clicks, each measured before learning
+from it: 121 px against 158 px for the calibration alone (ratio 0.77, 23% less error)`.
+
+Measured on real webcam images (`eval/click_learning.py`, results in
+`eval/results/click-learning.json`): MPIIFaceGaze, 15 people on their own laptops over days to
+weeks. Each person is calibrated on 13 images of their first day, as DayCube calibrates (the
+head-aware model with the assumed webcam and screen); then every image of the following days
+(36,000 in all) is replayed in order as a click at the point they looked at, with label noise of
+20 mm on average (PACE's filtered labels) and 15% of clicks made while looking at a random other
+point. Each image is predicted before it is learned from, so every error is on an image the model
+had not seen, as in use. Median error on screen:
+
+| | calibration alone | learning, eye terms only | learning, eye and head terms |
+| --- | --- | --- | --- |
+| clicks so far 0-100 | 40 mm | 39 mm | 39 mm |
+| 100-300 | 41 mm | 34 mm | 34 mm |
+| 300-1,000 | 47 mm | 33 mm | 31 mm |
+| 1,000+ | 47 mm | 34 mm | 35 mm |
+| head 0-2 cm from calibration | 37 mm | 29 mm | 27 mm |
+| head 2-4 cm away | 38 mm | 28 mm | 28 mm |
+| head 4-8 cm away | 41 mm | 29 mm | 28 mm |
+| head 8+ cm away | 53 mm | 38 mm | 35 mm |
+| all after the first 100 | 45 mm (194 px on a 27" 2560-px monitor) | 33 mm (139 px) | **31 mm (133 px)** |
+| 90th percentile | 104 mm | 74 mm | 69 mm |
+
+All 15 people were more accurate, the largest gains where the calibration was worst (91 to 35 mm,
+101 to 70 mm, 74 to 42 mm with the head terms). With clicks of 40 mm label noise and 40% made while
+looking elsewhere: 45 to 35 mm, 14 of 15 better, none worse by 2%. With every click made at a
+random point (nothing to learn): no update was taken for anyone, and the error stayed 45 mm. With
+exact labels: 45 to 30 mm. The calibration alone grows worse over the days (40 to 47 mm) and as
+the head moves from where it was (37 to 53 mm); the learned model gets better. Tried on the same replay
+and not taken: weighting the two eyes by how reliable each is on the clicks (30.9 to 30.9 mm), and
+second-order eye terms (squares and products of each eye's measurements, from 100 clicks: 30.9 to
+30.5 mm, p90 68.6 to 67.5 mm), too small a gain for another model format. These are single laptop-webcam images, noisier than fixations at a desk; the
+comparison is what carries over.
+
 ## Which line you are reading
 
 Placing a fixation on a block cannot name the line: at the recalibrated error (69 px median on a
@@ -404,6 +626,7 @@ decodes the line from the sequence of fixations instead (`services/capture-win/c
 | `/status` | `"reading": {"block", "line", "lines", "p", "text", "url", "t"}`: the line now; `null` after 10 s without one. `"line_decoding"`: of the last 300 fixations, how many landed on a page and on a line, and where the rest went (`outside` every page shown, `no_page` on screen, `stale` page, `other_monitor`), with the last page's text blocks and how many sent lines; `doctor` reads it ("line reading"). `"gaze_point"`: the last fixation placed on a page (viewport px and that page's scroll) |
 | `/live?doc=` | For the gaze ring (token required): the live gaze point on that page in viewport px, the line now, and the last fixation. Asking for it makes the tracker stream the point (`POST /gaze/live`, every frame, in memory only) for the next 10 s |
 | `/display` | `GET`: whether the ring is on (`gaze_ring`) and drawn by the tracker now (`native`); `POST {"gaze_ring": bool}` (token) switches it, as the extension's option does |
+| `/status` `"screen"` | The screen reader: `running`, `engine` (`windows` or `rapidocr`), `enabled`, the window being read now (`reading`: app and title), why the one under the gaze is not (`skipped`: browser, excluded, private, shell, no gaze, ...), `away`, OCR runs and apps in the last 10 minutes with the median time of a read, and the last `error`; `{"running": false, "reason"}` when it did not start |
 | `reading.jsonl` | A record per block once the eyes have left it (two fixations decoded on another block), the page changes, the tab or window loses focus, the block's lines are re-measured, or 10 s pass without gaze on the page. Blocks looked at for under 1.5 s or 3 fixations get none. A pass is a stay of 0.4 s or more on a line |
 
 Example `reading.jsonl` record (shortened):
@@ -421,8 +644,12 @@ wrong, and `doctor` says to recalibrate ([Simulation](#simulation)).
 
 ## Limits
 
-- **Accuracy.** Webcam gaze is good to roughly 3-5 degrees: paragraphs and, while reading, lines;
-  not words. Calibration reports the median error on four held-out targets and refuses to track
+- **Accuracy.** Webcam gaze is good to roughly 2-5 degrees: paragraphs and, while reading, lines;
+  not words. Published calibrated webcam systems reach 2.3-3.1 degrees (Zhang et al., CHI 2019),
+  2.5 degrees with screen content (EVE, ECCV 2020) and 2.56 degrees after hours of clicks (PACE);
+  infrared trackers reach 0.15-0.5 degrees (EyeLink, Tobii Pro) and 0.45 degrees for a consumer
+  one in daily use (Feit et al., CHI 2017). No filter or learning closes that gap: it is the
+  camera, its resolution of the iris and the lack of an infrared glint. Calibration reports the median error on four held-out targets and refuses to track
   above 120 px at 1920 px wide (scaled to your screen width; 160 px on a 2560 px monitor). Head
   movement is followed, but error still grows with it (31 mm to 50 mm median from a still head to
   8+ cm away, [above](#when-your-head-moves)); glasses and backlight make it worse; the live
@@ -444,8 +671,12 @@ wrong, and `doctor` says to recalibrate ([Simulation](#simulation)).
   (its `p` says so). It assumes text read top to bottom in columns, the way the page lays it out;
   lines are measured for the first 60 of a block. At an error above the calibration limit it is
   unreliable.
-- **Browser only.** Other apps, screenshots and OCR are not captured yet; nor is there a tray
-  icon. The toolbar badge and Windows' own camera indicator show that recording is on.
+- **Other apps are read by OCR.** What OCR misreads is stored misread; text smaller than about 9
+  px or on busy backgrounds is missed; an app redrawing constantly (a video, a game) is read every
+  16 s at most. Only the window under the gaze is read, on the calibrated monitor. UWP apps show
+  as `applicationframehost.exe`. Clicks across apps refine the calibrated head-aware gaze model
+  through the click learner described above. There is no tray icon: the toolbar badge and Windows' own camera indicator show
+  that recording is on.
 - **No synthesis yet.** The logs are not yet turned into day events in the viewer.
 
 ## Size

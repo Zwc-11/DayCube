@@ -1,0 +1,46 @@
+{
+ "display_hz": 240.0,
+ "calibration_px": [
+  85,
+  170
+ ],
+ "seeds": 10,
+ "results": {
+  "one euro (before) @ 30 fps": {
+   "shake_px": 6.0,
+   "spread_px": 38.1,
+   "jump_latency_ms": 104.1,
+   "jump_latency_p90_ms": 122.3,
+   "near_jump_latency_ms": 119.2,
+   "error_px": 103.1,
+   "us_per_sample": 2.2
+  },
+  "stabilizer @ 30 fps": {
+   "shake_px": 3.3,
+   "spread_px": 20.4,
+   "jump_latency_ms": 122.5,
+   "jump_latency_p90_ms": 147.8,
+   "near_jump_latency_ms": 182.3,
+   "error_px": 116.4,
+   "us_per_sample": 6.9
+  },
+  "one euro (before) @ 60 fps": {
+   "shake_px": 8.3,
+   "spread_px": 38.3,
+   "jump_latency_ms": 79.4,
+   "jump_latency_p90_ms": 96.4,
+   "near_jump_latency_ms": 80.0,
+   "error_px": 96.1,
+   "us_per_sample": 2.0
+  },
+  "stabilizer @ 60 fps": {
+   "shake_px": 3.6,
+   "spread_px": 19.1,
+   "jump_latency_ms": 85.2,
+   "jump_latency_p90_ms": 109.1,
+   "near_jump_latency_ms": 93.8,
+   "error_px": 112.5,
+   "us_per_sample": 7.0
+  }
+ }
+}

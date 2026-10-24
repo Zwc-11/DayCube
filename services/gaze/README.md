@@ -4,7 +4,10 @@ Webcam gaze that follows head movement. MediaPipe face landmarks (the model EyeT
 every frame, the head's pose (perspective-n-point on MediaPipe's canonical face) and where each
 iris sits on its eyeball; calibration learns each eye's direction within the head, and geometry
 carries it to the screen (`gaze/head.py`). Then a One Euro filter and fixations (I-DT, with a
-dispersion threshold that rises with the measured gaze noise), sent to the capture receiver.
+dispersion threshold that rises with the measured gaze noise), sent to the capture receiver; the
+ring and the live point get their own filter (`gaze/stabilize.py`: a fixation estimate that holds
+still, ignores single bad frames and jumps on confirmed saccades: half the jitter of One Euro,
+[docs/capture.md](../../docs/capture.md#a-steady-ring), `eval/ring_filter.py`).
 Frames are processed in memory and never stored. Its own environment, because
 [EyeTrax](https://github.com/ck-zhang/eyetrax) 0.4.0 (MIT; calibration screens, the camera, and
 the older ridge models) pins numpy<2.
@@ -37,6 +40,18 @@ and grows from 31 to 50 mm as the head moves 0-2 cm to 8+ cm from where it was, 
 from 56 to 88 mm ([docs/capture.md](../../docs/capture.md#when-your-head-moves),
 `eval/head_bench.py`).
 
+It keeps learning from clicks after calibration (`gaze/learn.py`): each click in any app, paired
+with the steady look just before it, is a calibration point; the eye regression is refitted toward
+them every 20 clicks and the change is kept only if it is more accurate on clicks it has not seen
+([docs/capture.md](../../docs/capture.md#learning-from-clicks), `eval/click_learning.py`).
+Each click is measured before it is learned from, by the model in use and by the calibration
+alone: their ratio over the last 300 clicks is the live loss ratio (in the tracker's report, in
+`doctor` and in the viewer's **Your data > Eye tracking**), and each update is logged when it is
+fitted and when the first frame used it. Clicks are kept in `vault/calibration/clicks.jsonl` as
+numbers (head pose, eye measurements, the pixel clicked, both errors, the model version), fits and
+updates in `learning.jsonl`, and what was learned in `gaze-learned.json`, for the current
+calibration only.
+
 The webcam is released while recording is paused, the session is locked, another app uses the
 camera, or you are away.
 
@@ -46,6 +61,14 @@ ever-older FIFO of target observations when the backend supports that reader. Ga
 open fixation. RGB conversion scratch is reused and released with the camera, while each MediaPipe
 image owns its pixels.
 The [tracking review](../../docs/gaze-tracking-review-2026-10-24.md) records measurements and limits.
+
+Blink gating checks each eye, excludes closing/closed observations from its learned reference,
+and waits 100 ms after the last rejected blink frame for reopening landmarks to settle. Brief
+blinks preserve filter position without emitting held gaze samples; long closures reacquire
+afresh. The [blink review](../../docs/blink-guard-2026-10-24.md) records replay results and tradeoffs.
+The open-eye reference follows the iris's height in the eye, because the upper lid follows the
+eye down: with one fixed reference, looking at the bottom of the screen read as a blink and the
+gaze stopped around the middle ([below](../../docs/blink-guard-2026-10-24.md#looking-down-is-not-blinking)).
 
 Tests: `cd services/gaze; uv run pytest` (the head-aware model on synthetic faces posed in front
 of a camera, fixations, smoothing, calibration fitting, the tracking loop with a scripted camera,

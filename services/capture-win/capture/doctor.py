@@ -23,12 +23,22 @@ from zoneinfo import ZoneInfo
 
 import httpx
 
+from .restart import code_stamp
+
 PASS, WARN, FAIL, INFO = "pass", "warn", "FAIL", "info"
 # Median error at which paragraphs at 100% zoom stop being separable: a 1920 px wide 24" monitor at
 # about 60 cm; scaled by monitor width. Matches services/gaze/gaze/calibrate.py.
 USABLE_PX_AT_1920 = 120.0
-LOGS = ("browser.jsonl", "blocks.jsonl", "gaze.jsonl", "attention.jsonl", "reading.jsonl", "health.jsonl")
-RESTART = "end its python processes in Task Manager, then run python -m capture install-autostart"
+LOGS = (
+    "browser.jsonl",
+    "blocks.jsonl",
+    "gaze.jsonl",
+    "attention.jsonl",
+    "reading.jsonl",
+    "health.jsonl",
+    "windows.jsonl",
+)
+RESTART = "run python -m capture restart"
 
 
 def _age(iso: str | None, now: datetime) -> float | None:
@@ -101,13 +111,93 @@ def _calibration(vault: Path) -> dict | None:
     return saved if isinstance(saved, dict) else None
 
 
+def _learning(gaze: dict) -> list[tuple[str, str, str]]:
+    """Learning from clicks (services/gaze/gaze/learn.py), from the tracker's report."""
+    learning = gaze.get("learning")
+    if not gaze.get("tracking") or learning is None:
+        return []
+    if learning.get("error"):
+        return [(WARN, "learning", f"failing: {learning['error']}")]
+    clicks, skipped = learning.get("clicks", 0), learning.get("skipped") or {}
+    fit, version = learning.get("fit"), learning.get("version", 0)
+    away = skipped.get("not looking", 0)
+    counted = f"{clicks} clicks since calibration" + (f", {away} made without looking at the spot" if away else "")
+    if fit is None:
+        return [(INFO, "learning", f"from clicks: {counted}; the first check needs 30 usable clicks")]
+    errors = fit.get("error_px") or {}
+    if version:
+        when = (learning.get("updated") or "")[11:16]
+        detail = (
+            f"from clicks: update {version}" + (f" at {when} UTC" if when else "")
+            + (" (eyes, and the head's place, distance and turn)" if learning.get("head_terms") else "")
+            + f"; on clicks it had not seen, {errors.get('calibration')} px with the calibration alone, "
+            f"{errors.get('learned') if fit.get('accepted') else errors.get('in_use')} px now; {counted}"
+        )  # fmt: skip
+        rows = [(PASS, "learning", detail)]
+        applied = learning.get("applied") or {}
+        if applied.get("version") == version:
+            after = applied.get("after_ms")
+            rows.append((PASS, "learning applied", f"update {version} reached the gaze"
+                         + (f" {after:.0f} ms after it was fitted" if after is not None else "")
+                         + " (every frame since uses it)"))  # fmt: skip
+        elif "applied" in learning:  # a tracker that reports it: the update has not reached a frame yet
+            rows.append((WARN, "learning applied", f"update {version} has not reached a frame yet"))
+        live = learning.get("live") or {}
+        if live.get("ratio") is not None:
+            ratio = live["ratio"]
+            rows.append((PASS if ratio < 1 else INFO, "loss ratio", (
+                f"last {live['clicks']} clicks, each measured before learning from it: {live['error_px']} px "
+                f"against {live['calibration_px']} px for the calibration alone (ratio {ratio:.2f}"
+                + (f", {round((1 - ratio) * 100)}% less error)" if ratio < 1 else ")")
+            )))  # fmt: skip
+        return rows
+    return [(
+        INFO,
+        "learning",
+        f"from clicks: nothing better than the calibration yet ({errors.get('calibration')} px against "
+        f"{errors.get('learned')} px on clicks it had not seen); {counted}",
+    )]  # fmt: skip
+
+
+def _screen(status: dict) -> list[tuple[str, str, str]]:
+    """Reading the window under the gaze in other apps (screen.py)."""
+    screen = status.get("screen")
+    if screen is None:
+        return [(WARN, "screen reading", "the receiver is older than this checkout: " + RESTART)]
+    if not screen.get("running"):
+        why = screen.get("reason") or screen.get("error") or "stopped"
+        if "--no-screen" in why or "needs Windows" in why:
+            return [(INFO, "screen reading", f"off ({why})")]
+        return [(
+            WARN,
+            "screen reading",
+            f"not running: {why}. Install its parts with uv sync --project services/capture-win, then " + RESTART,
+        )]  # fmt: skip
+    if not screen.get("enabled"):
+        return [(INFO, "screen reading", "off: python -m capture screen on turns it on")]
+    if screen.get("error"):
+        return [(WARN, "screen reading", f"failing: {screen['error']}")]
+    reads, apps, ms = screen.get("reads_10min", 0), screen.get("apps_10min") or [], screen.get("ocr_ms")
+    now = screen.get("reading")
+    language = f" ({screen['language']})" if screen.get("language") else ""
+    detail = f"{screen.get('engine')} OCR{language}, {reads} reads in 10 min" + (
+        f" of {', '.join(apps)}" if apps else ""
+    )
+    detail += f", {ms:.0f} ms each" if ms is not None else ""
+    if now:
+        detail += f"; reading {now['app']} now"
+    elif screen.get("skipped") and screen["skipped"] != "no gaze":
+        detail += f"; not reading now: {screen['skipped']}"
+    return [(PASS, "screen reading", detail)]
+
+
 def checks(status: dict | None, vault: Path, zone: ZoneInfo, now: datetime, autostart: str | None) -> list[tuple]:
     out: list[tuple[str, str, str]] = []
     if status is None:
         return [(FAIL, "receiver", "not running on 127.0.0.1:7700: start it, or sign out and in (autostart)")]
     out.append((WARN if status["paused"] else PASS, "receiver", "paused" if status["paused"] else "running"))
-    if "reading" not in status:  # added with line decoding: this process runs older code
-        out.append((FAIL, "receiver code", "older than this checkout: stop it and start it again (" + RESTART + ")"))
+    if status.get("code") != code_stamp():  # it runs the code it started with, not the checkout's
+        out.append((FAIL, "receiver code", "older than this checkout (started before the last update): " + RESTART))
 
     age = _age(status.get("browser", {}).get("last"), now)
     if age is None:
@@ -234,6 +324,8 @@ def checks(status: dict | None, vault: Path, zone: ZoneInfo, now: datetime, auto
         elif asks:
             out.append((PASS, "gaze ring", f"{points:.0f} live points/s, the page asks {asks:.0f} times/s"))
 
+    out += _screen(status)
+
     saved = _calibration(vault)
     model = (saved or {}).get("model") or gaze.get("model")
     if model and model.startswith("head"):
@@ -266,12 +358,14 @@ def checks(status: dict | None, vault: Path, zone: ZoneInfo, now: datetime, auto
         if gaze.get("tracking") and saved and running is not None and abs(running - error) > 0.5:
             out.append((WARN, "calibration", "the tracker still uses the calibration from before: " + RESTART))
 
+    out += _learning(gaze)
+
     decoding = status.get("line_decoding") or {}
     seen = decoding.get("fixations", 0)
     if gaze.get("tracking") and seen >= 30:
         on_page, on_line, page = decoding.get("on_page", 0), decoding.get("on_line", 0), decoding.get("page")
         reasons = {
-            "outside": "outside the browser page (looking at another app, or the calibration is off)",
+            "outside": "outside every page and app window being read (or the calibration is off)",
             "no_page": "with no browser page on screen (reload the extension, then the tab)",
             "stale": "while the page was not reporting (reload the extension, then the tab)",
             "other_monitor": "with the page on another monitor (gaze is calibrated on the primary one)",
@@ -294,7 +388,15 @@ def checks(status: dict | None, vault: Path, zone: ZoneInfo, now: datetime, auto
     accuracy = status.get("accuracy") or {}
     clicks, corrected = accuracy.get("clicks", 0), accuracy.get("corrected_error_px")
     if clicks < 5 or corrected is None:
-        out.append((INFO, "live accuracy", f"{clicks} of 5 clicks needed: browse and click links as usual"))
+        learned = (gaze.get("learning") or {}).get("version")
+        if learned:  # the page-click offsets start over at each model learned from clicks
+            out.append((
+                INFO,
+                "live accuracy",
+                f"{clicks} of 5 page clicks since the last learned update; the learning line has the accuracy",
+            ))  # fmt: skip
+        else:
+            out.append((INFO, "live accuracy", f"{clicks} of 5 clicks needed: browse and click links as usual"))
     else:
         raw = accuracy.get("live_error_px")
         verdict = PASS if corrected <= limit else WARN if corrected <= 1.5 * limit else FAIL

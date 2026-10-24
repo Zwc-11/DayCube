@@ -5,6 +5,7 @@ import {
   Check,
   Circle,
   Database,
+  Eye,
   Info,
   Network,
   PencilRuler,
@@ -20,12 +21,14 @@ import type { GpuTelemetry } from '../diorama/DioramaCanvas3D';
 import { CATEGORY, COLORS, FONTS, formatRange, formatTod } from '../../styles/theme';
 import { Dialog } from '../ui';
 import { DataCenterView, LiveGraph } from './DataSections';
+import { EyeTrackingView } from './EyeTracking';
 
 export type SettingsSection =
   | 'privacy'
   | 'connection'
   | 'data'
   | 'graph'
+  | 'eyes'
   | 'tracer'
   | 'pipeline'
   | 'eval'
@@ -67,6 +70,7 @@ const NAV: { group: string; items: { id: SettingsSection; label: string; icon: R
     items: [
       { id: 'data', label: 'Data center', icon: <Database size={15} /> },
       { id: 'graph', label: 'Knowledge graph', icon: <Network size={15} /> },
+      { id: 'eyes', label: 'Eye tracking', icon: <Eye size={15} /> },
     ],
   },
   {
@@ -125,6 +129,7 @@ export const SystemStudioModal: React.FC<SettingsProps> = (props) => {
           {section === 'connection' && <ConnectionSection {...props} />}
           {section === 'data' && <DataSection {...props} />}
           {section === 'graph' && <GraphSection {...props} />}
+          {section === 'eyes' && <EyeSection {...props} />}
           {section === 'tracer' && <TracerSection />}
           {section === 'pipeline' && <PipelineSection />}
           {section === 'eval' && <EvalSection />}
@@ -482,6 +487,13 @@ const DataSection: React.FC<SettingsProps> = ({ backendOnline }) => (
   <>
     <h3 className="settings__h">Data center</h3>
     <DataCenterView online={backendOnline} />
+  </>
+);
+
+const EyeSection: React.FC<SettingsProps> = ({ backendOnline }) => (
+  <>
+    <h3 className="settings__h">Eye tracking</h3>
+    <EyeTrackingView online={backendOnline} />
   </>
 );
 

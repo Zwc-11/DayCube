@@ -1,7 +1,7 @@
 import {
-  askResultSchema, dataCenterSchema, dayNotesSchema, dayResponseSchema, entitySchema, eventSchema, graphSchema,
+  askResultSchema, dataCenterSchema, dayNotesSchema, gazeLearningSchema, dayResponseSchema, entitySchema, eventSchema, graphSchema,
   knowledgeGraphSchema, momentSchema, noteSchema, searchResultSchema, skeletonSchema, transcriptSchema,
-  type AskResult, type DataCenter, type Day, type DayNotes, type DayResponse, type Entity, type Event,
+  type AskResult, type DataCenter, type Day, type GazeLearning, type DayNotes, type DayResponse, type Entity, type Event,
   type KnowledgeGraph, type Note, type SearchResult,
 } from '@daycube/schemas';
 import { consumeSse } from './sse.mjs';
@@ -94,6 +94,18 @@ export class DaycubeClient {
   /** Every source stream in the vault and the database built from them. */
   async dataCenter(signal?: AbortSignal): Promise<DataCenter> {
     return dataCenterSchema.parse(await this.request('/data', { signal }));
+  }
+  /** The eye tracker's learning from clicks for the current calibration. */
+  async gazeLearning(signal?: AbortSignal): Promise<GazeLearning> {
+    return gazeLearningSchema.parse(await this.request('/gaze/learning', { signal }));
+  }
+  /** Conditional load: null while the server's copy still matches `etag` (HTTP 304, no body). */
+  async gazeLearningIfChanged(etag?: string | null): Promise<{ etag: string | null; learning: GazeLearning } | null> {
+    const headers = new Headers(etag ? { 'If-None-Match': etag } : undefined);
+    const response = await this.transport(`${this.baseUrl}/gaze/learning`, { headers, cache: 'no-store' });
+    if (response.status === 304) return null;
+    if (!response.ok) throw await ApiError.from(response);
+    return { etag: response.headers.get('ETag'), learning: gazeLearningSchema.parse(await response.json()) };
   }
   /** The day's knowledge base; its notes are written or refreshed on the server first. */
   async dayNotes(date: string, signal?: AbortSignal): Promise<DayNotes> {

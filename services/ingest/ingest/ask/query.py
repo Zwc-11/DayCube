@@ -29,7 +29,8 @@ KINDS: list[tuple[str, tuple[str, ...], str]] = [
     (r"\b(?:clicked|click(?:s)?)\b(?: on)?", ("web.click",), "clicks"),
     (r"\b(?:copied|copy|selected)\b", ("web.selection",), "copies"),
     (r"\b(?:watched|watching|videos?|listened to)\b", ("web.media", "web.visit"), "media"),
-    (r"\b(?:visited|opened|browsed)\b", ("web.visit", "place.visit", "screen.page"), "visits"),
+    (r"\b(?:visited|opened|browsed)\b", ("web.visit", "place.visit", "screen.page", "screen.app"), "visits"),
+    (r"\b(?:apps?|programs?|worked in)\b", ("screen.app",), "apps"),
     (r"\b(?:said|talked about|discussed|mentioned|conversation)\b", ("said.quote", "moment.audio"), "conversations"),
 ]
 SITES = {
@@ -38,6 +39,12 @@ SITES = {
     "learn": "learn.uwaterloo.ca", "piazza": "piazza.com", "google docs": "docs.google.com", "gmail": "mail.google.com",
     "twitter": "x.com", "x": "x.com", "arxiv": "arxiv.org", "chatgpt": "chatgpt.com", "claude": "claude.ai",
     "linkedin": "linkedin.com", "notion": "notion.so", "leetcode": "leetcode.com", "canvas": "instructure.com",
+    # Apps, read from the screen: their program files.
+    "vs code": "code.exe", "vscode": "code.exe", "visual studio code": "code.exe", "microsoft word": "winword.exe",
+    "ms word": "winword.exe", "excel": "excel.exe", "powerpoint": "powerpnt.exe", "obsidian": "obsidian.exe",
+    "slack": "slack.exe", "discord": "discord.exe", "the terminal": "windowsterminal.exe", "acrobat": "acrobat.exe",
+    "sumatra": "sumatrapdf.exe", "sumatrapdf": "sumatrapdf.exe", "zotero": "zotero.exe",
+    "the claude app": "claude.exe", "file explorer": "explorer.exe",
 }  # fmt: skip
 
 

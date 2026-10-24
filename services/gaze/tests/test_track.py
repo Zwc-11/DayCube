@@ -411,11 +411,11 @@ def test_reacquiring_a_face_starts_at_its_new_gaze_point() -> None:
 
 
 def test_a_short_blink_keeps_the_continuous_smoothing_response() -> None:
-    from gaze.fixations import Smoother
+    from gaze.stabilize import Stabilizer
 
     t, scene, receiver, *_, clock, log = tracker()
     receiver.live = True
-    expected = Smoother()
+    expected = Stabilizer(1920)  # live points (and the ring) show the stabilized gaze
     start = clock.now
     for elapsed, x, y in [(0.0, 960.0, 540.0), (0.03, 1000.0, 550.0), (0.13, 1400.0, 800.0)]:
         now = start + elapsed
@@ -590,3 +590,46 @@ def test_the_click_correction_is_interpolated_between_grid_points() -> None:
     assert _grid({"cols": 3, "rows": 2, "dx": [0] * 5, "dy": [0] * 6}) is None
     assert _grid({"cols": 3, "rows": 2, "dx": ["x"] * 6, "dy": [0] * 6}) is None
     assert _grid(None) is None
+
+
+def test_clicks_and_the_frames_before_them_go_to_the_learner() -> None:
+    class Learner:
+        def __init__(self) -> None:
+            self.frames: list = []
+            self.clicks: list = []
+
+        def frame(self, t: float, vector: object, x: float, y: float) -> None:
+            self.frames.append((t, x, y))
+
+        def click(self, t: float, x: float, y: float) -> str:
+            self.clicks.append((t, x, y, len(self.frames)))
+            return "used"
+
+        def state(self) -> dict:
+            return {"version": 2, "clicks": len(self.clicks)}
+
+    class Clicking(Computer):
+        presses: list = []
+
+        def click(self) -> tuple[int, int] | None:
+            return self.presses.pop(0) if self.presses else None
+
+    learner = Learner()
+    scene, receiver, clock, log = Scene(), Receiver(), Clock(), []
+    computer = Clicking()
+    t = Tracker(
+        Estimator(), lambda: Camera(scene, log), receiver, CALIBRATION, system=computer, clock=clock,
+        sleep=clock.sleep, timer=clock, learner=learner,
+    )  # fmt: skip
+    run_for(t, clock, 1)
+    computer.presses.append((960, 540))
+    run_for(t, clock, 1.5)
+    assert len(learner.frames) >= 40 and learner.frames[0][1:] == (960.0, 540.0)
+    ((when, x, y, seen),) = learner.clicks
+    assert (x, y) == (960.0, 540.0) and seen >= 10  # the frames before it were there
+    assert receiver.states[-1]["learning"] == {"version": 2, "clicks": 1}
+    # A learner that fails must not stop tracking.
+    learner.click = lambda *_: 1 / 0  # type: ignore[method-assign]
+    computer.presses.append((10, 10))
+    run_for(t, clock, 0.5)
+    assert receiver.states[-1]["tracking"] is True

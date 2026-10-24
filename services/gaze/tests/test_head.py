@@ -205,3 +205,29 @@ def test_blinks_are_skipped() -> None:
         shut.points[[upper, lower]] = middle
     faces.queue.append(shut)
     assert estimator.extract_features(None)[1]
+
+
+def test_a_ray_that_misses_the_screen_leaves_the_other_eye_or_nothing() -> None:
+    """predict_arrays: one eye's ray away from the screen, the point is the other eye's; both
+    away (or parallel to it), nan; never a warning or a point behind the head."""
+    import warnings
+
+    rng = np.random.default_rng(3)
+    heads = [Poser(CAMERA).measure(face(p, *HOME, rng)) for p in GRID for _ in range(2)]
+    model = GazeModel(SCREEN).fit(heads, np.array([p for p in GRID for _ in range(2)], dtype=float))
+    R = np.array([h.R for h in heads[:3]])
+    eyes = np.array([h.eyes for h in heads[:3]])
+    F = np.array([h.features for h in heads[:3]])
+    both = model.predict_arrays(R, eyes, F)
+    real = model.directions_of
+    away = real(R, F, eyes).copy()
+    away[0, 0] *= -1  # frame 0: the right eye looks away from the screen
+    away[1] *= -1  # frame 1: both do
+    away[2, 0] = np.cross(SCREEN.normal, SCREEN.ex)  # frame 2: right eye parallel to the screen
+    model.directions_of = lambda *args: away  # type: ignore[method-assign]
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        out = model.predict_arrays(R, eyes, F)
+    model.directions_of = real  # type: ignore[method-assign]
+    assert np.isfinite(out[0]).all() and np.isfinite(out[2]).all() and np.isnan(out[1]).all()
+    assert np.linalg.norm(out[0] - both[0]) < 200  # the left eye's point, near where both were

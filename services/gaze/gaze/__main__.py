@@ -138,6 +138,15 @@ def _track(args: argparse.Namespace, log: logging.Logger) -> None:
     mode = result.get("camera_mode")
     fps = args.fps or (mode["fps"] if mode else DEFAULT_FPS)
 
+    learner = None
+    if result["model"].startswith("head"):  # the eye regression it refits is the head-aware model's
+        from .learn import Learner
+
+        learner = Learner(
+            estimator, tuple(result["monitor"]), args.vault / "calibration", result.get("t"), background=True
+        )
+        if learner.version:
+            log.info("using what was learned from %d clicks (update %d)", len(learner.clicks), learner.version)
     tracker = Tracker(
         estimator,
         lambda: open_camera_thread(lambda: open_camera(camera, mode)),
@@ -147,6 +156,7 @@ def _track(args: argparse.Namespace, log: logging.Logger) -> None:
         supervised=args.supervised,
         recalibrated=recalibrated,
         overlay=overlay,
+        learner=learner,
     )
     log.info("tracking with camera %s in %s at up to %s fps", camera, describe(mode), fps)
     try:

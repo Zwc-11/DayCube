@@ -72,6 +72,15 @@ def run(args: argparse.Namespace) -> None:
 
         librarian = Librarian(settings.vault_root, settings.timezone)
         librarian.start()
+    receiver = app.state.receiver
+    if args.no_screen:
+        receiver.screen_problem = "started with --no-screen"
+    else:
+        from .screen import start as read_screen
+
+        receiver.screen, receiver.screen_problem = read_screen(receiver, screen_file(settings.vault_root))
+        if receiver.screen is None:
+            log.warning("not reading the screen: %s", receiver.screen_problem)
     try:
         uvicorn.run(app, host="127.0.0.1", port=args.port, log_config=None, access_log=False)
     finally:
@@ -79,20 +88,137 @@ def run(args: argparse.Namespace) -> None:
             supervisor.stop()
         if librarian is not None:
             librarian.stop()
+        if receiver.screen is not None:
+            receiver.screen.stop()
         log.info("receiver stopped")
+
+
+def screen_file(vault_root: Path) -> Path:
+    return vault_root / "capture" / "screen.json"
+
+
+def screen(args: argparse.Namespace) -> None:
+    """Turn reading the window under the gaze (any app) on or off, or exclude an app from it. A
+    running receiver picks the change up within a second."""
+    import json
+
+    settings = Settings()
+    if args.state == "check":
+        check_screen()
+        return
+    path = screen_file(settings.vault_root)
+    try:
+        current = json.loads(path.read_text(encoding="utf-8"))
+        current = current if isinstance(current, dict) else {}
+    except (OSError, ValueError):
+        current = {}
+    excluded = [str(app).casefold() for app in current.get("exclude_apps", []) if isinstance(app, str)]
+    if args.state in ("on", "off"):
+        current["enabled"] = args.state == "on"
+    for app in args.exclude or []:
+        app = app.casefold() if app.casefold().endswith(".exe") else app.casefold() + ".exe"
+        excluded = sorted({*excluded, app})
+    for app in args.include or []:
+        app = app.casefold() if app.casefold().endswith(".exe") else app.casefold() + ".exe"
+        excluded = [a for a in excluded if a != app]
+    current["exclude_apps"] = excluded
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(current, indent=1) + "\n", encoding="utf-8")
+    state = "on" if current.get("enabled", True) else "off"
+    print(
+        f"Reading the window under your gaze: {state}." + (f" Never read: {', '.join(excluded)}." if excluded else "")
+    )
+
+
+def check_screen() -> None:
+    """Read the window in front once, as the receiver would, and print what was found."""
+    import time
+
+    from .screen import Win32System, blocks_of, engine, why_not
+
+    system = Win32System()
+    print("Reading the window in front in 3 seconds: bring the one to read to the front.")
+    time.sleep(3)
+    window = system.foreground()
+    if window is None:
+        raise SystemExit("No window in front.")
+    print(f"{window.app}: {window.title!r}, {window.rect[2]}x{window.rect[3]} at {window.rect[0]},{window.rect[1]}")
+    reason = why_not(window)
+    if reason is not None:
+        print(f"The receiver never reads this window ({reason}); reading it anyway for this check.")
+    ocr = engine()
+    if getattr(ocr, "languages", None):
+        print(f"OCR languages installed in Windows: {', '.join(ocr.languages)}")
+    started = time.perf_counter()
+    try:
+        lines = ocr.read(system.capture(window.rect, window), "check")
+    finally:
+        system.close()
+    took = (time.perf_counter() - started) * 1000
+    blocks = blocks_of(lines)
+    language = getattr(ocr, "language", "")
+    mode = getattr(getattr(ocr, "scripts", None), "modes", {}).get("check", ("",))[0]
+    print(
+        f"{ocr.name} OCR {language}" + (f" (this window: {mode} text)" if mode else "")
+        + f": {len(lines)} lines in {len(blocks)} paragraphs, {took:.0f} ms"
+    )  # fmt: skip
+    for block in blocks[:12]:
+        print(f"  [{block['tag']}] {block['text'][:110]}")
+
+
+def _status(timeout: float = 2.0) -> dict | None:
+    """The running receiver's /status, or None when nothing answers on the port."""
+    try:
+        # trust_env=False: a system proxy (Windows takes it from the registry) must not see localhost.
+        response = httpx.get(f"http://127.0.0.1:{PORT}/status", timeout=timeout, trust_env=False)
+        return response.json()
+    except (httpx.HTTPError, ValueError):
+        return None
+
+
+def _restart(command: list[str] | str) -> None:
+    from . import autostart
+    from .restart import code_stamp, restart
+
+    stopped, status = restart(command, _status, autostart.start_detached)
+    print(f"Stopped {len(stopped)} receiver and eye tracker processes; started the receiver again.")
+    if status is None:
+        raise SystemExit("It has not answered on 127.0.0.1:7700 within 45 s: see vault/logs/capture.log.")
+    if status.get("code") != code_stamp():
+        raise SystemExit(
+            "Something older still answers on 127.0.0.1:7700 and was not stopped: end the python processes "
+            "in Task Manager, then run python -m capture restart."
+        )
+    screen = status.get("screen") or {}
+    reading = "on" if screen.get("running") else f"not running ({screen.get('reason') or screen.get('error')})"
+    print(
+        f"Running this checkout's code. Gaze ring over every window: {'on' if (status.get('display') or {}).get('gaze_ring') else 'off (python -m capture ring on)'}. Reading other apps: {reading}."
+    )
+    print("The eye tracker starts within a few seconds; python -m capture doctor checks everything.")
+
+
+def restart_receiver(_: argparse.Namespace) -> None:
+    """Stop the running receiver and eye tracker and start them again on this checkout's code."""
+    from . import autostart
+
+    _restart(autostart.current() or autostart.launch_command(gaze=True))
 
 
 def install_autostart(args: argparse.Namespace) -> None:
     from . import autostart
+    from .restart import code_stamp
 
     command = autostart.launch_command(gaze=not args.no_gaze, on_dwell=args.on_dwell)
     print(f"Starts at every sign-in:\n  {autostart.install(command)}")
-    try:
-        httpx.get(f"http://127.0.0.1:{PORT}/status", timeout=1)
-        print("The receiver is already running; the new entry applies from the next sign-in.")
-    except httpx.HTTPError:
+    status = _status()
+    if status is None:
         autostart.start_detached(command)
         print("Started it now. Logs: vault/logs/capture.log")
+    elif status.get("code") != code_stamp():
+        print("The running receiver is older than this checkout: restarting it.")
+        _restart(command)
+    else:
+        print("The receiver is already running this checkout's code.")
 
 
 def uninstall_autostart(_: argparse.Namespace) -> None:
@@ -187,6 +313,9 @@ def main(argv: list[str] | None = None) -> None:
         "--dwell-factor", type=float, default=2.0, help="A dwell also needs this many times the text's reading time"
     )
     start.add_argument("--on-dwell", help="Command run on each dwell, with the dwell record as JSON on stdin")
+    start.add_argument(
+        "--no-screen", action="store_true", help="Do not read the window under the gaze in apps other than the browser"
+    )
     start.add_argument("--port", type=int, default=PORT, help=argparse.SUPPRESS)
     start.set_defaults(handler=run)
 
@@ -194,6 +323,9 @@ def main(argv: list[str] | None = None) -> None:
     auto.add_argument("--no-gaze", action="store_true", help="Leave the eye tracker out")
     auto.add_argument("--on-dwell", help="Command run on each dwell (see run --on-dwell)")
     auto.set_defaults(handler=install_autostart)
+    commands.add_parser(
+        "restart", help="Stop the receiver and eye tracker and start them again on this checkout's code"
+    ).set_defaults(handler=restart_receiver)
     commands.add_parser("uninstall-autostart", help="Remove the sign-in entry").set_defaults(
         handler=uninstall_autostart
     )
@@ -206,6 +338,16 @@ def main(argv: list[str] | None = None) -> None:
     show = commands.add_parser("ring", help="Show or hide the gaze ring drawn over every window")
     show.add_argument("state", choices=["on", "off"])
     show.set_defaults(handler=ring)
+
+    read = commands.add_parser(
+        "screen", help="Turn reading the window under your gaze (any app) on or off, or never read an app"
+    )
+    read.add_argument(
+        "state", nargs="?", choices=["on", "off", "check"], help="check: read the window in front once and print it"
+    )
+    read.add_argument("--exclude", action="append", metavar="APP", help="Never read this program (slack.exe)")
+    read.add_argument("--include", action="append", metavar="APP", help="Read this program again")
+    read.set_defaults(handler=screen)
 
     history = commands.add_parser("import-history", help="Copy Opera's history into vault/capture/<date>/history.jsonl")
     history.add_argument("--profile", type=Path, help="A Chromium History file (default: Opera's)")
