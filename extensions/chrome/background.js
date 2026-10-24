@@ -9,7 +9,7 @@ const QUEUE_LIMIT = 5000;
 const GUARD_TTL = 5000; // a frame's "password field visible" report lasts this long without a refresh
 const DEFAULTS = {
   enabled: false, token: '', exclusions: ['localhost', '127.0.0.1'],
-  paused: false, pauseSynced: true, exclusionsSynced: false, dwellAction: 'none', showLine: false, epoch: 0,
+  paused: false, pauseSynced: true, exclusionsSynced: false, displaySynced: false, dwellAction: 'none', showLine: false, epoch: 0,
 };
 
 const settings = () => chrome.storage.local.get(DEFAULTS);
@@ -205,6 +205,7 @@ async function tick() {
         }
       }
       if (!s.exclusionsSynced) await syncExclusions();
+      if (!s.displaySynced) await syncDisplay();
     } catch { /* offline: keep the local state */ }
   }
   await flush();
@@ -223,6 +224,22 @@ async function syncExclusions() {
     await chrome.storage.local.set({ exclusionsSynced: response.ok });
   } catch {
     await chrome.storage.local.set({ exclusionsSynced: false });
+  }
+}
+
+// "Show where I am looking": the eye tracker draws the ring over every window (the receiver keeps
+// the choice and tells the tracker); pages draw it only where the tracker cannot.
+async function syncDisplay() {
+  const s = await settings();
+  if (!s.token) return;
+  try {
+    const response = await fetchReceiver('/display', {
+      method: 'POST', body: JSON.stringify({ gaze_ring: Boolean(s.showLine) }),
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${s.token}` },
+    });
+    await chrome.storage.local.set({ displaySynced: response.ok });
+  } catch {
+    await chrome.storage.local.set({ displaySynced: false });
   }
 }
 
@@ -367,7 +384,11 @@ async function readingFor(tab, doc) {
   });
   if (!response.ok) return none;
   const live = response.body;
-  return { show, reading: live.reading ?? null, point: live.point ?? null, fixation: live.fixation ?? null };
+  // ``native``: the eye tracker draws the ring over every window, so the page draws none.
+  return {
+    show, reading: live.reading ?? null, point: live.point ?? null, fixation: live.fixation ?? null,
+    native: Boolean(live.native),
+  };
 }
 
 async function fromPage(message, tab) {
@@ -456,5 +477,6 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (changes.enabled || changes.token || changes.paused) refreshBadge();
   if (changes.enabled?.newValue || changes.token?.newValue) focusSoon();
   if (changes.exclusions || changes.token?.newValue) syncExclusions();
+  if (changes.showLine || changes.token?.newValue) syncDisplay();
 });
 ensureAlarm();

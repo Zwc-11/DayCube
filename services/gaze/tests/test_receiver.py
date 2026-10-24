@@ -96,3 +96,17 @@ def test_live_points_never_wait_and_the_newest_wins(server: tuple, tmp_path: Pat
     live = [c for c in calls if c["path"] == "/gaze/live"]
     assert live[-1]["body"]["x"] == 0.199 and len(live) < 200
     assert len(receiver.live_ms) == len(live)
+
+
+def test_the_receiver_says_whether_to_draw_the_ring_and_how_to_correct_it(server: tuple, tmp_path: Path) -> None:
+    url, calls, answer = server
+    (tmp_path / ".token").write_text("secret")
+    receiver = Receiver(url, tmp_path / ".token")
+    grid = {"cols": 2, "rows": 2, "dx": [0.01, 0.01, 0.01, 0.01], "dy": [0, 0, 0, 0]}
+    answer["body"] = {"accepted": 0, "live": False, "ring": True, "offset_grid": grid}
+    assert receiver.send({"tracking": True}) == "ok"
+    assert receiver.ring is True and receiver.offset_grid == {**grid, "dx": [0.01] * 4, "dy": [0.0] * 4}
+    answer["body"] = {"accepted": 0, "ring": True, "offset_grid": {"cols": 2}}  # malformed: no correction
+    assert receiver.send({"tracking": True}) == "ok" and receiver.ring and receiver.offset_grid is None
+    answer["code"] = 409  # paused: hide it
+    assert receiver.send({"tracking": True}) == "paused" and receiver.ring is False

@@ -125,7 +125,7 @@ def test_a_stare_at_a_paragraph_becomes_a_dwell_signal_and_hook(
         snapshot = record("blocks", -12, doc="doc-1", geometry=GEOMETRY, blocks=blocks, **TAB)
         assert client.post("/events", json=[snapshot], headers=auth).json()["accepted"] == 1
         body = client.post("/gaze", json={"state": state, "fixations": fixations}, headers=auth).json()
-        assert body == {"accepted": 18, "duplicates": 0, "stale": 0, "live": False}
+        assert body == {"accepted": 18, "duplicates": 0, "stale": 0, "live": False, "ring": False, "offset_grid": None}
         status = client.get("/status").json()["gaze"]
         assert status["tracking"] is True and status["error_px"] == 120.0
         signals = client.post("/events", json=[], headers=auth).json()["signals"]
@@ -462,3 +462,93 @@ def test_the_librarian_keeps_the_days_notes_current(vault: Vault) -> None:
     assert "robin hood hashing" in daily.read_text(encoding="utf-8")
     tomorrow = datetime(2026, 10, 23, 9, 0, tzinfo=ZoneInfo("America/Toronto"))
     assert librarian.step(tomorrow) == []  # yesterday unchanged, today has no capture yet
+
+
+def test_the_tracker_draws_the_ring_over_every_window_when_asked(vault: Vault, auth: dict[str, str]) -> None:
+    """The extension's option (or `capture ring on`) is remembered; the tracker learns it from the
+    /gaze reply, with the click correction as a grid; pages then draw no ring of their own."""
+    from capture.anchors import Anchor
+
+    overlay = {"running": True, "shown": True, "fps": 143.0, "moves_per_s": 120.0, "refresh_hz": 144.0}
+    state = {"tracking": True, "calibrated": True, "error_px": 30.0, "monitor": [1920, 1080], "overlay": overlay}
+    page = {**record("view", doc="doc-1", geometry=GEOMETRY, **TAB)}
+    with TestClient(create_capture_app(settings(vault), receive=True)) as client:
+        assert client.get("/display").json() == {"gaze_ring": False, "native": False}
+        assert client.post("/display", json={"gaze_ring": True}).status_code == 401
+        client.post("/events", json=[page], headers=auth)
+        client.get("/live", params={"doc": "doc-1"}, headers=auth)  # a page asks for the point
+        reply = client.post("/gaze", json={"state": state, "fixations": []}, headers=auth).json()
+        assert reply["ring"] is False and reply["live"] is True
+        assert client.post("/display", json={"gaze_ring": True}, headers=auth).json()["gaze_ring"] is True
+        reply = client.post("/gaze", json={"state": state, "fixations": []}, headers=auth).json()
+        assert reply["ring"] is True and reply["offset_grid"] is None  # no clicks to correct from yet
+        # The tracker draws it now: no live points over HTTP, and the page draws nothing.
+        reply = client.post("/gaze", json={"state": state, "fixations": []}, headers=auth).json()
+        assert reply["live"] is False
+        view = client.get("/live", params={"doc": "doc-1"}, headers=auth).json()
+        assert view["native"] is True and view["point"] is None and view["fixation"] is None
+        assert client.get("/status").json()["display"] == {"gaze_ring": True, "native": True}
+        # Clicks taught the receiver the tracker reads 40 px right of the centre: the grid carries it.
+        receiver = client.app.state.receiver
+        receiver.attention.anchors.anchors.append(Anchor(datetime.now(UTC).timestamp(), 960.0, 540.0, 40.0, 0.0))
+        grid = client.post("/gaze", json={"state": state, "fixations": []}, headers=auth).json()["offset_grid"]
+        assert (grid["cols"], grid["rows"], len(grid["dx"])) == (9, 5, 45)
+        centre, corner = grid["dx"][2 * 9 + 4], grid["dx"][0]
+        assert 0 < corner < centre <= 40 / 1920 and all(v == 0 for v in grid["dy"])
+        client.post("/pause", headers=auth)
+        assert client.get("/display").json()["native"] is False  # paused: nothing drawn
+    # Remembered across restarts.
+    with TestClient(create_capture_app(settings(vault), receive=True)) as client:
+        assert client.get("/display").json()["gaze_ring"] is True
+
+
+def test_the_doctor_reports_the_ring_over_every_window(vault: Vault, monkeypatch: pytest.MonkeyPatch) -> None:
+    from zoneinfo import ZoneInfo
+
+    from capture import doctor
+
+    now = datetime.now(UTC)
+    zone = ZoneInfo("America/Toronto")
+    monkeypatch.setattr(doctor.sys, "platform", "linux")
+    gaze = {"tracking": True, "fps": 60.0, "target_fps": 60.0, "face": 1.0, "coverage": 0.8, "noise_px": 20.0}
+    asked = {"points_per_s": 0.0, "asks_per_s": 9.0, "live_share": 0.0, "ever_asked": True}
+
+    def ring(display: dict, overlay: dict | None) -> list[tuple[str, str]]:
+        status = {"paused": False, "browser": {"last": now.isoformat()}, "reading": None, "ring": asked,
+                  "display": display, "gaze": gaze | ({"overlay": overlay} if overlay is not None else {})}  # fmt: skip
+        return [(v, d) for v, name, d in doctor.checks(status, vault.root, zone, now, None) if name == "gaze ring"]
+
+    drawn = {"running": True, "shown": True, "fps": 143.0, "moves_per_s": 140.0, "refresh_hz": 144.0}
+    assert ring({"gaze_ring": True, "native": True}, drawn) == [
+        (
+            doctor.PASS,
+            "drawn over every window: 143 frames/s on a 144 Hz display, moving 140 times/s between 60 gaze points/s",
+        )
+    ]  # fmt: skip  -- and the page ring's checks are skipped
+    off = ring({"gaze_ring": False, "native": False}, None)
+    assert off[0][0] == doctor.INFO and "capture ring on" in off[0][1]
+    broken = ring({"gaze_ring": True, "native": False}, {"running": False, "error": "OSError: no desktop"})
+    assert broken[0][0] == doctor.WARN and "OSError: no desktop" in broken[0][1]
+    old = ring({"gaze_ring": True, "native": False}, None)
+    assert old[0][0] == doctor.WARN and "older than this checkout" in old[0][1]
+
+
+def test_the_doctor_reports_the_webcam_rate_and_how_to_get_60(vault: Vault, monkeypatch: pytest.MonkeyPatch) -> None:
+    from zoneinfo import ZoneInfo
+
+    from capture import doctor
+
+    now = datetime.now(UTC)
+    monkeypatch.setattr(doctor.sys, "platform", "linux")
+    gaze = {"tracking": True, "fps": 29.0, "target_fps": 30.0, "face": 1.0, "coverage": 0.8, "noise_px": 20.0}
+
+    def webcam(**values: object) -> tuple[str, str]:
+        status = {"paused": False, "browser": {"last": now.isoformat()}, "reading": None, "gaze": gaze | values}
+        checks = doctor.checks(status, vault.root, ZoneInfo("America/Toronto"), now, None)
+        return next((v, d) for v, name, d in checks if name == "webcam")
+
+    verdict, detail = webcam(camera_fps=30.0, camera_mode="default mode")
+    assert verdict == doctor.INFO and "30 gaze points/s" in detail and "calibrate" in detail
+    assert webcam(camera_fps=59.6, camera_mode="1280x720 MJPG 60 fps") == (
+        doctor.PASS, "60 frames/s in 1280x720 MJPG 60 fps",
+    )  # fmt: skip

@@ -14,7 +14,14 @@ uv sync --project services/gaze
 uv run --project services/gaze python -m gaze check       # frame rate and face detection
 uv run --project services/gaze python -m gaze calibrate   # 9 + 4 held-out dots, 4 more after moving the head, ~45 s
 uv run --project services/gaze python -m gaze track       # normally started by the receiver
+uv run --project services/gaze python -m gaze.overlay     # the gaze ring over every window, without a camera
 ```
+
+Calibration first looks for a 60 fps webcam mode (`gaze/camera.py`: MJPG at 1280 x 720 or 640 x
+480, timed rather than trusted; `--fps 30` skips it) and saves it; tracking opens that mode. With
+the ring switched on, the tracker draws it over every window itself (`gaze/overlay.py`, Windows):
+a click-through, always-on-top window moved once per display frame between gaze points, left out
+of screenshots ([docs/capture.md](../../docs/capture.md#the-gaze-ring-over-every-window)).
 
 Calibration writes `vault/calibration/gaze.json`, the model (`gaze-head.json`, or EyeTrax's
 `gaze-model.pkl`) and `gaze-frames.npz` (every frame's landmarks, no images). It fits three
@@ -42,4 +49,5 @@ The [tracking review](../../docs/gaze-tracking-review-2026-10-24.md) records mea
 
 Tests: `cd services/gaze; uv run pytest` (the head-aware model on synthetic faces posed in front
 of a camera, fixations, smoothing, calibration fitting, the tracking loop with a scripted camera,
-the receiver client).
+the receiver client, camera modes, the ring's picture, interpolation and frame loop). The ring's
+Windows window was run in Wine 9 on a virtual display.

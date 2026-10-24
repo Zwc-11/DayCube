@@ -52,6 +52,8 @@ class Receiver:
     fixations: list = field(default_factory=list)
     states: list = field(default_factory=list)
     live: bool = False
+    ring: bool = False
+    offset_grid: dict | None = None
     points: list = field(default_factory=list)
     sent: list = field(default_factory=list)  # how many fixations each report carried
 
@@ -521,3 +523,70 @@ def test_a_camera_that_works_only_on_the_tracker_thread_is_still_used(monkeypatc
     monkeypatch.setattr(track, "_threaded_camera", True)
     camera = track.open_camera_thread(Silent, first_s=0.3)
     assert isinstance(camera, Silent) and camera.main
+
+
+class FakeRing:
+    """Stands in for gaze.overlay.Overlay."""
+
+    def __init__(self, running: bool = True) -> None:
+        self.running = running
+        self.points: list[tuple[float, float]] = []
+        self.cleared = 0
+        self.closed = False
+
+    def push(self, fx: float, fy: float) -> None:
+        self.points.append((fx, fy))
+
+    def clear(self) -> None:
+        self.cleared += 1
+
+    def close(self) -> None:
+        self.closed = True
+
+    def state(self) -> dict:
+        return {"running": self.running, "shown": bool(self.points), "fps": 144, "refresh_hz": 144.0}
+
+
+def test_the_ring_over_every_window_gets_every_frame_in_memory() -> None:
+    made: list[FakeRing] = []
+
+    def factory() -> FakeRing:
+        made.append(FakeRing())
+        return made[-1]
+
+    t, scene, receiver, *_, clock, log = tracker(overlay=factory)
+    receiver.live = True  # a page asks too: it still gets live points over HTTP
+    run_for(t, clock, 3)
+    assert made == []  # not wanted yet: no window is made
+    receiver.ring = True
+    # The receiver's click correction: the tracker reads 2% of the width too far right everywhere.
+    receiver.offset_grid = {"cols": 2, "rows": 2, "dx": [0.02] * 4, "dy": [0.0] * 4}
+    run_for(t, clock, 2)
+    ring = made[0]
+    assert len(made) == 1 and 58 <= len(ring.points) <= 62  # every frame, at 30 frames/s
+    assert all(abs(x - 0.48) < 1e-6 and abs(y - 0.5) < 1e-6 for x, y in ring.points)
+    assert t.state()["overlay"]["running"] and receiver.states[-1]["overlay"]["fps"] == 144
+    receiver.answer = "paused"  # a pause hides it and releases the camera
+    run_for(t, clock, 3)
+    assert ring.cleared and "release" in log
+    t.run(should_stop=lambda: True)
+    assert ring.closed
+
+
+def test_a_ring_window_that_cannot_open_leaves_tracking_alone() -> None:
+    t, scene, receiver, *_, clock, log = tracker(overlay=lambda: FakeRing(running=False))
+    receiver.ring = True
+    run_for(t, clock, 3)
+    assert receiver.fixations and t.state()["overlay"]["running"] is False
+
+
+def test_the_click_correction_is_interpolated_between_grid_points() -> None:
+    from gaze.receiver import _grid, corrected
+
+    grid = _grid({"cols": 3, "rows": 2, "dx": [0, 0.01, 0.02, 0, 0.01, 0.02], "dy": [0, 0, 0, 0.04, 0.04, 0.04]})
+    assert corrected(grid, 0.25, 0.5) == pytest.approx((0.25 - 0.005, 0.5 - 0.02))
+    assert corrected(grid, 1.3, 1.0) == pytest.approx((1.3 - 0.02, 1.0 - 0.04))  # clamped to the grid's edge
+    assert corrected(None, 0.3, 0.4) == (0.3, 0.4)
+    assert _grid({"cols": 3, "rows": 2, "dx": [0] * 5, "dy": [0] * 6}) is None
+    assert _grid({"cols": 3, "rows": 2, "dx": ["x"] * 6, "dy": [0] * 6}) is None
+    assert _grid(None) is None

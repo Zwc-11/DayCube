@@ -83,13 +83,53 @@ the half minute it takes, which frees the webcam, and the receiver restarts the 
 new calibration. When EyeTrax's ridge is in use (an older calibration, or the one that scored
 best), it is right only while your head stays where it was; `doctor` says so.
 
+### The gaze ring over every window
+
+With **Show where I am looking and the line I am reading** on (extension options, or
+`python -m capture ring on|off`; the receiver remembers it in `vault/capture/display.json`), the
+eye tracker draws the red ring itself, over every window and app on the calibrated monitor
+(`services/gaze/gaze/overlay.py`):
+
+| | Ring inside the page (before, and off Windows) | Ring drawn by the tracker (Windows) |
+| --- | --- | --- |
+| Where | the active tab of a browser window on the calibrated monitor, only on http(s) pages the extension runs in | everywhere on that monitor: every Opera window and tab, Opera's own pages, other apps, the desktop |
+| How often it moves | when the page asks for the point, about 30 times a second | every display frame (60, 120 or 144 Hz), between gaze points |
+| Path of a point | tracker, HTTP to the receiver, page request through the service worker, page | tracker thread to overlay thread, in memory |
+| Delay it adds | polling (up to 33 ms) plus easing (25 ms) plus the HTTP hops | one sample interval: 33 ms at 30 fps, 17 ms at 60 |
+
+The window is a layered, click-through, always-on-top tool window (it never takes focus, is not
+in the taskbar or Alt-Tab, and claims the top again every second) left out of screenshots,
+recordings and screen sharing (`WDA_EXCLUDEFROMCAPTURE`), so DayCube's own screen capture never
+reads it. Its thread waits for the compositor (`DwmFlush`) and moves the window once a frame,
+showing the gaze one sample interval ago interpolated between the two points around it, so
+motion is continuous at any refresh rate. The click correction the receiver learns is sent to
+the tracker as a 9 x 5 grid with each `/gaze` reply and applied to the ring, as the receiver
+applies it to fixations. The ring fades when no point comes for 0.6 s, goes after 4 s, and waits
+whole and dashed at the monitor's edge while the gaze is off it. Pages draw no ring of their own
+while the tracker's is up (`/live` answers `"native": true`); if its window cannot open, `doctor`
+says why and pages draw the ring as before. The blue line marker stays in the page: it marks a
+line of the page's own text.
+
+`doctor` reports it (`gaze ring: drawn over every window: 143 frames/s on a 144 Hz display,
+moving 140 times/s between 60 gaze points/s`). Without the tracker or a camera,
+`uv run --project services/gaze python -m gaze.overlay` circles the ring for 3 s and prints the
+frames drawn per second. Checked in Wine 9 on a virtual display: the window opens, draws the ring
+and its dashed variant, and moves on every one of 60 frames a second from 30 points a second.
+
 ### Processing rate and live checks
 
-The tracker now targets **30 processed frames/s** by default, including when started by the
-receiver at sign-in. The camera keeps its existing mode: this setting does not request 1080p,
-change calibration geometry or create a faster hardware capture mode. A manual override is:
+The gaze rate is the webcam's frame rate: one gaze point per frame. Calibration asks the webcam
+for **60 frames/s** (`gaze/camera.py`): it tries MJPG at 1280 x 720 and 640 x 480 with Media
+Foundation, then DirectShow, times the frames each really delivers, keeps the first mode giving at
+least 51 a second, and saves it in `gaze.json` (`camera_mode`). Tracking opens the webcam in that
+mode, because the gaze model is fitted to its image, and targets its rate. A webcam without a 60
+fps mode, or a calibration saved before this, keeps the default mode at 30. `doctor` prints the
+rate frames really arrive at (`webcam: 60 frames/s in 1280x720 MJPG 60 fps`), and how to get 60
+when it is 30. At 60 frames/s a frame has 16.7 ms: the face model takes about 15 ms on a 2-core
+cloud machine and less on a desktop processor (`doctor`'s **frame time** shows it). Overrides:
 
 ```powershell
+uv run --project services/gaze python -m gaze calibrate --fps 30   # keep the default mode
 uv run --project services/gaze python -m gaze track --fps 15
 ```
 
@@ -159,7 +199,7 @@ from your usual seat. Every 10 minutes while gaze arrives, the same figures go t
 | Pause everything, including the webcam | Click the toolbar button or press `Alt+Shift+D` (works once the token is saved, even with browser recording off). The badge reads `II`. The webcam is released within about a second |
 | Resume | The same again. The badge reads `REC` |
 | See whether it works | The extension's options page, **Right now**; or `http://127.0.0.1:7700/status` |
-| See where it has you looking, and which line | Extension options, **Show where I am looking and the line I am reading**: a red ring where the tracker has your eyes now (the live gaze point, fed about 30 times a second and drawn every display frame, about 0.1 s behind in the end-to-end test; dashed at the window's edge when gaze is off the page; it fades in a blink instead of vanishing) and a blue marker beside the decoded line (fainter when less sure; a second or two behind, since lines are decoded from finished fixations). **Right now** shows the line, or why there is none: where the last fixations went (on a page, on a line, outside the browser page, no page on screen, page not reporting, another monitor) and how many of the last page's text blocks sent their lines |
+| See where it has you looking, and which line | Extension options, **Show where I am looking and the line I am reading**: a red ring where the tracker has your eyes now, drawn by the tracker over every window at the display's refresh rate on Windows ([The gaze ring over every window](#the-gaze-ring-over-every-window)), else inside the page (fed about 30 times a second, about 0.1 s behind in the end-to-end test; dashed at the window's edge when gaze is off the page); it fades in a blink instead of vanishing, and a blue marker beside the decoded line (fainter when less sure; a second or two behind, since lines are decoded from finished fixations). **Right now** shows the line, or why there is none: where the last fixations went (on a page, on a line, outside the browser page, no page on screen, page not reporting, another monitor) and how many of the last page's text blocks sent their lines |
 | Stop starting at sign-in | `python -m capture uninstall-autostart`, or turn it off in Task Manager > Startup apps |
 | Read the logs | `vault\logs\capture.log` and `vault\logs\gaze.log` |
 
@@ -363,6 +403,7 @@ decodes the line from the sequence of fixations instead (`services/capture-win/c
 | `gaze.jsonl` | Each fixation's line, `"line": {"block", "line", "p"}` |
 | `/status` | `"reading": {"block", "line", "lines", "p", "text", "url", "t"}`: the line now; `null` after 10 s without one. `"line_decoding"`: of the last 300 fixations, how many landed on a page and on a line, and where the rest went (`outside` every page shown, `no_page` on screen, `stale` page, `other_monitor`), with the last page's text blocks and how many sent lines; `doctor` reads it ("line reading"). `"gaze_point"`: the last fixation placed on a page (viewport px and that page's scroll) |
 | `/live?doc=` | For the gaze ring (token required): the live gaze point on that page in viewport px, the line now, and the last fixation. Asking for it makes the tracker stream the point (`POST /gaze/live`, every frame, in memory only) for the next 10 s |
+| `/display` | `GET`: whether the ring is on (`gaze_ring`) and drawn by the tracker now (`native`); `POST {"gaze_ring": bool}` (token) switches it, as the extension's option does |
 | `reading.jsonl` | A record per block once the eyes have left it (two fixations decoded on another block), the page changes, the tab or window loses focus, the block's lines are re-measured, or 10 s pass without gaze on the page. Blocks looked at for under 1.5 s or 3 fixations get none. A pass is a stay of 0.4 s or more on a line |
 
 Example `reading.jsonl` record (shortened):
