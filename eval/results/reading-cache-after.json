@@ -1,0 +1,24 @@
+{
+  "revision": "1af2039e597e5c736d81abbcfba82b18c711d216",
+  "source_hashes": {
+    "services/capture-win/capture/attention.py": "a9b4759dca040d115a3e55226e4e892dab2e936cae7b15dc69f637a63db43882",
+    "services/capture-win/capture/reading.py": "bc3cb4a12ade2a4305febea630839e546701260bf22deb8f522f1364a92af5b5",
+    "eval/benchmark_reading_cache.py": "d524c0cec8bcef26d8d98ddd688eda127c8192006bcd4e58f6555e10e599909e"
+  },
+  "environment": {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.9"
+  },
+  "workload": {
+    "blocks": 20000,
+    "lines_per_block": 1,
+    "repetitions": 1
+  },
+  "layout_entries": 5000,
+  "reader_entries": 5000,
+  "traced_retained_bytes": 3072440,
+  "traced_peak_bytes": 3367681,
+  "population_s": 0.2815640000044368,
+  "recent_output_sha256": "aba95b915993d2a91c5ca20e460975c39de12c097b6b17a2562758af11bc0405",
+  "limits": "Layout admission with tracemalloc enabled, before decoding a fixation. Tests retained layouts, not inference speed, accuracy or process RSS. All text is synthetic."
+}

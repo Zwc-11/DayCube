@@ -1,5 +1,9 @@
 # Codebase efficiency review
 
+The [2026-10-24 follow-up](review-2026-10-24.md) adds a hash-bound file ledger, notes/graph/cache
+measurements, concurrent-job and retrieval fixes, extension delivery checks and explicit live-write
+failures. The review below is historical; its test counts and open issues describe that earlier pass.
+
 Date: 2026-10-23. Baseline: `877099f`, with newer capture work preserved. Reference:
 [DeepInfer at the pinned revision](https://github.com/deepseek-ai/DeepInfer/tree/774ce244b87cc0eb8d4b94ab9f5de2ab22049f01).
 

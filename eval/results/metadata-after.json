@@ -1,0 +1,26 @@
+{
+  "revision": "1af2039e597e5c736d81abbcfba82b18c711d216",
+  "source_hashes": {
+    "services/ingest/ingest/cache.py": "a6d45ba6f665b32f26b3dfdf69c0a9fbe801dec5fb4975b15a09b33753cf832c",
+    "services/ingest/ingest/vault.py": "611b6604cdefca9882e4a10959ff2881aaa8c9a847225040e2fa506ddae7dc8a",
+    "eval/benchmark_metadata.py": "62ca2dc70c99ffb0a60b867f00964aaeb65a8fde3c1f17918e375373804f18ae"
+  },
+  "environment": {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.9"
+  },
+  "workload": {
+    "entries": 25000,
+    "files_per_day_key": 8,
+    "repetitions": 1
+  },
+  "retained_entries": 2513,
+  "charged_bytes": 8385881,
+  "capacity_bytes": 8388608,
+  "traced_retained_bytes": 6955228,
+  "traced_peak_bytes": 7064120,
+  "population_s": 4.623658999975305,
+  "population_cpu_s": 4.625,
+  "recent_output_sha256": "925faef6d7b5be024c9579d08fdd01ed7642858e5a7c496bf8195c7e2a80e6a2",
+  "limits": "One long scan of synthetic per-day keys; no filesystem I/O. Tracemalloc includes population overhead and is not RSS. Eviction intentionally changes the retained set, never source files or derived evidence."
+}

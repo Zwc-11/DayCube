@@ -1,5 +1,8 @@
 # Performance measurements
 
+The [2026-10-24 review](review-2026-10-24.md) adds notes/graph/cache measurements and a
+production-build viewer profile. Its renderer and scope limits are recorded with the results.
+
 See the [search measurements](efficiency-review.md#search-measurements) for scoped vector
 queries, cache retention and streaming checks. Earlier viewer, service, storage and gaze
 measurements follow.
@@ -211,4 +214,12 @@ This establishes near-30 FPS processing on this camera/CPU in a short session. I
 establish 1080p capture, long-session tail latency, accurate paragraph placement or performance
 parity with DeepInfer. The browser dwell, pause/lock, video-call camera handoff and sign-in tests
 remain separate acceptance checks.
+
+## Full-codebase follow-up, 2026-10-24
+
+See [the measured review](review-2026-10-24.md) and [file ledger](review-ledger.json). The follow-up
+batches notes queries, indexes navigation joins, bounds metadata/text/layout retention, coalesces
+index jobs and checks failure/rewrite races. Its reports include regressions and measurement limits.
+Production viewer profiles identify SwiftShader; they do not establish real-GPU performance or
+DeepInfer parity. Earlier measurements below retain their original scope and provenance.
 

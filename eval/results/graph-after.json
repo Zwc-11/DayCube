@@ -1,0 +1,60 @@
+{
+  "revision": "1af2039e597e5c736d81abbcfba82b18c711d216",
+  "source_hashes": {
+    "services/ingest/ingest/graph/extract.py": "c5685dfb0500858d86c70877553e4fcf86770407fc72236d44507db90729ea9f",
+    "eval/benchmark_graph.py": "6c2526b2ec045ee5635542af09e8ab8ac48019e2001037d317576371ade88376",
+    "eval/benchmark_notes.py": "5359aa9de867c64fc08f294f95f323e1b4c2103dba8739c3e0982280e77a3aab"
+  },
+  "environment": {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.9",
+    "cpu": "AMD64 Family 26 Model 68 Stepping 0, AuthenticAMD"
+  },
+  "workload": {
+    "pages": [
+      1000,
+      10000
+    ],
+    "search_every": 5,
+    "tabs": 11,
+    "repeats": 7,
+    "warmups": 1
+  },
+  "operations": {
+    "1000": {
+      "wall_ms": [
+        14.90050001302734,
+        15.18049999140203,
+        14.87680000718683,
+        15.236200008075684,
+        14.988699986133724,
+        15.041599981486797,
+        15.840000007301569
+      ],
+      "median_ms": 15.041599981486797,
+      "p95_ms": 15.840000007301569,
+      "median_cpu_ms": 15.625,
+      "traced_peak_bytes": 645424,
+      "sha256": "4f2012c400e25612ff25e3a5e6b725bdcc1fc352bd592655d289fce6cc599e76",
+      "profile": "         359129 function calls (327639 primitive calls) in 0.075 seconds\n\n   Ordered by: cumulative time\n   List reduced from 72 to 12 due to restriction <12>\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n        1    0.000    0.000    0.075    0.075 benchmark_graph.py:55(<lambda>)\n        1    0.000    0.000    0.046    0.046 extract.py:135(extract)\n        1    0.003    0.003    0.046    0.046 extract.py:201(_capture)\n        1    0.000    0.000    0.029    0.029 dataclasses.py:1265(asdict)\n  14460/1    0.011    0.000    0.029    0.029 dataclasses.py:1289(_asdict_inner)\n18420/1389    0.003    0.000    0.028    0.000 dataclasses.py:1321(<genexpr>)\n     2176    0.001    0.000    0.023    0.000 extract.py:121(page)\n     2176    0.004    0.000    0.022    0.000 extract.py:56(canonical_url)\n     1989    0.001    0.000    0.018    0.000 extract.py:130(is_search)\n     2198    0.007    0.000    0.014    0.000 parse.py:452(urlsplit)\n     1989    0.001    0.000    0.011    0.000 synthesize.py:91(_domain)\n    10496    0.006    0.000    0.008    0.000 copy.py:128(deepcopy)\n\n\n"
+    },
+    "10000": {
+      "wall_ms": [
+        160.7287999941036,
+        160.70820001186803,
+        157.9189999611117,
+        157.79770002700388,
+        160.21369997179136,
+        158.08999998262152,
+        169.05550000956282
+      ],
+      "median_ms": 160.21369997179136,
+      "p95_ms": 169.05550000956282,
+      "median_cpu_ms": 156.25,
+      "traced_peak_bytes": 7952263,
+      "sha256": "93116918083f1592a9fe735275e5ef6e1f47516cd6b9ae6e3999bf46084060bb",
+      "profile": "         3615329 function calls (3297639 primitive calls) in 0.825 seconds\n\n   Ordered by: cumulative time\n   List reduced from 72 to 12 due to restriction <12>\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n        1    0.002    0.002    0.826    0.826 benchmark_graph.py:55(<lambda>)\n        1    0.000    0.000    0.469    0.469 extract.py:135(extract)\n        1    0.027    0.027    0.469    0.469 extract.py:201(_capture)\n        1    0.000    0.000    0.355    0.355 dataclasses.py:1265(asdict)\n 145860/1    0.136    0.000    0.355    0.355 dataclasses.py:1289(_asdict_inner)\n185820/13989    0.042    0.000    0.353    0.000 dataclasses.py:1321(<genexpr>)\n    21976    0.008    0.000    0.229    0.000 extract.py:121(page)\n    21976    0.038    0.000    0.220    0.000 extract.py:56(canonical_url)\n    19989    0.008    0.000    0.187    0.000 extract.py:130(is_search)\n    21998    0.072    0.000    0.144    0.000 parse.py:452(urlsplit)\n    19989    0.011    0.000    0.109    0.000 synthesize.py:91(_domain)\n   105896    0.068    0.000    0.094    0.000 copy.py:128(deepcopy)\n\n\n"
+    }
+  },
+  "limits": "In-memory synthetic day, includes graph extraction and dataclass conversion. No HTTP, disk or embedding model. CPU timer has coarse Windows resolution; seven samples do not estimate production tail latency."
+}

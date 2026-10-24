@@ -63,12 +63,19 @@ uv run --project services/capture-win python -m capture import-history
 ```
 
 After pulling a new version, reload the extension at `opera://extensions` (its card shows the
-version: 0.8.0 now; 0.5.0 or later puts its page script into tabs already open, so they need no refresh;
+version: 0.8.1 now; 0.5.0 or later puts its page script into tabs already open, so they need no refresh;
 before 0.5.0, refresh them), and restart the receiver
 (sign out and in, or end its `pythonw.exe` and `python.exe` processes in Task Manager and run
 `python -m capture install-autostart` again), so the extension, receiver and tracker run the same
 code; `python -m capture doctor` reports a receiver still running older code. A newer tracker or
 extension still works with an older receiver: fields it does not know are ignored.
+
+Version 0.8.1 limits the page reporter's text/layout caches to 5,000 blocks. Returning to an
+evicted block keeps its ID and resends its text and lines. The receiver's line decoder follows
+its layout cache's evictions too. Extension deliveries share one in-flight request and store
+pending records before sending; the receiver request and JSON response have a five-second
+deadline. Failed responses keep the queue for retry. These changes do not alter gaze calibration
+or confidence; [measurements and limits](review-2026-10-24.md) use synthetic data.
 
 Recalibrate when your lighting, webcam or monitor changes, or the glasses you wear
 (`python -m gaze calibrate`); with the head-aware model, moving your chair or head does not need it. It pauses recording for
