@@ -23,6 +23,11 @@ def main() -> None:
     which = index.add_mutually_exclusive_group(required=True)
     which.add_argument("--date")
     which.add_argument("--all", action="store_true")
+    notes = commands.add_parser("notes", help="Write the linked notes (vault/notes, Obsidian-compatible) of a day")
+    which_notes = notes.add_mutually_exclusive_group(required=True)
+    which_notes.add_argument("--date")
+    which_notes.add_argument("--all", action="store_true")
+    commands.add_parser("graph", help="The most mentioned entities and their links, as JSON")
     compact = commands.add_parser("compact", help="Compress large logs of finished days; reads stay transparent")
     compact.add_argument("--before", help="Compact every day before this date (default: today)")
     args = parser.parse_args()
@@ -38,12 +43,21 @@ def main() -> None:
             result = {"seeded": False, "message": str(error)}
     elif args.command == "validate":
         result = vault.validate(args.date)
-    elif args.command in {"index", "stats"}:
+    elif args.command in {"index", "stats", "notes", "graph"}:
         store = LifeStore(
             vault, default_embedder(settings.vector_search, settings.embedding_model), zone=settings.timezone
         )
         if args.command == "stats":
             result = store.stats()
+        elif args.command == "graph":
+            result = store.graph(limit=100)
+        elif args.command == "notes":
+            from .notes import Notes
+
+            writer = Notes(store)
+            days = store.days() if args.all else [args.date]
+            paths = sorted({p.relative_to(writer.root).as_posix() for day in days for p in writer.write_day(day)})
+            result = {"folder": str(writer.root), "notes": paths}
         else:
             result = [store.update(day) for day in store.days()] if args.all else store.update(args.date)
     elif args.command == "compact":

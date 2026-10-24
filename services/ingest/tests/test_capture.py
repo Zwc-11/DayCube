@@ -439,3 +439,26 @@ def test_the_doctor_shows_why_the_tracker_is_not_running(vault: Vault, monkeypat
     paused = status | {"gaze": {"tracking": False, "reason": "paused"}}
     found = {name: d for _, name, d in doctor.checks(paused, vault.root, zone, now, None)}
     assert "toolbar button" in found["eye tracker"]
+
+
+def test_the_librarian_keeps_the_days_notes_current(vault: Vault) -> None:
+    from zoneinfo import ZoneInfo
+
+    from capture.librarian import Librarian
+    from conftest import CAPTURE_DAY, capture_session
+
+    capture_session(vault)
+    librarian = Librarian(vault.root, "America/Toronto")
+    noon = datetime(2026, 10, 22, 12, 0, tzinfo=ZoneInfo("America/Toronto"))
+    assert librarian.step(noon) == [CAPTURE_DAY]
+    daily = vault.root / "notes" / "Daily" / f"{CAPTURE_DAY}.md"
+    assert "CS 136" in daily.read_text()
+    assert librarian.step(noon) == []  # nothing new
+    with (vault.root / "capture" / CAPTURE_DAY / "browser.jsonl").open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps({"id": "s9-0000001", "t": f"{CAPTURE_DAY}T11:00:00-04:00", "kind": "search", "tab": 1,
+                                 "window": 1, "url": "https://www.google.com/search?q=b", "title": "",
+                                 "engine": "google", "query": "robin hood hashing"}) + "\n")  # fmt: skip
+    assert librarian.step(noon) == [CAPTURE_DAY]
+    assert "robin hood hashing" in daily.read_text()
+    tomorrow = datetime(2026, 10, 23, 9, 0, tzinfo=ZoneInfo("America/Toronto"))
+    assert librarian.step(tomorrow) == []  # yesterday unchanged, today has no capture yet

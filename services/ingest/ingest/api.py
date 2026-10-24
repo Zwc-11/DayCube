@@ -189,6 +189,22 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
             raise FileNotFoundError(entity_id)
         return found
 
+    @app.post("/notes/{date}", dependencies=[Depends(authorize)])
+    def write_notes(date: str) -> Record:
+        """Write (or refresh) the linked notes of a day in vault/notes; the person's edits stay."""
+        from .notes import Notes
+
+        writer = Notes(store)
+        return {"notes": sorted(p.relative_to(writer.root).as_posix() for p in writer.write_day(date))}
+
+    @app.get("/notes")
+    def list_notes() -> list[Record]:
+        """The notes folder as last read into the database: path, title, and the entity a
+        generated note stands for."""
+        store.sync_notes()
+        with store.connect() as db:
+            return [dict(r) for r in db.execute("SELECT path, title, identity FROM notes ORDER BY path")]
+
     @app.get("/moment/{moment_id}")
     def moment(moment_id: str, date: str = Query(...)) -> Record:
         if not SAFE_ID.fullmatch(moment_id):

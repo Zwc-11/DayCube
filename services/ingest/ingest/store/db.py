@@ -27,11 +27,12 @@ from ..index.build import UNIT_COLUMNS, collect_units, source_stamp
 from ..index.embed import Embedder
 from ..time import instant
 from ..vault import Record, Vault
+from . import notes as note_index
 from .graph import entity_view, graph_view
 from .vectors import VectorIndex, sign_bits
 
 FILE_NAME = "daycube.sqlite"
-SCHEMA_VERSION = 3  # 1: sqlite-vec vectors and per-row triggers, never released; 2: no graph tables
+SCHEMA_VERSION = 4  # 1: sqlite-vec vectors and per-row triggers, never released; 2: no graph; 3: no notes
 # A query may embed this many new texts before it answers (a few seconds on CPU); a day with
 # more waits for `daycube index`, and is searched by keywords until then.
 INLINE_EMBED_LIMIT = 256
@@ -87,8 +88,13 @@ CREATE TABLE links (
 CREATE INDEX links_src ON links(src);
 CREATE INDEX links_dst ON links(dst);
 CREATE TABLE speakers (moment_id TEXT, diar_label TEXT, person_id TEXT, confirmed INTEGER);
+-- The notes folder (vault/notes) read back: see store/notes.py.
+{NOTES}
 CREATE TABLE deletions (t0 TEXT, t1 TEXT, reason TEXT, applied_at TEXT);
 """
+
+
+DDL = DDL.replace("{NOTES}", note_index.DDL.strip())
 
 
 def digest(text: str) -> bytes:
@@ -118,6 +124,8 @@ class LifeStore:
         self.fresh = vault.fresh_index
         self.index = VectorIndex()
         self._ready = False
+        self.notes_root = vault.root / "notes"
+        self._notes: dict[str, tuple[int, int]] | None = None  # the notes folder as last synced
 
     @property
     def vectors(self) -> bool:
@@ -139,6 +147,7 @@ class LifeStore:
     def _forget(self) -> None:
         """The file is gone: whatever was confirmed fresh or loaded lived in it."""
         self._ready = False
+        self._notes = None
         self.fresh.clear()
         self.index.clear()
 
@@ -159,6 +168,7 @@ class LifeStore:
                 ) from error
             self.fresh.clear()
             self.index.clear()
+            self._notes = None
         if self.embedder is not None:
             meta = dict(db.execute("SELECT key, value FROM meta").fetchall())
             wanted = {"model": self.embedder.name, "dim": str(self.embedder.dim)}
@@ -204,12 +214,27 @@ class LifeStore:
         stamp = source_stamp(self.vault.day_path(day)) if self.has_day(day) else {}
         return json.dumps({**stamp, **capture_stamp(self.vault, day)}, sort_keys=True)
 
+    def sync_notes(self) -> int:
+        """Read the notes folder into the database if any note changed; returns notes rewritten."""
+        found = note_index.scan(self.notes_root)
+        if not self.path.exists():
+            self._forget()
+        if found == self._notes and self._notes is not None:
+            return 0
+        with self.vault.lock, self.connect() as db, self._write(db):
+            count = note_index.sync(db, self.notes_root, found, _entities(db, rename=False))
+            _drop_orphans(db)
+        self._notes = found
+        return count
+
     def ensure(self, days: Iterable[str] | None = None) -> None:
-        """Bring the given days (default: every day in the vault) up to date. A repeat call with
-        unchanged files costs a few stats per day."""
+        """Bring the given days (default: every day in the vault, and the notes) up to date. A
+        repeat call with unchanged files costs a few stats per day."""
         everything = days is None
         if not self.path.exists():
             self._forget()  # deleted underneath us: every day must be written again
+        if everything:
+            self.sync_notes()
         wanted = self.days() if everything else list(days)
         stale = [day for day in wanted if self.fresh.get(day) != self._key(day)]
         if not stale and not everything:
@@ -324,18 +349,7 @@ class LifeStore:
     @staticmethod
     def _graph(db: sqlite3.Connection, day: str, graph: Graph) -> None:
         """The day's mentions and links, after its units (whose ids the mentions need)."""
-        ids: dict[tuple[str, str], int] = {}
-
-        def entity(kind: str, key: str, name: str) -> int:
-            found = ids.get((kind, key))
-            if found is None:
-                found = db.execute(
-                    "INSERT INTO entities(kind, key, name) VALUES (?, ?, ?) "
-                    "ON CONFLICT(kind, key) DO UPDATE SET name = excluded.name RETURNING id",
-                    (kind, key, name),
-                ).fetchone()[0]
-                ids[(kind, key)] = found
-            return found
+        entity = _entities(db)
 
         units = dict(db.execute("SELECT evidence_id, id FROM units WHERE day = ?", (day,)).fetchall())
         db.executemany(
@@ -387,6 +401,29 @@ class LifeStore:
         with self.connect() as db:
             return self.index.search(db, query, k, days=None if day is None else [day], since=since, until=until)
 
+    def note_keyword(self, expression: str, *, k: int) -> list[int]:
+        """Note chunk ids matching an FTS5 expression, best BM25 first."""
+        sql = (
+            "SELECT c.id FROM note_chunks_fts JOIN note_chunks c ON c.id = note_chunks_fts.rowid "
+            "WHERE note_chunks_fts MATCH ? ORDER BY bm25(note_chunks_fts) LIMIT ?"
+        )
+        with self.connect() as db:
+            return [row[0] for row in db.execute(sql, (expression, k))]
+
+    def note_rows(self, ids: Sequence[int]) -> dict[int, Record]:
+        found: dict[int, Record] = {}
+        with self.connect() as db:
+            for start in range(0, len(ids), CHUNK):
+                chunk = ids[start : start + CHUNK]
+                marks = ",".join("?" for _ in chunk)
+                for row in db.execute(
+                    f"SELECT c.*, n.title, n.identity, n.mtime_ns FROM note_chunks c JOIN notes n ON n.path = c.path "
+                    f"WHERE c.id IN ({marks})",
+                    chunk,
+                ):
+                    found[row["id"]] = dict(row)
+        return found
+
     def rows(self, ids: Sequence[int]) -> dict[int, Record]:
         found: dict[int, Record] = {}
         with self.connect() as db:
@@ -432,6 +469,25 @@ class LifeStore:
             "model": self.embedder.name if self.embedder else None,
             "bytes": size,
         }
+
+
+def _entities(db: sqlite3.Connection, rename: bool = True):
+    """``entity(kind, key, name) -> id``: find or create an entity in the open transaction (the
+    latest name wins unless ``rename`` is false)."""
+    ids: dict[tuple[str, str], int] = {}
+    on_conflict = "DO UPDATE SET name = excluded.name" if rename else "DO UPDATE SET name = name"
+
+    def entity(kind: str, key: str, name: str) -> int:
+        found = ids.get((kind, key))
+        if found is None:
+            found = db.execute(
+                f"INSERT INTO entities(kind, key, name) VALUES (?, ?, ?) ON CONFLICT(kind, key) {on_conflict} RETURNING id",
+                (kind, key, name),
+            ).fetchone()[0]
+            ids[(kind, key)] = found
+        return found
+
+    return entity
 
 
 def _drop_orphans(db: sqlite3.Connection) -> None:

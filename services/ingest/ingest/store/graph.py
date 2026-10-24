@@ -38,6 +38,20 @@ def graph_view(
         (*values, limit),
     ).fetchall()
     nodes = [dict(row) for row in rows]
+    if since is None and until is None and len(nodes) < limit:
+        # The person's notes and what they link to: no records mention a note, its links are its weight.
+        have = {node["id"] for node in nodes}
+        kind_filter = f" AND e.kind IN ({','.join('?' for _ in kinds)})" if kinds else ""
+        for row in db.execute(
+            "SELECT e.id, e.kind, e.key, e.name, 0 AS mentions, NULL AS first, NULL AS last, count(*) AS degree "
+            "FROM links l JOIN entities e ON e.id IN (l.src, l.dst) WHERE l.day = ''"
+            f"{kind_filter} GROUP BY e.id ORDER BY degree DESC LIMIT ?",
+            (*(kinds or ()), limit),
+        ):
+            if row["id"] not in have and len(nodes) < limit:
+                node = dict(row)
+                node.pop("degree")
+                nodes.append(node)
     ids = [node["id"] for node in nodes]
     edges: list[Record] = []
     if ids:
