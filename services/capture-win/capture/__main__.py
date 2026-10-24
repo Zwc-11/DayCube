@@ -147,27 +147,75 @@ def check_screen() -> None:
     if reason is not None:
         print(f"The receiver never reads this window ({reason}); reading it anyway for this check.")
     ocr = engine()
+    if getattr(ocr, "languages", None):
+        print(f"OCR languages installed in Windows: {', '.join(ocr.languages)}")
     started = time.perf_counter()
-    lines = ocr.read(system.capture(window.rect))
+    lines = ocr.read(system.capture(window.rect), "check")
     took = (time.perf_counter() - started) * 1000
     blocks = blocks_of(lines)
     language = getattr(ocr, "language", "")
-    print(f"{ocr.name} OCR {language}: {len(lines)} lines in {len(blocks)} paragraphs, {took:.0f} ms")
+    mode = getattr(getattr(ocr, "scripts", None), "modes", {}).get("check", ("",))[0]
+    print(
+        f"{ocr.name} OCR {language}" + (f" (this window: {mode} text)" if mode else "")
+        + f": {len(lines)} lines in {len(blocks)} paragraphs, {took:.0f} ms"
+    )  # fmt: skip
     for block in blocks[:12]:
         print(f"  [{block['tag']}] {block['text'][:110]}")
 
 
+def _status(timeout: float = 2.0) -> dict | None:
+    """The running receiver's /status, or None when nothing answers on the port."""
+    try:
+        # trust_env=False: a system proxy (Windows takes it from the registry) must not see localhost.
+        response = httpx.get(f"http://127.0.0.1:{PORT}/status", timeout=timeout, trust_env=False)
+        return response.json()
+    except (httpx.HTTPError, ValueError):
+        return None
+
+
+def _restart(command: list[str] | str) -> None:
+    from . import autostart
+    from .restart import code_stamp, restart
+
+    stopped, status = restart(command, _status, autostart.start_detached)
+    print(f"Stopped {len(stopped)} receiver and eye tracker processes; started the receiver again.")
+    if status is None:
+        raise SystemExit("It has not answered on 127.0.0.1:7700 within 45 s: see vault/logs/capture.log.")
+    if status.get("code") != code_stamp():
+        raise SystemExit(
+            "Something older still answers on 127.0.0.1:7700 and was not stopped: end the python processes "
+            "in Task Manager, then run python -m capture restart."
+        )
+    screen = status.get("screen") or {}
+    reading = "on" if screen.get("running") else f"not running ({screen.get('reason') or screen.get('error')})"
+    print(
+        f"Running this checkout's code. Gaze ring over every window: {'on' if (status.get('display') or {}).get('gaze_ring') else 'off (python -m capture ring on)'}. Reading other apps: {reading}."
+    )
+    print("The eye tracker starts within a few seconds; python -m capture doctor checks everything.")
+
+
+def restart_receiver(_: argparse.Namespace) -> None:
+    """Stop the running receiver and eye tracker and start them again on this checkout's code."""
+    from . import autostart
+
+    _restart(autostart.current() or autostart.launch_command(gaze=True))
+
+
 def install_autostart(args: argparse.Namespace) -> None:
     from . import autostart
+    from .restart import code_stamp
 
     command = autostart.launch_command(gaze=not args.no_gaze, on_dwell=args.on_dwell)
     print(f"Starts at every sign-in:\n  {autostart.install(command)}")
-    try:
-        httpx.get(f"http://127.0.0.1:{PORT}/status", timeout=1)
-        print("The receiver is already running; the new entry applies from the next sign-in.")
-    except httpx.HTTPError:
+    status = _status()
+    if status is None:
         autostart.start_detached(command)
         print("Started it now. Logs: vault/logs/capture.log")
+    elif status.get("code") != code_stamp():
+        print("The running receiver is older than this checkout: restarting it.")
+        _restart(command)
+    else:
+        print("The receiver is already running this checkout's code.")
 
 
 def uninstall_autostart(_: argparse.Namespace) -> None:
@@ -272,6 +320,9 @@ def main(argv: list[str] | None = None) -> None:
     auto.add_argument("--no-gaze", action="store_true", help="Leave the eye tracker out")
     auto.add_argument("--on-dwell", help="Command run on each dwell (see run --on-dwell)")
     auto.set_defaults(handler=install_autostart)
+    commands.add_parser(
+        "restart", help="Stop the receiver and eye tracker and start them again on this checkout's code"
+    ).set_defaults(handler=restart_receiver)
     commands.add_parser("uninstall-autostart", help="Remove the sign-in entry").set_defaults(
         handler=uninstall_autostart
     )

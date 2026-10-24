@@ -42,9 +42,11 @@ import asyncio
 import hashlib
 import json
 import logging
+import re
 import sys
 import threading
 import time
+import unicodedata
 import uuid
 from collections import deque
 from collections.abc import Callable
@@ -114,7 +116,10 @@ class OcrLine:
 class Engine(Protocol):
     name: str
 
-    def read(self, image: np.ndarray) -> list[OcrLine]: ...
+    def read(self, image: np.ndarray, key: str | None = None) -> list[OcrLine]:
+        """The lines in a window's image; ``key`` names the window's page (an engine may keep
+        per-window choices)."""
+        ...
 
 
 class System(Protocol):
@@ -386,6 +391,7 @@ class ScreenReader(threading.Thread):
         return {
             "running": self.is_alive(),
             "engine": getattr(self.engine, "name", None),
+            "language": getattr(self.engine, "language", None),
             "enabled": self.options()[0],
             "reading": None if current is None else {"app": current.window.app, "title": current.window.title[:120]},
             "skipped": self.skipped,
@@ -443,7 +449,7 @@ class ScreenReader(threading.Thread):
         )
         if due:
             started = time.perf_counter()
-            lines = self.engine.read(image)
+            lines = self.engine.read(image, current.doc)
             self.reads.append((now, (time.perf_counter() - started) * 1000, window.app))
             current.thumb, current.read_at = thumb, now
             self.submit(current, rect, monitor, blocks_of(lines), now)
@@ -605,9 +611,87 @@ def _geometry(rect: tuple[int, int, int, int], monitor: tuple[int, int, int, int
 # -- OCR engines --------------------------------------------------------------------------------------
 
 
+CJK = re.compile(r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uf900-\ufaff]")
+CJK_TAGS = ("zh", "ja", "ko")
+LATIN_SHARE, CJK_SHARE = 0.05, 0.5  # a window's CJK share below: Latin text; above: CJK text; between: both
+RECHECK_EVERY = 5  # reads of a window between checks of which script it shows
+
+
+def cjk_share(text: str) -> float:
+    """CJK characters among the letters and digits."""
+    letters = sum(ch.isalnum() for ch in text)
+    return len(CJK.findall(text)) / letters if letters else 0.0
+
+
+def join_words(words: list[str]) -> str:
+    """A line's words as text: spaced, except between two CJK characters (Chinese and Japanese
+    have no spaces; Windows OCR gives each character as a word)."""
+    out = ""
+    for word in words:
+        if out and word and not (CJK.match(out[-1]) and CJK.match(word[0])):
+            out += " "
+        out += word
+    return out
+
+
+def tidy(text: str) -> str:
+    """Full-width forms a CJK recogniser puts in Latin text ("10 ． 0", "E ：") as plain ASCII."""
+    return unicodedata.normalize("NFKC", text) if cjk_share(text) < 0.3 else text
+
+
+def _overlaps(a: tuple[float, ...], b: tuple[float, ...]) -> bool:
+    cx, cy = a[0] + a[2] / 2, a[1] + a[3] / 2
+    return b[0] <= cx <= b[0] + b[2] and b[1] <= cy <= b[1] + b[3]
+
+
+class Scripts:
+    """Which recogniser reads a window when Windows has one for CJK and one for Latin text (a
+    Chinese Windows reading English, or the reverse). A CJK recogniser reads English badly
+    ("PowerSheII", "t0", "10 ． 0") and a Latin one cannot read Chinese at all, so each window is
+    judged by the CJK share of what the CJK recogniser reads in it: Latin (one Latin pass), CJK
+    (one CJK pass), or both (a Chinese interface around English text: both passes, each line from
+    the recogniser of its script). The judgement is redone every ``RECHECK_EVERY`` reads."""
+
+    def __init__(
+        self,
+        cjk: Callable[[np.ndarray], list[OcrLine]] | None,
+        latin: Callable[[np.ndarray], list[OcrLine]] | None,
+    ) -> None:
+        self.cjk, self.latin = cjk, latin
+        self.modes: dict[str, tuple[str, int]] = {}
+
+    def read(self, image: np.ndarray, key: str | None = None) -> list[OcrLine]:
+        if self.cjk is None or self.latin is None:
+            return (self.cjk or self.latin)(image)  # type: ignore[misc]
+        key = key or ""
+        mode, count = self.modes.get(key, ("", 0))
+        if mode and count % RECHECK_EVERY:
+            self.modes[key] = (mode, count + 1)
+            return self._read(mode, image, None)
+        cjk = self.cjk(image)
+        share = cjk_share("".join(line.text for line in cjk))
+        mode = "latin" if share < LATIN_SHARE else "cjk" if share >= CJK_SHARE else "both"
+        if len(self.modes) > 500:
+            self.modes.clear()
+        self.modes[key] = (mode, 1)
+        return self._read(mode, image, cjk)
+
+    def _read(self, mode: str, image: np.ndarray, cjk: list[OcrLine] | None) -> list[OcrLine]:
+        if mode == "latin":
+            return self.latin(image)  # type: ignore[misc]
+        cjk = cjk if cjk is not None else self.cjk(image)  # type: ignore[misc]
+        if mode == "cjk":
+            return cjk
+        kept = [line for line in cjk if cjk_share(line.text) >= 0.3]
+        latin = [line for line in self.latin(image) if not any(_overlaps(line.rect, k.rect) for k in kept)]  # type: ignore[misc]
+        return sorted(kept + latin, key=lambda line: (line.rect[1], line.rect[0]))
+
+
 class WindowsOcr:
-    """Windows' own OCR (``Windows.Media.Ocr`` through PyWinRT): local, in the first language of the
-    Windows profile that has OCR, a few hundred milliseconds for a window."""
+    """Windows' own OCR (``Windows.Media.Ocr`` through PyWinRT): local, a few hundred milliseconds a
+    window. In the first language of the Windows profile that has OCR, and, when that is Chinese,
+    Japanese or Korean and an English recogniser is installed too (or the reverse), both: see
+    ``Scripts``."""
 
     name = "windows"
 
@@ -616,13 +700,29 @@ class WindowsOcr:
         from winrt.windows.media.ocr import OcrEngine
 
         self._bitmap, self._format, self._alpha = SoftwareBitmap, BitmapPixelFormat.BGRA8, BitmapAlphaMode.IGNORE
-        self._engine = OcrEngine.try_create_from_user_profile_languages()
-        if self._engine is None:
+        main = OcrEngine.try_create_from_user_profile_languages()
+        if main is None:
             raise RuntimeError("no OCR language installed (Settings > Time & language > Language & region)")
-        self.language = self._engine.recognizer_language.language_tag
+        available = {language.language_tag: language for language in OcrEngine.available_recognizer_languages}
+        self.languages = sorted(available)
+        tag = main.recognizer_language.language_tag
+        is_cjk = tag.lower().startswith(CJK_TAGS)
+        other = next(
+            (t for t in sorted(available, key=lambda t: (not t.lower().startswith("en-us"), t))
+             if t.lower().startswith(CJK_TAGS) != is_cjk and (is_cjk is False or t.lower().startswith("en"))),
+            None,
+        )  # fmt: skip
+        second = OcrEngine.try_create_from_language(available[other]) if other else None
+        self.language = tag + (f" + {other}" if second is not None else "")
         self.max_side = int(OcrEngine.max_image_dimension)
         self._loop = asyncio.new_event_loop()
         self._as_buffer: Callable[[np.ndarray], Any] | None = None
+
+        def using(engine: Any) -> Callable[[np.ndarray], list[OcrLine]]:
+            return lambda image: self._recognise(engine, image)
+
+        cjk, latin = (main, second) if is_cjk else (second, main)
+        self.scripts = Scripts(using(cjk) if cjk is not None else None, using(latin) if latin is not None else None)
 
     def _buffer(self, pixels: np.ndarray) -> Any:
         """The BGRA pixels as an IBuffer. PyWinRT takes an object with the buffer protocol; older
@@ -651,7 +751,11 @@ class WindowsOcr:
             return buffer
         raise RuntimeError(f"PyWinRT takes none of the pixel buffers: {last}")
 
-    def read(self, image: np.ndarray) -> list[OcrLine]:
+    def read(self, image: np.ndarray, key: str | None = None) -> list[OcrLine]:
+        """``key``: the window (its page), so each window keeps the recogniser that suits it."""
+        return self.scripts.read(image, key)
+
+    def _recognise(self, engine: Any, image: np.ndarray) -> list[OcrLine]:
         step = 1
         while max(image.shape[0], image.shape[1]) / step > self.max_side:
             step += 1  # wider than OCR takes (about 10,000 px): rare
@@ -660,18 +764,20 @@ class WindowsOcr:
         bitmap = self._bitmap.create_copy_from_buffer(self._buffer(pixels), self._format, width, height, self._alpha)
 
         async def recognise() -> Any:
-            return await self._engine.recognize_async(bitmap)
+            return await engine.recognize_async(bitmap)
 
         result = self._loop.run_until_complete(recognise())
         out = []
         for line in result.lines:
-            boxes = [word.bounding_rect for word in line.words]
-            if not boxes:
+            words = list(line.words)
+            if not words:
                 continue
+            boxes = [word.bounding_rect for word in words]
             x0, y0 = min(b.x for b in boxes) * step, min(b.y for b in boxes) * step
             x1 = max(b.x + b.width for b in boxes) * step
             y1 = max(b.y + b.height for b in boxes) * step
-            out.append(OcrLine(line.text, (x0, y0, x1 - x0, y1 - y0), len(boxes)))
+            text = tidy(join_words([word.text for word in words]))
+            out.append(OcrLine(text, (x0, y0, x1 - x0, y1 - y0), len(words)))
         return out
 
 
@@ -686,7 +792,7 @@ class RapidOcr:
 
         self._ocr = RapidOCR()
 
-    def read(self, image: np.ndarray) -> list[OcrLine]:
+    def read(self, image: np.ndarray, key: str | None = None) -> list[OcrLine]:
         bgr = np.ascontiguousarray(image[..., :3])
         found, _ = self._ocr(bgr)
         out = []
