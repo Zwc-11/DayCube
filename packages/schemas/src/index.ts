@@ -137,11 +137,20 @@ const num = z.number().nullable();
 const fitEventSchema = z.object({
   event: z.literal('fit'), t: z.string(), version: z.number().int(), accepted: z.boolean(),
   clicks: z.number().int(), held_out: z.number().int(), penalty: z.number().nullable(),
-  head_terms: z.boolean().optional(),
+  head_terms: z.boolean().optional(), lines: z.number().int().optional(),
   error_px: z.object({ calibration: z.number(), in_use: z.number(), learned: z.number(), fixed_guess: z.number() }),
 });
 const appliedEventSchema = z.object({
   event: z.literal('applied'), t: z.string(), version: z.number().int(), after_ms: num,
+});
+const tunedEventSchema = z.object({
+  event: z.literal('tuned'), t: z.string(), accepted: z.boolean().nullable(),
+  clicks: z.number().int().nullable(), lines: z.number().int().nullable(),
+  replay: z.object({
+    held_out_px: z.object({ in_use: z.number(), best: z.number() }).nullable(),
+    held_out_clicks: z.number().int().nullable(), trials: z.number().int().nullable(), seconds: z.number().nullable(),
+  }),
+  changed: z.record(z.string(), z.tuple([z.number(), z.number()])).nullable(),
 });
 export const gazeLearningSchema = z.union([
   z.object({ calibrated: z.literal(false) }),
@@ -165,11 +174,15 @@ export const gazeLearningSchema = z.union([
     }),
     fits: z.array(fitEventSchema),
     applied: z.array(appliedEventSchema),
+    lines: z.object({ labels: z.number().int(), used: z.number().int() }),
+    tunings: z.array(tunedEventSchema),
+    settings: z.record(z.string(), z.number()).nullable(),
     files: z.record(z.string(), z.boolean()),
   }),
 ]);
 export type GazeLearning = z.infer<typeof gazeLearningSchema>;
 export type GazeFit = z.infer<typeof fitEventSchema>;
+export type GazeTuning = z.infer<typeof tunedEventSchema>;
 
 // A day's knowledge base (GET /day/{date}/notes), one note (GET /note) and search as you type
 // (GET /search).

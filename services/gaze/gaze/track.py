@@ -316,6 +316,21 @@ class Tracker:
             except Exception:  # noqa: BLE001 - learning must never stop tracking
                 log.exception("recording a learned update failed")
 
+    def _lines(self) -> None:
+        """Lines the receiver decoded the eyes reading: labels for the learner."""
+        take = getattr(self.receiver, "take_lines", None)
+        labels = take() if take is not None else []
+        if self.learner is None:
+            return
+        for label in labels:
+            try:
+                self.learner.line(
+                    label["id"], label["y"] * self.height, label["x0"] * self.width, label["x1"] * self.width
+                )
+            except Exception:  # noqa: BLE001 - learning must never stop tracking
+                log.exception("learning from a read line failed")
+                return
+
     def _timing(self) -> dict | None:
         """Median milliseconds per frame in each stage over the last 10 s, the frame's processing
         in all (camera wait excluded), and a live point's round trip on its own thread."""
@@ -336,7 +351,9 @@ class Tracker:
 
     def _fixations(self, now: float, found: list) -> None:
         for fixation in found:
-            self.receiver.add(fixation)
+            fixation_id = self.receiver.add(fixation)
+            if self.learner is not None and fixation_id is not None:
+                self.learner.fixation(fixation_id, fixation.start, fixation.end)  # its look, for a line label
             self.fixated.append((now, fixation.samples))
             self.pending = True
         while self.fixated and now - self.fixated[0][0] > 30:
@@ -417,6 +434,7 @@ class Tracker:
             return
         self.reported_at, self.pending = now, False
         result = self.receiver.send(self.state())
+        self._lines()
         self._ring()  # the ring switched off or on: act now, not at the next face
         if result in ("ok", "paused"):  # only an answer from the receiver changes the pause state
             if result == "ok":
@@ -441,6 +459,11 @@ class Tracker:
         now = self.clock()
         if now - self.checked_at >= CHECK_EVERY_S:
             self.checked_at = now
+            if self.learner is not None:
+                try:
+                    self.learner.maybe_tune(now)  # its own process, at idle priority
+                except Exception:  # noqa: BLE001 - tuning must never stop tracking
+                    log.exception("starting tuning failed")
             reason = self._reason(now)
             if reason != self.hold:
                 log.info("tracking %s", f"held: {reason}" if reason else "resumed")
