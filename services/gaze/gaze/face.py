@@ -168,10 +168,13 @@ class Landmarker:
         )
         self._landmarker = vision.FaceLandmarker.create_from_options(options)
 
-    def detect(self, image_bgr: np.ndarray) -> Face | None:
+    def detect(self, image_bgr: np.ndarray, only: np.ndarray | None = None) -> Face | None:
+        """The face's landmarks in pixels. ``only``: convert just these landmarks out of
+        MediaPipe's result (the rest are nan); a tracking frame needs about 40 of the 478, and
+        converting all of them is a quarter of a millisecond of Python per frame."""
         import cv2
 
-        rgb = np.ascontiguousarray(cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB))
+        rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
         image = self._mp.Image(image_format=self._mp.ImageFormat.SRGB, data=rgb)
         if self.video:
             ms = max(int(time.monotonic() * 1000), self._last_ms + 1)
@@ -182,7 +185,13 @@ class Landmarker:
         if not result.face_landmarks:
             return None
         height, width = image_bgr.shape[:2]
-        points = np.array([(p.x * width, p.y * height, p.z * width) for p in result.face_landmarks[0]])
+        landmarks = result.face_landmarks[0]
+        scale = np.array([width, height, width], dtype=float)
+        if only is None:
+            points = np.array([(p.x, p.y, p.z) for p in landmarks]) * scale
+        else:
+            points = np.full((len(landmarks), 3), np.nan)
+            points[only] = np.array([(landmarks[i].x, landmarks[i].y, landmarks[i].z) for i in only]) * scale
         return Face(points, (width, height))
 
     def close(self) -> None:

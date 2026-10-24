@@ -256,17 +256,74 @@ def test_fps_and_pacing_do_not_follow_wall_clock_corrections() -> None:
     assert 29 <= t.state()["fps"] <= 30.5
 
 
-def test_live_points_stream_at_ten_a_second_only_while_asked() -> None:
+def test_live_points_stream_every_frame_only_while_asked() -> None:
     t, scene, receiver, *_, clock, log = tracker()
     run_for(t, clock, 3)  # the camera is on after the receiver's first confirmation
     assert receiver.points == [] and receiver.fixations
     receiver.live = True
     start = clock.now
     run_for(t, clock, 2)
-    assert 18 <= len(receiver.points) <= 22
+    assert 58 <= len(receiver.points) <= 62  # 30 frames/s
     assert all(abs(x - 0.5) < 1e-6 and abs(y - 0.5) < 1e-6 for _, x, y in receiver.points)
-    assert all(b - a >= 0.089 for (a, *_), (b, *_) in zip(receiver.points, receiver.points[1:], strict=False))
     assert receiver.points[0][0] >= start
+
+
+def test_frame_time_is_reported_by_stage() -> None:
+    class Timed(Estimator):
+        timing = (12.5, 0.2)
+
+    t, scene, receiver, *_, clock, log = tracker()
+    t.estimator = Timed()
+    run_for(t, clock, 2)
+    timing = receiver.states[-1]["timing_ms"]
+    assert set(timing) == {"camera_wait", "landmarks", "model", "tracking", "network", "frame"}
+    assert timing["landmarks"] == 12.5 and timing["model"] == 0.2  # the scripted clock adds no time
+    assert timing["frame"] == 12.7
+
+
+def test_the_newest_camera_frame_is_read_and_none_twice() -> None:
+    import threading
+    import time as real_time
+
+    from gaze.track import LatestFrame
+
+    class Camera:
+        def __init__(self) -> None:
+            self.n, self.released = 0, False
+
+        def read(self) -> tuple[bool, int]:
+            real_time.sleep(0.005)
+            self.n += 1
+            return True, self.n
+
+        def release(self) -> None:
+            self.released = True
+
+    camera = Camera()
+    latest = LatestFrame(camera)
+    ok, first = latest.read()
+    real_time.sleep(0.05)  # frames keep coming while this one is "processed"
+    ok, second = latest.read()
+    assert ok and second > first + 3  # the newest, not the next in a queue
+    ok, third = latest.read()
+    assert ok and third > second  # never the same frame twice
+    latest.release()
+    assert camera.released and not any(t.name == "camera" and t.is_alive() for t in threading.enumerate())
+
+
+def test_a_camera_that_stops_delivering_fails_reads() -> None:
+    from gaze.track import LatestFrame
+
+    class Dead:
+        def read(self) -> tuple[bool, None]:
+            return False, None
+
+        def release(self) -> None:
+            pass
+
+    latest = LatestFrame(Dead(), timeout=0.2)
+    assert latest.read() == (False, None)
+    latest.release()
 
 
 def test_a_completed_fixation_is_reported_within_a_quarter_second() -> None:

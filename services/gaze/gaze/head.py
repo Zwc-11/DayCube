@@ -25,9 +25,10 @@ from __future__ import annotations
 
 import json
 import math
-import warnings
+import time
 from collections import deque
 from dataclasses import dataclass, field
+from functools import cached_property
 from pathlib import Path
 
 import numpy as np
@@ -98,7 +99,7 @@ class Screen:
         origin = np.array([width_mm / 2 - right_mm, 0.0, 0.0]) + below_mm * ey
         return cls(origin, ex, ey, s)
 
-    @property
+    @cached_property
     def normal(self) -> np.ndarray:
         return np.cross(self.ex, self.ey)
 
@@ -142,6 +143,12 @@ class Poser:
         left = self.model[list(LEFT_EYE[:2])].mean(0)
         self.eye_centres = np.array([right, left]) + np.array([0.0, 0.0, eyeball_depth_mm])
         self._rigid_model = np.ascontiguousarray(self.model[self.rigid], dtype=np.float64)
+        self._matrix = camera.matrix
+        self._irises = np.array([RIGHT_IRIS, LEFT_IRIS])
+        self._eyes = np.array([RIGHT_EYE, LEFT_EYE])  # (2, 4): outer and inner corner, upper and lower lid
+        self._eye_depths = self.model[self._eyes, 2]
+        # The landmarks a tracking frame needs: the rest need not leave MediaPipe.
+        self.needed = np.unique(np.r_[self.rigid, self._irises, self._eyes.ravel()])
 
     def pose(self, points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """Head rotation and position: the rigid landmarks (those MediaPipe weighs for its own pose)
@@ -149,7 +156,7 @@ class Poser:
         import cv2
 
         image = np.ascontiguousarray(points[self.rigid, :2], dtype=np.float64)
-        _, rvec, tvec = cv2.solvePnP(self._rigid_model, image, self.camera.matrix, None, flags=cv2.SOLVEPNP_SQPNP)
+        _, rvec, tvec = cv2.solvePnP(self._rigid_model, image, self._matrix, None, flags=cv2.SOLVEPNP_SQPNP)
         R, _ = cv2.Rodrigues(rvec)
         return R, tvec.ravel()
 
@@ -182,15 +189,27 @@ class Poser:
         """For each eye: the direction from the eyeball's centre to the iris (x, y components, head
         frame), and the upper and lower lids' heights relative to the eye corners (head frame, mm;
         the lids follow the eye up and down and so help with the vertical, which the iris alone
-        shows least)."""
-        out = []
-        for e, (iris, (outer, inner, upper, lower)) in enumerate(((RIGHT_IRIS, RIGHT_EYE), (LEFT_IRIS, LEFT_EYE))):
-            g = self.on_eyeball(points[iris, :2], R, t, self.eye_centres[e])
-            idx = [outer, inner, upper, lower]
-            outer_h, inner_h, upper_h, lower_h = self.on_planes(points[idx, :2], R, t, self.model[idx, 2])
-            middle = (outer_h[1] + inner_h[1]) / 2
-            out.append([g[0], g[1], upper_h[1] - middle, lower_h[1] - middle])
-        return np.array(out)
+        shows least). Both eyes at once: ``on_eyeball`` and ``on_planes``, vectorised."""
+        cam = self.camera
+        # Irises: each camera ray met with its eyeball (or the point where it comes closest).
+        rays = np.ones((2, 3))
+        rays[:, 0] = (points[self._irises, 0] - cam.cx) / cam.f
+        rays[:, 1] = (points[self._irises, 1] - cam.cy) / cam.f
+        rays /= np.sqrt(np.einsum("ij,ij->i", rays, rays))[:, None]
+        c = self.eye_centres @ R.T + t
+        along = np.einsum("ij,ij->i", rays, c)
+        k = along - np.sqrt(np.maximum(along * along - np.einsum("ij,ij->i", c, c) + self.eyeball_mm**2, 0.0))
+        g = (rays * k[:, None] - c) @ R  # R.T @ v for each row
+        g /= np.sqrt(np.einsum("ij,ij->i", g, g))[:, None]
+        # Corners and lids: each carried to its own canonical depth in the head.
+        lids = np.ones((2, 4, 3))
+        lids[..., 0] = (points[self._eyes, 0] - cam.cx) / cam.f
+        lids[..., 1] = (points[self._eyes, 1] - cam.cy) / cam.f
+        normal = R[:, 2]
+        k = (t @ normal + self._eye_depths) / (lids @ normal)
+        y = ((lids * k[..., None] - t) @ R)[..., 1]
+        middle = (y[:, 0] + y[:, 1]) / 2
+        return np.stack([g[:, 0], g[:, 1], y[:, 2] - middle, y[:, 3] - middle], 1)
 
 
 def directions(xy: np.ndarray) -> np.ndarray:
@@ -236,20 +255,47 @@ class GazeModel:
             self.alpha.append(float(ridge.alpha_))
         return self
 
+    def _stacked(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Both eyes' (mean, sd, weights) as arrays, rebuilt when ``eyes`` is replaced."""
+        if getattr(self, "_stack_of", None) is not self.eyes:
+            mean = np.array([m for m, _, _ in self.eyes])
+            sd = np.array([sd for _, sd, _ in self.eyes])
+            weights = np.array([w for _, _, w in self.eyes])  # (2, 1 + k, 2)
+            self._stack, self._stack_of = (mean, sd, weights), self.eyes
+        return self._stack
+
+    def directions_of(self, R: np.ndarray, F: np.ndarray) -> np.ndarray:
+        """(n, 2, 3): each eye's gaze direction in camera coordinates, from head rotations
+        (n, 3, 3) and eye measurements (n, 2, k)."""
+        mean, sd, weights = self._stacked()
+        Z = (F - mean) / sd
+        xy = np.stack([Z[:, e] @ weights[e, 1:] + weights[e, 0] for e in range(2)], 1)
+        return np.matmul(directions(xy), R.transpose(0, 2, 1))
+
+    def predict_arrays(self, R: np.ndarray, eyes: np.ndarray, F: np.ndarray) -> np.ndarray:
+        """Screen pixels (n, 2) from head rotations, eyeball centres (n, 2, 3) and eye measurements:
+        each eye's ray met with the screen, the two points averaged (one eye alone when the other's
+        ray misses the screen, nan when both do)."""
+        rays = self.directions_of(R, F)
+        s = self.screen
+        n = s.normal
+        with np.errstate(divide="ignore", invalid="ignore"):
+            k = ((s.origin - eyes) @ n) / (rays @ n)
+            k = np.where(k > 0, k, np.nan)
+            hit = eyes + k[..., None] * rays - s.origin
+            points = np.stack([hit @ s.ex, hit @ s.ey], -1) / s.mm_per_px  # (n, 2 eyes, 2)
+            valid = np.isfinite(points).all(-1, keepdims=True)
+            count = valid.sum(1)
+            return np.where(valid, points, 0.0).sum(1) / np.where(count > 0, count, np.nan)
+
     def direction(self, heads: list[Head]) -> np.ndarray:
         """(n, 2, 3): each eye's gaze direction in camera coordinates."""
-        X = np.array([h.features for h in heads])
-        inside = np.stack(
-            [directions(np.c_[np.ones(len(X)), (X[:, e] - m) / sd] @ w) for e, (m, sd, w) in enumerate(self.eyes)], 1
-        )
-        return np.einsum("nij,nej->nei", np.array([h.R for h in heads]), inside)
+        return self.directions_of(np.array([h.R for h in heads]), np.array([h.features for h in heads]))
 
     def predict(self, heads: list[Head]) -> np.ndarray:
-        eyes, rays = np.array([h.eyes for h in heads]), self.direction(heads)
-        points = np.stack([self.screen.pixel(eyes[:, e], rays[:, e]) for e in range(2)])
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", RuntimeWarning)  # both eyes' rays miss the screen: nan
-            return np.nanmean(points, 0)
+        return self.predict_arrays(
+            np.array([h.R for h in heads]), np.array([h.eyes for h in heads]), np.array([h.features for h in heads])
+        )
 
     def to_json(self) -> dict:
         s = self.screen
@@ -283,20 +329,25 @@ def unpack(X: np.ndarray) -> list[Head]:
 
 
 class Blinks:
-    """EyeTrax's blink test: the eyes' height-to-width ratio below 80% of its recent mean."""
+    """EyeTrax's blink test: the eyes' height-to-width ratio below 80% of its recent mean (a
+    running sum over the last ``history`` frames, plain floats: this runs every frame)."""
 
     def __init__(self, history: int = 50, ratio: float = 0.8, minimum: int = 15) -> None:
         self.history: deque[float] = deque(maxlen=history)
+        self.total = 0.0
         self.ratio, self.minimum = ratio, minimum
 
     def __call__(self, points: np.ndarray) -> bool:
         def openness(outer: int, inner: int, upper: int, lower: int) -> float:
-            p = points[:, :2]
-            return float(np.linalg.norm(p[upper] - p[lower]) / (np.linalg.norm(p[outer] - p[inner]) + 1e-9))
+            (ox, oy), (ix, iy), (ux, uy), (lx, ly) = points[[outer, inner, upper, lower], :2].tolist()
+            return math.hypot(ux - lx, uy - ly) / (math.hypot(ox - ix, oy - iy) + 1e-9)
 
         ear = (openness(*RIGHT_EYE) + openness(*LEFT_EYE)) / 2
+        if len(self.history) == self.history.maxlen:
+            self.total -= self.history[0]
         self.history.append(ear)
-        threshold = float(np.mean(self.history)) * self.ratio if len(self.history) >= self.minimum else 0.2
+        self.total += ear
+        threshold = self.total / len(self.history) * self.ratio if len(self.history) >= self.minimum else 0.2
         return ear < threshold
 
 
@@ -330,6 +381,7 @@ class HeadEstimator:
         self._blinks = Blinks()
         self.calibrated_head: tuple[np.ndarray, np.ndarray] | None = None  # mean (R, t) while calibrating
         self.last: Head | None = None
+        self.timing: tuple[float, float] | None = None  # the last frame's (landmarks, model) ms
 
     def measure(self, face: Face) -> Head:
         if self._poser is None or (self._poser.camera.cx, self._poser.camera.cy) != (
@@ -338,6 +390,13 @@ class HeadEstimator:
         ):
             self._poser = Poser(Camera.nominal(*face.size))
         return self._poser.measure(face)
+
+    def _detect(self, frame: np.ndarray) -> Face | None:
+        """Landmarks for this frame: only those the model and the blink test use, once the camera's
+        image size is known (the landmarker stand-ins in tests take no such argument)."""
+        if self._poser is None or not hasattr(self._landmarker, "video"):
+            return self._landmarker.detect(frame)
+        return self._landmarker.detect(frame, only=self._poser.needed)
 
     def extract_features(self, frame: np.ndarray) -> tuple[np.ndarray | None, bool]:
         if self._landmarker is None:
@@ -348,11 +407,16 @@ class HeadEstimator:
             import cv2
 
             frame = cv2.flip(frame, 1)
-        face = self._landmarker.detect(frame)
+        started = time.perf_counter()
+        face = self._detect(frame)
+        found = time.perf_counter()
         if face is None:
+            self.timing = None
             return None, False
         self.last = self.measure(face)
-        return pack(self.last), self._blinks(face.points)
+        out = pack(self.last), self._blinks(face.points)
+        self.timing = ((found - started) * 1000, (time.perf_counter() - found) * 1000)  # landmarks, model
+        return out
 
     def train(self, X: np.ndarray, y: np.ndarray, variable_scaling: object = None) -> None:
         heads = unpack(X)
@@ -362,7 +426,10 @@ class HeadEstimator:
         self.calibrated_head = (u @ vt, np.array([h.t for h in heads]).mean(0))
 
     def predict(self, X: np.ndarray) -> np.ndarray:
-        return self.model.predict(unpack(X))
+        X = np.atleast_2d(np.asarray(X, dtype=float))
+        return self.model.predict_arrays(
+            X[:, :9].reshape(-1, 3, 3), X[:, 12:18].reshape(-1, 2, 3), X[:, 18:].reshape(-1, 2, FEATURES)
+        )
 
     @staticmethod
     def mirrored(X: np.ndarray, targets_px: np.ndarray) -> bool:

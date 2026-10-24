@@ -16,7 +16,7 @@ flowchart LR
 - **The eye tracker** turns webcam frames into fixations with a gaze model that follows head
   movement ([below](#when-your-head-moves)), on MediaPipe face landmarks; EyeTrax (MIT) runs the
   camera and the calibration screens. Frames stay in memory; only fixations leave the process,
-  and, while the gaze ring is on screen, the current gaze point ten times a second (shown, never
+  and, while the gaze ring is on screen, the current gaze point every frame (shown, never
   stored). It runs in its own environment because EyeTrax needs numpy<2 and the rest of DayCube
   needs numpy>=2.
 - **The receiver** writes the logs, decides which paragraph each fixation belongs to and which
@@ -63,7 +63,7 @@ uv run --project services/capture-win python -m capture import-history
 ```
 
 After pulling a new version, reload the extension at `opera://extensions` (its card shows the
-version: 0.7.0 now; 0.5.0 or later puts its page script into tabs already open, so they need no refresh;
+version: 0.8.0 now; 0.5.0 or later puts its page script into tabs already open, so they need no refresh;
 before 0.5.0, refresh them), and restart the receiver
 (sign out and in, or end its `pythonw.exe` and `python.exe` processes in Task Manager and run
 `python -m capture install-autostart` again), so the extension, receiver and tracker run the same
@@ -91,6 +91,24 @@ detection fraction (`gaze.face`, from 0 to 1). Refresh the extension's options p
 **Right now** shows measured/target FPS, face percentage and calibration error. For example,
 `29.8/30 fps` means a measured 29.8 with a target of 30; it does not round the measurement up.
 Pausing hides old active telemetry, and resuming waits for a fresh tracker report.
+
+Where a frame's time goes is reported too (`gaze.timing_ms`, medians over 10 s; `doctor` prints it
+as **frame time**). Measured on a 2-core cloud machine with a 1280x720 webcam image:
+
+| stage | ms per frame |
+| --- | --- |
+| MediaPipe face landmarks (C++, including the colour conversion) | 15-16 |
+| head pose, eye features, blink test (`gaze/head.py`) | 0.37 (was about 0.6) |
+| gaze model to a screen point | 0.21 (was 0.5) |
+| landmarks out of MediaPipe into numpy (39 of 478 now) | 0.02 (was 0.15-0.25) |
+| smoothing and fixations | 0.04 |
+
+So the face model is about 95% of a frame; DayCube's own Python is about 0.6 ms (was about 1.3). The
+camera is read on its own thread, which keeps only the newest frame, so frames do not wait in the
+driver's buffer (each one waiting is another 33 ms between the eyes and the gaze) and the next is
+captured while this one is processed. Live points go out from another thread over one kept-alive
+connection (about 0.9 ms a round trip through the receiver), so the frame loop never waits on the
+network. A Rust rewrite of the Python parts would save at most the 0.6 ms.
 
 Collect a rate report without opening the camera, reading recordings or changing pause state:
 
@@ -134,7 +152,7 @@ from your usual seat. Every 10 minutes while gaze arrives, the same figures go t
 | Pause everything, including the webcam | Click the toolbar button or press `Alt+Shift+D` (works once the token is saved, even with browser recording off). The badge reads `II`. The webcam is released within about a second |
 | Resume | The same again. The badge reads `REC` |
 | See whether it works | The extension's options page, **Right now**; or `http://127.0.0.1:7700/status` |
-| See where it has you looking, and which line | Extension options, **Show where I am looking and the line I am reading**: a red ring where the tracker has your eyes now (the live gaze point, about 8 moves a second and a few tenths of a second behind; dashed at the window's edge when gaze is off the page; it fades in a blink instead of vanishing) and a blue marker beside the decoded line (fainter when less sure; a second or two behind, since lines are decoded from finished fixations). **Right now** shows the line, or why there is none: where the last fixations went (on a page, on a line, outside the browser page, no page on screen, page not reporting, another monitor) and how many of the last page's text blocks sent their lines |
+| See where it has you looking, and which line | Extension options, **Show where I am looking and the line I am reading**: a red ring where the tracker has your eyes now (the live gaze point, fed about 30 times a second and drawn every display frame, about 0.1 s behind in the end-to-end test; dashed at the window's edge when gaze is off the page; it fades in a blink instead of vanishing) and a blue marker beside the decoded line (fainter when less sure; a second or two behind, since lines are decoded from finished fixations). **Right now** shows the line, or why there is none: where the last fixations went (on a page, on a line, outside the browser page, no page on screen, page not reporting, another monitor) and how many of the last page's text blocks sent their lines |
 | Stop starting at sign-in | `python -m capture uninstall-autostart`, or turn it off in Task Manager > Startup apps |
 | Read the logs | `vault\logs\capture.log` and `vault\logs\gaze.log` |
 
@@ -337,7 +355,7 @@ decodes the line from the sequence of fixations instead (`services/capture-win/c
 | --- | --- |
 | `gaze.jsonl` | Each fixation's line, `"line": {"block", "line", "p"}` |
 | `/status` | `"reading": {"block", "line", "lines", "p", "text", "url", "t"}`: the line now; `null` after 10 s without one. `"line_decoding"`: of the last 300 fixations, how many landed on a page and on a line, and where the rest went (`outside` every page shown, `no_page` on screen, `stale` page, `other_monitor`), with the last page's text blocks and how many sent lines; `doctor` reads it ("line reading"). `"gaze_point"`: the last fixation placed on a page (viewport px and that page's scroll) |
-| `/live?doc=` | For the gaze ring (token required): the live gaze point on that page in viewport px, the line now, and the last fixation. Asking for it makes the tracker stream the point (`POST /gaze/live`, ten a second, in memory only) for the next 10 s |
+| `/live?doc=` | For the gaze ring (token required): the live gaze point on that page in viewport px, the line now, and the last fixation. Asking for it makes the tracker stream the point (`POST /gaze/live`, every frame, in memory only) for the next 10 s |
 | `reading.jsonl` | A record per block once the eyes have left it (two fixations decoded on another block), the page changes, the tab or window loses focus, the block's lines are re-measured, or 10 s pass without gaze on the page. Blocks looked at for under 1.5 s or 3 fixations get none. A pass is a stay of 0.4 s or more on a line |
 
 Example `reading.jsonl` record (shortened):

@@ -121,9 +121,11 @@ def do_track(args: argparse.Namespace) -> None:
         path = args.vault / "calibration" / calibration.CALIBRATION_FILE
         return not path.is_file() or path.stat().st_mtime_ns != calibrated
 
+    from .track import LatestFrame
+
     tracker = Tracker(
         estimator,
-        lambda: open_camera(camera),
+        lambda: LatestFrame(open_camera(camera)),
         receiver,
         result,
         fps=args.fps,

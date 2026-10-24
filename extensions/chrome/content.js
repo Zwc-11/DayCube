@@ -453,15 +453,24 @@
   // -- where the eyes are, and the line being read -----------------------------------------------
 
   // When chosen in the options: a ring where the tracker has the eyes now, and a marker beside the
-  // line the receiver decodes. The ring follows the live gaze point, which the tracker streams ten
-  // times a second while a page asks for it (about 0.3 s behind the eyes: the smoother's lag), and
-  // glides between updates; it fades while no point arrives, and sits dashed at the window's edge
-  // when the gaze is off the page. Pages ask ten times a second while on screen (every 10 s whether
-  // it is wanted at all: storage, where the option lives, is kept from content scripts). Like the
-  // dwell bar they are elements in the page, outside its layout, and ignore the pointer.
+  // line the receiver decodes. The ring follows the live gaze point, which the tracker streams once
+  // per camera frame while a page asks for it, and is drawn every display frame easing toward it;
+  // it fades while no point arrives, and sits dashed at the window's edge when the gaze is off the
+  // page. Pages ask about 30 times a second while on screen (every 10 s whether it is wanted at
+  // all: storage, where the option lives, is kept from content scripts). Like the dwell bar they
+  // are elements in the page, outside its layout, and ignore the pointer.
   let marker = null;
   let ring = null;
   let ringAt = 0; // when the ring last moved (Date.now())
+  // The ring is drawn every display frame, easing toward the newest point (time constant
+  // RING_FOLLOW_MS), so it glides instead of stepping from one update to the next; points are
+  // asked for every RING_POLL_MS (the tracker streams one per camera frame).
+  const RING_POLL_MS = 33;
+  const RING_FOLLOW_MS = 25;
+  const ringTarget = { x: 0, y: 0 };
+  const ringShown = { x: null, y: null };
+  let ringFrame = 0; // requestAnimationFrame id, 0 when idle
+  let ringTime = 0;
   const calmMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
   const age = item => (item ? Date.now() - Date.parse(item.t) : Infinity);
 
@@ -504,26 +513,54 @@
       y = fixation.y + fixation.scroll_y - scrollY;
     }
     if (x !== null) {
-      ring ??= overlay('gaze', {
-        position: 'fixed', width: '24px', height: '24px', marginLeft: '-12px', marginTop: '-12px', borderRadius: '50%',
-        border: '2px solid rgba(239,68,68,.9)', background: 'rgba(239,68,68,.15)', boxShadow: '0 0 0 1px rgba(255,255,255,.7)',
-        transition: calmMotion() ? 'opacity .3s' : 'left .12s linear, top .12s linear, opacity .3s',
-      });
-      Object.assign(ring.style, {
-        left: `${Math.min(Math.max(x, 0), innerWidth)}px`, top: `${Math.min(Math.max(y, 0), innerHeight)}px`,
-        borderStyle: inside ? 'solid' : 'dashed', opacity: '1',
-      });
+      if (!ring) {
+        ring = overlay('gaze', {
+          position: 'fixed', width: '24px', height: '24px', marginLeft: '-12px', marginTop: '-12px', borderRadius: '50%',
+          border: '2px solid rgba(239,68,68,.9)', background: 'rgba(239,68,68,.15)', boxShadow: '0 0 0 1px rgba(255,255,255,.7)',
+          transition: 'opacity .3s', willChange: 'left, top',
+        });
+        ringShown.x = null; // a new ring starts where the eyes are
+      }
+      ringTarget.x = Math.min(Math.max(x, 0), innerWidth);
+      ringTarget.y = Math.min(Math.max(y, 0), innerHeight);
+      Object.assign(ring.style, { borderStyle: inside ? 'solid' : 'dashed', opacity: '1' });
       if (!ring.isConnected) document.documentElement.appendChild(ring);
       ringAt = Date.now();
+      if (!ringFrame) ringFrame = requestAnimationFrame(drawRing);
     } else if (ring) {
       // No point for a moment (a blink, the face lost): fade, and go after a few seconds.
       const quiet = Date.now() - ringAt;
       if (quiet > 4000) {
+        if (ringFrame) cancelAnimationFrame(ringFrame);
+        ringFrame = 0;
         ring.remove();
         ring = null;
       } else if (quiet > 600) {
         ring.style.opacity = '0.35';
       }
+    }
+  }
+
+  // One display frame of the ring: ease toward the target, and keep going until there.
+  function drawRing(now) {
+    ringFrame = 0;
+    if (!ring) return;
+    const step = ringTime ? Math.min(now - ringTime, 100) : 16;
+    ringTime = now;
+    if (ringShown.x === null || calmMotion()) {
+      ringShown.x = ringTarget.x;
+      ringShown.y = ringTarget.y;
+    } else {
+      const k = 1 - Math.exp(-step / RING_FOLLOW_MS);
+      ringShown.x += (ringTarget.x - ringShown.x) * k;
+      ringShown.y += (ringTarget.y - ringShown.y) * k;
+    }
+    ring.style.left = `${ringShown.x.toFixed(1)}px`;
+    ring.style.top = `${ringShown.y.toFixed(1)}px`;
+    if (Math.abs(ringTarget.x - ringShown.x) + Math.abs(ringTarget.y - ringShown.y) > 0.3) {
+      ringFrame = requestAnimationFrame(drawRing);
+    } else {
+      ringTime = 0;
     }
   }
 
@@ -539,7 +576,7 @@
       place(null);
       look(null, null);
     }
-    setTimeout(watchGaze, wanted ? 100 : 10000);
+    setTimeout(watchGaze, wanted ? RING_POLL_MS : 10000);
   }
   setTimeout(watchGaze, 1000);
 })();

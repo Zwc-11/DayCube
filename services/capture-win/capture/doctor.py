@@ -77,6 +77,22 @@ def checks(status: dict | None, vault: Path, zone: ZoneInfo, now: datetime, auto
         face = gaze.get("face")
         verdict = PASS if face is not None and face >= 0.8 else WARN if face is not None and face >= 0.5 else FAIL
         out.append((verdict, "face found", "unknown" if face is None else f"{face:.0%} of frames"))
+        timing = gaze.get("timing_ms")
+        if timing and timing.get("frame") is not None:
+            budget = 1000 / (gaze.get("target_fps") or 30)
+            parts = [
+                f"face landmarks {timing.get('landmarks', 0):.1f}",
+                f"gaze model {timing.get('model', 0):.1f}",
+                f"fixations {timing.get('tracking', 0):.1f}",
+                f"network {timing.get('network', 0):.1f}",
+            ]
+            if timing.get("live_post") is not None:
+                parts.append(f"live point {timing['live_post']:.1f} on its own thread")
+            out.append((
+                PASS if timing["frame"] <= budget else WARN,
+                "frame time",
+                f"{timing['frame']:.1f} ms of {budget:.0f}: " + ", ".join(parts),
+            ))  # fmt: skip
         coverage = gaze.get("coverage")
         if coverage is not None:
             verdict = PASS if coverage >= 0.6 else WARN if coverage >= 0.3 else FAIL

@@ -271,8 +271,8 @@ test('reading a paragraph is followed line by line and recorded', async () => {
   const moves = trail.filter(([, y], i) => i > 0 && y !== trail[i - 1][1]).length;
   const span = trail.length > 1 ? trail.at(-1)![0] - trail[0][0] : 1;
   console.log(`gaze ring: ${(moves / span).toFixed(1)} moves/s, about ${lag.toFixed(2)} s behind the eyes, ${best.toFixed(0)} px from the line after its offset`);
-  expect(moves / span, 'the ring moves several times a second').toBeGreaterThan(4);
-  expect(lag, 'and follows the eyes within a second').toBeLessThan(1.0);
+  expect(moves / span, 'the ring moves at the sampling rate (every 50 ms)').toBeGreaterThan(12);
+  expect(lag, 'and follows the eyes within half a second').toBeLessThan(0.5);
   await expect(page.locator('[data-daycube="line"]'), 'and goes once the eyes stop').toHaveCount(0, { timeout: 6000 });
   await expect(page.locator('[data-daycube="gaze"]')).toHaveCount(0, { timeout: 6000 });
   await worker.evaluate(() => chrome.storage.local.set({ showLine: false }));
