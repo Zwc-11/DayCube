@@ -49,6 +49,31 @@ def _count(path: Path) -> tuple[int, int]:
     return len(complete), bad
 
 
+def _tail(path: Path, size: int = 16_000) -> list[str]:
+    try:
+        with path.open("rb") as file:
+            file.seek(max(0, path.stat().st_size - size))
+            return file.read().decode("utf-8", "replace").splitlines()
+    except OSError:
+        return []
+
+
+def tracker_log(vault: Path) -> str | None:
+    """Why the tracker is not running, from its own log (vault/logs/gaze.log: an error, a refused
+    calibration) or the receiver's (capture.log: exit codes, waiting for a calibration): the last
+    such line, without its timestamp."""
+    lines = [line for line in _tail(vault / "logs" / "gaze.log") if " ERROR " in line or " WARNING " in line] + [
+        line for line in _tail(vault / "logs" / "capture.log") if "capture.gaze" in line
+    ]
+    if not lines:
+        return None
+    last = max(lines, key=lambda line: line[:23])  # "2026-10-23 22:18:01,123": sortable
+    text = last[24:].strip()
+    for prefix in ("gaze ", "capture.gaze "):
+        text = text.removeprefix(prefix)
+    return text[:300]
+
+
 def checks(status: dict | None, vault: Path, zone: ZoneInfo, now: datetime, autostart: str | None) -> list[tuple]:
     out: list[tuple[str, str, str]] = []
     if status is None:
@@ -67,7 +92,14 @@ def checks(status: dict | None, vault: Path, zone: ZoneInfo, now: datetime, auto
     if not gaze.get("tracking"):
         reason = gaze.get("reason") or "unknown"
         normal = reason in ("paused", "away", "locked", "camera busy")
-        out.append((INFO if normal else FAIL, "eye tracker", f"not tracking: {reason}"))
+        detail = f"not tracking: {reason}"
+        if reason == "paused":
+            detail += " (the extension's toolbar button or Alt+Shift+D resumes)"
+        elif not normal:
+            last = tracker_log(vault)
+            if last:
+                detail += f". Last from the tracker's logs: {last}"
+        out.append((INFO if normal else FAIL, "eye tracker", detail))
     else:
         if gaze.get("fps") and gaze.get("coverage") is None and gaze.get("noise_px") is None:
             # A current tracker reports both within seconds of turning the camera on.

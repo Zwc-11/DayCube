@@ -406,3 +406,36 @@ def test_the_doctor_says_which_side_of_the_gaze_ring_is_missing(vault: Vault, mo
         doctor.PASS,
         "10 live points/s, the page asks 10 times/s",
     )
+
+
+def test_the_doctor_shows_why_the_tracker_is_not_running(vault: Vault, monkeypatch: pytest.MonkeyPatch) -> None:
+    from zoneinfo import ZoneInfo
+
+    from capture import doctor
+
+    now = datetime.now(UTC)
+    zone = ZoneInfo("America/Toronto")
+    monkeypatch.setattr(doctor.sys, "platform", "linux")
+    logs = vault.root / "logs"
+    logs.mkdir(exist_ok=True)
+    (logs / "gaze.log").write_text(
+        "2026-10-23 22:18:01,100 gaze INFO tracking with camera 0 at up to 30.0 fps\n"
+        "2026-10-23 22:18:02,200 gaze ERROR the tracker stopped on an error\n"
+        "Traceback (most recent call last):\n",
+        encoding="utf-8",
+    )
+    (logs / "capture.log").write_text(
+        "2026-10-23 22:18:03,300 capture.gaze WARNING eye tracker exited with code 1; restarting in 10 s\n",
+        encoding="utf-8",
+    )
+    status = {"paused": False, "browser": {"last": now.isoformat()}, "reading": None,
+              "gaze": {"tracking": False, "reason": "not running"}}  # fmt: skip
+    found = {name: (v, d) for v, name, d in doctor.checks(status, vault.root, zone, now, None)}
+    assert found["eye tracker"] == (
+        doctor.FAIL,
+        "not tracking: not running. Last from the tracker's logs: "
+        "WARNING eye tracker exited with code 1; restarting in 10 s",
+    )
+    paused = status | {"gaze": {"tracking": False, "reason": "paused"}}
+    found = {name: d for _, name, d in doctor.checks(paused, vault.root, zone, now, None)}
+    assert "toolbar button" in found["eye tracker"]

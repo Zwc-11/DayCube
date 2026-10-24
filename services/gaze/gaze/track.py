@@ -20,6 +20,7 @@ from __future__ import annotations
 import contextlib
 import logging
 import math
+import sys
 import threading
 import time
 from collections import deque
@@ -88,11 +89,13 @@ class LatestFrame:
             raise self._error
 
     def _read_forever(self) -> None:
+        com = _com_start()
         try:
             camera = self._opener()
         except BaseException as error:  # noqa: BLE001 - reported to the opener's caller
             self._error = error
             self._opened.set()
+            _com_end(com)
             return
         self._opened.set()
         try:
@@ -106,6 +109,12 @@ class LatestFrame:
                     time.sleep(0.02)
         finally:
             camera.release()
+            _com_end(com)
+
+    def first(self, seconds: float) -> bool:
+        """Whether a frame arrives within ``seconds`` (not taken: ``read`` still returns it)."""
+        with self._ready:
+            return self._ready.wait_for(lambda: self._made > 0, seconds)
 
     def read(self) -> tuple[bool, Any]:
         with self._ready:
@@ -120,6 +129,45 @@ class LatestFrame:
         with self._ready:
             self._ready.notify_all()
         self._thread.join(timeout=2.0)
+
+
+def _com_start() -> bool:
+    """COM for this thread on Windows, where the camera backends are COM objects."""
+    if sys.platform != "win32":
+        return False
+    import ctypes
+
+    try:
+        return ctypes.windll.ole32.CoInitializeEx(None, 2) in (0, 1)  # COINIT_APARTMENTTHREADED; S_OK, S_FALSE
+    except (AttributeError, OSError):
+        return False
+
+
+def _com_end(started: bool) -> None:
+    if started:
+        import ctypes
+
+        ctypes.windll.ole32.CoUninitialize()
+
+
+_threaded_camera = True  # until it fails once on this computer
+
+
+def open_camera_thread(opener: Callable[[], Camera], first_s: float = 8.0) -> Camera:
+    """The camera on its own thread (``LatestFrame``), or, if it will not open or deliver there,
+    on the calling thread as before; once that happens the tracker stops trying the thread."""
+    global _threaded_camera
+    if _threaded_camera:
+        try:
+            latest = LatestFrame(opener)
+            if latest.first(first_s):
+                return latest
+            latest.release()
+            log.warning("the camera gave no frame on its own thread; reading it on the tracker's thread")
+        except Exception as error:  # noqa: BLE001 - fall back to the old way below
+            log.warning("the camera would not open on its own thread (%s); opening it on the tracker's thread", error)
+        _threaded_camera = False
+    return opener()
 
 
 class Tracker:

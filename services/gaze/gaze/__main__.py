@@ -91,6 +91,18 @@ def report(result: dict) -> str:
 def do_track(args: argparse.Namespace) -> None:
     _logging(args.vault)
     log = logging.getLogger("gaze")
+    # Started by the receiver under pythonw, the tracker has no console: an error not written to
+    # the log would leave only "exited with code 1" in capture.log.
+    try:
+        _track(args, log)
+    except (SystemExit, KeyboardInterrupt):
+        raise
+    except BaseException:
+        log.exception("the tracker stopped on an error")
+        raise
+
+
+def _track(args: argparse.Namespace, log: logging.Logger) -> None:
     result = calibration.load(args.vault)
     if result is None:
         log.error("not calibrated: run `python -m gaze calibrate`")
@@ -121,11 +133,11 @@ def do_track(args: argparse.Namespace) -> None:
         path = args.vault / "calibration" / calibration.CALIBRATION_FILE
         return not path.is_file() or path.stat().st_mtime_ns != calibrated
 
-    from .track import LatestFrame
+    from .track import open_camera_thread
 
     tracker = Tracker(
         estimator,
-        lambda: LatestFrame(lambda: open_camera(camera)),
+        lambda: open_camera_thread(lambda: open_camera(camera)),
         receiver,
         result,
         fps=args.fps,
