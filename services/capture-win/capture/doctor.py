@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import re
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -71,7 +72,33 @@ def tracker_log(vault: Path) -> str | None:
     text = last[24:].strip()
     for prefix in ("gaze ", "capture.gaze "):
         text = text.removeprefix(prefix)
-    return text[:300]
+    crash = _crash(_tail(vault / "logs" / "gaze.log"))
+    if crash and crash not in text:
+        text += f" (the tracker's error: {crash})"
+    return text[:400]
+
+
+def _crash(lines: list[str]) -> str | None:
+    """The exception that last stopped the tracker: the line ending the traceback that follows its
+    "stopped on an error" (``RuntimeError: ...``)."""
+    start = max((i for i, line in enumerate(lines) if "stopped on an error" in line), default=None)
+    if start is None:
+        return None
+    crash = None
+    for line in lines[start + 1 :]:
+        if re.match(r"^\d{4}-\d\d-\d\d ", line):
+            break  # the next timestamped line: the traceback has ended
+        if re.match(r"^[A-Za-z_][\w.]*(Error|Exception|Exit|Interrupt|Warning)\b", line):
+            crash = line.strip()
+    return crash
+
+
+def _calibration(vault: Path) -> dict | None:
+    try:
+        saved = json.loads((vault / "calibration" / "gaze.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return saved if isinstance(saved, dict) else None
 
 
 def checks(status: dict | None, vault: Path, zone: ZoneInfo, now: datetime, autostart: str | None) -> list[tuple]:
@@ -207,15 +234,17 @@ def checks(status: dict | None, vault: Path, zone: ZoneInfo, now: datetime, auto
         elif asks:
             out.append((PASS, "gaze ring", f"{points:.0f} live points/s, the page asks {asks:.0f} times/s"))
 
-    model = gaze.get("model")
-    if model == "head":
+    saved = _calibration(vault)
+    model = (saved or {}).get("model") or gaze.get("model")
+    if model and model.startswith("head"):
         moved, turned = gaze.get("head_moved_mm"), gaze.get("head_turned_deg")
         where = (
             f"; head now {moved / 10:.0f} cm and {turned:.0f} degrees from where it was at calibration"
             if moved is not None and turned is not None
             else ""
         )
-        out.append((PASS, "gaze model", "head-aware: follows head movement" + where))
+        kind = "head-aware (video landmarks)" if model == "head-video" else "head-aware"
+        out.append((PASS, "gaze model", f"{kind}: follows head movement" + where))
     elif model:
         out.append((
             WARN,
@@ -224,12 +253,18 @@ def checks(status: dict | None, vault: Path, zone: ZoneInfo, now: datetime, auto
             "(uv run --project services/gaze python -m gaze calibrate) compares it with the head-aware model",
         ))  # fmt: skip
 
-    monitor = gaze.get("monitor")
+    # The saved calibration is the one that counts: the receiver's copy of the tracker's state can
+    # be from a tracker that has stopped, or from before a recalibration.
+    monitor = (saved or {}).get("monitor") or gaze.get("monitor")
     limit = USABLE_PX_AT_1920 * (monitor[0] / 1920 if monitor else 1.0)
-    error = gaze.get("error_px")
+    error = (saved or {}).get("error_px", gaze.get("error_px"))
     if error is not None:
         verdict = PASS if error <= limit else FAIL
-        out.append((verdict, "calibration", f"{error:.0f} px median held-out error (limit {limit:.0f})"))
+        when = f", saved {saved['t'][:16].replace('T', ' ')} UTC" if saved and saved.get("t") else ""
+        out.append((verdict, "calibration", f"{error:.0f} px median held-out error (limit {limit:.0f}){when}"))
+        running = gaze.get("error_px")
+        if gaze.get("tracking") and saved and running is not None and abs(running - error) > 0.5:
+            out.append((WARN, "calibration", "the tracker still uses the calibration from before: " + RESTART))
 
     decoding = status.get("line_decoding") or {}
     seen = decoding.get("fixations", 0)

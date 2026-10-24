@@ -129,3 +129,69 @@ def test_an_overlay_that_cannot_start_reports_why() -> None:
     assert not overlay.running and "no window station" in overlay.state()["error"]
     overlay.push(0.5, 0.5)  # harmless
     overlay.close()
+
+
+def test_state_is_safe_to_read_while_the_overlay_thread_draws() -> None:
+    """The tracker reads ``state`` once a second while the overlay thread draws every display frame:
+    reading must never meet a counter being changed (a RuntimeError there stopped the tracker)."""
+    import sys
+    import threading
+    import time
+
+    class Fast:
+        refresh_hz = 1000.0
+
+        def show(self, *_: object) -> None: ...
+        def move(self, *_: object) -> None: ...
+        def hide(self) -> None: ...
+        def pump(self) -> None: ...
+        def close(self) -> None: ...
+
+        def wait(self) -> None:
+            time.sleep(0.0002)
+
+    interval = sys.getswitchinterval()
+    sys.setswitchinterval(1e-5)  # threads switch as often as a busy machine's
+    overlay = Overlay((0, 0, 2560, 1440), backend=Fast)
+    stop = time.time() + 1.5
+
+    def feed() -> None:
+        while time.time() < stop:
+            overlay.push(0.5, 0.5)
+            time.sleep(1 / 60)
+
+    feeder = threading.Thread(target=feed)
+    feeder.start()
+    try:
+        reads = 0
+        while time.time() < stop:
+            overlay.state()  # raised "deque mutated during iteration" thousands of times before
+            reads += 1
+        assert reads > 1000
+    finally:
+        sys.setswitchinterval(interval)
+        feeder.join()
+        overlay.close()
+
+
+def test_a_ring_that_fails_to_report_never_stops_tracking() -> None:
+    from tests.test_track import tracker  # noqa: PLC0415
+
+    class Broken:
+        running = True
+
+        def push(self, *_: object) -> None: ...
+        def clear(self) -> None: ...
+        def close(self) -> None: ...
+
+        def state(self) -> dict:
+            raise RuntimeError("deque mutated during iteration")
+
+    t, scene, receiver, *_, clock, log = tracker(overlay=Broken)
+    receiver.ring = True
+    end = clock.now + 3
+    while clock.now < end:
+        t.step()
+    assert receiver.fixations and receiver.states[-1]["overlay"] == {
+        "running": False, "error": "RuntimeError: deque mutated during iteration",
+    }  # fmt: skip
