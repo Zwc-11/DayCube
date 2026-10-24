@@ -2,8 +2,9 @@
 
 The receiver writes raw records (``services/capture-win``): browser records (``browser.jsonl``),
 the text on screen (``blocks.jsonl``), fixations placed on blocks and lines (``gaze.jsonl``),
-dwells (``attention.jsonl``) and line-by-line reads (``reading.jsonl``). This module reads them
-once and derives:
+dwells (``attention.jsonl``), line-by-line reads (``reading.jsonl``) and the app in front
+(``windows.jsonl``). Text read in other apps arrives like a web page's, from the screen reader,
+under ``app://<program>/<window title>``. This module reads them once and derives:
 
 - page visits: which page was in front, from when to when, from navigation, focus and idle
   records (a tab in front while the session is idle or locked does not count);
@@ -11,7 +12,8 @@ once and derives:
 - dwells: runs on one block longer than reading it would take;
 - looks: blocks that held the eyes for a while without being read line by line (a figure, a
   table, a heading), from the fixations' blocks;
-- searches, clicks on links and buttons, selections and copies, media played.
+- searches, clicks on links and buttons, selections and copies, media played;
+- time in each app other than the browser (``screen.app``), from the app in front.
 
 Each becomes a unit in the vault database (``ingest.store``), so Ask finds "what did I read about
 X yesterday" the way it finds a transcript line. Block texts are sent once per page load, so the
@@ -30,12 +32,30 @@ from urllib.parse import urlsplit
 from ..time import instant
 from ..vault import Record, Vault, file_stamp, read_text, stored
 
-LOGS = ("browser.jsonl", "blocks.jsonl", "gaze.jsonl", "attention.jsonl", "reading.jsonl")
+LOGS = ("browser.jsonl", "blocks.jsonl", "gaze.jsonl", "attention.jsonl", "reading.jsonl", "windows.jsonl")
 MIN_VISIT_S = 3.0  # shorter spans in front are tab flipping, not visits
 MERGE_GAP_S = 60.0  # the same page back in front within this long continues the visit
 LOOK_S = 3.0  # gaze on a block this long (without a line-by-line read) is a look worth keeping
 MEDIA_S = 30.0
 TEXT_LIMIT = 1200  # characters of a unit's text
+MAX_APP_SPAN_S = 2 * 3600.0  # an app in front longer than this with no other record: the receiver stopped
+APP = "app://"
+# How common programs are called; any other is its file name without ".exe".
+APP_NAMES = {
+    "code.exe": "Visual Studio Code", "cursor.exe": "Cursor", "devenv.exe": "Visual Studio",
+    "pycharm64.exe": "PyCharm", "idea64.exe": "IntelliJ IDEA", "winword.exe": "Word", "excel.exe": "Excel",
+    "powerpnt.exe": "PowerPoint", "onenote.exe": "OneNote", "outlook.exe": "Outlook", "olk.exe": "Outlook",
+    "ms-teams.exe": "Teams", "teams.exe": "Teams", "acrobat.exe": "Acrobat", "acrord32.exe": "Acrobat Reader",
+    "sumatrapdf.exe": "SumatraPDF", "notepad.exe": "Notepad", "notepad++.exe": "Notepad++",
+    "explorer.exe": "File Explorer", "windowsterminal.exe": "Terminal", "cmd.exe": "Command Prompt",
+    "powershell.exe": "PowerShell", "pwsh.exe": "PowerShell", "claude.exe": "Claude", "chatgpt.exe": "ChatGPT",
+    "obsidian.exe": "Obsidian", "notion.exe": "Notion", "slack.exe": "Slack", "discord.exe": "Discord",
+    "wechat.exe": "WeChat", "weixin.exe": "WeChat", "qq.exe": "QQ", "telegram.exe": "Telegram",
+    "whatsapp.exe": "WhatsApp", "zoom.exe": "Zoom", "spotify.exe": "Spotify", "vlc.exe": "VLC",
+    "applicationframehost.exe": "Windows app", "zotero.exe": "Zotero", "matlab.exe": "MATLAB",
+    "rstudio.exe": "RStudio", "figma.exe": "Figma", "steam.exe": "Steam",
+}  # fmt: skip
+LOCK_APPS = frozenset({"lockapp.exe", "logonui.exe"})
 
 
 def _records(path: Path) -> list[Record]:
@@ -89,8 +109,20 @@ def capture_stamp(vault: Vault, day: str) -> dict[str, list[int]]:
 
 
 def _domain(url: str | None) -> str:
+    """A page's site: its domain, or for a window read in an app (``app://code.exe/...``) the program."""
     host = urlsplit(url or "").hostname or ""
     return host.removeprefix("www.")
+
+
+def app_name(program: str) -> str:
+    program = program.casefold()
+    return APP_NAMES.get(program) or program.removesuffix(".exe")
+
+
+def site_name(url: str | None) -> str:
+    """How a site is called: its domain, or the app's name for a window read in an app."""
+    domain = _domain(url)
+    return app_name(domain) if (url or "").startswith(APP) and domain else domain
 
 
 def _clip(text: str) -> str:
@@ -110,6 +142,21 @@ class Visit:
 
 
 @dataclass
+class AppSpan:
+    """An app other than the browser in front, from ``t0`` to ``t1``. ``title`` is empty for an app
+    whose windows are private (a password manager)."""
+
+    app: str
+    title: str
+    url: str
+    t0: str
+    t1: str
+    seconds: float
+    first_id: str
+    private: bool = False
+
+
+@dataclass
 class CaptureDay:
     day: str
     visits: list[Visit] = field(default_factory=list)
@@ -121,6 +168,7 @@ class CaptureDay:
     selections: list[Record] = field(default_factory=list)
     media: list[Record] = field(default_factory=list)
     pages: list[Record] = field(default_factory=list)  # navigations, with how each was reached
+    apps: list[AppSpan] = field(default_factory=list)  # apps other than the browser in front
     texts: dict[tuple[str, str], tuple[str, str]] = field(default_factory=dict)  # (doc, block) -> (tag, text)
     docs: dict[str, tuple[str, str]] = field(default_factory=dict)  # doc -> (url, title)
 
@@ -158,8 +206,60 @@ def read_capture(vault: Vault, day: str) -> CaptureDay:
         if record.get("kind") == "dwell" and (record.get("phase") == "end" or record.get("dwell") not in ends):
             ends[record.get("dwell")] = record
     out.dwells = sorted(ends.values(), key=lambda r: instant(r["t"]))
-    out.looks = _looks(_records(folder / "gaze.jsonl"), out)
+    fixations = _records(folder / "gaze.jsonl")
+    out.looks = _looks(fixations, out)
+    windows = sorted(_records(folder / "windows.jsonl"), key=lambda r: instant(r["t"]))
+    if windows:
+        # The last thing heard that day closes the app in front at the end.
+        last = [windows[-1]["t"]] + ([browser[-1]["t"]] if browser else [])
+        last += [f["t_end"] for f in fixations[-1:] if f.get("t_end")]
+        out.apps = _apps(windows, max(last, key=instant))
     return out
+
+
+def _apps(windows: list[Record], last_seen: str) -> list[AppSpan]:
+    """Spans of each app in front, from one ``window`` record to the next record (another window,
+    the browser, away, paused), merged when the same window comes back within ``MERGE_GAP_S``."""
+    spans: list[AppSpan] = []
+    current: AppSpan | None = None
+
+    def close(t: str) -> None:
+        nonlocal current
+        if current is not None:
+            seconds = min((instant(t) - instant(current.t0)).total_seconds(), MAX_APP_SPAN_S)
+            if seconds > 0:
+                current.seconds = seconds
+                current.t1 = (instant(current.t0) + timedelta(seconds=seconds)).isoformat()
+                spans.append(current)
+        current = None
+
+    for record in windows:
+        t = record["t"]
+        if record.get("kind") == "away" and record.get("since"):
+            # Away after minutes without input: the app was not in use since the last input.
+            t = max(record["since"], current.t0, key=instant) if current is not None else t
+        close(t)
+        app = str(record.get("app") or "").casefold()
+        if record.get("kind") != "window" or not app or record.get("browser") or app in LOCK_APPS:
+            continue
+        private = bool(record.get("private"))
+        title = "" if private else str(record.get("title") or "")
+        url = record.get("url") or f"{APP}{app}/"
+        current = AppSpan(app, title, url, t, t, 0.0, record.get("id") or t, private)
+    if current is not None and instant(last_seen) > instant(current.t0):
+        close(last_seen)
+    merged: list[AppSpan] = []
+    for span in spans:
+        last = merged[-1] if merged else None
+        if (
+            last is not None
+            and (last.app, last.title) == (span.app, span.title)
+            and (instant(span.t0) - instant(last.t1)).total_seconds() <= MERGE_GAP_S
+        ):
+            last.t1, last.seconds = span.t1, last.seconds + span.seconds
+        else:
+            merged.append(span)
+    return [span for span in merged if span.seconds >= MIN_VISIT_S]
 
 
 def _visits(browser: list[Record]) -> list[Visit]:
@@ -297,7 +397,7 @@ def _unit(
 
 def _where(title: str | None, url: str | None) -> str:
     title = (title or "").strip()
-    domain = _domain(url)
+    domain = site_name(url)
     if title and domain:
         return f"{title} ({domain})"
     return title or domain or "a page"
@@ -347,5 +447,10 @@ def capture_units(vault: Vault, day: str, capture: CaptureDay | None = None) -> 
         units.append(_unit(day, m["t"], m["t_end"], "web.media",
                            f"Played media for {m['seconds'] / 60:.0f} min in {_where(m.get('title'), m.get('url'))}",
                            f"capture:media:{m['id']}", log + "browser.jsonl"))  # fmt: skip
+    for a in c.apps:
+        minutes = a.seconds / 60
+        spent = f"{minutes:.0f} min" if minutes >= 1 else f"{a.seconds:.0f} s"
+        units.append(_unit(day, a.t0, a.t1, "screen.app", f"Used {app_name(a.app)} for {spent}" + (f": {a.title}" if a.title else ""),
+                           f"capture:app:{a.first_id}", log + "windows.jsonl"))  # fmt: skip
     units.sort(key=lambda u: (instant(u["t"]), u["type"], u["evidence_id"]))
     return units

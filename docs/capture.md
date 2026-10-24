@@ -1,12 +1,13 @@
 # Capture: browser and gaze on your PC
 
-From sign-in to shutdown, three pieces record what you do in the browser and where you look:
+From sign-in to shutdown, three pieces record what you do on the computer and where you look:
 
 ```mermaid
 flowchart LR
   ext[DayCube extension in Opera] -- "records every 1 s, queued until acknowledged" --> rx
   gaze[Eye tracker, services/gaze] -- "fixations every 1 s" --> rx
   rx[Receiver 127.0.0.1:7700, services/capture-win] --> logs[(vault/capture/date/*.jsonl)]
+  scr[Screen reader, in the receiver] -- "the window under the gaze, as a page" --> rx
   rx -- "dwell signal with the next heartbeat" --> ext
   rx -. "--on-dwell command" .-> hook[Your program]
 ```
@@ -22,6 +23,10 @@ flowchart LR
 - **The receiver** writes the logs, decides which paragraph each fixation belongs to and which
   line is being read, and detects dwells. It learns the tracker's live error from clicks (people look at what they click) and
   corrects for it. It starts the eye tracker and restarts it if it stops.
+- **The screen reader** (in the receiver, Windows) reads the text of the window your eyes are on
+  in any other app, with Windows' own OCR, and hands it to the receiver as a page, so reading,
+  lines and dwells work in an editor, a PDF reader or a chat app as on a web page
+  ([Reading other apps](#reading-other-apps)). It also logs which app is in front.
 
 Nothing goes over the network: the receiver listens on 127.0.0.1 only, and the extension can
 reach no other host.
@@ -192,6 +197,64 @@ clicks over. A live error above the calibration limit means: recalibrate
 from your usual seat. Every 10 minutes while gaze arrives, the same figures go to
 `vault/capture/<date>/health.jsonl`, so a session can be judged afterwards.
 
+### Reading other apps
+
+The extension sees web pages. For everything else on the screen, the receiver reads the window
+under your gaze (`services/capture-win/capture/screen.py`):
+
+1. **Which window.** Twice a second it takes the newest gaze point (the last fixation or the live
+   point, corrected by clicks) and finds the top-level window shown there: the first in z-order
+   that is visible at that point, skipping minimized and cloaked windows (other virtual desktops)
+   and click-through overlays such as the gaze ring. That is the window your eyes are on, which
+   need not be the one with focus.
+2. **Its text.** It captures that window's pixels and reads them with `Windows.Media.Ocr` (the
+   OCR in Windows, local, in your Windows display language; RapidOCR with `uv sync --extra ocr`
+   where Windows has no OCR language). Only when the window changed since the last read (1 in 8
+   pixels compared; a blinking cursor is not a change), at most once a second, less often while
+   reads find no new text (a video: 2, 4, ... up to 16 s), and at least every 30 s. Lines are
+   grouped into paragraphs: a line joins the one right above it when they overlap sideways, so
+   columns stay apart.
+3. **As a page.** The window is sent to the receiver like a browser tab, with its position on the
+   monitor, paragraphs and lines, under `app://<program>/<window title>`. From there fixations are
+   placed on paragraphs and lines, `reading.jsonl` and dwells are written, and search, notes and
+   the graph see it as "Read in paper.pdf - SumatraPDF (SumatraPDF): ...".
+4. **Scrolling.** A paragraph seen before is recognised by its text (the same letters and digits,
+   or mostly the same three-letter runs, because OCR reads a moved paragraph a little
+   differently) and keeps its id and its place in the window's content; the scroll is measured
+   from where the recognised paragraphs moved. Its text is sent once, and reading a paragraph
+   goes on across a scroll. A retitled window ("● unsaved", an unread count) stays the same page;
+   when nothing on screen matches what was there before (another file or chat in the same
+   window, a jump of more than a screen), it becomes a new page.
+
+Where a page and an app window overlap, the window read from the screen wins: it is read only
+while it is the one shown under the gaze. Fixations arrive about a second after they end, so the
+window keeps taking the ones from before the eyes left it for 3 s.
+
+The app in front is logged in `windows.jsonl` each time it changes, and `away` when the screen
+locks or there has been no input for 5 minutes and no gaze; a pause ends it too. The vault turns
+it into time per app (`screen.app` units, "Used Visual Studio Code for 25 min: screen.py -
+daycube") and an **Apps** section in the daily note; "which apps did I use yesterday" and "what
+did I read in VS Code" filter to them.
+
+Never read: browsers (the extension covers their pages, with its own exclusions), password
+managers (1Password, Bitwarden, KeePass and others), Windows' lock, sign-in and permission
+screens, the taskbar, Start and search, menus and tooltips, and windows whose title says they
+are private (InPrivate, Incognito). For a password manager only the app's name and time are
+logged, never its window title. Screenshots stay in memory; only the recognised text is kept, as
+for web pages. `python -m capture screen --exclude slack` adds an app to never read (kept in
+`vault/capture/screen.json`), `python -m capture screen off` stops reading, `screen check` reads
+the window in front once and prints what OCR found, and the receiver's `--no-screen` leaves it
+out.
+
+`doctor` reports it: `screen reading: windows OCR, 14 reads in 10 min of code.exe,
+sumatrapdf.exe, 182 ms each; reading code.exe now`. Checked here: the window-finding, capture and
+reader loop in Wine 9 (a window on top wins over the one beneath, the desktop is
+none, a click-through overlay is looked through); reading a paragraph across a scroll with real
+OCR (RapidOCR on rendered text: one read record with all three lines and no text sent twice);
+and the receiver path in `services/ingest/tests/test_screen.py` with a simulated Windows and OCR.
+`Windows.Media.Ocr` itself runs only on Windows: `python -m capture screen check` and `doctor`
+show it working there.
+
 ## Everyday use
 
 | To | Do |
@@ -200,6 +263,8 @@ from your usual seat. Every 10 minutes while gaze arrives, the same figures go t
 | Resume | The same again. The badge reads `REC` |
 | See whether it works | The extension's options page, **Right now**; or `http://127.0.0.1:7700/status` |
 | See where it has you looking, and which line | Extension options, **Show where I am looking and the line I am reading**: a red ring where the tracker has your eyes now, drawn by the tracker over every window at the display's refresh rate on Windows ([The gaze ring over every window](#the-gaze-ring-over-every-window)), else inside the page (fed about 30 times a second, about 0.1 s behind in the end-to-end test; dashed at the window's edge when gaze is off the page); it fades in a blink instead of vanishing, and a blue marker beside the decoded line (fainter when less sure; a second or two behind, since lines are decoded from finished fixations). **Right now** shows the line, or why there is none: where the last fixations went (on a page, on a line, outside the browser page, no page on screen, page not reporting, another monitor) and how many of the last page's text blocks sent their lines |
+| Stop reading other apps, or one app | `python -m capture screen off` (`on` again), `python -m capture screen --exclude slack` (`--include slack` to undo) |
+| See what OCR reads in a window | `python -m capture screen check`, then bring the window to the front within 3 s |
 | Stop starting at sign-in | `python -m capture uninstall-autostart`, or turn it off in Task Manager > Startup apps |
 | Read the logs | `vault\logs\capture.log` and `vault\logs\gaze.log` |
 
@@ -255,11 +320,12 @@ the dwell is detected. The program runs at once; one runs at a time.
 | File | Records |
 | --- | --- |
 | `browser.jsonl` | `page` (address, how it was reached: link, typed, reload, form submit, back/forward; address changes that only move to a section are left out), `title`, `focus` (tab in front; none when the browser loses focus; no address for an excluded page), `idle` (active, idle after 60 s, locked), `search` (engine and query from result-page addresses), `click` (label, where it landed on the page, and the link address unless it points to an excluded domain), `selection` (selected or copied text), `media` (play, pause, end, with position) |
-| `blocks.jsonl` | The text blocks on screen (up to 150, including text inside web components' shadow roots, as on D2L Brightspace) with their rectangles, and where the viewport is on the monitor. A block's text and its visual lines (rectangle and text of each, up to 60) are sent once per page load, again if queued text was dropped, and the lines again when the block's wrapping changes or it moves on the page; later snapshots carry only positions |
+| `blocks.jsonl` | The text blocks on screen (up to 150, including text inside web components' shadow roots, as on D2L Brightspace) with their rectangles, and where the viewport is on the monitor; for an app window read from the screen, its paragraphs as OCR found them (`app://` address, `scr-` document). A block's text and its visual lines (rectangle and text of each, up to 60) are sent once per page load, again if queued text was dropped, and the lines again when the block's wrapping changes or it moves on the page; later snapshots carry only positions |
 | `gaze.jsonl` | Fixations as fractions of the monitor, with the page point (corrected by clicks), the block the eyes were most likely on and its probability `p`, and the line being read: `"line": {"block": "b4", "line": 2, "p": 0.93}` (0 = the block's first line) |
 | `reading.jsonl` | One record per block read: each line read with its text, seconds on it and passes over it, the share of the block's lines read (`coverage`), when the eyes moved to each line (`path`), the tracker offset the decoder found and its mean confidence (see [Which line you are reading](#which-line-you-are-reading)) |
 | `attention.jsonl` | Dwell `start` and `end` records |
 | `health.jsonl` | Every 10 minutes while tracking: the tracker's state (frame rate, face, fixation share, noise) and the live accuracy from clicks |
+| `windows.jsonl` | The app in front each time it changes (program, window title and `app://` address; only the program for a browser or a private app), and `away` (locked, idle with `since`, paused, reading turned off, no window) |
 | `history.jsonl` | Visits imported from Opera's history |
 
 Not recorded:
@@ -269,7 +335,8 @@ Not recorded:
   or payment form) or an open shadow root shows a password field. The page's address and title
   are still recorded;
 - anything typed: fields, editable areas, and code editors that draw typed text in plain
-  elements (Monaco, CodeMirror, Ace);
+  elements (Monaco, CodeMirror, Ace). In other apps, text on screen is read as shown, typed or
+  not, except in the apps and windows that are never read ([Reading other apps](#reading-other-apps));
 - anything while paused.
 
 `import-history` leaves out the same things the extension would: the extension's excluded
@@ -404,6 +471,7 @@ decodes the line from the sequence of fixations instead (`services/capture-win/c
 | `/status` | `"reading": {"block", "line", "lines", "p", "text", "url", "t"}`: the line now; `null` after 10 s without one. `"line_decoding"`: of the last 300 fixations, how many landed on a page and on a line, and where the rest went (`outside` every page shown, `no_page` on screen, `stale` page, `other_monitor`), with the last page's text blocks and how many sent lines; `doctor` reads it ("line reading"). `"gaze_point"`: the last fixation placed on a page (viewport px and that page's scroll) |
 | `/live?doc=` | For the gaze ring (token required): the live gaze point on that page in viewport px, the line now, and the last fixation. Asking for it makes the tracker stream the point (`POST /gaze/live`, every frame, in memory only) for the next 10 s |
 | `/display` | `GET`: whether the ring is on (`gaze_ring`) and drawn by the tracker now (`native`); `POST {"gaze_ring": bool}` (token) switches it, as the extension's option does |
+| `/status` `"screen"` | The screen reader: `running`, `engine` (`windows` or `rapidocr`), `enabled`, the window being read now (`reading`: app and title), why the one under the gaze is not (`skipped`: browser, excluded, private, shell, no gaze, ...), `away`, OCR runs and apps in the last 10 minutes with the median time of a read, and the last `error`; `{"running": false, "reason"}` when it did not start |
 | `reading.jsonl` | A record per block once the eyes have left it (two fixations decoded on another block), the page changes, the tab or window loses focus, the block's lines are re-measured, or 10 s pass without gaze on the page. Blocks looked at for under 1.5 s or 3 fixations get none. A pass is a stay of 0.4 s or more on a line |
 
 Example `reading.jsonl` record (shortened):
@@ -444,8 +512,12 @@ wrong, and `doctor` says to recalibrate ([Simulation](#simulation)).
   (its `p` says so). It assumes text read top to bottom in columns, the way the page lays it out;
   lines are measured for the first 60 of a block. At an error above the calibration limit it is
   unreliable.
-- **Browser only.** Other apps, screenshots and OCR are not captured yet; nor is there a tray
-  icon. The toolbar badge and Windows' own camera indicator show that recording is on.
+- **Other apps are read by OCR.** What OCR misreads is stored misread; text smaller than about 9
+  px or on busy backgrounds is missed; an app redrawing constantly (a video, a game) is read every
+  16 s at most. Only the window under the gaze is read, on the calibrated monitor. UWP apps show
+  as `applicationframehost.exe`. Clicks in other apps do not yet calibrate the gaze (only clicks
+  in pages do). There is no tray icon: the toolbar badge and Windows' own camera indicator show
+  that recording is on.
 - **No synthesis yet.** The logs are not yet turned into day events in the viewer.
 
 ## Size

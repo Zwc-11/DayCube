@@ -11,6 +11,9 @@ Writes append-only logs to ``vault/capture/<local date>/``:
 - ``health.jsonl``: every 10 minutes while gaze arrives, the tracker's state (frame rate, face,
   how much gaze became fixations, noise) and the live accuracy measured from clicks, so a session
   can be judged afterwards without a test
+- ``windows.jsonl``: the app in front, each time it changes, and when the person is away (from the
+  screen reader, ``screen.py``, which also turns the window under the gaze into ``blocks`` records
+  like a browser page's, so reading, dwells and lines work in every app)
 
 A pause is remembered in ``vault/capture/paused`` until resumed, so a restart never undoes it,
 and every pause and resume is logged in ``vault/capture/pauses.jsonl``. The extension's excluded
@@ -28,6 +31,7 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 from collections import OrderedDict, deque
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -92,6 +96,10 @@ class Receiver:
         self.hook: subprocess.Popen | None = None
         self.health_at: datetime | None = None
         self.live: tuple[float, float, float] | None = None  # (epoch t, x, y): the gaze point now, never stored
+        self.last_fixation: tuple[float, float, float] | None = None  # (epoch end, x, y), for the screen reader
+        # The screen reader (screen.py), started by `python -m capture run`; why not, when it is not.
+        self.screen: Any = None
+        self.screen_problem: str | None = "not started"
         self.watched_at = -1e9  # when the extension last asked for the live point
         # The gaze ring's path, for doctor: when live points arrived, when the page asked, and
         # whether the answer carried a live point (or fell back to the last fixation).
@@ -196,8 +204,17 @@ class Receiver:
             "gaze_point": point,  # the last fixation placed on a page: viewport CSS px, with that page's scroll
             "ring": self.ring_health(),
             "display": {"gaze_ring": self.ring, "native": self.native_ring()},
-            "capabilities": ["browser", "gaze", "attention"],
+            "screen": self.screen_state(),
+            "capabilities": ["browser", "gaze", "attention"] + (["screen"] if self.screen is not None else []),
         }
+
+    def screen_state(self) -> dict:
+        if self.screen is None:
+            return {"running": False, "reason": self.screen_problem}
+        try:
+            return self.screen.state()
+        except Exception as error:  # noqa: BLE001 - status must answer whatever the reader's state
+            return {"running": False, "reason": f"{type(error).__name__}: {error}"[:200]}
 
     def ring_health(self, window_s: float = 10.0) -> dict:
         """The gaze ring's path over the last ``window_s``: live points from the tracker per second,
@@ -230,6 +247,9 @@ class Receiver:
             if changed:
                 record = {"t": datetime.now(UTC).astimezone(self.zone).isoformat(), "paused": paused}
                 self.vault.append_lines(self.marker.parent / "pauses.jsonl", [record])
+                if paused and self.screen is not None:  # the app in front stops counting
+                    away = {"id": uuid.uuid4().hex, "t": record["t"], "kind": "away", "why": "paused"}
+                    self.vault.append_lines(self.marker.parent / self._day(record["t"]) / "windows.jsonl", [away])
             self._write({}, ending)
 
     def set_exclusions(self, exclusions: Exclusions) -> None:
@@ -268,10 +288,11 @@ class Receiver:
     def _signal(self, event: dict) -> None:
         """Queue a dwell for the extension (delivered with its next response) and run the hook."""
         keep = ("tab", "doc", "block", "dwell_s", "reading_s", "url", "title")
-        self.signals = [
-            *self.signals[-19:],
-            {"kind": "dwell", **{k: event[k] for k in keep}, "text": (event["text"] or "")[:300]},
-        ]
+        if not str(event.get("doc", "")).startswith("scr-"):  # the extension can show it on its page
+            self.signals = [
+                *self.signals[-19:],
+                {"kind": "dwell", **{k: event[k] for k in keep}, "text": (event["text"] or "")[:300]},
+            ]
         if not self.on_dwell or (self.hook is not None and self.hook.poll() is None):
             return  # no hook, or the previous run is still going
         try:
@@ -289,6 +310,38 @@ class Receiver:
     # -- intake ------------------------------------------------------------------------------------
 
     def browser(self, items: list[dict[str, Any]]) -> dict:
+        return self._intake(items, screen=False)
+
+    def screen_records(self, items: list[dict[str, Any]]) -> int:
+        """Records from the screen reader (``blocks`` and ``view`` of the window under the gaze), taken
+        like the extension's but without handing it the dwell signals queued for the extension.
+        Returns how many were accepted; raises HTTPException(409) while paused."""
+        return self._intake(items, screen=True)["accepted"]
+
+    def app_window(self, record: dict) -> None:
+        """The app in front changed, or the person went away (the screen reader): ``windows.jsonl``."""
+        with self.lock:
+            if self.paused:
+                return
+            self.vault.append_lines(self.vault.root / "capture" / self._day(record["t"]) / "windows.jsonl", [record])
+            self.last["screen"] = datetime.now(UTC).isoformat()
+
+    def gaze_now(self, fresh_s: float) -> tuple[float, float] | None:
+        """Where the eyes are now, in fractions of the tracker's monitor, corrected by clicks like
+        every fixation: the live point or the last fixation, whichever is newer, if at most
+        ``fresh_s`` old."""
+        now = time.time()
+        with self.lock:
+            if self.paused:
+                return None
+            newest = max((g for g in (self.live, self.last_fixation) if g is not None), default=None)
+            if newest is None or now - newest[0] > fresh_s:
+                return None
+            t, x, y = newest
+            dx, dy = self.attention.anchors.offset(x, y, t)
+        return x - dx, y - dy
+
+    def _intake(self, items: list[dict[str, Any]], *, screen: bool) -> dict:
         now = datetime.now(UTC)
         accepted = duplicates = 0
         rejected: list[dict] = []
@@ -320,8 +373,10 @@ class Receiver:
             self._write(lines, dwells)
             self._remember_ids(ids)
             if accepted:
-                self.last["browser"] = now.isoformat()
-            signals, self.signals = self.signals, []
+                self.last["screen" if screen else "browser"] = now.isoformat()
+            signals: list[dict] = []
+            if not screen:
+                signals, self.signals = self.signals, []
         return {"accepted": accepted, "duplicates": duplicates, "rejected": rejected, "signals": signals}
 
     def gaze_batch(self, batch: GazeBatch) -> dict:
@@ -344,6 +399,9 @@ class Receiver:
                     continue
                 accepted += 1
                 ids[fixation.id] = None
+                end = fixation.t_end.timestamp()
+                if self.last_fixation is None or end >= self.last_fixation[0]:
+                    self.last_fixation = (end, fixation.x, fixation.y)
                 hit, events = self.attention.fixation(fixation)
                 dwells += events
                 line = fixation.model_dump(mode="json")

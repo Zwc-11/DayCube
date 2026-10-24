@@ -60,6 +60,12 @@ def _minutes(seconds: float) -> str:
     return f"{seconds / 60:.0f} min" if seconds >= 60 else f"{seconds:.0f} s"
 
 
+def _app_of(text: str) -> str:
+    """The app a ``screen.app`` unit names: "Used Visual Studio Code for 5 min: main.py" -> "Visual Studio Code"."""
+    head = text.split(": ", 1)[0].removeprefix("Used ")
+    return head.rsplit(" for ", 1)[0]
+
+
 class Notes:
     def __init__(self, store: LifeStore, root: Path | None = None) -> None:
         self.store = store
@@ -158,7 +164,8 @@ class Notes:
                 }
             for page_id, seconds, attended in db.execute(
                 "SELECT m.entity_id, "
-                "sum(CASE WHEN u.type = 'web.visit' THEN coalesce(julianday(u.t_end) - julianday(u.t), 0) * 86400 "
+                "sum(CASE WHEN u.type IN ('web.visit', 'screen.app') "
+                "THEN coalesce(julianday(u.t_end) - julianday(u.t), 0) * 86400 "
                 "ELSE 0 END), sum(u.type IN ('web.read', 'web.dwell', 'web.look', 'web.selection')) "
                 f"FROM mentions m JOIN units u ON u.id = m.unit_id WHERE m.entity_id IN ({marks}) GROUP BY m.entity_id",
                 chunk,
@@ -229,7 +236,7 @@ class Notes:
         seconds = sum(
             (instant(r["t_end"]) - instant(r["t"])).total_seconds()
             for r in rows
-            if r["type"] == "web.visit" and r["t_end"]
+            if r["type"] in ("web.visit", "screen.app") and r["t_end"]
         )
         days = sorted({r["day"] for r in rows})
         lines = [
@@ -329,6 +336,26 @@ class Notes:
             for u in visits:
                 seconds = (instant(u["t_end"]) - instant(u["t"])).total_seconds() if u["t_end"] else 0
                 lines.append(f"- {hhmm(u['t'])} {page_link(u['page_id'], u['text'])} · {_minutes(seconds)}")
+            lines.append("")
+        apps = [u for u in units if u["type"] == "screen.app"]
+        if apps:
+            # Each app with its time, and its windows by time (a window with a note links to it).
+            by_app: dict[str, list[Record]] = defaultdict(list)
+            for u in apps:
+                by_app[_app_of(u["text"])].append(u)
+
+            def spent(group: list[Record]) -> float:
+                return sum((instant(u["t_end"]) - instant(u["t"])).total_seconds() for u in group if u["t_end"])
+
+            lines.append(f"## Apps ({_minutes(spent(apps))})")
+            for name, group in sorted(by_app.items(), key=lambda item: -spent(item[1])):
+                windows: dict[str, list[Record]] = defaultdict(list)
+                for u in group:
+                    if ": " in u["text"]:
+                        windows[u["text"].split(": ", 1)[1]].append(u)
+                top = sorted(windows.items(), key=lambda item: -spent(item[1]))[:5]
+                shown = ", ".join(page_link(g[0]["page_id"], title) for title, g in top)
+                lines.append(f"- {name} · {_minutes(spent(group))}" + (f": {shown}" if shown else ""))
             lines.append("")
         sections = (
             ("web.read", "Read"),

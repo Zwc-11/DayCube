@@ -57,11 +57,12 @@ def report(store: LifeStore) -> Record:
                 days.add(path.parent.name)
     what = {
         "browser.jsonl": "pages, focus, searches, clicks, copies, media",
-        "blocks.jsonl": "the text on screen, with lines",
+        "blocks.jsonl": "the text on screen, with lines (web pages, and app windows read from the screen)",
         "gaze.jsonl": "fixations placed on blocks and lines",
         "attention.jsonl": "dwells",
         "reading.jsonl": "line-by-line reads",
         "health.jsonl": "tracker state every 10 minutes",
+        "windows.jsonl": "the app in front, and when you were away",
     }
     for name in [*LOGS, *sorted(set(by_log) - set(LOGS))]:
         files, size, newest = _size(by_log.get(name, []))
