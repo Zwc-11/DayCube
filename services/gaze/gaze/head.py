@@ -477,6 +477,12 @@ class HeadEstimator:
         head = data.get("calibrated_head")
         self.calibrated_head = (np.array(head["R"]), np.array(head["t"])) if head else None
 
+    def release_frame_buffers(self) -> None:
+        """Release pixel scratch with the camera, without reloading the neural model."""
+        release = getattr(self._landmarker, "release_image_buffer", None)
+        if release is not None:
+            release()
+
     def close(self) -> None:
         close = getattr(self._landmarker, "close", None)
         if close is not None:

@@ -1,5 +1,5 @@
 {
-  "baseline_revision": "abb6f48d96af2ff981e94329bd46b432d98542bb",
+  "baseline_revision": "bf2d48305689897d879df14975bd9e48b6bf28b4",
   "scope": "Every tracked file and new non-ignored file, except this generated ledger itself. No vendored source is tracked; dependencies live in ignored environments and lockfiles.",
   "limits": "Structural checks cover every listed file; manual_review only identifies implementations actually examined. Neither is a proof of maximum efficiency, a dependency audit or DeepInfer throughput parity. Missing manual_review is explicitly unreviewed at the semantic level.",
   "counts": {
@@ -766,10 +766,10 @@
     },
     {
       "path": "docs/gaze-tracking-review-2026-10-24.md",
-      "sha256": "0d67a7e7bb7734330b43dd6973410734f14b876bc1be429bc1aaea91f1c5cf65",
+      "sha256": "6a617ccfcd45116d59e2f9f645474f72a5701c15d53bcfb6233493d37aea9f55",
       "category": "documentation",
-      "bytes": 8403,
-      "lines": 116,
+      "bytes": 8899,
+      "lines": 121,
       "structural_check": "UTF-8 text inventory; build/configuration review is separate"
     },
     {
@@ -2899,10 +2899,10 @@
     },
     {
       "path": "services/gaze/README.md",
-      "sha256": "a1326b778e74172a8c2eac5bed3adee6590ad233db574a3eee6c073d01bcc862",
+      "sha256": "0ad5719d1d19d6a245df5c218bfe09a523f2d8660619bc04e82f5c9def7e0087",
       "category": "documentation",
-      "bytes": 2858,
-      "lines": 44,
+      "bytes": 2887,
+      "lines": 45,
       "structural_check": "UTF-8 text inventory; build/configuration review is separate"
     },
     {
@@ -2990,10 +2990,10 @@
     },
     {
       "path": "services/gaze/gaze/face.py",
-      "sha256": "1a660762461cdc191978a3a1b543ea9d0faf44ffd0176e358bf08aaec782b379",
+      "sha256": "2dd154e94bf93f40eb065aba66c6f39147dc1421b76239d5d6d1f7f17de38fa6",
       "category": "source",
-      "bytes": 8834,
-      "lines": 205,
+      "bytes": 9006,
+      "lines": 209,
       "functions": [
         "model_path:33 (loops including nested scopes: 0)",
         "_fields:40 (loops including nested scopes: 1)",
@@ -3004,13 +3004,14 @@
         "eyetrax_features:119 (loops including nested scopes: 0)",
         "__init__:154 (loops including nested scopes: 0)",
         "detect:172 (loops including nested scopes: 2)",
-        "close:201 (loops including nested scopes: 0)"
+        "release_image_buffer:201 (loops including nested scopes: 0)",
+        "close:205 (loops including nested scopes: 0)"
       ],
       "review_signals": [],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
       "manual_review": {
         "scope": "Camera/gaze algorithm and resource follow-up, 2026-10-24; see docs/gaze-tracking-review-2026-10-24.md",
-        "notes": "Landmark coordinate conversion and MediaPipe ownership reviewed. RGB conversion scratch is reused per shape/dtype and released on close; native Image ownership and prior-result immutability are verified in image/video tests. Named CPU-stage benchmark preserves output hashes. Warm traced peaks exclude already-retained scratch and some native allocations; no neural inference accuracy/throughput claim."
+        "notes": "Landmark coordinate conversion and MediaPipe ownership reviewed. RGB conversion scratch is reused per shape/dtype and released on close; native Image ownership and prior-result immutability are verified in image/video tests. Named CPU-stage benchmark preserves output hashes. Warm traced peaks exclude already-retained scratch and some native allocations; no neural inference accuracy/throughput claim. Subsequent camera-release buffer hooks and their two regressions reviewed: pixel scratch is released with the camera without closing/reloading the native detector. Final complete gaze suite: 74 passing tests. Performance provenance remains pinned to bf2d483; per-frame math is unchanged."
       }
     },
     {
@@ -3044,10 +3045,10 @@
     },
     {
       "path": "services/gaze/gaze/head.py",
-      "sha256": "2c5a7b6af4afb271f1d79d5c54ca390249862eb7ce4f4e1180a7a2df35951dcf",
+      "sha256": "309b11545458b560e0f6b7d5fa1af7bb9dfa379c6341d93047ca33c5aa249c09",
       "category": "source",
-      "bytes": 23775,
-      "lines": 484,
+      "bytes": 24038,
+      "lines": 490,
       "functions": [
         "_head_frame:46 (loops including nested scopes: 0)",
         "directions:215 (loops including nested scopes: 0)",
@@ -3087,14 +3088,15 @@
         "moved:446 (loops including nested scopes: 0)",
         "save_model:455 (loops including nested scopes: 0)",
         "load_model:469 (loops including nested scopes: 0)",
-        "close:480 (loops including nested scopes: 0)",
+        "release_frame_buffers:480 (loops including nested scopes: 0)",
+        "close:486 (loops including nested scopes: 0)",
         "openness:342 (loops including nested scopes: 0)"
       ],
       "review_signals": [],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
       "manual_review": {
         "scope": "Camera/gaze algorithm and resource follow-up, 2026-10-24; see docs/gaze-tracking-review-2026-10-24.md",
-        "notes": "Pose/eye geometry, direction regression and screen intersections reviewed. Batched binocular matrix multiplication preserves independent per-eye outputs, handles zero/single/multiple frames and retains missing-ray semantics without modifying inputs. Synthetic prediction outputs match before/after hashes. Calibration fitting and model format are unchanged; real head-motion accuracy requires held-out device validation."
+        "notes": "Pose/eye geometry, direction regression and screen intersections reviewed. Batched binocular matrix multiplication preserves independent per-eye outputs, handles zero/single/multiple frames and retains missing-ray semantics without modifying inputs. Synthetic prediction outputs match before/after hashes. Calibration fitting and model format are unchanged; real head-motion accuracy requires held-out device validation. Subsequent camera-release buffer hooks and their two regressions reviewed: pixel scratch is released with the camera without closing/reloading the native detector. Final complete gaze suite: 74 passing tests. Performance provenance remains pinned to bf2d483; per-frame math is unchanged."
       }
     },
     {
@@ -3149,10 +3151,10 @@
     },
     {
       "path": "services/gaze/gaze/track.py",
-      "sha256": "e904a8495206fe769f52878311eec790cec95325efee22c03d899243080dc163",
+      "sha256": "07bcecaeef808e418954255d80c52703483b0e6661657c27efa7f73f03853612",
       "category": "source",
-      "bytes": 20248,
-      "lines": 460,
+      "bytes": 20399,
+      "lines": 463,
       "functions": [
         "_com_start:134 (loops including nested scopes: 0)",
         "_com_end:146 (loops including nested scopes: 0)",
@@ -3173,17 +3175,17 @@
         "_fixations:269 (loops including nested scopes: 2)",
         "_reason:277 (loops including nested scopes: 0)",
         "_release:300 (loops including nested scopes: 1)",
-        "_report:314 (loops including nested scopes: 0)",
-        "step:338 (loops including nested scopes: 3)",
-        "_time:416 (loops including nested scopes: 1)",
-        "_gaze:434 (loops including nested scopes: 1)",
-        "run:451 (loops including nested scopes: 1)"
+        "_report:317 (loops including nested scopes: 0)",
+        "step:341 (loops including nested scopes: 3)",
+        "_time:419 (loops including nested scopes: 1)",
+        "_gaze:437 (loops including nested scopes: 1)",
+        "run:454 (loops including nested scopes: 1)"
       ],
       "review_signals": [],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
       "manual_review": {
         "scope": "Camera/gaze algorithm and resource follow-up, 2026-10-24; see docs/gaze-tracking-review-2026-10-24.md",
-        "notes": "Existing paced loop/latest-frame ownership and state machine reviewed with gap recovery changes. Smoothing resets after the detector continuity gap, short blinks keep the old response, and off-screen points flush the open fixation at its last accepted sample. Deterministic failures reproduced before and pass after. Six hundred paired synthetic sessions per revision have mixed outcome shifts with 300/300 no-dwell cases passing; not a general accuracy gain. Native read/join and manual device-acceptance limits remain."
+        "notes": "Existing paced loop/latest-frame ownership and state machine reviewed with gap recovery changes. Smoothing resets after the detector continuity gap, short blinks keep the old response, and off-screen points flush the open fixation at its last accepted sample. Deterministic failures reproduced before and pass after. Six hundred paired synthetic sessions per revision have mixed outcome shifts with 300/300 no-dwell cases passing; not a general accuracy gain. Native read/join and manual device-acceptance limits remain. Subsequent camera-release buffer hooks and their two regressions reviewed: pixel scratch is released with the camera without closing/reloading the native detector. Final complete gaze suite: 74 passing tests. Performance provenance remains pinned to bf2d483; per-frame math is unchanged."
       }
     },
     {
@@ -3264,24 +3266,25 @@
     },
     {
       "path": "services/gaze/tests/test_face.py",
-      "sha256": "8eabafb78f122b60bf5db6fd1bdb20c2912ceeddd0eecd6b97821334f7e075ea",
+      "sha256": "9630d303b7773e6c8b90626b9e84bcd6d046478adc3613e09422370a1e4435f1",
       "category": "test",
-      "bytes": 3330,
-      "lines": 78,
+      "bytes": 3868,
+      "lines": 91,
       "functions": [
-        "landmarker:32 (loops including nested scopes: 0)",
-        "test_rgb_scratch_is_reused_without_changing_prior_images:41 (loops including nested scopes: 0)",
-        "test_rgb_scratch_follows_resolution_and_selective_landmarks:61 (loops including nested scopes: 0)",
-        "__init__:14 (loops including nested scopes: 0)",
-        "detect:20 (loops including nested scopes: 0)",
-        "detect_for_video:24 (loops including nested scopes: 0)",
-        "close:28 (loops including nested scopes: 0)"
+        "landmarker:33 (loops including nested scopes: 0)",
+        "test_rgb_scratch_is_reused_without_changing_prior_images:42 (loops including nested scopes: 0)",
+        "test_rgb_scratch_follows_resolution_and_selective_landmarks:62 (loops including nested scopes: 0)",
+        "test_pixel_scratch_can_be_dropped_without_reloading_the_detector:82 (loops including nested scopes: 0)",
+        "__init__:15 (loops including nested scopes: 0)",
+        "detect:21 (loops including nested scopes: 0)",
+        "detect_for_video:25 (loops including nested scopes: 0)",
+        "close:29 (loops including nested scopes: 0)"
       ],
       "review_signals": [],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
       "manual_review": {
         "scope": "Camera/gaze algorithm and resource follow-up, 2026-10-24; see docs/gaze-tracking-review-2026-10-24.md",
-        "notes": "Synthetic RGB/BGRA and selective-landmark fixtures use actual native MediaPipe Image copies with a substituted detector. Tests cover scratch reuse/resize/release, old-image/point ownership, image/video paths, timestamp monotonicity and no-face results. No camera or saved pixel fixtures."
+        "notes": "Synthetic RGB/BGRA and selective-landmark fixtures use actual native MediaPipe Image copies with a substituted detector. Tests cover scratch reuse/resize/release, old-image/point ownership, image/video paths, timestamp monotonicity and no-face results. No camera or saved pixel fixtures. Subsequent camera-release buffer hooks and their two regressions reviewed: pixel scratch is released with the camera without closing/reloading the native detector. Final complete gaze suite: 74 passing tests. Performance provenance remains pinned to bf2d483; per-frame math is unchanged."
       }
     },
     {
@@ -3383,10 +3386,10 @@
     },
     {
       "path": "services/gaze/tests/test_track.py",
-      "sha256": "6703275cab005042c0dc14cdcd17e5aff69c6c17aa53e388765aadbb6ffe11c2",
+      "sha256": "efafda2dfffbc40741904795e96812ff408381ea14870adc48ff9e8ff256e108",
       "category": "test",
-      "bytes": 17858,
-      "lines": 509,
+      "bytes": 18281,
+      "lines": 523,
       "functions": [
         "tracker:86 (loops including nested scopes: 0)",
         "run_for:95 (loops including nested scopes: 1)",
@@ -3414,9 +3417,10 @@
         "test_a_gaze_ray_that_misses_the_screen_is_skipped:387 (loops including nested scopes: 1)",
         "test_reacquiring_a_face_starts_at_its_new_gaze_point:398 (loops including nested scopes: 0)",
         "test_a_short_blink_keeps_the_continuous_smoothing_response:411 (loops including nested scopes: 1)",
-        "test_looking_off_screen_ends_the_open_fixation:425 (loops including nested scopes: 0)",
-        "test_a_webcam_slow_to_start_stays_open:436 (loops including nested scopes: 0)",
-        "test_a_camera_that_works_only_on_the_tracker_thread_is_still_used:468 (loops including nested scopes: 0)",
+        "test_releasing_the_camera_also_releases_estimator_pixel_scratch:425 (loops including nested scopes: 0)",
+        "test_looking_off_screen_ends_the_open_fixation:439 (loops including nested scopes: 0)",
+        "test_a_webcam_slow_to_start_stays_open:450 (loops including nested scopes: 0)",
+        "test_a_camera_that_works_only_on_the_tracker_thread_is_still_used:482 (loops including nested scopes: 0)",
         "__init__:12 (loops including nested scopes: 0)",
         "__call__:15 (loops including nested scopes: 0)",
         "sleep:18 (loops including nested scopes: 0)",
@@ -3441,21 +3445,22 @@
         "read:327 (loops including nested scopes: 0)",
         "release:330 (loops including nested scopes: 0)",
         "moved:367 (loops including nested scopes: 0)",
-        "__init__:446 (loops including nested scopes: 0)",
-        "read:450 (loops including nested scopes: 0)",
-        "release:457 (loops including nested scopes: 0)",
-        "__init__:478 (loops including nested scopes: 0)",
-        "read:483 (loops including nested scopes: 0)",
-        "release:486 (loops including nested scopes: 0)",
-        "__init__:495 (loops including nested scopes: 0)",
-        "read:498 (loops including nested scopes: 0)",
-        "release:504 (loops including nested scopes: 0)"
+        "release_frame_buffers:429 (loops including nested scopes: 0)",
+        "__init__:460 (loops including nested scopes: 0)",
+        "read:464 (loops including nested scopes: 0)",
+        "release:471 (loops including nested scopes: 0)",
+        "__init__:492 (loops including nested scopes: 0)",
+        "read:497 (loops including nested scopes: 0)",
+        "release:500 (loops including nested scopes: 0)",
+        "__init__:509 (loops including nested scopes: 0)",
+        "read:512 (loops including nested scopes: 0)",
+        "release:518 (loops including nested scopes: 0)"
       ],
       "review_signals": [],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
       "manual_review": {
         "scope": "Camera/gaze algorithm and resource follow-up, 2026-10-24; see docs/gaze-tracking-review-2026-10-24.md",
-        "notes": "Scripted clock/camera/receiver fixtures and new recovery assertions reviewed. Reacquisition, off-screen fixation closure and unchanged short-blink response are covered without real devices; full gaze suite passes. Timing budgets remain in benchmarks, not correctness assertions."
+        "notes": "Scripted clock/camera/receiver fixtures and new recovery assertions reviewed. Reacquisition, off-screen fixation closure and unchanged short-blink response are covered without real devices; full gaze suite passes. Timing budgets remain in benchmarks, not correctness assertions. Subsequent camera-release buffer hooks and their two regressions reviewed: pixel scratch is released with the camera without closing/reloading the native detector. Final complete gaze suite: 74 passing tests. Performance provenance remains pinned to bf2d483; per-frame math is unchanged."
       }
     },
     {
