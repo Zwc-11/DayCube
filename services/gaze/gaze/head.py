@@ -148,6 +148,7 @@ class Poser:
         self._irises = np.array([RIGHT_IRIS, LEFT_IRIS])
         self._eyes = np.array([RIGHT_EYE, LEFT_EYE])  # (2, 4): outer and inner corner, upper and lower lid
         self._eye_depths = self.model[self._eyes, 2]
+        self._features = np.r_[self._irises, self._eyes.ravel()]  # the landmarks eye_features reads
         # The landmarks a tracking frame needs: the rest need not leave MediaPipe.
         self.needed = np.unique(np.r_[self.rigid, self._irises, self._eyes.ravel()])
 
@@ -192,10 +193,11 @@ class Poser:
         the lids follow the eye up and down and so help with the vertical, which the iris alone
         shows least). Both eyes at once: ``on_eyeball`` and ``on_planes``, vectorised."""
         cam = self.camera
+        # Every landmark used, as a camera ray (z = 1), in one gather: irises, then corners and lids.
+        all_rays = np.ones((10, 3))
+        all_rays[:, :2] = (points[self._features, :2] - (cam.cx, cam.cy)) / cam.f
         # Irises: each camera ray met with its eyeball (or the point where it comes closest).
-        rays = np.ones((2, 3))
-        rays[:, 0] = (points[self._irises, 0] - cam.cx) / cam.f
-        rays[:, 1] = (points[self._irises, 1] - cam.cy) / cam.f
+        rays = all_rays[:2]
         rays /= np.sqrt(np.einsum("ij,ij->i", rays, rays))[:, None]
         c = self.eye_centres @ R.T + t
         along = np.einsum("ij,ij->i", rays, c)
@@ -203,9 +205,7 @@ class Poser:
         g = (rays * k[:, None] - c) @ R  # R.T @ v for each row
         g /= np.sqrt(np.einsum("ij,ij->i", g, g))[:, None]
         # Corners and lids: each carried to its own canonical depth in the head.
-        lids = np.ones((2, 4, 3))
-        lids[..., 0] = (points[self._eyes, 0] - cam.cx) / cam.f
-        lids[..., 1] = (points[self._eyes, 1] - cam.cy) / cam.f
+        lids = all_rays[2:].reshape(2, 4, 3)
         normal = R[:, 2]
         k = (t @ normal + self._eye_depths) / (lids @ normal)
         y = ((lids * k[..., None] - t) @ R)[..., 1]
@@ -218,10 +218,17 @@ def directions(xy: np.ndarray) -> np.ndarray:
     face is -z. An eyeball turned to direction g puts its iris r·(gx, gy) from where it sits
     looking straight ahead, so the eye measurements are close to linear in (gx, gy)."""
     xy = np.asarray(xy, dtype=float)
-    norm = np.linalg.norm(xy, axis=-1, keepdims=True)
-    xy = np.where(norm > 0.95, xy * 0.95 / np.maximum(norm, 1e-12), xy)
-    z = -np.sqrt(1 - (xy**2).sum(-1, keepdims=True))
-    return np.concatenate([xy, z], -1)
+    square = np.einsum("...i,...i->...", xy, xy)
+    over = square > 0.95**2  # held at 0.95 so the direction stays in front of the face
+    out = np.empty((*xy.shape[:-1], 3))
+    if over.any():
+        scale = np.where(over, 0.95 / np.sqrt(np.maximum(square, 1e-24)), 1.0)
+        out[..., :2] = xy * scale[..., None]
+        square = np.where(over, 0.95**2, square)
+    else:
+        out[..., :2] = xy
+    out[..., 2] = -np.sqrt(1.0 - square)
+    return out
 
 
 @dataclass
@@ -239,6 +246,9 @@ class GazeModel:
     # and rotation in tenths of a radian from this pose), for what the head's place and turn do to
     # the error that the geometry does not model.
     pose_ref: tuple[np.ndarray, np.ndarray] | None = None
+    # Which update of learning from clicks the weights are (0: the calibration's). Set after
+    # ``eyes`` is replaced, so a frame that sees a version predicted with at least those weights.
+    version: int = 0
 
     def required(self, heads: list[Head], targets_px: np.ndarray) -> np.ndarray:
         """(n, 2, 2): the direction (x, y components, head frame) each eye needed to look at each
@@ -294,14 +304,20 @@ class GazeModel:
         rays = self.directions_of(R, F, eyes)
         s = self.screen
         n = s.normal
-        with np.errstate(divide="ignore", invalid="ignore"):
-            k = ((s.origin - eyes) @ n) / (rays @ n)
-            k = np.where(k > 0, k, np.nan)
-            hit = eyes + k[..., None] * rays - s.origin
-            points = np.stack([hit @ s.ex, hit @ s.ey], -1) / s.mm_per_px  # (n, 2 eyes, 2)
-            valid = np.isfinite(points).all(-1, keepdims=True)
-            count = valid.sum(1)
-            return np.where(valid, points, 0.0).sum(1) / np.where(count > 0, count, np.nan)
+        # Each eye's ray met with the screen's plane: k along the ray, only in front of the eye.
+        # Divisions guarded with ``where`` (no floating-point state to set and restore per frame).
+        facing = rays @ n
+        k = np.full(facing.shape, np.nan)
+        np.divide((s.origin - eyes) @ n, facing, out=k, where=facing != 0)
+        k[~(k > 0)] = np.nan
+        hit = eyes + k[..., None] * rays - s.origin
+        points = np.stack([hit @ s.ex, hit @ s.ey], -1) / s.mm_per_px  # (n, 2 eyes, 2), as Screen.pixel
+        valid = ~np.isnan(points).any(-1)
+        count = valid.sum(1)
+        total = np.where(valid[..., None], points, 0.0).sum(1)
+        out = np.full(total.shape, np.nan)
+        np.divide(total, count[:, None], out=out, where=count[:, None] > 0)
+        return out
 
     def direction(self, heads: list[Head]) -> np.ndarray:
         """(n, 2, 3): each eye's gaze direction in camera coordinates."""
@@ -418,12 +434,17 @@ class Blinks:
         below = ((cx - (ox + ix) / 2) * nx + (cy - (oy + iy) / 2) * ny) / width
         return math.hypot(ux - lx, uy - ly) / width, below
 
-    def expected(self, eye: int, v: float) -> float:
-        """The open aperture expected for this eye at iris height ``v``."""
-        n = len(self.history)
-        mean_a, mean_v = self.total[eye] / n, self.total[2 + eye] / n
-        value = mean_a + self.slopes[eye].slope() * (v - mean_v)
+    def expected(self, eye: int, v: float, reference: tuple[float, float, float] | None = None) -> float:
+        """The open aperture expected for this eye at iris height ``v`` (``reference``: the eye's
+        ``_reference()``, when the caller already has it for this frame)."""
+        mean_a, mean_v, slope = reference or self._reference(eye)
+        value = mean_a + slope * (v - mean_v)
         return min(max(value, 0.6 * mean_a), 1.3 * mean_a)
+
+    def _reference(self, eye: int) -> tuple[float, float, float]:
+        """(mean open aperture, mean iris height, slope) of an eye's open reference."""
+        n = len(self.history)
+        return self.total[eye] / n, self.total[2 + eye] / n, self.slopes[eye].slope()
 
     def __call__(self, points: np.ndarray, now: float | None = None) -> bool:
         now = self.clock() if now is None else now
@@ -436,15 +457,16 @@ class Blinks:
             height = (0.0, 0.0)  # no iris landmarks: the reference does not follow the eye
         ready = len(self.history) >= self.minimum
         if ready:
-            n = len(self.history)
-            narrow = any(ear[e] < self.ratio * self.expected(e, height[e]) for e in range(2))
-            shut = any(ear[e] < self.deep * self.total[e] / n for e in range(2))
+            references = (self._reference(0), self._reference(1))  # once a frame, not per test
+            expect = [self.expected(e, height[e], references[e]) for e in range(2)]
+            narrow = any(ear[e] < self.ratio * expect[e] for e in range(2))
+            shut = any(ear[e] < self.deep * references[e][0] for e in range(2))
         else:
             narrow, shut = any(value < 0.2 for value in ear), any(value < 0.1 for value in ear)
         # Closing: the gap fell 10% more since the last frame than the iris's own move explains
         # (a downward saccade lowers the lids with it; a blink lowers them past where the eye goes).
         explained = (
-            [self.expected(e, height[e]) / self.expected(e, self.previous_height[e]) for e in range(2)]
+            [expect[e] / self.expected(e, self.previous_height[e], references[e]) for e in range(2)]
             if ready and self.previous is not None
             else [1.0, 1.0]
         )

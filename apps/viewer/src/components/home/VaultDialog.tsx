@@ -1,16 +1,18 @@
 import React from 'react';
-import { Database, Network, X } from 'lucide-react';
+import { Database, Eye, Network, X } from 'lucide-react';
 import { Dialog } from '../ui';
 import { DataCenterView, LiveGraph } from '../modals/DataSections';
+import { EyeTrackingView } from '../modals/EyeTracking';
 
-export type VaultView = 'data' | 'graph';
+export type VaultView = 'data' | 'graph' | 'eyes';
 
 const VIEWS: { id: VaultView; label: string; icon: React.ReactNode }[] = [
   { id: 'data', label: 'Data center', icon: <Database size={15} /> },
   { id: 'graph', label: 'Knowledge graph', icon: <Network size={15} /> },
+  { id: 'eyes', label: 'Eye tracking', icon: <Eye size={15} /> },
 ];
 
-/** The vault's data center and knowledge graph, reachable from the calendar before any day opens. */
+/** The vault's data center, knowledge graph and eye tracker, reachable from the calendar before any day opens. */
 const VaultDialog: React.FC<{ view: VaultView; online: boolean; onView: (v: VaultView) => void; onClose: () => void }> = ({
   view,
   online,
@@ -43,6 +45,8 @@ const VaultDialog: React.FC<{ view: VaultView; online: boolean; onView: (v: Vaul
         <h3 className="settings__h">{VIEWS.find((v) => v.id === view)?.label}</h3>
         {view === 'data' ? (
           <DataCenterView online={online} />
+        ) : view === 'eyes' ? (
+          <EyeTrackingView online={online} />
         ) : online ? (
           <LiveGraph />
         ) : (

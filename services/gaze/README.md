@@ -4,7 +4,10 @@ Webcam gaze that follows head movement. MediaPipe face landmarks (the model EyeT
 every frame, the head's pose (perspective-n-point on MediaPipe's canonical face) and where each
 iris sits on its eyeball; calibration learns each eye's direction within the head, and geometry
 carries it to the screen (`gaze/head.py`). Then a One Euro filter and fixations (I-DT, with a
-dispersion threshold that rises with the measured gaze noise), sent to the capture receiver.
+dispersion threshold that rises with the measured gaze noise), sent to the capture receiver; the
+ring and the live point get their own filter (`gaze/stabilize.py`: a fixation estimate that holds
+still, ignores single bad frames and jumps on confirmed saccades: half the jitter of One Euro,
+[docs/capture.md](../../docs/capture.md#a-steady-ring), `eval/ring_filter.py`).
 Frames are processed in memory and never stored. Its own environment, because
 [EyeTrax](https://github.com/ck-zhang/eyetrax) 0.4.0 (MIT; calibration screens, the camera, and
 the older ridge models) pins numpy<2.
@@ -41,8 +44,13 @@ It keeps learning from clicks after calibration (`gaze/learn.py`): each click in
 with the steady look just before it, is a calibration point; the eye regression is refitted toward
 them every 20 clicks and the change is kept only if it is more accurate on clicks it has not seen
 ([docs/capture.md](../../docs/capture.md#learning-from-clicks), `eval/click_learning.py`).
-Clicks are kept in `vault/calibration/clicks.jsonl` as numbers (head pose, eye measurements, the
-pixel clicked) and what was learned in `gaze-learned.json`, for the current calibration only.
+Each click is measured before it is learned from, by the model in use and by the calibration
+alone: their ratio over the last 300 clicks is the live loss ratio (in the tracker's report, in
+`doctor` and in the viewer's **Your data > Eye tracking**), and each update is logged when it is
+fitted and when the first frame used it. Clicks are kept in `vault/calibration/clicks.jsonl` as
+numbers (head pose, eye measurements, the pixel clicked, both errors, the model version), fits and
+updates in `learning.jsonl`, and what was learned in `gaze-learned.json`, for the current
+calibration only.
 
 The webcam is released while recording is paused, the session is locked, another app uses the
 camera, or you are away.

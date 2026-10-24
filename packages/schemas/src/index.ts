@@ -130,6 +130,47 @@ export const dataCenterSchema = z.object({
 export type DataSource = z.infer<typeof dataSourceSchema>;
 export type DataCenter = z.infer<typeof dataCenterSchema>;
 
+// The eye tracker's learning from clicks (GET /gaze/learning): every click's live error (the model
+// in use and the calibration alone, on clicks neither had learned from), each fit, and when each
+// update reached the tracker's frames. Clicks come as columns, the shape charts read.
+const num = z.number().nullable();
+const fitEventSchema = z.object({
+  event: z.literal('fit'), t: z.string(), version: z.number().int(), accepted: z.boolean(),
+  clicks: z.number().int(), held_out: z.number().int(), penalty: z.number().nullable(),
+  head_terms: z.boolean().optional(),
+  error_px: z.object({ calibration: z.number(), in_use: z.number(), learned: z.number(), fixed_guess: z.number() }),
+});
+const appliedEventSchema = z.object({
+  event: z.literal('applied'), t: z.string(), version: z.number().int(), after_ms: num,
+});
+export const gazeLearningSchema = z.union([
+  z.object({ calibrated: z.literal(false) }),
+  z.object({
+    calibrated: z.literal(true),
+    calibration: z.object({
+      t: z.string().nullable(), model: z.string().nullable(), monitor: z.array(z.number().int()).nullable(),
+      error_px: num, error_p90_px: num.optional(), moved_error_px: num.optional(), mm_per_px: num,
+    }),
+    learned: z.object({
+      version: z.number().int().nullable(), t: z.string().nullable(), head_terms: z.boolean(),
+      fit: fitEventSchema.omit({ event: true, t: true, held_out: true, version: true }).partial().nullable(),
+    }).nullable(),
+    live: z.object({
+      clicks: z.number().int(), error_px: num, calibration_px: num, ratio: num,
+      error_deg: num, calibration_deg: num, distance_mm: num,
+    }),
+    clicks: z.object({
+      t: z.array(num), error_px: z.array(num), base_px: z.array(num), version: z.array(z.number().int()),
+      used: z.array(z.boolean().nullable()), distance_mm: z.array(num),
+    }),
+    fits: z.array(fitEventSchema),
+    applied: z.array(appliedEventSchema),
+    files: z.record(z.string(), z.boolean()),
+  }),
+]);
+export type GazeLearning = z.infer<typeof gazeLearningSchema>;
+export type GazeFit = z.infer<typeof fitEventSchema>;
+
 // A day's knowledge base (GET /day/{date}/notes), one note (GET /note) and search as you type
 // (GET /search).
 export const dayNotesSchema = z.object({

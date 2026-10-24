@@ -121,6 +121,44 @@ moving 140 times/s between 60 gaze points/s`). Without the tracker or a camera,
 frames drawn per second. Checked in Wine 9 on a virtual display: the window opens, draws the ring
 and its dashed variant, and moves on every one of 60 frames a second from 30 points a second.
 
+### A steady ring
+
+The ring and the live point no longer follow the One Euro filter that fixations are found in: at
+webcam noise its speed adaptation reads jitter as movement, and the ring shook ("too
+sensitive"). Feit et al. (CHI 2017, 80 people on two trackers) found the same of One Euro for
+gaze cursors, and that the best filters keep a fixation estimate with saccade detection and
+outlier correction; Spakov (ETRA 2012) and Tobii's zero-delay filter (US11915521B2) work the same
+way. `services/gaze/gaze/stabilize.py`:
+
+- **Resting:** each sample pulls the estimate by `max(1/n, 1 - exp(-dt/0.2 s))`: the plain mean of
+  a fixation's first samples, then an exponential average, so reading along a line glides.
+- **A far jump:** a sample more than 4.5 times the noise away (within 1-12% of the screen width) is
+  held back; a single one is a bad frame and ignored; two in a row that agree are a saccade, and
+  the ring jumps to them.
+- **A near jump** (the next button): the median of the last 4, 6 or 8 samples farther than 3 times
+  what such a median usually is, when they are one look, moves the estimate there.
+- The noise is measured as it goes (median distances tracked with multiplicative steps over 3 s),
+  so a sharper calibration gets a quicker ring. A blink resumes from one frame's pull; a gap or a
+  long blink starts over.
+
+On simulated webcam gaze with the PC's error model (`eval/ring_filter.py`, 10 two-minute sessions
+of reading, looking around and nearby targets; `eval/results/ring-filter.json`), measured at
+240 Hz the way the overlay draws it:
+
+| | One Euro (before), 30 fps | ring filter, 30 fps | One Euro, 60 fps | ring filter, 60 fps |
+| --- | --- | --- | --- | --- |
+| shake while resting (RMS per display frame) | 6.0 px | **3.3 px** | 8.3 px | **3.6 px** |
+| wander within a fixation (RMS) | 38 px | **20 px** | 38 px | **19 px** |
+| to 70% of a jump of 300+ px (median) | 104 ms | 123 ms | 79 ms | 85 ms |
+| to 70% of a jump of 120-300 px | 119 ms | 182 ms | 80 ms | 94 ms |
+| median distance from the eyes | 103 px | 116 px | 96 px | 113 px |
+| cost per sample | 2 us | 7 us | 2 us | 7 us |
+
+The ring is half as jittery; the price is one more frame before a far jump (the second sample
+that confirms it is not a bad frame) and about 60 ms on near ones at 30 fps, both a third of
+that at 60 fps (`python -m gaze calibrate --fps 60` where the webcam offers it). Fixations are
+still found in the One Euro output, whose thresholds the detector was measured on.
+
 ### Processing rate and live checks
 
 The gaze rate is the webcam's frame rate: one gaze point per frame. Calibration asks the webcam
@@ -502,13 +540,28 @@ et al., CHI 2016) reached 2.56 degrees from everyday clicks and typing alone.
    which can beat a good model on such labels but not the fixed guess. The fit runs on its own
    thread, so frames never wait for it.
 
+**Is it learning, live?** Every click is predicted before anything learns from it, by the model in
+use and by the calibration alone, so each click carries two errors on data neither model had
+seen. Their medians over the last 300 clicks, and their ratio (the loss ratio: under 1, learning
+helps), are the live answer, on your own desk, to whether learning works; the dataset numbers
+below are the controlled one. An update swaps the eye weights in one reference, so the next frame
+predicts with all of them; the tracker logs the first frame that used each update and how long
+after the fit it came (one frame, about 33 ms). **Your data > Eye tracking** in the viewer
+(`GET /gaze/learning`) shows it, refreshed every 5 s: the live error and the calibration's on the
+same clicks (px and degrees, from the head's distance in each click), the loss ratio, the model in
+use and when it reached the gaze, the error on every click (median of 30) for both with each
+update marked, and every fit with its held-out errors and why it was or was not taken.
+
 Clicks are kept in `vault/calibration/clicks.jsonl` (time, the pixel, the look's head pose and eye
-measurements as numbers) and what was learned in `gaze-learned.json`, both for the current
-calibration only: a new calibration starts over. The receiver's click correction (the offsets of
+measurements as numbers, both errors, the model version in use, whether it passed the gate),
+each fit and each update's first frame in `learning.jsonl`, and what was learned in
+`gaze-learned.json`, all for the current calibration only: a new calibration starts over. The receiver's click correction (the offsets of
 [How gaze is placed on a page](#how-gaze-is-placed-on-a-page)) starts over at each update, since
 it was measured on the old model. `doctor` reports it: `learning: from clicks: update 3 at 17:40
 UTC; on clicks it had not seen, 168 px with the calibration alone, 121 px now; 260 clicks since
-calibration, 46 made without looking at the spot`.
+calibration, 46 made without looking at the spot`, then `learning applied: update 3 reached the
+gaze 34 ms after it was fitted` and `loss ratio: last 300 clicks, each measured before learning
+from it: 121 px against 158 px for the calibration alone (ratio 0.77, 23% less error)`.
 
 Measured on real webcam images (`eval/click_learning.py`, results in
 `eval/results/click-learning.json`): MPIIFaceGaze, 15 people on their own laptops over days to
@@ -582,8 +635,12 @@ wrong, and `doctor` says to recalibrate ([Simulation](#simulation)).
 
 ## Limits
 
-- **Accuracy.** Webcam gaze is good to roughly 3-5 degrees: paragraphs and, while reading, lines;
-  not words. Calibration reports the median error on four held-out targets and refuses to track
+- **Accuracy.** Webcam gaze is good to roughly 2-5 degrees: paragraphs and, while reading, lines;
+  not words. Published calibrated webcam systems reach 2.3-3.1 degrees (Zhang et al., CHI 2019),
+  2.5 degrees with screen content (EVE, ECCV 2020) and 2.56 degrees after hours of clicks (PACE);
+  infrared trackers reach 0.15-0.5 degrees (EyeLink, Tobii Pro) and 0.45 degrees for a consumer
+  one in daily use (Feit et al., CHI 2017). No filter or learning closes that gap: it is the
+  camera, its resolution of the iris and the lack of an infrared glint. Calibration reports the median error on four held-out targets and refuses to track
   above 120 px at 1920 px wide (scaled to your screen width; 160 px on a 2560 px monitor). Head
   movement is followed, but error still grows with it (31 mm to 50 mm median from a still head to
   8+ cm away, [above](#when-your-head-moves)); glasses and backlight make it worse; the live
@@ -608,8 +665,7 @@ wrong, and `doctor` says to recalibrate ([Simulation](#simulation)).
 - **Other apps are read by OCR.** What OCR misreads is stored misread; text smaller than about 9
   px or on busy backgrounds is missed; an app redrawing constantly (a video, a game) is read every
   16 s at most. Only the window under the gaze is read, on the calibrated monitor. UWP apps show
-  as `applicationframehost.exe`. Clicks in other apps do not yet calibrate the gaze (only clicks
-  in pages do). There is no tray icon: the toolbar badge and Windows' own camera indicator show
+  as `applicationframehost.exe`. There is no tray icon: the toolbar badge and Windows' own camera indicator show
   that recording is on.
 - **No synthesis yet.** The logs are not yet turned into day events in the viewer.
 

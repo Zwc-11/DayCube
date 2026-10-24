@@ -411,11 +411,11 @@ def test_reacquiring_a_face_starts_at_its_new_gaze_point() -> None:
 
 
 def test_a_short_blink_keeps_the_continuous_smoothing_response() -> None:
-    from gaze.fixations import Smoother
+    from gaze.stabilize import Stabilizer
 
     t, scene, receiver, *_, clock, log = tracker()
     receiver.live = True
-    expected = Smoother()
+    expected = Stabilizer(1920)  # live points (and the ring) show the stabilized gaze
     start = clock.now
     for elapsed, x, y in [(0.0, 960.0, 540.0), (0.03, 1000.0, 550.0), (0.13, 1400.0, 800.0)]:
         now = start + elapsed

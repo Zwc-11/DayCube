@@ -1,6 +1,6 @@
 import { DaycubeClient, ApiError } from '@daycube/api-client';
 import type {
-  AskResult as SchemaAskResult, DataCenter, DayNotes, DayResponse, Entity, KnowledgeGraph, Note, SearchResult,
+  AskResult as SchemaAskResult, DataCenter, DayNotes, DayResponse, Entity, GazeLearning, KnowledgeGraph, Note, SearchResult,
 } from '@daycube/schemas';
 import {
   AskResult,
@@ -597,6 +597,18 @@ export class BackendBridge {
       () => this.client.dataCenter(),
       (d) => `${d.sources.length} sources, ${d.database.rows.units ?? 0} records indexed`
     );
+  }
+
+  /** The eye tracker's learning from clicks: the new copy, 'same' while `etag` still matches
+   * (an empty 304: nothing parsed or redrawn), or null offline. */
+  async gazeLearning(etag?: string | null): Promise<{ etag: string | null; learning: GazeLearning } | 'same' | null> {
+    const result = await this.read(
+      '/api/gaze/learning',
+      async () => (await this.client.gazeLearningIfChanged(etag)) ?? ('same' as const),
+      (d) =>
+        d === 'same' ? 'unchanged (304)' : d.learning.calibrated ? `${d.learning.clicks.t.length} clicks, ${d.learning.fits.length} fits` : 'not calibrated'
+    );
+    return result;
   }
 
   /** The day's knowledge base (notes, links, local graph), or null when it cannot be loaded. */

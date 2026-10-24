@@ -133,7 +133,24 @@ def _learning(gaze: dict) -> list[tuple[str, str, str]]:
             + f"; on clicks it had not seen, {errors.get('calibration')} px with the calibration alone, "
             f"{errors.get('learned') if fit.get('accepted') else errors.get('in_use')} px now; {counted}"
         )  # fmt: skip
-        return [(PASS, "learning", detail)]
+        rows = [(PASS, "learning", detail)]
+        applied = learning.get("applied") or {}
+        if applied.get("version") == version:
+            after = applied.get("after_ms")
+            rows.append((PASS, "learning applied", f"update {version} reached the gaze"
+                         + (f" {after:.0f} ms after it was fitted" if after is not None else "")
+                         + " (every frame since uses it)"))  # fmt: skip
+        elif "applied" in learning:  # a tracker that reports it: the update has not reached a frame yet
+            rows.append((WARN, "learning applied", f"update {version} has not reached a frame yet"))
+        live = learning.get("live") or {}
+        if live.get("ratio") is not None:
+            ratio = live["ratio"]
+            rows.append((PASS if ratio < 1 else INFO, "loss ratio", (
+                f"last {live['clicks']} clicks, each measured before learning from it: {live['error_px']} px "
+                f"against {live['calibration_px']} px for the calibration alone (ratio {ratio:.2f}"
+                + (f", {round((1 - ratio) * 100)}% less error)" if ratio < 1 else ")")
+            )))  # fmt: skip
+        return rows
     return [(
         INFO,
         "learning",
