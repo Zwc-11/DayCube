@@ -189,6 +189,7 @@ class Attention:
         self.focused: int | None = None  # the focused browser window; None when another app has focus
         self.monitor: tuple[int, int] | None = None
         self.calibrated_px: float | None = None
+        self.model_version: int | None = None  # the tracker's model learned from clicks
         self.run: Run | None = None
         self.away: datetime | None = None  # when the eyes left the run's block
         self.challenger: Run | None = None  # the block leading while the eyes are away from the run's
@@ -299,10 +300,16 @@ class Attention:
         return self.end() + self.end_visit()
 
     def gaze_state(self, state: GazeState) -> None:
-        """The tracker's report: which monitor it is calibrated on and how well."""
+        """The tracker's report: which monitor it is calibrated on and how well, and which version
+        of the model it learned from clicks (a new one makes the click offsets start over)."""
         self.gaze_monitor(state.monitor)
         self.calibrated_px = state.error_px
         self.anchors.set_monitor(self.monitor, state.error_px)
+        version = (state.learning or {}).get("version")
+        if isinstance(version, int):
+            if self.model_version is not None and version != self.model_version:
+                self.anchors.restart()
+            self.model_version = version
 
     def gaze_monitor(self, monitor: list[int] | None) -> None:
         self.monitor = (monitor[0], monitor[1]) if monitor else None

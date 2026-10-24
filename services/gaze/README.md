@@ -37,6 +37,13 @@ and grows from 31 to 50 mm as the head moves 0-2 cm to 8+ cm from where it was, 
 from 56 to 88 mm ([docs/capture.md](../../docs/capture.md#when-your-head-moves),
 `eval/head_bench.py`).
 
+It keeps learning from clicks after calibration (`gaze/learn.py`): each click in any app, paired
+with the steady look just before it, is a calibration point; the eye regression is refitted toward
+them every 20 clicks and the change is kept only if it is more accurate on clicks it has not seen
+([docs/capture.md](../../docs/capture.md#learning-from-clicks), `eval/click_learning.py`).
+Clicks are kept in `vault/calibration/clicks.jsonl` as numbers (head pose, eye measurements, the
+pixel clicked) and what was learned in `gaze-learned.json`, for the current calibration only.
+
 The webcam is released while recording is paused, the session is locked, another app uses the
 camera, or you are away.
 

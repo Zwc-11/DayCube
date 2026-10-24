@@ -204,6 +204,7 @@ class Tracker:
         sleep: Callable[[float], None] = time.sleep,
         timer: Callable[[], float] = time.monotonic,
         overlay: Callable[[], Any] | None = None,
+        learner: Any = None,
     ) -> None:
         if not math.isfinite(fps) or fps <= 0:
             raise ValueError("fps must be positive and finite")
@@ -245,6 +246,8 @@ class Tracker:
         # The ring drawn over every window (gaze.overlay), made when the receiver first asks for it.
         self._overlay_factory = overlay
         self.overlay: Any = None
+        # Learning from clicks (gaze.learn): the frames before each click, and the click.
+        self.learner = learner
 
     # -- state -------------------------------------------------------------------------------------
 
@@ -273,7 +276,29 @@ class Tracker:
             "overlay": self._overlay_state(),
             "camera_fps": self.camera.rate() if hasattr(self.camera, "rate") else None,
             "camera_mode": _describe(self.calibration.get("camera_mode")),
+            "learning": self._learning(),
         }
+
+    def _learning(self) -> dict | None:
+        if self.learner is None:
+            return None
+        try:
+            return self.learner.state()
+        except Exception as error:  # noqa: BLE001 - the report must go out whatever the learner's state
+            return {"error": f"{type(error).__name__}: {error}"[:200]}
+
+    def _click(self, now: float) -> None:
+        """A click since the last frame becomes a calibration point for the learner."""
+        poll = getattr(self.system, "click", None)
+        point = poll() if poll is not None else None
+        if point is None or self.learner is None:
+            return
+        try:
+            outcome = self.learner.click(now, float(point[0]), float(point[1]))
+        except Exception:  # noqa: BLE001 - learning must never stop tracking
+            log.exception("learning from a click failed")
+            return
+        log.debug("click at %s: %s", point, outcome)
 
     def _timing(self) -> dict | None:
         """Median milliseconds per frame in each stage over the last 10 s, the frame's processing
@@ -475,8 +500,11 @@ class Tracker:
             # A gaze ray that never meets the screen's plane (a bad frame's landmarks) is nan,
             # which must not reach the smoother: its state would stay nan.
             if math.isfinite(x) and math.isfinite(y):
+                if self.learner is not None:
+                    self.learner.frame(now, values, x, y)
                 self._gaze(now, x, y)
             tracked = self.timer()
+        self._click(now)
         self._report(now)
         if face:
             self._time(started, waited, read, extracted, predicted, tracked, self.timer())

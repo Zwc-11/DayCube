@@ -207,6 +207,8 @@ class GazeState(Strict):
     overlay: OverlayState | None = None
     camera_fps: float | None = Field(default=None, ge=0)  # frames the webcam delivered per second, last 10 s
     camera_mode: str | None = Field(default=None, max_length=40)  # e.g. "1280x720 MJPG 60 fps"
+    # Learning from clicks (services/gaze/gaze/learn.py): its model version, clicks, last fit.
+    learning: dict | None = None
 
 
 class LivePoint(Strict):

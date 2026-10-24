@@ -457,6 +457,76 @@ calibration (`gaze.head_moved_mm`, `gaze.head_turned_deg`); `doctor` prints them
 image may come mirrored from some drivers and virtual cameras; the calibration notices (the eyes
 seem to turn the wrong way) and the tracker flips the frames back.
 
+## Learning from clicks
+
+People look at what they click, so every click is a calibration point given without noticing.
+The tracker watches clicks in every app (the primary button's state each frame, and where the
+pointer is; never what was clicked) and keeps learning from them after calibration, as head
+positions, light and posture change through the day (`services/gaze/gaze/learn.py`). WebGazer
+(Papoutsaki et al., IJCAI 2016) adds clicks to its gaze regression the same way, and PACE (Huang
+et al., CHI 2016) reached 2.56 degrees from everyday clicks and typing alone.
+
+1. **The label is the look before the click.** Gaze lines up with a click best before it: 70 ms
+   for large targets, 200-250 ms for small ones (PACE). Taking the gaze at the click gave labels
+   184 px off on average there, a steady look before it 74 px. So each click takes the eyes' last
+   steady period of at least 80 ms (raw gaze within 5% of the screen width) ending within 0.5 s
+   before it, averages its frames' head pose and eye measurements, and pairs them with the pixel
+   clicked. A click with no steady look before it is skipped.
+2. **Clicks made without looking are left out:** a click farther from where the model already put
+   the gaze than 1/12 of the screen's diagonal (245 px on a 2560 x 1440 monitor), or than 3 times
+   the model's median error on the last 100 clicks if that is larger (so a coarse calibration can
+   still learn), at most a third of the diagonal. After every update the left-out clicks are
+   checked again.
+3. **The loss.** For each click, the head pose gives the direction each eye must have had in the
+   head to look at the clicked pixel; the loss is the squared difference from the direction the
+   model gives, which is the click's error on screen seen through the geometry. Each eye's
+   regression is refitted toward the clicks starting from the calibrated weights (the ridge
+   penalty pulls toward them rather than toward zero), with newer clicks weighted more (half-life
+   a week) and clicks still far off after a first fit weighted less (Huber, two rounds).
+4. **A change is kept only if it is better.** Every 20 usable clicks, the newest clicks the model in
+   use has not learned from (at least 10, and at least a fifth of all) are held out. Candidates
+   for 8 penalty strengths are fitted on the rest and judged by their median error in pixels on
+   the held-out clicks. The best is refitted on all clicks and replaces the model only if it beats
+   the model in use and the calibration alone by 3%, and is less than half as far off as one fixed
+   guess at the clicks' middle. The last test is the one that stops clicks made without looking:
+   fitted to labels unrelated to the eyes, a model learns to point at the middle of the screen,
+   which can beat a good model on such labels but not the fixed guess. The fit runs on its own
+   thread, so frames never wait for it.
+
+Clicks are kept in `vault/calibration/clicks.jsonl` (time, the pixel, the look's head pose and eye
+measurements as numbers) and what was learned in `gaze-learned.json`, both for the current
+calibration only: a new calibration starts over. The receiver's click correction (the offsets of
+[How gaze is placed on a page](#how-gaze-is-placed-on-a-page)) starts over at each update, since
+it was measured on the old model. `doctor` reports it: `learning: from clicks: update 3 at 17:40
+UTC; on clicks it had not seen, 168 px with the calibration alone, 121 px now; 260 clicks since
+calibration, 46 made without looking at the spot`.
+
+Measured on real webcam images (`eval/click_learning.py`, results in
+`eval/results/click-learning.json`): MPIIFaceGaze, 15 people on their own laptops over days to
+weeks. Each person is calibrated on 13 images of their first day, as DayCube calibrates (the
+head-aware model with the assumed webcam and screen); then every image of the following days
+(36,000 in all) is replayed in order as a click at the point they looked at, with label noise of
+20 mm on average (PACE's filtered labels) and 15% of clicks made while looking at a random other
+point. Each image is predicted before it is learned from, so every error is on an image the model
+had not seen, as in use. Median error on screen:
+
+| clicks so far | calibration alone | learning from clicks |
+| --- | --- | --- |
+| 0-100 | 40 mm | 39 mm |
+| 100-300 | 41 mm | 34 mm |
+| 300-1,000 | 47 mm | 33 mm |
+| 1,000+ | 47 mm | 34 mm |
+| all after the first 100 | 45 mm (194 px on a 27" 2560-px monitor) | **33 mm (139 px)** |
+| 90th percentile | 104 mm | 74 mm |
+
+All 15 people were more accurate, the largest gains where the calibration was worst (91 to 35 mm,
+55 to 33 mm). With clicks of 40 mm label noise and 40% made while looking elsewhere: 45 to 35 mm,
+14 of 15 better, none worse by 2%. With every click made at a random point (nothing to learn):
+no update was taken for anyone, and the error stayed 45 mm. With exact labels: 45 to 32 mm. The
+calibration alone grows worse over the days (40 to 47 mm) as people sit differently; the learned
+model gets better. These are single laptop-webcam images, noisier than fixations at a desk; the
+comparison is what carries over.
+
 ## Which line you are reading
 
 Placing a fixation on a block cannot name the line: at the recalibrated error (69 px median on a
