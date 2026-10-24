@@ -104,3 +104,44 @@ uv run --project services/gaze python eval/blink_replay.py --compare 2cd4811 --o
 uv run python eval/gaze_sim.py --seeds 10 --workers 4 --compare 2cd4811 --output test-results/blink-regression.json
 uv --directory services/gaze run pytest tests/test_blinks.py
 ```
+
+## Looking down is not blinking
+
+Reported on the PC after this guard: "when the eyes go to the lower half of the screen, the gaze
+sometimes gets stuck in the middle". The upper lid follows the eye: looking down lowers it. On
+MPIIFaceGaze (15 people, webcam images of open eyes looking at known points), the lid gap was 0.99
+of its top-of-screen size in the screen's top quarter, 0.94, 0.88 and 0.83 further down. A fixed
+open reference, which closed frames never lower, called the bottom of the screen a blink: the
+frames were dropped, the point stayed where it was (about the middle), and the reference never
+caught up because the dropped frames could not teach it. The guard's replay missed it because its
+downward-saccade fixture kept the lids open.
+
+Change (`gaze/head.py`, `Blinks`):
+
+- The open reference follows the iris: each eye's aperture is compared with the aperture expected
+  at its iris's height in the eye (the iris's distance below the line between the corners, over
+  the eye width), a least-squares line through the last 900 open frames, re-levelled by the last 50.
+  The slope is never positive and at most 3.5 (MPIIFaceGaze people: 0.3 to 1.8).
+- Eyes shut (under half of the open average) are always a blink, whatever the eye's direction.
+- A narrowing that lasts 0.3 s since the lids were last shut, without shutting, is a look down or a
+  squint, not a blink: the frames are used and learned from, so the reference catches up.
+- A frame-to-frame fall counts as closing only beyond what the iris's own move explains, so a
+  downward saccade, which lowers the lids with the eye, no longer holds the point for 100 ms.
+
+Evidence:
+
+| | top quarter | 2nd | 3rd | bottom quarter |
+| --- | ---: | ---: | ---: | ---: |
+| open-eye MPIIFaceGaze frames called closed, fixed reference | 0.8% | 1.7% | 6.0% | 16.8% |
+| the same, reference following the iris | 0.9% | 1.5% | 4.3% | 10.3% |
+
+(`eval/blink_downgaze.py`, `eval/results/blink-downgaze.json`: each person's images through
+`Blinks` in order, the long-narrowing rule off because these are single images seconds apart, so
+only the reference is measured. On a video the long-narrowing rule then uses whatever remains after
+at most 0.3 s.) A larger monitor than these laptops' asks more downward gaze, so the fixed
+reference did worse there. `tests/test_blinks.py` reproduces the report end to end: after reading
+the upper screen, a look at the bottom of a large monitor (lid gap 72% of the average) gave **no**
+live point for 0.5 s with the fixed reference, and reaches the bottom with this one. This guard's
+replay (`eval/blink_replay.py`) is unchanged: 0 corrupted updates in a partial blink, 0 px blink
+artifact, 0 updates in three seconds of closed eyes, the healthy downward saccade arrives in
+67 ms. The classifier costs 18 us a frame here (7 us before), of a 33 ms frame.
