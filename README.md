@@ -86,13 +86,16 @@ client and converts the API's seconds-since-midnight into the renderer's decimal
 - Browser and gaze capture from sign-in to shutdown: a browser extension, a webcam eye tracker
   and a local receiver that works out which paragraph the eyes are on and flags dwells. See
   [capture](docs/capture.md).
+- Phone recordings into the day they were recorded: visits, drives and walks, floors and every GPS
+  fix from Sensor Logger; voice memos transcribed and searchable; Stray Scanner captures with their
+  camera path on the map. Drop the exports into `vault/inbox/phone`. See [phone](docs/phone.md).
 - A character that walks the day: routes go around furniture and through doorways, climb
   stairs step by step between floors, and cut away the floor above while it is indoors.
   Playback slows while it walks. Visits without measured indoor positions get an
   illustrative walk between the spots where their records happened.
 - Python tests, JavaScript contract tests, real-browser API checks and a CI workflow.
 
-Native window capture, OCR execution, visit/floor inference, turning capture logs into day events,
+Native window capture, OCR execution, turning capture logs into day events,
 generative answers, deletion, splats and full moment reconstruction remain
 future milestones. Unimplemented ingest stages and hour deletion return HTTP 501.
 The sample moment has a synthetic transcript and **no source video/audio or GLB**.

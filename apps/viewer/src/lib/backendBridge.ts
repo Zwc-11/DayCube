@@ -295,22 +295,25 @@ export class BackendBridge {
         };
       });
 
-      // A path with only illustrative points carries no real positions; walk the stage instead.
-      const pathPts: PathPoint[] = bLayer.path.every((p) => p.fidelity === 'illustrative')
-        ? stageWalk(spots, t0Hours, t1Hours, events, {
-            wakesHere,
-            sleepsHere,
-            conf: Math.min(...bLayer.path.map((p) => p.pos_conf), 0.4),
-          })
-        : bLayer.path.map((p, pi) => ({
-            x: p.x !== null ? p.x + 6 : fallback.path[pi % fallback.path.length]?.x ?? 12,
-            y: p.y !== null ? p.y + 4 : fallback.path[pi % fallback.path.length]?.y ?? 9,
-            floor: p.floor ?? 0,
-            t: Number((p.t / 3600).toFixed(3)),
-            conf: p.pos_conf,
-            fidelity: p.fidelity,
-            altRel: (p.floor ?? 0) * 3.2,
-          }));
+      // A path with only illustrative points carries no real positions, and one with no position at
+      // all (GPS inside a building) nothing to draw; walk the stage instead.
+      const drawn = bLayer.path.filter((p) => p.x !== null && p.y !== null);
+      const pathPts: PathPoint[] =
+        drawn.length === 0 || drawn.every((p) => p.fidelity === 'illustrative')
+          ? stageWalk(spots, t0Hours, t1Hours, events, {
+              wakesHere,
+              sleepsHere,
+              conf: Math.min(...bLayer.path.map((p) => p.pos_conf), 0.4),
+            })
+          : drawn.map((p) => ({
+              x: (p.x as number) + 6,
+              y: (p.y as number) + 4,
+              floor: p.floor ?? 0,
+              t: Number((p.t / 3600).toFixed(3)),
+              conf: p.pos_conf,
+              fidelity: p.fidelity,
+              altRel: (p.floor ?? 0) * 3.2,
+            }));
 
       const quotes: Quote[] = bLayer.quotes.map((q, qi) => {
         const todHours = Number((q.tod / 3600).toFixed(3));
@@ -609,6 +612,20 @@ export class BackendBridge {
         d === 'same' ? 'unchanged (304)' : d.learning.calibrated ? `${d.learning.clicks.t.length} clicks, ${d.learning.fits.length} fits` : 'not calibrated'
     );
     return result;
+  }
+
+  /** A recorded moment of a vault day (meta, transcript, scene, camera path), or null offline. */
+  moment(date: string, id: string) {
+    return this.read(
+      `/api/moment/${id}?date=${date}`,
+      () => this.client.moment(date, id),
+      (m) => `${m.transcript.segments.length} transcript segments${m.camera ? `, ${m.camera.points.length} camera points` : ''}`
+    );
+  }
+
+  /** The URL of a file in a vault day (a moment's keyframes, audio or video). */
+  assetUrl(date: string, path: string): string {
+    return this.client.assetUrl(date, path);
   }
 
   /** The day's knowledge base (notes, links, local graph), or null when it cannot be loaded. */

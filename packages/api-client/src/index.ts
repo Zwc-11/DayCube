@@ -21,6 +21,13 @@ export interface DaySummary {
   date: string; stats: Day['stats']; kinds?: string[]; capture?: boolean; records?: number | null;
 }
 
+/** A capture's camera path (``camera.json`` of a phone scan): ARKit positions and, when placed on
+ *  the map, latitude, longitude and the compass heading the camera looked along. */
+export interface MomentCamera {
+  fit: { offset_s: number; rmse_m: number; rotation_deg: number } | null;
+  points: { t: number; xyz: [number, number, number]; lat?: number; lon?: number; heading_deg?: number }[];
+}
+
 export interface ClientOptions {
   baseUrl?: string;
   token?: () => string;
@@ -126,7 +133,11 @@ export class DaycubeClient {
   }
   async moment(date: string, id: string) {
     const data = await this.request(`/moment/${encodeURIComponent(id)}?date=${encodeURIComponent(date)}`) as Record<string, unknown>;
-    return { meta: momentSchema.parse(data.meta), transcript: transcriptSchema.parse(data.transcript), scene: data.scene };
+    return {
+      meta: momentSchema.parse(data.meta), transcript: transcriptSchema.parse(data.transcript),
+      scene: (data.scene ?? {}) as Record<string, unknown>,
+      camera: (data.camera ?? null) as MomentCamera | null,
+    };
   }
   /** `date: null` searches every day in the vault. */
   async ask(date: string | null, question: string, signal?: AbortSignal): Promise<AskResult> {

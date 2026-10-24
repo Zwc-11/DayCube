@@ -35,7 +35,7 @@ export const layerSchema = z.object({
   index: z.number().int().nonnegative(), placeId: z.string(), name: z.string(),
   kind: z.enum(['house', 'cafe', 'venue', 'outdoor']), t0: z.number(), t1: z.number(),
   floors: z.array(z.number().int()), floorHeight: z.number().positive(),
-  frame: z.object({ lat: z.number().nullable(), lon: z.number().nullable(), axisDeg: z.number(), size: z.tuple([z.number(), z.number()]) }),
+  frame: z.object({ lat: z.number().nullable(), lon: z.number().nullable(), axisDeg: z.number(), size: z.tuple([z.number(), z.number()]), scale: z.number().positive().optional() }),
   geometry: z.object({ fidelity: z.enum(['known', 'estimated', 'illustrative']), footprint: z.array(z.tuple([z.number(), z.number()])), levels: z.array(z.unknown()) }),
   path: z.array(z.object({ t: z.number(), x: z.number().nullable(), y: z.number().nullable(), floor: z.number().nullable(), pos_conf: z.number(), fidelity: z.enum(['known', 'estimated', 'illustrative']) })),
   events: z.array(pinSchema),
