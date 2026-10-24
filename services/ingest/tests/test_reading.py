@@ -5,11 +5,43 @@ from collections.abc import Iterable, Iterator
 
 import pytest
 from capture import attention as attention_module
+from capture import reading as reading_module
 from capture.attention import Attention
 from capture.reading import OFF, LineBox, PageReader, Visit
 
 LEFT, WIDTH, PITCH, HEIGHT = 644.0, 745.0, 28.8, 20.0
 VIEW = (0.0, 1040.0, 2048.0)  # viewport top, bottom (page px) and width
+
+
+def test_geometry_densities_are_shared_only_within_one_fixation(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[float, float, float, float]] = []
+    inside = reading_module._inside
+
+    def counted(v: float, lo: float, size: float, sigma: float) -> float:
+        calls.append((v, lo, size, sigma))
+        return inside(v, lo, size, sigma)
+
+    monkeypatch.setattr(reading_module, "_inside", counted)
+    r = PageReader("synthetic", 20, 40)
+    for column in range(2):
+        r.set_block(str(column), [LineBox(100 + column * 700, 40 + i * 24, 600, 18, "Synthetic") for i in range(3)])
+    first = r.update(250, 60, 0, VIEW)
+    # Two distinct horizontal extents, three shared vertical bands, 31 offset hypotheses.
+    assert len(calls) == 2 + 3 * len(r.offsets)
+    calls.clear()
+    r.update(310, 90, 0.3, VIEW)
+    vertical = [call for call in calls if call[-1] == r.sigma]
+    transitions = [call for call in calls if call[-1] == r.sigma * reading_module.SQRT2]
+    assert len(vertical) == 3 * len(r.offsets)
+    assert len(transitions) == 3  # two stay boxes and one return-sweep box, shared across lines
+    assert vertical[0][0] == 90 - r.offsets[0]  # the new y was scored, not a retained old result
+    calls.clear()
+    r.set_block("1", [LineBox(800, 400, 350, 18, "Remeasured")])
+    changed = r.update(900, 410, 1, VIEW)
+    vertical = [call for call in calls if call[-1] == r.sigma]
+    assert len(vertical) == 4 * len(r.offsets)
+    assert any(call[2] == 350 and call[-1] == r.sigma_x for call in calls)
+    assert first != changed and ("1", 1) not in changed
 
 
 def test_line_reader_follows_layout_eviction_and_releases_on_pause(monkeypatch: pytest.MonkeyPatch) -> None:

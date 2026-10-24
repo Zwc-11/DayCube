@@ -223,3 +223,11 @@ index jobs and checks failure/rewrite races. Its reports include regressions and
 Production viewer profiles identify SwiftShader; they do not establish real-GPU performance or
 DeepInfer parity. Earlier measurements below retain their original scope and provenance.
 
+## Final algorithm pass, 2026-10-24
+
+The [algorithm follow-up](algorithm-review-2026-10-24.md) profiles history pause filtering and
+reading geometry calculations. On named synthetic fixtures, history import median fell from
+470 to 242 ms and aligned two-column decoding from 343 to 286 ms, with identical output hashes.
+Single-column decoding was essentially unchanged. The report records CPU, sampled tails, memory,
+reference/source revisions and remaining limits; these are not camera-FPS or DeepInfer parity claims.
+
