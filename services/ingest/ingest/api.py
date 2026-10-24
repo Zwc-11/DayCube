@@ -30,7 +30,7 @@ from .contracts import ContractError
 from .generated.event import Event
 from .index.embed import Embedder, default_embedder
 from .notes.read import DayNotes, attach_notes, read_note
-from .store import LifeStore
+from .store import EmbeddingModelChanged, LifeStore
 from .time import instant
 from .vault import Record, Vault, read_json
 
@@ -136,6 +136,10 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
     @app.exception_handler(ValueError)
     async def invalid(request: Request, error: ValueError) -> JSONResponse:
         return JSONResponse(status_code=400, content={"detail": str(error)})
+
+    @app.exception_handler(EmbeddingModelChanged)
+    async def model_changed(request: Request, error: EmbeddingModelChanged) -> JSONResponse:
+        return JSONResponse(status_code=503, content={"detail": str(error)})
 
     @app.exception_handler(ContractError)
     async def contract_error(request: Request, error: ContractError) -> JSONResponse:

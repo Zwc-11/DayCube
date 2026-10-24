@@ -84,8 +84,40 @@ Further profiling is needed for long viewer sessions, GPU use, startup cost of t
 Three.js chunk, 2D redraw allocations, freshness scans over years of days and secondary metadata
 caches. Concurrent indexing, failed live mutations and optional model jobs also need testing.
 
-Local validation: 148 core tests, 33 gaze tests, 4 contract tests, 9 transport tests,
+Original review validation: 148 core tests, 33 gaze tests, 4 contract tests, 9 transport tests,
 6 extension library tests, 11 viewer browser tests, 2 API browser tests and 2 reporter browser
 tests passed (215 total). Ruff, TypeScript, schema generation consistency, receiver package
 archive checks and the production build passed. These are local Windows results; remote CI
-results have not been verified.
+results were not verified in that pass.
+
+## PR correctness follow-up, 2026-10-24
+
+The follow-up starts from `07b07bcd13cc41c53baae7bf38deb9556c24cd33`. It addresses the two
+open retrieval findings on PR #1 and the Windows failure on PR #3. PR #2 has no unresolved
+inline findings. The fixes are carried by PR #3; merged history is unchanged.
+
+- Retrieval now owns one WAL read transaction for keyword hits, vectors, filters, listings,
+  notes and evidence rows. Helpers borrow that connection without closing it. A concurrent
+  day replacement cannot discard the search's hits or mix old IDs with new rows. Source
+  files are still checked separately, so a changed or deleted note is dropped and resynced.
+- Each read snapshot checks the database's embedding model and dimension. An existing reader
+  finishes with the model in its snapshot; subsequent incompatible requests fail with HTTP 503
+  and restart/reindex instructions. Vector reuse is checked in a read snapshot, and the final
+  write checks again under its write transaction, so a model switch during embedding cannot
+  publish old-model vectors into the new index. A newly configured indexer can still perform
+  the explicit model migration supported before this change.
+- The screen-capture tests read JSONL with explicit UTF-8 and close the stream. Windows CI
+  previously failed on a non-ASCII window title because the test helper used CP1252 by default
+  (run `40118693043`, job `120945334353`); the recorded log data itself was already UTF-8.
+
+Local `npm run check` passed: 263 core tests, 111 gaze tests, 4 contract tests, 9 transport tests
+and 10 extension library tests, plus Ruff, schema consistency, TypeScript and the viewer build.
+Eleven new regressions cover interleaved writes at keyword/vector/listing boundaries, model
+changes with equal and unequal dimensions, switching models during rescoring and embedding,
+both `/ask` transports, and note edits while a read snapshot is open. CI results are attached to
+[PR #3](https://github.com/Zwc-11/DayCube/pull/3/checks).
+
+This is a correctness change. The earlier search timings above predate it; no new speedup is
+claimed. Model inference may keep a read snapshot open, retaining WAL history until the request
+finishes. Long-running inference and multiwriter load still need latency and WAL-size profiling.
+The ledger refresh covers only the changed paths, not all files added by intervening capture work.
