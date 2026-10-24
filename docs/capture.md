@@ -483,7 +483,16 @@ et al., CHI 2016) reached 2.56 degrees from everyday clicks and typing alone.
    regression is refitted toward the clicks starting from the calibrated weights (the ridge
    penalty pulls toward them rather than toward zero), with newer clicks weighted more (half-life
    a week) and clicks still far off after a first fit weighted less (Huber, two rounds).
-4. **A change is kept only if it is better.** Every 20 usable clicks, the newest clicks the model in
+4. **The head's place, distance and turn as inputs too.** The geometry carries the head's pose
+   to the screen, but rests on assumptions (the webcam's field of view, the screen centred under
+   it, the eyeball's depth) that are slightly off for any one desk, and the error they leave
+   changes as the head moves. From 60 usable clicks on, each eye's regression also takes where the
+   head is against where it was over the first clicks (right, down, and nearer or farther, in cm)
+   and how it is turned (pitch, yaw, roll, in tenths of a radian), with weights pulled toward zero,
+   so a part of the error that follows the head is learned too. On synthetic faces seen through a
+   webcam of 50 degrees assumed to be 65 (`tests/test_learn.py`), the calibration alone was 79 px
+   off, learning the eye terms alone 71 px, with the head terms 15 px.
+5. **A change is kept only if it is better.** Every 20 usable clicks, the newest clicks the model in
    use has not learned from (at least 10, and at least a fifth of all) are held out. Candidates
    for 8 penalty strengths are fitted on the rest and judged by their median error in pixels on
    the held-out clicks. The best is refitted on all clicks and replaces the model only if it beats
@@ -510,21 +519,25 @@ head-aware model with the assumed webcam and screen); then every image of the fo
 point. Each image is predicted before it is learned from, so every error is on an image the model
 had not seen, as in use. Median error on screen:
 
-| clicks so far | calibration alone | learning from clicks |
-| --- | --- | --- |
-| 0-100 | 40 mm | 39 mm |
-| 100-300 | 41 mm | 34 mm |
-| 300-1,000 | 47 mm | 33 mm |
-| 1,000+ | 47 mm | 34 mm |
-| all after the first 100 | 45 mm (194 px on a 27" 2560-px monitor) | **33 mm (139 px)** |
-| 90th percentile | 104 mm | 74 mm |
+| | calibration alone | learning, eye terms only | learning, eye and head terms |
+| --- | --- | --- | --- |
+| clicks so far 0-100 | 40 mm | 39 mm | 39 mm |
+| 100-300 | 41 mm | 34 mm | 34 mm |
+| 300-1,000 | 47 mm | 33 mm | 31 mm |
+| 1,000+ | 47 mm | 34 mm | 35 mm |
+| head 0-2 cm from calibration | 37 mm | 29 mm | 27 mm |
+| head 2-4 cm away | 38 mm | 28 mm | 28 mm |
+| head 4-8 cm away | 41 mm | 29 mm | 28 mm |
+| head 8+ cm away | 53 mm | 38 mm | 35 mm |
+| all after the first 100 | 45 mm (194 px on a 27" 2560-px monitor) | 33 mm (139 px) | **31 mm (133 px)** |
+| 90th percentile | 104 mm | 74 mm | 69 mm |
 
 All 15 people were more accurate, the largest gains where the calibration was worst (91 to 35 mm,
-55 to 33 mm). With clicks of 40 mm label noise and 40% made while looking elsewhere: 45 to 35 mm,
-14 of 15 better, none worse by 2%. With every click made at a random point (nothing to learn):
-no update was taken for anyone, and the error stayed 45 mm. With exact labels: 45 to 32 mm. The
-calibration alone grows worse over the days (40 to 47 mm) as people sit differently; the learned
-model gets better. These are single laptop-webcam images, noisier than fixations at a desk; the
+101 to 70 mm, 74 to 42 mm with the head terms). With clicks of 40 mm label noise and 40% made while
+looking elsewhere: 45 to 35 mm, 14 of 15 better, none worse by 2%. With every click made at a
+random point (nothing to learn): no update was taken for anyone, and the error stayed 45 mm. With
+exact labels: 45 to 30 mm. The calibration alone grows worse over the days (40 to 47 mm) and as
+the head moves from where it was (37 to 53 mm); the learned model gets better. These are single laptop-webcam images, noisier than fixations at a desk; the
 comparison is what carries over.
 
 ## Which line you are reading

@@ -234,6 +234,11 @@ class GazeModel:
     alphas: tuple[float, ...] = tuple(np.logspace(-4, 2, 13))
     eyes: list = field(default_factory=list)  # per eye: (mean, sd, weights)
     alpha: list = field(default_factory=list)
+    # Learned from clicks (gaze.learn): the head pose the head terms are measured from. With it,
+    # each eye's weights may carry six more rows after the eye measurements' (head position in cm
+    # and rotation in tenths of a radian from this pose), for what the head's place and turn do to
+    # the error that the geometry does not model.
+    pose_ref: tuple[np.ndarray, np.ndarray] | None = None
 
     def required(self, heads: list[Head], targets_px: np.ndarray) -> np.ndarray:
         """(n, 2, 2): the direction (x, y components, head frame) each eye needed to look at each
@@ -268,20 +273,25 @@ class GazeModel:
             stack = self._stack = (eyes, (mean, sd, weights))
         return stack[1]
 
-    def directions_of(self, R: np.ndarray, F: np.ndarray) -> np.ndarray:
+    def directions_of(self, R: np.ndarray, F: np.ndarray, eyes: np.ndarray | None = None) -> np.ndarray:
         """(n, 2, 3): each eye's gaze direction in camera coordinates, from head rotations
-        (n, 3, 3) and eye measurements (n, 2, k)."""
+        (n, 3, 3), eye measurements (n, 2, k) and, for weights with head terms, the eyeball
+        centres (n, 2, 3)."""
         mean, sd, weights = self._stacked()
+        k = F.shape[-1]
         Z = (F - mean) / sd
         # Both eyes are one matrix batch; keep the per-eye dot products and output ownership.
-        xy = (Z.transpose(1, 0, 2) @ weights[:, 1:] + weights[:, None, 0]).transpose(1, 0, 2)
+        xy = (Z.transpose(1, 0, 2) @ weights[:, 1 : 1 + k] + weights[:, None, 0]).transpose(1, 0, 2)
+        if weights.shape[1] > 1 + k and eyes is not None and self.pose_ref is not None:
+            P = pose_terms(R, eyes, self.pose_ref)  # (n, 6)
+            xy = xy + np.einsum("nj,ejc->nec", P, weights[:, 1 + k :])
         return np.matmul(directions(xy), R.transpose(0, 2, 1))
 
     def predict_arrays(self, R: np.ndarray, eyes: np.ndarray, F: np.ndarray) -> np.ndarray:
         """Screen pixels (n, 2) from head rotations, eyeball centres (n, 2, 3) and eye measurements:
         each eye's ray met with the screen, the two points averaged (one eye alone when the other's
         ray misses the screen, nan when both do)."""
-        rays = self.directions_of(R, F)
+        rays = self.directions_of(R, F, eyes)
         s = self.screen
         n = s.normal
         with np.errstate(divide="ignore", invalid="ignore"):
@@ -295,7 +305,9 @@ class GazeModel:
 
     def direction(self, heads: list[Head]) -> np.ndarray:
         """(n, 2, 3): each eye's gaze direction in camera coordinates."""
-        return self.directions_of(np.array([h.R for h in heads]), np.array([h.features for h in heads]))
+        return self.directions_of(
+            np.array([h.R for h in heads]), np.array([h.features for h in heads]), np.array([h.eyes for h in heads])
+        )
 
     def predict(self, heads: list[Head]) -> np.ndarray:
         return self.predict_arrays(
@@ -308,14 +320,30 @@ class GazeModel:
             "screen": {"origin": s.origin.tolist(), "ex": s.ex.tolist(), "ey": s.ey.tolist(), "mm_per_px": s.mm_per_px},
             "eyes": [{"mean": m.tolist(), "sd": sd.tolist(), "weights": w.tolist()} for m, sd, w in self.eyes],
             "alpha": self.alpha,
-        }
+        } | ({"pose_ref": {"R": self.pose_ref[0].tolist(), "p": self.pose_ref[1].tolist()}} if self.pose_ref else {})
 
     @classmethod
     def from_json(cls, data: dict) -> GazeModel:
         s = data["screen"]
         screen = Screen(np.array(s["origin"]), np.array(s["ex"]), np.array(s["ey"]), float(s["mm_per_px"]))
         eyes = [(np.array(e["mean"]), np.array(e["sd"]), np.array(e["weights"])) for e in data["eyes"]]
-        return cls(screen, eyes=eyes, alpha=list(data.get("alpha", [])))
+        ref = data.get("pose_ref")
+        pose_ref = (np.array(ref["R"]), np.array(ref["p"])) if ref else None
+        return cls(screen, eyes=eyes, alpha=list(data.get("alpha", [])), pose_ref=pose_ref)
+
+
+POSE_TERMS = 6
+
+
+def pose_terms(R: np.ndarray, eyes: np.ndarray, ref: tuple[np.ndarray, np.ndarray]) -> np.ndarray:
+    """(n, 6): where the head is against ``ref`` (the eyes' midpoint, cm: right, down, away from the
+    camera) and how it is turned (rotation from ``ref`` as a small-angle vector, tenths of a
+    radian, about 5.7 degrees: pitch, yaw, roll)."""
+    R0, p0 = ref
+    moved = (eyes.mean(1) - p0) / 10.0
+    rel = np.einsum("ji,njk->nik", R0, R)  # R0.T @ R
+    turned = 0.5 * np.stack([rel[:, 2, 1] - rel[:, 1, 2], rel[:, 0, 2] - rel[:, 2, 0], rel[:, 1, 0] - rel[:, 0, 1]], -1)
+    return np.concatenate([moved, turned * 10.0], -1)
 
 
 # A frame travels through the tracker and calibration as one flat vector, like EyeTrax features:

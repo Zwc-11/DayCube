@@ -129,6 +129,7 @@ def _learning(gaze: dict) -> list[tuple[str, str, str]]:
         when = (learning.get("updated") or "")[11:16]
         detail = (
             f"from clicks: update {version}" + (f" at {when} UTC" if when else "")
+            + (" (eyes, and the head's place, distance and turn)" if learning.get("head_terms") else "")
             + f"; on clicks it had not seen, {errors.get('calibration')} px with the calibration alone, "
             f"{errors.get('learned') if fit.get('accepted') else errors.get('in_use')} px now; {counted}"
         )  # fmt: skip

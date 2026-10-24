@@ -54,7 +54,7 @@ from typing import Any
 
 import numpy as np
 
-from .head import GazeModel, unpack
+from .head import POSE_TERMS, GazeModel, pose_terms, unpack
 
 log = logging.getLogger("gaze.learn")
 LOOK_BEFORE_S = 0.5  # the steady look must end within this long before the click
@@ -74,6 +74,8 @@ HALF_LIFE_S = 7 * 86400.0
 PENALTIES = (0.3, 1.0, 3.0, 10.0, 30.0, 100.0, 300.0, 1000.0)
 INTERCEPT_PENALTY = 0.1  # the eye's resting direction may move more freely than its gains
 MAX_CLICKS = 3000  # kept in memory and in the file: the newest
+POSE_MIN_CLICKS = 60  # clicks a fit needs before it also learns what the head's place and turn do
+POSE_PENALTY = 1.0  # the head terms' ridge penalty, relative to the eye terms' (per cm, per 0.1 rad)
 BUFFER_S = 1.0
 CLICKS_FILE = "clicks.jsonl"
 LEARNED_FILE = "gaze-learned.json"
@@ -131,6 +133,7 @@ class Learner:
         refit_every: int = REFIT_EVERY,
         min_clicks: int = MIN_CLICKS,
         background: bool = False,
+        head_terms: bool = True,
     ) -> None:
         self.estimator = estimator
         self.width, self.height = float(monitor[0]), float(monitor[1])
@@ -141,6 +144,8 @@ class Learner:
         self.folder, self.calibration = folder, calibration
         self.refit_every, self.min_clicks = refit_every, min_clicks
         self.prior = [(m.copy(), sd.copy(), w.copy()) for m, sd, w in estimator.model.eyes]  # the calibration's
+        self.head_terms = head_terms
+        self.pose_ref: tuple[np.ndarray, np.ndarray] | None = estimator.model.pose_ref
         self.frames: deque[tuple[float, np.ndarray, float, float]] = deque()
         self.clicks: list[Click] = []
         self.skipped = {"no steady look": 0, "not looking": 0, "off the monitor": 0}
@@ -243,7 +248,7 @@ class Learner:
         """Each click's distance (monitor pixels) from the gaze a model with these eye weights
         predicts for its look; inf where the gaze misses the screen."""
         X = np.array([c.X for c in clicks])
-        model = GazeModel(self.estimator.model.screen, eyes=eyes)
+        model = GazeModel(self.estimator.model.screen, eyes=eyes, pose_ref=self.pose_ref)
         p = model.predict_arrays(
             X[:, :9].reshape(-1, 3, 3), X[:, 12:18].reshape(-1, 2, 3), X[:, 18:].reshape(len(X), 2, -1)
         )
@@ -256,9 +261,17 @@ class Learner:
         targets = np.array([[c.x, c.y] for c in clicks])
         wanted = self.estimator.model.required(heads, targets)  # (n, 2 eyes, 2)
         F = np.array([h.features for h in heads])  # (n, 2, k)
+        pose = None
+        if self.head_terms and len(clicks) >= POSE_MIN_CLICKS:
+            R = np.array([h.R for h in heads])
+            centres = np.array([h.eyes for h in heads])
+            if self.pose_ref is None:  # measured from where the head was over the first clicks, then kept
+                u, _, vt = np.linalg.svd(R.mean(0))
+                self.pose_ref = (u @ vt, centres.mean(1).mean(0))
+            pose = pose_terms(R, centres, self.pose_ref)
         age = now - np.array([c.t for c in clicks])
         weight = 0.5 ** (np.maximum(age, 0.0) / HALF_LIFE_S)
-        eyes = self._weighted(F, wanted, weight, penalty)
+        eyes = self._weighted(F, pose, wanted, weight, penalty)
         for _ in range(2):  # Huber: clicks still far off after a fit count less in the next
             e = self.errors(clicks, eyes)
             finite = e[np.isfinite(e)]
@@ -266,16 +279,27 @@ class Learner:
                 break
             c = 1.5 * max(float(np.median(finite)), 1.0)
             robust = np.where(np.isfinite(e), np.minimum(1.0, c / np.maximum(e, 1e-9)), 0.0)
-            eyes = self._weighted(F, wanted, weight * robust, penalty)
+            eyes = self._weighted(F, pose, wanted, weight * robust, penalty)
         return eyes
 
-    def _weighted(self, F: np.ndarray, wanted: np.ndarray, weight: np.ndarray, penalty: float) -> list:
+    def _weighted(
+        self, F: np.ndarray, pose: np.ndarray | None, wanted: np.ndarray, weight: np.ndarray, penalty: float
+    ) -> list:
+        """Each eye's weights: the eye terms pulled toward the calibration's, the head terms (when
+        ``pose`` is given) toward zero, since the calibration, made with the head still, has none."""
         eyes = []
         for e, (mean, sd, W0) in enumerate(self.prior):
-            Z = np.hstack([np.ones((len(F), 1)), (F[:, e] - mean) / sd])
-            P = penalty * np.diag([INTERCEPT_PENALTY] + [1.0] * (Z.shape[1] - 1))
+            columns = [np.ones((len(F), 1)), (F[:, e] - mean) / sd]
+            shrink = [INTERCEPT_PENALTY] + [1.0] * F.shape[-1]
+            prior = W0
+            if pose is not None:
+                columns.append(pose)
+                shrink += [POSE_PENALTY] * POSE_TERMS
+                prior = np.vstack([W0, np.zeros((POSE_TERMS, W0.shape[1]))])
+            Z = np.hstack(columns)
+            P = penalty * np.diag(shrink)
             A = Z.T @ (weight[:, None] * Z) + P
-            B = Z.T @ (weight[:, None] * wanted[:, e]) + P @ W0
+            B = Z.T @ (weight[:, None] * wanted[:, e]) + P @ prior
             eyes.append((mean, sd, np.linalg.solve(A, B)))
         return eyes
 
@@ -311,7 +335,9 @@ class Learner:
                          "learned": round(best_error, 1), "fixed_guess": round(guess, 1)},
         }  # fmt: skip
         if accepted:
-            self.estimator.model.eyes = self.solve(clicks, best, now)
+            eyes = self.solve(clicks, best, now)
+            self.estimator.model.pose_ref = self.pose_ref  # set once, before any weights that use it
+            self.estimator.model.eyes = eyes
             self.learned_until = clicks[-1].t
             self.version += 1
             self.updated = datetime.fromtimestamp(now, UTC).isoformat()
@@ -323,8 +349,11 @@ class Learner:
     def state(self) -> dict:
         clicks = self.snapshot()
         recent = [c.error_px for c in clicks[-50:] if math.isfinite(c.error_px)]
+        eyes = self.estimator.model.eyes
         return {
             "version": self.version,
+            # Whether the model in use learned what the head's place, distance and turn do too.
+            "head_terms": bool(eyes) and eyes[0][2].shape[0] > 1 + len(eyes[0][0]),
             "clicks": len(clicks),
             "skipped": dict(self.skipped),
             "recent_error_px": round(float(np.median(recent)), 1) if recent else None,
@@ -347,6 +376,7 @@ class Learner:
         data = {
             "calibration": self.calibration, "version": self.version, "t": self.updated, "fit": self.fit,
             "learned_until": self.learned_until,
+            "pose_ref": None if self.pose_ref is None else {"R": self.pose_ref[0].tolist(), "p": self.pose_ref[1].tolist()},
             "eyes": [{"mean": m.tolist(), "sd": sd.tolist(), "weights": w.tolist()} for m, sd, w in self.estimator.model.eyes],
         }  # fmt: skip
         path = self.folder / LEARNED_FILE
@@ -382,8 +412,15 @@ class Learner:
         if data.get("calibration") != self.calibration or len(data.get("eyes", [])) != len(self.prior):
             return  # learned for another calibration
         eyes = [(np.array(e["mean"]), np.array(e["sd"]), np.array(e["weights"])) for e in data["eyes"]]
-        if any(w.shape != p[2].shape for (_, _, w), p in zip(eyes, self.prior, strict=True)):
+        ref = data.get("pose_ref")
+        extra = POSE_TERMS if ref else 0
+        if any(
+            w.shape != (p[2].shape[0] + extra, p[2].shape[1]) for (_, _, w), p in zip(eyes, self.prior, strict=True)
+        ):
             return
+        if ref:
+            self.pose_ref = (np.array(ref["R"]), np.array(ref["p"]))
+            self.estimator.model.pose_ref = self.pose_ref
         self.estimator.model.eyes = eyes
         self.version, self.updated, self.fit = int(data.get("version", 1)), data.get("t"), data.get("fit")
         self.learned_until = float(data.get("learned_until", -math.inf))
