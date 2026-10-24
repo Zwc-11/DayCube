@@ -6,8 +6,8 @@ from types import SimpleNamespace
 
 import cv2
 import pytest
-from eyetrax.utils import video
 from gaze import calibrate, system, track
+from gaze import camera as camera_module
 
 
 def test_calibration_uses_fresh_frames_and_releases_on_cancel(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -15,7 +15,8 @@ def test_calibration_uses_fresh_frames_and_releases_on_cancel(monkeypatch: pytes
     camera = SimpleNamespace(release=lambda: events.append("release"))
     monkeypatch.setattr(system, "primary_monitor", lambda: (1920, 1080))
     monkeypatch.setattr(system, "monitor_mm_per_px", lambda: (0.277, "test"))
-    monkeypatch.setattr(video, "open_camera", lambda index: events.append(index) or camera)
+    monkeypatch.setattr(camera_module, "open_camera", lambda index, mode: events.append(index) or camera)
+    monkeypatch.setattr(camera_module, "probe", lambda *args, **kwargs: pytest.fail("no webcam probing in tests"))
 
     def latest(opener: Callable[[], object]) -> object:
         events.append("latest")
@@ -38,5 +39,5 @@ def test_calibration_uses_fresh_frames_and_releases_on_cancel(monkeypatch: pytes
 
     monkeypatch.setattr(calibrate, "Session", Session)
     with pytest.raises(calibrate.Aborted):
-        calibrate.calibrate(tmp_path, camera=2)
+        calibrate.calibrate(tmp_path, camera=2, fps=30)
     assert events == ["latest", 2, "release", "landmarkers closed", "windows closed"]

@@ -71,6 +71,7 @@ TEXT_CACHE = 20_000
 LAYOUT_CACHE = 5_000
 VISIT_GAP_S = 10.0  # a block visit ends after this long without a fixation decoded on the page
 NOTHING = ""  # the "on no text block" state; block ids are never empty
+SCREEN = "scr-"  # docs of windows read from the screen (screen.py), not browser pages
 DEFAULT_ERROR_PX = 90.0  # a typical webcam calibration, when the tracker has not said
 SQRT2 = math.sqrt(2)
 
@@ -101,6 +102,13 @@ class Front:
     blocks_scroll: float  # scroll position when the blocks were measured
     seen: datetime
     window: int | None = None  # the browser window showing it
+    # A window read from the screen (screen.py) that the eyes left at this time. Fixations arrive
+    # about a second after they end, so it still takes the ones from before, until ``advance``.
+    gone: datetime | None = None
+
+    @property
+    def screen(self) -> bool:
+        return self.doc.startswith(SCREEN)
 
 
 # Why a fixation was or was not placed on a page, for /status and the doctor.
@@ -181,6 +189,7 @@ class Attention:
         self.focused: int | None = None  # the focused browser window; None when another app has focus
         self.monitor: tuple[int, int] | None = None
         self.calibrated_px: float | None = None
+        self.model_version: int | None = None  # the tracker's model learned from clicks
         self.run: Run | None = None
         self.away: datetime | None = None  # when the eyes left the run's block
         self.challenger: Run | None = None  # the block leading while the eyes are away from the run's
@@ -207,6 +216,9 @@ class Attention:
         kind = getattr(record, "kind", None)
         if isinstance(record, View) and record.hidden:
             old = self.fronts.get(record.window)
+            if old is not None and old.doc == record.doc and old.screen:
+                old.gone = record.t  # left by ``advance`` once the fixations from before it arrived
+                return []
             return self._leave(old) if old is not None and old.doc == record.doc else []
         if isinstance(record, Blocks | View):
             old = self.fronts.get(record.window)
@@ -288,10 +300,16 @@ class Attention:
         return self.end() + self.end_visit()
 
     def gaze_state(self, state: GazeState) -> None:
-        """The tracker's report: which monitor it is calibrated on and how well."""
+        """The tracker's report: which monitor it is calibrated on and how well, and which version
+        of the model it learned from clicks (a new one makes the click offsets start over)."""
         self.gaze_monitor(state.monitor)
         self.calibrated_px = state.error_px
         self.anchors.set_monitor(self.monitor, state.error_px)
+        version = (state.learning or {}).get("version")
+        if isinstance(version, int):
+            if self.model_version is not None and version != self.model_version:
+                self.anchors.restart()
+            self.model_version = version
 
     def gaze_monitor(self, monitor: list[int] | None) -> None:
         self.monitor = (monitor[0], monitor[1]) if monitor else None
@@ -355,7 +373,10 @@ class Attention:
         monitor = self.monitor
         if not self.fronts or monitor is None:
             return None, NO_PAGE
-        fresh = [f for f in self.fronts.values() if abs((fixation.t - f.seen).total_seconds()) <= self.view_ttl_s]
+        fresh = [
+            f for f in self.fronts.values()
+            if abs((fixation.t - f.seen).total_seconds()) <= self.view_ttl_s and (f.gone is None or fixation.t < f.gone)
+        ]  # fmt: skip
         if not fresh:
             return None, STALE
         dx, dy = self.anchors.offset(fixation.x, fixation.y, fixation.t.timestamp())
@@ -367,7 +388,9 @@ class Attention:
             x = ((fixation.x - dx) * g.screen_w - g.vx) / g.scale
             y = ((fixation.y - dy) * g.screen_h - g.vy) / g.scale
             inside = 0 <= x <= g.inner_w and 0 <= y <= g.inner_h
-            key = (inside, front.window == self.focused, front is self.front, front.seen)
+            # A window read from the screen is there only while it was under the eyes, so it was in
+            # front of any browser page beneath; otherwise the focused window's page wins.
+            key = (inside, inside and front.screen, front.window == self.focused, front is self.front, front.seen)
             if rank is None or key > rank:
                 best, rank = (front, x, y), key
         if best is None:
@@ -634,6 +657,8 @@ class Attention:
         the screen, face lost). Gaze elsewhere on the screen is ``excursion_s``'s business."""
         last = self.last_end if self.last_end is not None else (self.run.t1 if self.run else None)
         out = []
+        for front in [f for f in self.fronts.values() if f.gone is not None and f.gone <= now]:
+            out += self._leave(front)
         if self.run is not None and last is not None and (now - last).total_seconds() > self.max_gap_s:
             out += self.end()
         if self.visit is not None and now.timestamp() - self.visit.t1 > VISIT_GAP_S:

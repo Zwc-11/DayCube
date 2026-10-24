@@ -1,3 +1,3 @@
-from .db import FILE_NAME, LifeStore
+from .db import FILE_NAME, EmbeddingModelChanged, LifeStore
 
-__all__ = ["FILE_NAME", "LifeStore"]
+__all__ = ["FILE_NAME", "EmbeddingModelChanged", "LifeStore"]

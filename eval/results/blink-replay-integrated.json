@@ -1,0 +1,88 @@
+{
+  "environment": {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.9",
+    "cpu": "AMD64 Family 26 Model 68 Stepping 0, AuthenticAMD",
+    "numpy": "1.26.4"
+  },
+  "before_revision": "2cd4811963f2bb855765a407ebc112859455ea45",
+  "after_base_revision": "2f45246fc07f0af9f96678775c92cf0959383702",
+  "before_source_hashes": {
+    "services/gaze/gaze/__init__.py": "7213c512f3bcdc775096b618c534dd5a57ab560c28b3977d01afd00c2af7b415",
+    "services/gaze/gaze/face.py": "2dd154e94bf93f40eb065aba66c6f39147dc1421b76239d5d6d1f7f17de38fa6",
+    "services/gaze/gaze/head.py": "309b11545458b560e0f6b7d5fa1af7bb9dfa379c6341d93047ca33c5aa249c09",
+    "services/gaze/gaze/fixations.py": "600d52cd72927212438cbf134d65a0135028791c91d8355491925b8ce9ec7f07",
+    "services/gaze/gaze/track.py": "07bcecaeef808e418954255d80c52703483b0e6661657c27efa7f73f03853612",
+    "services/gaze/gaze/receiver.py": "609af758bd8930151fdccdc0901bd22da775e606c186d582e8fd642faec97ab0",
+    "services/gaze/gaze/system.py": "1fe69395388069bad4fab02a6614b21e84e34cc0002c1f8330c1e2db27089e06"
+  },
+  "after_source_hashes": {
+    "services/gaze/gaze/__init__.py": "7213c512f3bcdc775096b618c534dd5a57ab560c28b3977d01afd00c2af7b415",
+    "services/gaze/gaze/face.py": "2dd154e94bf93f40eb065aba66c6f39147dc1421b76239d5d6d1f7f17de38fa6",
+    "services/gaze/gaze/head.py": "09bf700727a08642d44f3b2f74bcc0441cff04a7a0ed3fb7d0e5df99c501e311",
+    "services/gaze/gaze/fixations.py": "6f06b46faa394aff0c89f9507db58f6c8a0204079ed8cc895b4da1d8c7945e7c",
+    "services/gaze/gaze/track.py": "f69abe4d6cbbd02343b4e380c3450325eed7e76930d941e35735901c26b95f11",
+    "services/gaze/gaze/receiver.py": "bf10bf0c51bc45c644d9cfe5295b7f5243280c05d926552181d9a215f00a5632",
+    "services/gaze/gaze/system.py": "1fe69395388069bad4fab02a6614b21e84e34cc0002c1f8330c1e2db27089e06",
+    "services/gaze/gaze/camera.py": "aa8927885d5ccdddc64340f1a507b6049dccd1e2690dc00c953943e742a5c844",
+    "services/gaze/gaze/overlay.py": "2781d01a7c5e1908957998b3f5eb15010a6f55a0439567de73b9c8c378aca049"
+  },
+  "common_fixture_hashes": {
+    "eval/blink_replay.py": "fb9c1fb341751c98d68f4047d96ccdaac00f15ef62ab5da6acbf0419c3097899",
+    "services/gaze/tests/test_blinks.py": "be8c787dd3402e5007a4c360cb2ac61be6ff86297510d8cf10ea9e882c3adf9c",
+    "services/gaze/tests/test_track.py": "de24dc6b54dc1c1bf2bd15a84befa59f6e25c3491691848e25b1985eb0d589b0"
+  },
+  "before": {
+    "partial_blink_bad_updates": 3,
+    "partial_blink_peak_vertical_artifact_px": 369.12076256049613,
+    "closed_eye_updates_3s": 42,
+    "healthy_downward_saccade_sha256": "12106a77ce8e853e6ae23b9ab6768f0e14e0e63c7b851af57499e3a9709506b1",
+    "healthy_downward_saccade_arrival_s": 0.0666666030883789,
+    "classifier": {
+      "calls_per_sample": 50000,
+      "samples": 7,
+      "warmups": 1,
+      "wall_ms": [
+        167.94449998997152,
+        162.48579998500645,
+        167.21759998472407,
+        162.6041000126861,
+        170.25520000606775,
+        173.43620001338422,
+        168.76770003000274
+      ],
+      "median_us_per_call": 3.3588899997994304,
+      "median_cpu_ms": 171.875,
+      "traced_peak_bytes": 3344,
+      "history_entries": 50,
+      "profile": "         700004 function calls in 0.335 seconds\n\n   Ordered by: cumulative time\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n        1    0.000    0.000    0.335    0.335 blink_replay.py:66(work)\n        1    0.005    0.005    0.335    0.335 {built-in method builtins.sum}\n    50001    0.014    0.000    0.330    0.000 blink_replay.py:67(<genexpr>)\n    50000    0.054    0.000    0.316    0.000 head.py:341(__call__)\n   100000    0.225    0.000    0.253    0.000 head.py:342(openness)\n   100000    0.014    0.000    0.014    0.000 {method 'tolist' of 'numpy.ndarray' objects}\n   200000    0.014    0.000    0.014    0.000 {built-in method math.hypot}\n   150000    0.007    0.000    0.007    0.000 {built-in method builtins.len}\n    50000    0.003    0.000    0.003    0.000 {method 'append' of 'collections.deque' objects}\n        1    0.000    0.000    0.000    0.000 {method 'disable' of '_lsprof.Profiler' objects}\n\n\n"
+    }
+  },
+  "after": {
+    "partial_blink_bad_updates": 0,
+    "partial_blink_peak_vertical_artifact_px": 0.0,
+    "closed_eye_updates_3s": 0,
+    "healthy_downward_saccade_sha256": "12106a77ce8e853e6ae23b9ab6768f0e14e0e63c7b851af57499e3a9709506b1",
+    "healthy_downward_saccade_arrival_s": 0.0666666030883789,
+    "classifier": {
+      "calls_per_sample": 50000,
+      "samples": 7,
+      "warmups": 1,
+      "wall_ms": [
+        213.47170002991334,
+        210.56919998954982,
+        217.2747000004165,
+        216.0252000321634,
+        221.07540001161397,
+        218.96580001339316,
+        223.57560001546517
+      ],
+      "median_us_per_call": 4.34549400000833,
+      "median_cpu_ms": 218.75,
+      "traced_peak_bytes": 3424,
+      "history_entries": 50,
+      "profile": "         1450004 function calls in 0.538 seconds\n\n   Ordered by: cumulative time\n   List reduced from 16 to 10 due to restriction <10>\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n        1    0.000    0.000    0.538    0.538 blink_replay.py:66(work)\n        1    0.006    0.006    0.538    0.538 {built-in method builtins.sum}\n    50001    0.019    0.000    0.532    0.000 blink_replay.py:67(<genexpr>)\n    50000    0.119    0.000    0.513    0.000 head.py:345(__call__)\n   100000    0.211    0.000    0.242    0.000 head.py:346(openness)\n   100000    0.038    0.000    0.097    0.000 {built-in method builtins.any}\n    50000    0.017    0.000    0.045    0.000 {built-in method builtins.all}\n   150000    0.034    0.000    0.040    0.000 head.py:356(<genexpr>)\n   150000    0.022    0.000    0.028    0.000 head.py:352(<genexpr>)\n   150000    0.020    0.000    0.020    0.000 head.py:359(<genexpr>)\n\n\n"
+    }
+  },
+  "limits": "Scripted 30 FPS loop, synthetic eye-aperture landmarks and deliberately corrupted predicted points. No neural landmark inference, camera, recordings or HTTP. Checks blink rejection and trusted-update behavior, not real blink sensitivity/specificity or optical accuracy. Arrival times are scripted time; classifier timings are separate unpaced CPU samples, with separate cProfile/tracemalloc. No end-to-end speed claim; new reopening grace intentionally withholds samples."
+}

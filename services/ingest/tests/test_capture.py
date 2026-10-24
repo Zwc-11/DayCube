@@ -296,7 +296,7 @@ def test_the_doctor_judges_capture_from_what_it_recorded(vault: Vault, monkeypat
                  "timing_ms": {"camera_wait": 15.0, "landmarks": 12.4, "model": 0.3, "tracking": 0.05,
                                "network": 0.1, "frame": 12.9, "live_post": 0.6}},
         "accuracy": {"clicks": 7, "rejected": 0, "live_error_px": 120.0, "corrected_error_px": 58.0},
-        "reading": None,
+        "reading": None, "code": doctor.code_stamp(),
     }  # fmt: skip
     monkeypatch.setattr(doctor.sys, "platform", "linux")
     results = {name: (verdict, detail) for verdict, name, detail in doctor.checks(status, vault.root, zone, now, None)}
@@ -343,7 +343,7 @@ def test_the_doctor_judges_capture_from_what_it_recorded(vault: Vault, monkeypat
     assert results["live accuracy"] == doctor.FAIL and results["clicks"] == doctor.WARN
     assert doctor.checks(None, vault.root, zone, now, None)[0][0] == doctor.FAIL
     # A receiver or tracker started before a pull runs the old code: say so.
-    old = {k: v for k, v in status.items() if k != "reading"} | {
+    old = {k: v for k, v in status.items() if k not in ("reading", "code")} | {
         "gaze": status["gaze"] | {"coverage": None, "noise_px": None}
     }
     results = {name: verdict for verdict, name, _ in doctor.checks(old, vault.root, zone, now, None)}
@@ -595,3 +595,59 @@ def test_the_doctor_names_the_tracker_crash_and_reads_the_saved_calibration(
     assert found["calibration"] == (
         doctor.PASS, "85 px median held-out error (limit 160), saved 2026-10-24 15:18 UTC",
     )  # fmt: skip
+
+
+def test_a_model_learned_from_clicks_restarts_the_click_offsets_and_doctor_reports_it() -> None:
+    from capture import doctor
+    from capture.attention import Attention
+    from capture.records import GazeState
+
+    attention = Attention()
+    state = {"tracking": True, "monitor": [2560, 1440], "error_px": 85.0}
+    attention.gaze_state(GazeState(**state, learning={"version": 1, "clicks": 40}))
+    attention.anchors.anchors.append(object())  # an offset learned on update 1
+    attention.gaze_state(GazeState(**state, learning={"version": 1, "clicks": 41}))
+    assert len(attention.anchors.anchors) == 1  # same model: kept
+    attention.gaze_state(GazeState(**state, learning={"version": 2, "clicks": 60}))
+    assert len(attention.anchors.anchors) == 0  # a new model: learned again
+
+    learning = {
+        "version": 3, "clicks": 260, "skipped": {"not looking": 46, "no steady look": 12, "off the monitor": 0},
+        "updated": "2026-10-24T17:40:00+00:00",
+        "fit": {"accepted": True, "error_px": {"calibration": 168.0, "in_use": 130.0, "learned": 121.0}},
+    }  # fmt: skip
+    ((verdict, name, detail),) = doctor._learning({"tracking": True, "learning": learning})
+    assert (verdict, name) == (doctor.PASS, "learning")
+    assert detail == (
+        "from clicks: update 3 at 17:40 UTC; on clicks it had not seen, 168.0 px with the calibration alone, "
+        "121.0 px now; 260 clicks since calibration, 46 made without looking at the spot"
+    )
+    checks = doctor.checks(
+        {"paused": False, "code": doctor.code_stamp(), "gaze": {"tracking": True, "learning": learning}},
+        Path("/nonexistent"), __import__("zoneinfo").ZoneInfo("UTC"), datetime.now(UTC), None,
+    )  # fmt: skip
+    live = next(detail for _, name, detail in checks if name == "live accuracy")
+    assert live == "0 of 5 page clicks since the last learned update; the learning line has the accuracy"
+    first = {"version": 0, "clicks": 12, "skipped": {}, "fit": None}
+    assert doctor._learning({"tracking": True, "learning": first})[0][0] == doctor.INFO
+    assert doctor._learning({"tracking": False, "learning": first}) == []
+
+
+def test_doctor_shows_when_an_update_reached_the_gaze_and_the_live_loss_ratio() -> None:
+    from capture import doctor
+
+    learning = {
+        "version": 4, "clicks": 320, "skipped": {}, "updated": "2026-10-24T18:02:00+00:00", "head_terms": True,
+        "fit": {"accepted": True, "error_px": {"calibration": 160.0, "in_use": 131.0, "learned": 118.0}},
+        "applied": {"version": 4, "t": "2026-10-24T18:02:00.040000+00:00", "after_ms": 38.2},
+        "live": {"clicks": 300, "error_px": 121.0, "calibration_px": 158.0, "ratio": 0.766, "by_version": []},
+    }  # fmt: skip
+    rows = {name: (verdict, detail) for verdict, name, detail in doctor._learning({"tracking": True, "learning": learning})}
+    assert rows["learning applied"] == (doctor.PASS, "update 4 reached the gaze 38 ms after it was fitted (every frame since uses it)")
+    assert rows["loss ratio"] == (doctor.PASS, (
+        "last 300 clicks, each measured before learning from it: 121.0 px against 158.0 px for the calibration "
+        "alone (ratio 0.77, 23% less error)"
+    ))  # fmt: skip
+    pending = dict(learning, applied={"version": 3, "t": "2026-10-24T17:40:00+00:00", "after_ms": 30.0})
+    rows = {name: verdict for verdict, name, _ in doctor._learning({"tracking": True, "learning": pending})}
+    assert rows["learning applied"] == doctor.WARN

@@ -123,6 +123,10 @@ def digest(text: str) -> bytes:
     return hashlib.blake2b(text.encode(), digest_size=16).digest()
 
 
+class EmbeddingModelChanged(RuntimeError):
+    """A running store cannot compare vectors written with another embedding model."""
+
+
 @contextmanager
 def _closing(db: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
     try:
@@ -167,6 +171,28 @@ class LifeStore:
             if not self._ready:
                 self._migrate(db)
             yield db
+
+    @contextmanager
+    def read(self, db: sqlite3.Connection | None = None) -> Iterator[sqlite3.Connection]:
+        """Own a WAL read snapshot, or borrow the caller's snapshot without closing it."""
+        if db is not None:
+            yield db
+            return
+        with self.connect() as connection:
+            connection.execute("BEGIN")
+            self._check_model(connection)
+            yield connection
+
+    def _check_model(self, db: sqlite3.Connection) -> None:
+        if self.embedder is None:
+            return
+        actual = dict(db.execute("SELECT key, value FROM meta WHERE key IN ('model', 'dim')"))
+        wanted = {"model": self.embedder.name, "dim": str(self.embedder.dim)}
+        if actual != wanted:
+            raise EmbeddingModelChanged(
+                "The database embedding model changed in another process. "
+                "Restart the API with the model used by the index, or explicitly reindex with the configured model."
+            )
 
     def _forget(self) -> None:
         """The file is gone: whatever was confirmed fresh or loaded lived in it."""
@@ -348,6 +374,7 @@ class LifeStore:
                 if self._stamp(day) != stamp:
                     continue  # the day changed while its text was embedded: collect it again
                 with self.connect() as db, self._write(db):
+                    self._check_model(db)
                     embedded = self._replace(db, day, zone, stamp, units, hashes, vectors)
                     self._graph(db, day, graph)
                 self.fresh.put_metadata(day, key)
@@ -360,7 +387,7 @@ class LifeStore:
         assert self.embedder is not None
         found: dict[bytes, tuple[bytes, bytes]] = {}
         reuse = "SELECT u.text_hash, v.bits, v.embedding FROM units u JOIN vectors v ON v.id = u.id WHERE "
-        with self.connect() as db:
+        with self.read() as db:
             found.update((row[0], (row[1], row[2])) for row in db.execute(reuse + "u.day = ?", (day,)))
             missing = list(dict.fromkeys(h for h in hashes if h not in found))
             for start in range(0, len(missing), CHUNK):
@@ -467,6 +494,7 @@ class LifeStore:
         types: Sequence[str] | None = None,
         site: str | None = None,
         k: int,
+        db: sqlite3.Connection | None = None,
     ) -> list[int]:
         """Unit ids matching an FTS5 expression, best BM25 first."""
         clauses, values = self._filters(day, since, until, types, site)
@@ -474,8 +502,8 @@ class LifeStore:
             "SELECT u.id FROM units_fts JOIN units u ON u.id = units_fts.rowid "
             f"WHERE units_fts MATCH ?{clauses} ORDER BY bm25(units_fts), u.ts LIMIT ?"
         )
-        with self.connect() as db:
-            return [row[0] for row in db.execute(sql, (expression, *values, k))]
+        with self.read(db) as connection:
+            return [row[0] for row in connection.execute(sql, (expression, *values, k))]
 
     def listing(
         self,
@@ -486,59 +514,74 @@ class LifeStore:
         types: Sequence[str] | None = None,
         site: str | None = None,
         k: int,
+        db: sqlite3.Connection | None = None,
     ) -> list[int]:
         """Unit ids within the filters, the latest ``k`` in time order (a question that is all filters)."""
         clauses, values = self._filters(day, since, until, types, site)
         sql = f"SELECT id FROM (SELECT u.id, u.ts FROM units u WHERE 1{clauses} ORDER BY u.ts DESC LIMIT ?) ORDER BY ts"
-        with self.connect() as db:
-            return [row[0] for row in db.execute(sql, (*values, k))]
+        with self.read(db) as connection:
+            return [row[0] for row in connection.execute(sql, (*values, k))]
 
-    def allowed(self, ids: Sequence[int], *, types: Sequence[str] | None, site: str | None) -> set[int]:
+    def allowed(
+        self,
+        ids: Sequence[int],
+        *,
+        types: Sequence[str] | None,
+        site: str | None,
+        db: sqlite3.Connection | None = None,
+    ) -> set[int]:
         """Which of ``ids`` pass the kind and site filters (meaning search filters after the fact)."""
         if not ids or (not types and not site):
             return set(ids)
         clauses, values = self._filters(None, None, None, types, site)
         out: set[int] = set()
-        with self.connect() as db:
+        with self.read(db) as connection:
             for start in range(0, len(ids), CHUNK):
                 chunk = ids[start : start + CHUNK]
                 marks = ",".join("?" for _ in chunk)
                 out.update(
                     row[0]
-                    for row in db.execute(
+                    for row in connection.execute(
                         f"SELECT u.id FROM units u WHERE u.id IN ({marks}){clauses}", (*chunk, *values)
                     )
                 )
         return out
 
     def nearest(
-        self, question: str, *, day: str | None = None, since: float | None = None, until: float | None = None, k: int
+        self,
+        question: str,
+        *,
+        day: str | None = None,
+        since: float | None = None,
+        until: float | None = None,
+        k: int,
+        db: sqlite3.Connection | None = None,
     ) -> list[tuple[int, float]]:
         """(unit id, cosine similarity) of the ``k`` units closest in meaning, closest first."""
         if self.embedder is None:
             return []
-        query = self.embedder.query(question)
-        with self.connect() as db:
-            # Generation, cached block selection and rescoring must refer to one WAL snapshot.
-            db.execute("BEGIN")
-            return self.index.search(db, query, k, days=None if day is None else [day], since=since, until=until)
+        with self.read(db) as connection:
+            query = self.embedder.query(question)
+            return self.index.search(
+                connection, query, k, days=None if day is None else [day], since=since, until=until
+            )
 
-    def note_keyword(self, expression: str, *, k: int) -> list[int]:
+    def note_keyword(self, expression: str, *, k: int, db: sqlite3.Connection | None = None) -> list[int]:
         """Note chunk ids matching an FTS5 expression, best BM25 first."""
         sql = (
             "SELECT c.id FROM note_chunks_fts JOIN note_chunks c ON c.id = note_chunks_fts.rowid "
             "WHERE note_chunks_fts MATCH ? ORDER BY bm25(note_chunks_fts) LIMIT ?"
         )
-        with self.connect() as db:
-            return [row[0] for row in db.execute(sql, (expression, k))]
+        with self.read(db) as connection:
+            return [row[0] for row in connection.execute(sql, (expression, k))]
 
-    def note_rows(self, ids: Sequence[int]) -> dict[int, Record]:
+    def note_rows(self, ids: Sequence[int], *, db: sqlite3.Connection | None = None) -> dict[int, Record]:
         found: dict[int, Record] = {}
-        with self.connect() as db:
+        with self.read(db) as connection:
             for start in range(0, len(ids), CHUNK):
                 chunk = ids[start : start + CHUNK]
                 marks = ",".join("?" for _ in chunk)
-                for row in db.execute(
+                for row in connection.execute(
                     f"SELECT c.*, n.title, n.identity, n.mtime_ns, n.size FROM note_chunks c JOIN notes n ON n.path = c.path "
                     f"WHERE c.id IN ({marks})",
                     chunk,
@@ -563,13 +606,13 @@ class LifeStore:
             found = {key: row for key, row in found.items() if row["path"] not in stale}
         return found
 
-    def rows(self, ids: Sequence[int]) -> dict[int, Record]:
+    def rows(self, ids: Sequence[int], *, db: sqlite3.Connection | None = None) -> dict[int, Record]:
         found: dict[int, Record] = {}
-        with self.connect() as db:
+        with self.read(db) as connection:
             for start in range(0, len(ids), CHUNK):
                 chunk = ids[start : start + CHUNK]
                 marks = ",".join("?" for _ in chunk)
-                for row in db.execute(f"SELECT * FROM units WHERE id IN ({marks})", chunk):
+                for row in connection.execute(f"SELECT * FROM units WHERE id IN ({marks})", chunk):
                     found[row["id"]] = dict(row)
         return found
 

@@ -4,8 +4,8 @@ Every entity is something the records name exactly, so the graph needs no guessi
 
 | Kind | Key | From |
 | --- | --- | --- |
-| ``site`` | domain without ``www.`` | every capture record with a URL |
-| ``page`` | URL without fragment and tracking parameters | page visits, reads, dwells, looks, clicks, copies, media |
+| ``site`` | domain without ``www.``; for an app, its program (``code.exe``) | every capture record with a URL |
+| ``page`` | URL without fragment and tracking parameters; for an app, ``app://<program>/<window title>`` | page visits, reads, dwells, looks, clicks, copies, media, time in apps |
 | ``query`` | the search, lower case, spaces collapsed | searches |
 | ``course`` | a course code such as ``CS 136`` | page titles and the text read or stared at |
 | ``deadline`` | ISO date (and time) plus the course | "due ..." phrases in text read or stared at |
@@ -29,7 +29,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from ..capture.synthesize import CaptureDay, _domain
+from ..capture.synthesize import APP, CaptureDay, _domain, site_name
 from ..time import instant
 from ..vault import Record
 
@@ -123,8 +123,7 @@ def page(url: str, title: str | None) -> Entity:
 
 
 def site(url: str) -> Entity:
-    domain = _domain(url)
-    return ("site", domain, domain)
+    return ("site", _domain(url), site_name(url))
 
 
 def is_search(url: str | None) -> bool:
@@ -228,6 +227,12 @@ def _capture(graph: Graph, c: CaptureDay, units: dict[str, Record], seen_on: dat
         _on(graph, f"capture:selection:{s['id']}", s.get("url"), s.get("title"))
     for m in c.media:
         _on(graph, f"capture:media:{m['id']}", m.get("url"), m.get("title"))
+    for a in c.apps:
+        evidence = f"capture:app:{a.first_id}"
+        if a.private:  # the app, never its windows
+            graph.mention(evidence, site(f"{APP}{a.app}/"), "on")
+        else:
+            _on(graph, evidence, a.url, a.title)
     # Searches, and the page each led to: the next page opened in that tab from somewhere other
     # than a results page, within five minutes.
     navigations = sorted(((instant(nav["t"]), nav) for nav in c.pages), key=lambda item: item[0])
