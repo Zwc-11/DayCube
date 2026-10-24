@@ -111,6 +111,36 @@ def _calibration(vault: Path) -> dict | None:
     return saved if isinstance(saved, dict) else None
 
 
+def _learning(gaze: dict) -> list[tuple[str, str, str]]:
+    """Learning from clicks (services/gaze/gaze/learn.py), from the tracker's report."""
+    learning = gaze.get("learning")
+    if not gaze.get("tracking") or learning is None:
+        return []
+    if learning.get("error"):
+        return [(WARN, "learning", f"failing: {learning['error']}")]
+    clicks, skipped = learning.get("clicks", 0), learning.get("skipped") or {}
+    fit, version = learning.get("fit"), learning.get("version", 0)
+    away = skipped.get("not looking", 0)
+    counted = f"{clicks} clicks since calibration" + (f", {away} made without looking at the spot" if away else "")
+    if fit is None:
+        return [(INFO, "learning", f"from clicks: {counted}; the first check needs 30 usable clicks")]
+    errors = fit.get("error_px") or {}
+    if version:
+        when = (learning.get("updated") or "")[11:16]
+        detail = (
+            f"from clicks: update {version}" + (f" at {when} UTC" if when else "")
+            + f"; on clicks it had not seen, {errors.get('calibration')} px with the calibration alone, "
+            f"{errors.get('learned') if fit.get('accepted') else errors.get('in_use')} px now; {counted}"
+        )  # fmt: skip
+        return [(PASS, "learning", detail)]
+    return [(
+        INFO,
+        "learning",
+        f"from clicks: nothing better than the calibration yet ({errors.get('calibration')} px against "
+        f"{errors.get('learned')} px on clicks it had not seen); {counted}",
+    )]  # fmt: skip
+
+
 def _screen(status: dict) -> list[tuple[str, str, str]]:
     """Reading the window under the gaze in other apps (screen.py)."""
     screen = status.get("screen")
@@ -309,6 +339,8 @@ def checks(status: dict | None, vault: Path, zone: ZoneInfo, now: datetime, auto
         running = gaze.get("error_px")
         if gaze.get("tracking") and saved and running is not None and abs(running - error) > 0.5:
             out.append((WARN, "calibration", "the tracker still uses the calibration from before: " + RESTART))
+
+    out += _learning(gaze)
 
     decoding = status.get("line_decoding") or {}
     seen = decoding.get("fixations", 0)

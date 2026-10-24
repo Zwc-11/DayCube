@@ -256,13 +256,16 @@ class GazeModel:
         return self
 
     def _stacked(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Both eyes' (mean, sd, weights) as arrays, rebuilt when ``eyes`` is replaced."""
-        if getattr(self, "_stack_of", None) is not self.eyes:
-            mean = np.array([m for m, _, _ in self.eyes])
-            sd = np.array([sd for _, sd, _ in self.eyes])
-            weights = np.array([w for _, _, w in self.eyes])  # (2, 1 + k, 2)
-            self._stack, self._stack_of = (mean, sd, weights), self.eyes
-        return self._stack
+        """Both eyes' (mean, sd, weights) as arrays, rebuilt when ``eyes`` is replaced (by
+        learning from clicks, on another thread: one reference is read, so never half of each)."""
+        eyes = self.eyes
+        stack = getattr(self, "_stack", None)
+        if stack is None or stack[0] is not eyes:
+            mean = np.array([m for m, _, _ in eyes])
+            sd = np.array([sd for _, sd, _ in eyes])
+            weights = np.array([w for _, _, w in eyes])  # (2, 1 + k, 2)
+            stack = self._stack = (eyes, (mean, sd, weights))
+        return stack[1]
 
     def directions_of(self, R: np.ndarray, F: np.ndarray) -> np.ndarray:
         """(n, 2, 3): each eye's gaze direction in camera coordinates, from head rotations

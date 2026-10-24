@@ -82,6 +82,15 @@ class Anchors:
             self._version += 1
         self.monitor, self.calibrated_px = monitor, calibrated_px
 
+    def restart(self) -> None:
+        """The gaze model changed (learned from clicks): offsets measured on the old one are wrong
+        for the new one, so they are learned again."""
+        self.recent.clear()
+        self.pending.clear()
+        self.anchors.clear()
+        self.rejected = 0
+        self._version += 1
+
     # -- evidence ----------------------------------------------------------------------------------
 
     def fixation(self, t: float, t_end: float, fx: float, fy: float) -> None:

@@ -595,3 +595,33 @@ def test_the_doctor_names_the_tracker_crash_and_reads_the_saved_calibration(
     assert found["calibration"] == (
         doctor.PASS, "85 px median held-out error (limit 160), saved 2026-10-24 15:18 UTC",
     )  # fmt: skip
+
+
+def test_a_model_learned_from_clicks_restarts_the_click_offsets_and_doctor_reports_it() -> None:
+    from capture import doctor
+    from capture.attention import Attention
+    from capture.records import GazeState
+
+    attention = Attention()
+    state = {"tracking": True, "monitor": [2560, 1440], "error_px": 85.0}
+    attention.gaze_state(GazeState(**state, learning={"version": 1, "clicks": 40}))
+    attention.anchors.anchors.append(object())  # an offset learned on update 1
+    attention.gaze_state(GazeState(**state, learning={"version": 1, "clicks": 41}))
+    assert len(attention.anchors.anchors) == 1  # same model: kept
+    attention.gaze_state(GazeState(**state, learning={"version": 2, "clicks": 60}))
+    assert len(attention.anchors.anchors) == 0  # a new model: learned again
+
+    learning = {
+        "version": 3, "clicks": 260, "skipped": {"not looking": 46, "no steady look": 12, "off the monitor": 0},
+        "updated": "2026-10-24T17:40:00+00:00",
+        "fit": {"accepted": True, "error_px": {"calibration": 168.0, "in_use": 130.0, "learned": 121.0}},
+    }  # fmt: skip
+    ((verdict, name, detail),) = doctor._learning({"tracking": True, "learning": learning})
+    assert (verdict, name) == (doctor.PASS, "learning")
+    assert detail == (
+        "from clicks: update 3 at 17:40 UTC; on clicks it had not seen, 168.0 px with the calibration alone, "
+        "121.0 px now; 260 clicks since calibration, 46 made without looking at the spot"
+    )
+    first = {"version": 0, "clicks": 12, "skipped": {}, "fit": None}
+    assert doctor._learning({"tracking": True, "learning": first})[0][0] == doctor.INFO
+    assert doctor._learning({"tracking": False, "learning": first}) == []

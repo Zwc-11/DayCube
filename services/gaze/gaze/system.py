@@ -10,6 +10,31 @@ WEBCAM_STORE = r"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManag
 
 
 class System:
+    def __init__(self) -> None:
+        self._button_down = False
+
+    def click(self) -> tuple[int, int] | None:
+        """Where the primary mouse button went down since the last call, in screen pixels (the
+        process is DPI-aware, so physical pixels; the primary monitor's top-left is 0, 0), else
+        None. Polled every frame: a click holds the button 80-150 ms, several frames at 30 fps. In
+        any app; never what was clicked."""
+        if sys.platform != "win32":
+            return None
+        user32 = ctypes.windll.user32
+        button = 0x02 if user32.GetSystemMetrics(23) else 0x01  # SM_SWAPBUTTON: the primary button
+        down = bool(user32.GetAsyncKeyState(button) & 0x8000)
+        pressed, self._button_down = down and not self._button_down, down
+        if not pressed:
+            return None
+
+        class Point(ctypes.Structure):
+            _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+
+        point = Point()
+        if not user32.GetCursorPos(ctypes.byref(point)):
+            return None
+        return point.x, point.y
+
     def idle_seconds(self) -> float:
         """Seconds since the last keyboard or mouse input."""
         if sys.platform != "win32":

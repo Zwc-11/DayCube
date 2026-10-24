@@ -1,0 +1,1887 @@
+{
+ "dataset": "MPIIFaceGaze",
+ "calibration_images": 13,
+ "warmup_clicks": 100,
+ "runs": {
+  "typical: 15% looking elsewhere, 20 mm labels": {
+   "label_error_mm": 20.0,
+   "looking_elsewhere": 0.15,
+   "median_mm": {
+    "calibration": 45.2,
+    "learned": 32.5
+   },
+   "median_px_on_user_monitor": {
+    "calibration": 194.0,
+    "learned": 139.0
+   },
+   "p90_mm": {
+    "calibration": 103.5,
+    "learned": 74.4
+   },
+   "people_better": "15 of 15",
+   "people_worse_by_2pct": [],
+   "people": [
+    {
+     "person": "p00",
+     "clicks": 2826,
+     "days": 38,
+     "calibration_mm": 38.0,
+     "learned_mm": 26.0,
+     "bands_mm": {
+      "0-100": [
+       30.5,
+       29.9
+      ],
+      "100-300": [
+       34.4,
+       27.5
+      ],
+      "300-1000": [
+       41.8,
+       28.4
+      ],
+      "1000+": [
+       37.3,
+       24.7
+      ]
+     },
+     "updates": 30,
+     "outcomes": {
+      "used": 2563,
+      "not looking": 263
+     }
+    },
+    {
+     "person": "p01",
+     "clicks": 2840,
+     "days": 66,
+     "calibration_mm": 28.7,
+     "learned_mm": 25.0,
+     "bands_mm": {
+      "0-100": [
+       27.8,
+       27.2
+      ],
+      "100-300": [
+       33.7,
+       27.4
+      ],
+      "300-1000": [
+       28.5,
+       23.4
+      ],
+      "1000+": [
+       28.2,
+       25.5
+      ]
+     },
+     "updates": 25,
+     "outcomes": {
+      "used": 2580,
+      "not looking": 260
+     }
+    },
+    {
+     "person": "p02",
+     "clicks": 2884,
+     "days": 38,
+     "calibration_mm": 28.3,
+     "learned_mm": 24.9,
+     "bands_mm": {
+      "0-100": [
+       22.6,
+       23.6
+      ],
+      "100-300": [
+       29.7,
+       22.8
+      ],
+      "300-1000": [
+       27.4,
+       26.3
+      ],
+      "1000+": [
+       28.7,
+       24.6
+      ]
+     },
+     "updates": 23,
+     "outcomes": {
+      "used": 2614,
+      "not looking": 270
+     }
+    },
+    {
+     "person": "p03",
+     "clicks": 2878,
+     "days": 63,
+     "calibration_mm": 43.5,
+     "learned_mm": 32.1,
+     "bands_mm": {
+      "0-100": [
+       35.4,
+       32.0
+      ],
+      "100-300": [
+       34.4,
+       25.3
+      ],
+      "300-1000": [
+       43.9,
+       33.1
+      ],
+      "1000+": [
+       44.1,
+       32.8
+      ]
+     },
+     "updates": 22,
+     "outcomes": {
+      "used": 2567,
+      "not looking": 311
+     }
+    },
+    {
+     "person": "p04",
+     "clicks": 2709,
+     "days": 24,
+     "calibration_mm": 28.3,
+     "learned_mm": 22.6,
+     "bands_mm": {
+      "0-100": [
+       40.0,
+       38.7
+      ],
+      "100-300": [
+       34.5,
+       26.1
+      ],
+      "300-1000": [
+       28.0,
+       22.8
+      ],
+      "1000+": [
+       28.1,
+       22.2
+      ]
+     },
+     "updates": 30,
+     "outcomes": {
+      "used": 2446,
+      "not looking": 263
+     }
+    },
+    {
+     "person": "p05",
+     "clicks": 2797,
+     "days": 37,
+     "calibration_mm": 46.6,
+     "learned_mm": 32.5,
+     "bands_mm": {
+      "0-100": [
+       50.2,
+       47.9
+      ],
+      "100-300": [
+       43.6,
+       34.2
+      ],
+      "300-1000": [
+       46.7,
+       33.0
+      ],
+      "1000+": [
+       46.9,
+       32.2
+      ]
+     },
+     "updates": 31,
+     "outcomes": {
+      "used": 2554,
+      "not looking": 243
+     }
+    },
+    {
+     "person": "p06",
+     "clicks": 2823,
+     "days": 61,
+     "calibration_mm": 53.1,
+     "learned_mm": 37.9,
+     "bands_mm": {
+      "0-100": [
+       55.6,
+       54.2
+      ],
+      "100-300": [
+       55.9,
+       49.8
+      ],
+      "300-1000": [
+       53.0,
+       40.4
+      ],
+      "1000+": [
+       53.0,
+       36.4
+      ]
+     },
+     "updates": 19,
+     "outcomes": {
+      "used": 2533,
+      "not looking": 290
+     }
+    },
+    {
+     "person": "p07",
+     "clicks": 2792,
+     "days": 54,
+     "calibration_mm": 73.6,
+     "learned_mm": 51.1,
+     "bands_mm": {
+      "0-100": [
+       68.9,
+       48.5
+      ],
+      "100-300": [
+       74.6,
+       54.9
+      ],
+      "300-1000": [
+       70.6,
+       49.6
+      ],
+      "1000+": [
+       74.4,
+       50.9
+      ]
+     },
+     "updates": 13,
+     "outcomes": {
+      "used": 2311,
+      "not looking": 481
+     }
+    },
+    {
+     "person": "p08",
+     "clicks": 2679,
+     "days": 43,
+     "calibration_mm": 44.6,
+     "learned_mm": 38.4,
+     "bands_mm": {
+      "0-100": [
+       40.2,
+       38.2
+      ],
+      "100-300": [
+       41.1,
+       35.3
+      ],
+      "300-1000": [
+       44.9,
+       36.7
+      ],
+      "1000+": [
+       44.8,
+       39.8
+      ]
+     },
+     "updates": 31,
+     "outcomes": {
+      "used": 2372,
+      "not looking": 307
+     }
+    },
+    {
+     "person": "p09",
+     "clicks": 2516,
+     "days": 19,
+     "calibration_mm": 65.8,
+     "learned_mm": 41.4,
+     "bands_mm": {
+      "0-100": [
+       56.5,
+       42.8
+      ],
+      "100-300": [
+       59.8,
+       38.4
+      ],
+      "300-1000": [
+       62.2,
+       40.4
+      ],
+      "1000+": [
+       68.1,
+       42.2
+      ]
+     },
+     "updates": 13,
+     "outcomes": {
+      "used": 2266,
+      "not looking": 250
+     }
+    },
+    {
+     "person": "p10",
+     "clicks": 2106,
+     "days": 15,
+     "calibration_mm": 54.9,
+     "learned_mm": 32.7,
+     "bands_mm": {
+      "0-100": [
+       52.1,
+       49.1
+      ],
+      "100-300": [
+       37.1,
+       32.1
+      ],
+      "300-1000": [
+       46.7,
+       31.5
+      ],
+      "1000+": [
+       62.9,
+       33.5
+      ]
+     },
+     "updates": 19,
+     "outcomes": {
+      "used": 1896,
+      "not looking": 210
+     }
+    },
+    {
+     "person": "p11",
+     "clicks": 2007,
+     "days": 18,
+     "calibration_mm": 45.1,
+     "learned_mm": 37.0,
+     "bands_mm": {
+      "0-100": [
+       40.1,
+       38.6
+      ],
+      "100-300": [
+       47.5,
+       36.7
+      ],
+      "300-1000": [
+       42.1,
+       35.9
+      ],
+      "1000+": [
+       47.4,
+       37.7
+      ]
+     },
+     "updates": 17,
+     "outcomes": {
+      "used": 1843,
+      "not looking": 164
+     }
+    },
+    {
+     "person": "p12",
+     "clicks": 1483,
+     "days": 6,
+     "calibration_mm": 101.0,
+     "learned_mm": 94.8,
+     "bands_mm": {
+      "0-100": [
+       104.4,
+       104.4
+      ],
+      "100-300": [
+       79.5,
+       79.5
+      ],
+      "300-1000": [
+       122.6,
+       122.6
+      ],
+      "1000+": [
+       89.2,
+       76.3
+      ]
+     },
+     "updates": 3,
+     "outcomes": {
+      "used": 796,
+      "not looking": 687
+     }
+    },
+    {
+     "person": "p13",
+     "clicks": 1319,
+     "days": 11,
+     "calibration_mm": 90.6,
+     "learned_mm": 35.2,
+     "bands_mm": {
+      "0-100": [
+       86.4,
+       47.9
+      ],
+      "100-300": [
+       113.0,
+       46.1
+      ],
+      "300-1000": [
+       90.2,
+       31.2
+      ],
+      "1000+": [
+       81.8,
+       39.3
+      ]
+     },
+     "updates": 19,
+     "outcomes": {
+      "used": 1165,
+      "not looking": 154
+     }
+    },
+    {
+     "person": "p14",
+     "clicks": 1240,
+     "days": 6,
+     "calibration_mm": 50.4,
+     "learned_mm": 23.8,
+     "bands_mm": {
+      "0-100": [
+       33.5,
+       27.4
+      ],
+      "100-300": [
+       40.7,
+       25.6
+      ],
+      "300-1000": [
+       48.9,
+       24.7
+      ],
+      "1000+": [
+       58.9,
+       19.9
+      ]
+     },
+     "updates": 14,
+     "outcomes": {
+      "used": 1106,
+      "not looking": 134
+     }
+    }
+   ]
+  },
+  "bad: 40% looking elsewhere, 40 mm labels": {
+   "label_error_mm": 40.0,
+   "looking_elsewhere": 0.4,
+   "median_mm": {
+    "calibration": 45.2,
+    "learned": 35.4
+   },
+   "median_px_on_user_monitor": {
+    "calibration": 194.0,
+    "learned": 152.0
+   },
+   "p90_mm": {
+    "calibration": 103.5,
+    "learned": 79.8
+   },
+   "people_better": "14 of 15",
+   "people_worse_by_2pct": [],
+   "people": [
+    {
+     "person": "p00",
+     "clicks": 2826,
+     "days": 38,
+     "calibration_mm": 38.0,
+     "learned_mm": 28.5,
+     "bands_mm": {
+      "0-100": [
+       30.5,
+       30.5
+      ],
+      "100-300": [
+       34.4,
+       34.1
+      ],
+      "300-1000": [
+       41.8,
+       34.9
+      ],
+      "1000+": [
+       37.3,
+       25.7
+      ]
+     },
+     "updates": 8,
+     "outcomes": {
+      "used": 2253,
+      "not looking": 573
+     }
+    },
+    {
+     "person": "p01",
+     "clicks": 2840,
+     "days": 66,
+     "calibration_mm": 28.7,
+     "learned_mm": 27.1,
+     "bands_mm": {
+      "0-100": [
+       27.8,
+       28.9
+      ],
+      "100-300": [
+       33.7,
+       28.7
+      ],
+      "300-1000": [
+       28.5,
+       25.3
+      ],
+      "1000+": [
+       28.2,
+       27.8
+      ]
+     },
+     "updates": 6,
+     "outcomes": {
+      "used": 2308,
+      "not looking": 532
+     }
+    },
+    {
+     "person": "p02",
+     "clicks": 2884,
+     "days": 38,
+     "calibration_mm": 28.3,
+     "learned_mm": 27.5,
+     "bands_mm": {
+      "0-100": [
+       22.6,
+       26.6
+      ],
+      "100-300": [
+       29.7,
+       26.8
+      ],
+      "300-1000": [
+       27.4,
+       26.4
+      ],
+      "1000+": [
+       28.7,
+       28.0
+      ]
+     },
+     "updates": 5,
+     "outcomes": {
+      "used": 2274,
+      "not looking": 610
+     }
+    },
+    {
+     "person": "p03",
+     "clicks": 2878,
+     "days": 63,
+     "calibration_mm": 43.5,
+     "learned_mm": 36.5,
+     "bands_mm": {
+      "0-100": [
+       35.4,
+       35.4
+      ],
+      "100-300": [
+       34.4,
+       34.2
+      ],
+      "300-1000": [
+       43.9,
+       37.6
+      ],
+      "1000+": [
+       44.1,
+       36.6
+      ]
+     },
+     "updates": 3,
+     "outcomes": {
+      "used": 2267,
+      "not looking": 611
+     }
+    },
+    {
+     "person": "p04",
+     "clicks": 2709,
+     "days": 24,
+     "calibration_mm": 28.3,
+     "learned_mm": 24.0,
+     "bands_mm": {
+      "0-100": [
+       40.0,
+       39.7
+      ],
+      "100-300": [
+       34.5,
+       32.0
+      ],
+      "300-1000": [
+       28.0,
+       25.6
+      ],
+      "1000+": [
+       28.1,
+       22.4
+      ]
+     },
+     "updates": 9,
+     "outcomes": {
+      "used": 2127,
+      "not looking": 582
+     }
+    },
+    {
+     "person": "p05",
+     "clicks": 2797,
+     "days": 37,
+     "calibration_mm": 46.6,
+     "learned_mm": 35.1,
+     "bands_mm": {
+      "0-100": [
+       50.2,
+       48.4
+      ],
+      "100-300": [
+       43.6,
+       35.7
+      ],
+      "300-1000": [
+       46.7,
+       36.7
+      ],
+      "1000+": [
+       46.9,
+       34.7
+      ]
+     },
+     "updates": 4,
+     "outcomes": {
+      "used": 2251,
+      "not looking": 546
+     }
+    },
+    {
+     "person": "p06",
+     "clicks": 2823,
+     "days": 61,
+     "calibration_mm": 53.1,
+     "learned_mm": 42.2,
+     "bands_mm": {
+      "0-100": [
+       55.6,
+       55.6
+      ],
+      "100-300": [
+       55.9,
+       51.7
+      ],
+      "300-1000": [
+       53.0,
+       44.0
+      ],
+      "1000+": [
+       53.0,
+       41.1
+      ]
+     },
+     "updates": 7,
+     "outcomes": {
+      "used": 2136,
+      "not looking": 687
+     }
+    },
+    {
+     "person": "p07",
+     "clicks": 2792,
+     "days": 54,
+     "calibration_mm": 73.6,
+     "learned_mm": 52.1,
+     "bands_mm": {
+      "0-100": [
+       68.9,
+       68.9
+      ],
+      "100-300": [
+       74.6,
+       74.6
+      ],
+      "300-1000": [
+       70.6,
+       51.6
+      ],
+      "1000+": [
+       74.4,
+       50.3
+      ]
+     },
+     "updates": 4,
+     "outcomes": {
+      "used": 1902,
+      "not looking": 890
+     }
+    },
+    {
+     "person": "p08",
+     "clicks": 2679,
+     "days": 43,
+     "calibration_mm": 44.6,
+     "learned_mm": 40.8,
+     "bands_mm": {
+      "0-100": [
+       40.2,
+       40.2
+      ],
+      "100-300": [
+       41.1,
+       37.2
+      ],
+      "300-1000": [
+       44.9,
+       38.7
+      ],
+      "1000+": [
+       44.8,
+       42.0
+      ]
+     },
+     "updates": 1,
+     "outcomes": {
+      "used": 2013,
+      "not looking": 666
+     }
+    },
+    {
+     "person": "p09",
+     "clicks": 2516,
+     "days": 19,
+     "calibration_mm": 65.8,
+     "learned_mm": 46.4,
+     "bands_mm": {
+      "0-100": [
+       56.5,
+       54.5
+      ],
+      "100-300": [
+       59.8,
+       44.1
+      ],
+      "300-1000": [
+       62.2,
+       44.9
+      ],
+      "1000+": [
+       68.1,
+       48.3
+      ]
+     },
+     "updates": 2,
+     "outcomes": {
+      "used": 1940,
+      "not looking": 576
+     }
+    },
+    {
+     "person": "p10",
+     "clicks": 2106,
+     "days": 15,
+     "calibration_mm": 54.9,
+     "learned_mm": 35.2,
+     "bands_mm": {
+      "0-100": [
+       52.1,
+       52.1
+      ],
+      "100-300": [
+       37.1,
+       35.7
+      ],
+      "300-1000": [
+       46.7,
+       35.7
+      ],
+      "1000+": [
+       62.9,
+       34.9
+      ]
+     },
+     "updates": 6,
+     "outcomes": {
+      "used": 1633,
+      "not looking": 473
+     }
+    },
+    {
+     "person": "p11",
+     "clicks": 2007,
+     "days": 18,
+     "calibration_mm": 45.1,
+     "learned_mm": 40.5,
+     "bands_mm": {
+      "0-100": [
+       40.1,
+       40.2
+      ],
+      "100-300": [
+       47.5,
+       44.2
+      ],
+      "300-1000": [
+       42.1,
+       39.4
+      ],
+      "1000+": [
+       47.4,
+       40.7
+      ]
+     },
+     "updates": 4,
+     "outcomes": {
+      "used": 1588,
+      "not looking": 419
+     }
+    },
+    {
+     "person": "p12",
+     "clicks": 1483,
+     "days": 6,
+     "calibration_mm": 101.0,
+     "learned_mm": 101.0,
+     "bands_mm": {
+      "0-100": [
+       104.4,
+       104.4
+      ],
+      "100-300": [
+       79.5,
+       79.5
+      ],
+      "300-1000": [
+       122.6,
+       122.6
+      ],
+      "1000+": [
+       89.2,
+       89.2
+      ]
+     },
+     "updates": 0,
+     "outcomes": {
+      "used": 627,
+      "not looking": 856
+     }
+    },
+    {
+     "person": "p13",
+     "clicks": 1319,
+     "days": 11,
+     "calibration_mm": 90.6,
+     "learned_mm": 39.5,
+     "bands_mm": {
+      "0-100": [
+       86.4,
+       86.4
+      ],
+      "100-300": [
+       113.0,
+       104.0
+      ],
+      "300-1000": [
+       90.2,
+       33.9
+      ],
+      "1000+": [
+       81.8,
+       41.8
+      ]
+     },
+     "updates": 4,
+     "outcomes": {
+      "used": 953,
+      "not looking": 366
+     }
+    },
+    {
+     "person": "p14",
+     "clicks": 1240,
+     "days": 6,
+     "calibration_mm": 50.4,
+     "learned_mm": 27.1,
+     "bands_mm": {
+      "0-100": [
+       33.5,
+       33.5
+      ],
+      "100-300": [
+       40.7,
+       28.8
+      ],
+      "300-1000": [
+       48.9,
+       28.1
+      ],
+      "1000+": [
+       58.9,
+       24.7
+      ]
+     },
+     "updates": 3,
+     "outcomes": {
+      "used": 975,
+      "not looking": 265
+     }
+    }
+   ]
+  },
+  "clean: exact labels": {
+   "label_error_mm": 0.0,
+   "looking_elsewhere": 0.0,
+   "median_mm": {
+    "calibration": 45.2,
+    "learned": 31.5
+   },
+   "median_px_on_user_monitor": {
+    "calibration": 194.0,
+    "learned": 135.0
+   },
+   "p90_mm": {
+    "calibration": 103.5,
+    "learned": 70.1
+   },
+   "people_better": "15 of 15",
+   "people_worse_by_2pct": [],
+   "people": [
+    {
+     "person": "p00",
+     "clicks": 2826,
+     "days": 38,
+     "calibration_mm": 38.0,
+     "learned_mm": 25.2,
+     "bands_mm": {
+      "0-100": [
+       30.5,
+       26.1
+      ],
+      "100-300": [
+       34.4,
+       27.8
+      ],
+      "300-1000": [
+       41.8,
+       28.0
+      ],
+      "1000+": [
+       37.3,
+       23.7
+      ]
+     },
+     "updates": 13,
+     "outcomes": {
+      "used": 2737,
+      "not looking": 89
+     }
+    },
+    {
+     "person": "p01",
+     "clicks": 2840,
+     "days": 66,
+     "calibration_mm": 28.7,
+     "learned_mm": 24.5,
+     "bands_mm": {
+      "0-100": [
+       27.8,
+       26.5
+      ],
+      "100-300": [
+       33.7,
+       26.2
+      ],
+      "300-1000": [
+       28.5,
+       22.4
+      ],
+      "1000+": [
+       28.2,
+       25.0
+      ]
+     },
+     "updates": 24,
+     "outcomes": {
+      "used": 2794,
+      "not looking": 46
+     }
+    },
+    {
+     "person": "p02",
+     "clicks": 2884,
+     "days": 38,
+     "calibration_mm": 28.3,
+     "learned_mm": 24.6,
+     "bands_mm": {
+      "0-100": [
+       22.6,
+       21.9
+      ],
+      "100-300": [
+       29.7,
+       22.6
+      ],
+      "300-1000": [
+       27.4,
+       25.1
+      ],
+      "1000+": [
+       28.7,
+       24.6
+      ]
+     },
+     "updates": 31,
+     "outcomes": {
+      "used": 2814,
+      "not looking": 70
+     }
+    },
+    {
+     "person": "p03",
+     "clicks": 2878,
+     "days": 63,
+     "calibration_mm": 43.5,
+     "learned_mm": 31.0,
+     "bands_mm": {
+      "0-100": [
+       35.4,
+       32.8
+      ],
+      "100-300": [
+       34.4,
+       22.3
+      ],
+      "300-1000": [
+       43.9,
+       30.6
+      ],
+      "1000+": [
+       44.1,
+       32.1
+      ]
+     },
+     "updates": 26,
+     "outcomes": {
+      "used": 2688,
+      "not looking": 190
+     }
+    },
+    {
+     "person": "p04",
+     "clicks": 2709,
+     "days": 24,
+     "calibration_mm": 28.3,
+     "learned_mm": 22.5,
+     "bands_mm": {
+      "0-100": [
+       40.0,
+       36.8
+      ],
+      "100-300": [
+       34.5,
+       26.5
+      ],
+      "300-1000": [
+       28.0,
+       22.5
+      ],
+      "1000+": [
+       28.1,
+       22.1
+      ]
+     },
+     "updates": 36,
+     "outcomes": {
+      "used": 2651,
+      "not looking": 58
+     }
+    },
+    {
+     "person": "p05",
+     "clicks": 2797,
+     "days": 37,
+     "calibration_mm": 46.6,
+     "learned_mm": 31.6,
+     "bands_mm": {
+      "0-100": [
+       50.2,
+       45.7
+      ],
+      "100-300": [
+       43.6,
+       32.8
+      ],
+      "300-1000": [
+       46.7,
+       32.3
+      ],
+      "1000+": [
+       46.9,
+       31.2
+      ]
+     },
+     "updates": 25,
+     "outcomes": {
+      "used": 2730,
+      "not looking": 67
+     }
+    },
+    {
+     "person": "p06",
+     "clicks": 2823,
+     "days": 61,
+     "calibration_mm": 53.1,
+     "learned_mm": 37.6,
+     "bands_mm": {
+      "0-100": [
+       55.6,
+       52.9
+      ],
+      "100-300": [
+       55.9,
+       45.7
+      ],
+      "300-1000": [
+       53.0,
+       37.8
+      ],
+      "1000+": [
+       53.0,
+       36.7
+      ]
+     },
+     "updates": 23,
+     "outcomes": {
+      "used": 2714,
+      "not looking": 109
+     }
+    },
+    {
+     "person": "p07",
+     "clicks": 2792,
+     "days": 54,
+     "calibration_mm": 73.6,
+     "learned_mm": 48.8,
+     "bands_mm": {
+      "0-100": [
+       68.9,
+       51.5
+      ],
+      "100-300": [
+       74.6,
+       65.3
+      ],
+      "300-1000": [
+       70.6,
+       45.1
+      ],
+      "1000+": [
+       74.4,
+       49.1
+      ]
+     },
+     "updates": 20,
+     "outcomes": {
+      "used": 2544,
+      "not looking": 248
+     }
+    },
+    {
+     "person": "p08",
+     "clicks": 2679,
+     "days": 43,
+     "calibration_mm": 44.6,
+     "learned_mm": 37.2,
+     "bands_mm": {
+      "0-100": [
+       40.2,
+       38.2
+      ],
+      "100-300": [
+       41.1,
+       32.0
+      ],
+      "300-1000": [
+       44.9,
+       35.6
+      ],
+      "1000+": [
+       44.8,
+       38.7
+      ]
+     },
+     "updates": 33,
+     "outcomes": {
+      "used": 2521,
+      "not looking": 158
+     }
+    },
+    {
+     "person": "p09",
+     "clicks": 2516,
+     "days": 19,
+     "calibration_mm": 65.8,
+     "learned_mm": 41.6,
+     "bands_mm": {
+      "0-100": [
+       56.5,
+       42.8
+      ],
+      "100-300": [
+       59.8,
+       42.3
+      ],
+      "300-1000": [
+       62.2,
+       39.4
+      ],
+      "1000+": [
+       68.1,
+       42.2
+      ]
+     },
+     "updates": 23,
+     "outcomes": {
+      "used": 2448,
+      "not looking": 68
+     }
+    },
+    {
+     "person": "p10",
+     "clicks": 2106,
+     "days": 15,
+     "calibration_mm": 54.9,
+     "learned_mm": 32.6,
+     "bands_mm": {
+      "0-100": [
+       52.1,
+       47.7
+      ],
+      "100-300": [
+       37.1,
+       33.0
+      ],
+      "300-1000": [
+       46.7,
+       31.2
+      ],
+      "1000+": [
+       62.9,
+       33.4
+      ]
+     },
+     "updates": 33,
+     "outcomes": {
+      "used": 2031,
+      "not looking": 75
+     }
+    },
+    {
+     "person": "p11",
+     "clicks": 2007,
+     "days": 18,
+     "calibration_mm": 45.1,
+     "learned_mm": 36.2,
+     "bands_mm": {
+      "0-100": [
+       40.1,
+       35.0
+      ],
+      "100-300": [
+       47.5,
+       34.5
+      ],
+      "300-1000": [
+       42.1,
+       35.3
+      ],
+      "1000+": [
+       47.4,
+       37.1
+      ]
+     },
+     "updates": 26,
+     "outcomes": {
+      "used": 1966,
+      "not looking": 41
+     }
+    },
+    {
+     "person": "p12",
+     "clicks": 1483,
+     "days": 6,
+     "calibration_mm": 101.0,
+     "learned_mm": 53.7,
+     "bands_mm": {
+      "0-100": [
+       104.4,
+       104.4
+      ],
+      "100-300": [
+       79.5,
+       78.2
+      ],
+      "300-1000": [
+       122.6,
+       65.7
+      ],
+      "1000+": [
+       89.2,
+       31.9
+      ]
+     },
+     "updates": 13,
+     "outcomes": {
+      "used": 1257,
+      "not looking": 226
+     }
+    },
+    {
+     "person": "p13",
+     "clicks": 1319,
+     "days": 11,
+     "calibration_mm": 90.6,
+     "learned_mm": 34.6,
+     "bands_mm": {
+      "0-100": [
+       86.4,
+       40.6
+      ],
+      "100-300": [
+       113.0,
+       42.6
+      ],
+      "300-1000": [
+       90.2,
+       30.7
+      ],
+      "1000+": [
+       81.8,
+       40.1
+      ]
+     },
+     "updates": 23,
+     "outcomes": {
+      "used": 1255,
+      "not looking": 64
+     }
+    },
+    {
+     "person": "p14",
+     "clicks": 1240,
+     "days": 6,
+     "calibration_mm": 50.4,
+     "learned_mm": 23.6,
+     "bands_mm": {
+      "0-100": [
+       33.5,
+       26.2
+      ],
+      "100-300": [
+       40.7,
+       25.3
+      ],
+      "300-1000": [
+       48.9,
+       23.8
+      ],
+      "1000+": [
+       58.9,
+       21.6
+      ]
+     },
+     "updates": 17,
+     "outcomes": {
+      "used": 1193,
+      "not looking": 47
+     }
+    }
+   ]
+  },
+  "adversarial: every click made without looking": {
+   "label_error_mm": 0.0,
+   "looking_elsewhere": 1.0,
+   "median_mm": {
+    "calibration": 45.2,
+    "learned": 45.2
+   },
+   "median_px_on_user_monitor": {
+    "calibration": 194.0,
+    "learned": 194.0
+   },
+   "p90_mm": {
+    "calibration": 103.5,
+    "learned": 103.5
+   },
+   "people_better": "0 of 15",
+   "people_worse_by_2pct": [],
+   "people": [
+    {
+     "person": "p00",
+     "clicks": 2826,
+     "days": 38,
+     "calibration_mm": 38.0,
+     "learned_mm": 38.0,
+     "bands_mm": {
+      "0-100": [
+       30.5,
+       30.5
+      ],
+      "100-300": [
+       34.4,
+       34.4
+      ],
+      "300-1000": [
+       41.8,
+       41.8
+      ],
+      "1000+": [
+       37.3,
+       37.3
+      ]
+     },
+     "updates": 0,
+     "outcomes": {
+      "used": 1422,
+      "not looking": 1404
+     }
+    },
+    {
+     "person": "p01",
+     "clicks": 2840,
+     "days": 66,
+     "calibration_mm": 28.7,
+     "learned_mm": 28.7,
+     "bands_mm": {
+      "0-100": [
+       27.8,
+       27.8
+      ],
+      "100-300": [
+       33.7,
+       33.7
+      ],
+      "300-1000": [
+       28.5,
+       28.5
+      ],
+      "1000+": [
+       28.2,
+       28.2
+      ]
+     },
+     "updates": 0,
+     "outcomes": {
+      "used": 1359,
+      "not looking": 1481
+     }
+    },
+    {
+     "person": "p02",
+     "clicks": 2884,
+     "days": 38,
+     "calibration_mm": 28.3,
+     "learned_mm": 28.3,
+     "bands_mm": {
+      "0-100": [
+       22.6,
+       22.6
+      ],
+      "100-300": [
+       29.7,
+       29.7
+      ],
+      "300-1000": [
+       27.4,
+       27.4
+      ],
+      "1000+": [
+       28.7,
+       28.7
+      ]
+     },
+     "updates": 0,
+     "outcomes": {
+      "used": 1361,
+      "not looking": 1523
+     }
+    },
+    {
+     "person": "p03",
+     "clicks": 2878,
+     "days": 63,
+     "calibration_mm": 43.5,
+     "learned_mm": 43.5,
+     "bands_mm": {
+      "0-100": [
+       35.4,
+       35.4
+      ],
+      "100-300": [
+       34.4,
+       34.4
+      ],
+      "300-1000": [
+       43.9,
+       43.9
+      ],
+      "1000+": [
+       44.1,
+       44.1
+      ]
+     },
+     "updates": 0,
+     "outcomes": {
+      "used": 1538,
+      "not looking": 1340
+     }
+    },
+    {
+     "person": "p04",
+     "clicks": 2709,
+     "days": 24,
+     "calibration_mm": 28.3,
+     "learned_mm": 28.3,
+     "bands_mm": {
+      "0-100": [
+       40.0,
+       40.0
+      ],
+      "100-300": [
+       34.5,
+       34.5
+      ],
+      "300-1000": [
+       28.0,
+       28.0
+      ],
+      "1000+": [
+       28.1,
+       28.1
+      ]
+     },
+     "updates": 0,
+     "outcomes": {
+      "used": 1262,
+      "not looking": 1447
+     }
+    },
+    {
+     "person": "p05",
+     "clicks": 2797,
+     "days": 37,
+     "calibration_mm": 46.6,
+     "learned_mm": 46.6,
+     "bands_mm": {
+      "0-100": [
+       50.2,
+       50.2
+      ],
+      "100-300": [
+       43.6,
+       43.6
+      ],
+      "300-1000": [
+       46.7,
+       46.7
+      ],
+      "1000+": [
+       46.9,
+       46.9
+      ]
+     },
+     "updates": 0,
+     "outcomes": {
+      "used": 1414,
+      "not looking": 1383
+     }
+    },
+    {
+     "person": "p06",
+     "clicks": 2823,
+     "days": 61,
+     "calibration_mm": 53.1,
+     "learned_mm": 53.1,
+     "bands_mm": {
+      "0-100": [
+       55.6,
+       55.6
+      ],
+      "100-300": [
+       55.9,
+       55.9
+      ],
+      "300-1000": [
+       53.0,
+       53.0
+      ],
+      "1000+": [
+       53.0,
+       53.0
+      ]
+     },
+     "updates": 0,
+     "outcomes": {
+      "used": 1222,
+      "not looking": 1601
+     }
+    },
+    {
+     "person": "p07",
+     "clicks": 2792,
+     "days": 54,
+     "calibration_mm": 73.6,
+     "learned_mm": 73.6,
+     "bands_mm": {
+      "0-100": [
+       68.9,
+       68.9
+      ],
+      "100-300": [
+       74.6,
+       74.6
+      ],
+      "300-1000": [
+       70.6,
+       70.6
+      ],
+      "1000+": [
+       74.4,
+       74.4
+      ]
+     },
+     "updates": 0,
+     "outcomes": {
+      "used": 927,
+      "not looking": 1865
+     }
+    },
+    {
+     "person": "p08",
+     "clicks": 2679,
+     "days": 43,
+     "calibration_mm": 44.6,
+     "learned_mm": 44.6,
+     "bands_mm": {
+      "0-100": [
+       40.2,
+       40.2
+      ],
+      "100-300": [
+       41.1,
+       41.1
+      ],
+      "300-1000": [
+       44.9,
+       44.9
+      ],
+      "1000+": [
+       44.8,
+       44.8
+      ]
+     },
+     "updates": 0,
+     "outcomes": {
+      "used": 1287,
+      "not looking": 1392
+     }
+    },
+    {
+     "person": "p09",
+     "clicks": 2516,
+     "days": 19,
+     "calibration_mm": 65.8,
+     "learned_mm": 65.8,
+     "bands_mm": {
+      "0-100": [
+       56.5,
+       56.5
+      ],
+      "100-300": [
+       59.8,
+       59.8
+      ],
+      "300-1000": [
+       62.2,
+       62.2
+      ],
+      "1000+": [
+       68.1,
+       68.1
+      ]
+     },
+     "updates": 0,
+     "outcomes": {
+      "used": 1376,
+      "not looking": 1140
+     }
+    },
+    {
+     "person": "p10",
+     "clicks": 2106,
+     "days": 15,
+     "calibration_mm": 54.9,
+     "learned_mm": 54.9,
+     "bands_mm": {
+      "0-100": [
+       52.1,
+       52.1
+      ],
+      "100-300": [
+       37.1,
+       37.1
+      ],
+      "300-1000": [
+       46.7,
+       46.7
+      ],
+      "1000+": [
+       62.9,
+       62.9
+      ]
+     },
+     "updates": 0,
+     "outcomes": {
+      "used": 850,
+      "not looking": 1256
+     }
+    },
+    {
+     "person": "p11",
+     "clicks": 2007,
+     "days": 18,
+     "calibration_mm": 45.1,
+     "learned_mm": 45.1,
+     "bands_mm": {
+      "0-100": [
+       40.1,
+       40.1
+      ],
+      "100-300": [
+       47.5,
+       47.5
+      ],
+      "300-1000": [
+       42.1,
+       42.1
+      ],
+      "1000+": [
+       47.4,
+       47.4
+      ]
+     },
+     "updates": 0,
+     "outcomes": {
+      "used": 1008,
+      "not looking": 999
+     }
+    },
+    {
+     "person": "p12",
+     "clicks": 1483,
+     "days": 6,
+     "calibration_mm": 101.0,
+     "learned_mm": 101.0,
+     "bands_mm": {
+      "0-100": [
+       104.4,
+       104.4
+      ],
+      "100-300": [
+       79.5,
+       79.5
+      ],
+      "300-1000": [
+       122.6,
+       122.6
+      ],
+      "1000+": [
+       89.2,
+       89.2
+      ]
+     },
+     "updates": 0,
+     "outcomes": {
+      "used": 455,
+      "not looking": 1028
+     }
+    },
+    {
+     "person": "p13",
+     "clicks": 1319,
+     "days": 11,
+     "calibration_mm": 90.6,
+     "learned_mm": 90.6,
+     "bands_mm": {
+      "0-100": [
+       86.4,
+       86.4
+      ],
+      "100-300": [
+       113.0,
+       113.0
+      ],
+      "300-1000": [
+       90.2,
+       90.2
+      ],
+      "1000+": [
+       81.8,
+       81.8
+      ]
+     },
+     "updates": 0,
+     "outcomes": {
+      "used": 547,
+      "not looking": 772
+     }
+    },
+    {
+     "person": "p14",
+     "clicks": 1240,
+     "days": 6,
+     "calibration_mm": 50.4,
+     "learned_mm": 50.4,
+     "bands_mm": {
+      "0-100": [
+       33.5,
+       33.5
+      ],
+      "100-300": [
+       40.7,
+       40.7
+      ],
+      "300-1000": [
+       48.9,
+       48.9
+      ],
+      "1000+": [
+       58.9,
+       58.9
+      ]
+     },
+     "updates": 0,
+     "outcomes": {
+      "used": 565,
+      "not looking": 675
+     }
+    }
+   ]
+  }
+ }
+}
