@@ -71,6 +71,25 @@ calibration contents were not changed. The updated worker reported tracking at a
 stayed at the original position until real eye movement resumed, consistent with the intended hold.
 That is a qualitative check, not a labeled video or measured blink sensitivity/specificity.
 
+## Integration with newer branch work
+
+The original replay/simulation above are pinned to the blink implementation in `7f241d5`.
+Newer branch work added a desktop overlay/camera-mode path and a search freshness fix, followed
+by an overlay frame-counter race fix. Those changes were preserved through normal merges.
+The blink gate stays before `_gaze`, so it also guards the desktop overlay's in-memory `push`.
+A new regression checks that neither closing nor reopening artifacts reach that overlay.
+The calibration lifecycle fixture now replaces the new camera wrapper and explicitly forbids
+real mode probing; no test opens the user's webcam.
+
+The [integrated replay](../eval/results/blink-replay-integrated.json) and
+[integrated simulation](../eval/results/blink-regression-integrated.json) record the merged
+sources separately. The replay verifies sources/fixtures stayed unchanged while it ran; the
+simulation wrapper does the same. Earlier evidence is retained with its original hashes.
+The final merged `npm run check` passed with 233 core tests, 100 gaze tests, 4 contract tests,
+9 transport tests, 10 extension library tests, schema/type checks and the production build.
+All five isolated reporter browser tests also passed after the merge. Native Win32 drawing
+was not manually revalidated by this blink pass; its integration was tested through fake backends.
+
 ## Limits and reproduction
 
 The 100 ms reopening grace is an intentional responsiveness tradeoff around blinks. An aperture
