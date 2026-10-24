@@ -103,7 +103,11 @@ class Clock:
 
 
 def logged(vault: Vault, name: str) -> list[dict]:
-    return [json.loads(line) for path in sorted((vault.root / "capture").glob(f"*/{name}")) for line in path.open()]
+    records = []
+    for path in sorted((vault.root / "capture").glob(f"*/{name}")):
+        with path.open(encoding="utf-8") as stream:
+            records.extend(json.loads(line) for line in stream)
+    return records
 
 
 def reader_for(vault: Vault, receiver: object) -> tuple[ScreenReader, FakeSystem, FakeOcr, Clock]:
