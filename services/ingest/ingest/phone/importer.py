@@ -59,6 +59,7 @@ class Moment:
     lon: float | None = None
     source: dict = field(default_factory=dict)
     place: str | None = None  # the visit it overlaps most
+    file: dict = field(default_factory=dict)  # the file it came from: name and size
 
 
 def classify(paths: list[Path]) -> dict[str, list]:
@@ -138,7 +139,8 @@ def _voice(path: Path, transcripts: list[Path], only: bool, run: bool, ends: boo
     transcript = (
         voice.load_transcript(beside[0], audio.duration_s) if beside else (voice.transcribe(path, say) if run else None)
     )
-    moment_id = "mo_voice_" + audio.t0.strftime("%Y%m%d_%H%M%S")
+    # Named by the file's own time, so a later import that reads it differently replaces it.
+    moment_id = "mo_voice_" + (audio.stamp or audio.t0).strftime("%Y%m%d_%H%M%S")
     note = (
         None if transcript is not None else "not transcribed: install the transcribe extra (uv sync --extra transcribe)"
     )
@@ -153,7 +155,8 @@ def _voice(path: Path, transcripts: list[Path], only: bool, run: bool, ends: boo
     title = path.stem.split("-", 1)[-1].replace("_", " ") if "-" in path.stem else path.stem.replace("_", " ")
     return Moment(moment_id, "audio", audio.t0, audio.duration_s, f"Voice memo · {title}", 60.0, write,
                   transcript or {"segments": [], "speaker_map": {}},
-                  source={"kind": "voice-memo", "ref": f"voice-memo:{path.name}"})  # fmt: skip
+                  source={"kind": "voice-memo", "ref": f"voice-memo:{path.name}"},
+                  file={"name": path.name, "bytes": path.stat().st_size})  # fmt: skip
 
 
 def _scan(files: dict[str, Path], fixes: list, say: Any) -> Moment:
@@ -162,15 +165,18 @@ def _scan(files: dict[str, Path], fixes: list, say: Any) -> Moment:
     fit = stray.georeference(scan, fixes) if fixes else None
     if fit:
         say(f"scan placed on the map: {fit['rmse_m']} m from the GPS track, start {fit['offset_s']:+d} s")
-    moment_id = "mo_scan_" + scan.t0.strftime("%Y%m%d_%H%M%S")
+    moment_id = "mo_scan_" + (scan.stamp or scan.t0).strftime("%Y%m%d_%H%M%S")
 
     def write(folder: Path) -> dict:
         name = stray.store(scan, folder)
         frames = stray.keyframes(scan, folder)
+        watch = stray.preview(scan, folder)
         (folder / "camera.json").write_text(json.dumps({"fit": scan.fit, "points": stray.camera_path(scan)}) + "\n",
                                             encoding="utf-8")  # fmt: skip
         return {
-            "kind": "camera-path", "video": name, "frames": len(scan.t), "size": [scan.width, scan.height],
+            "kind": "camera-path", "video": name, "preview": watch, "frames": len(scan.t),
+            "size": [scan.width, scan.height],
+            "rotate_deg": stray.upright(scan),  # clockwise to stand upright (the preview and keyframes are)
             "keyframes": frames, "path": "camera.json", "georeferenced": scan.fit, "stamped": scan.stamped,
             "depth": None if scan.depth is None else "provided, not yet fused",
             "reason": None if scan.depth is not None else
@@ -180,7 +186,8 @@ def _scan(files: dict[str, Path], fixes: list, say: Any) -> Moment:
     lat = float(scan.geo[0, 0]) if scan.geo is not None else None
     lon = float(scan.geo[0, 1]) if scan.geo is not None else None
     return Moment(moment_id, "video", scan.t0, scan.duration_s, "LiDAR scan", scan.fov_deg, write, lat=lat, lon=lon,
-                  source={"kind": "stray-scanner", "ref": f"stray-scanner:{scan.video.name}"})  # fmt: skip
+                  source={"kind": "stray-scanner", "ref": f"stray-scanner:{scan.video.name}"},
+                  file={"name": scan.video.name, "bytes": scan.video.stat().st_size})  # fmt: skip
 
 
 def _by_day(span: Span, zone: ZoneInfo) -> list[tuple[str, Span]]:
@@ -220,7 +227,11 @@ def _write_day(vault: Vault, day: str, zone_name: str, spans: list, moments: lis
         if (path / "skeleton.geojson").is_file()
         else {"type": "FeatureCollection", "features": []}
     )
-    new_moment_ids = {m.id for m in moments}
+    # A moment an earlier import made from the same file under another id (read differently then)
+    # is replaced too: its scene names the file it came from.
+    new_moment_ids = {m.id for m in moments} | _same_files(path, moments)
+    for stale in new_moment_ids - {m.id for m in moments}:
+        shutil.rmtree(path / "moments" / stale, ignore_errors=True)
     events = [e for e in events if not (
         (replace_sensor and e["id"].startswith(EVENT_PREFIX) and e["source"]["kind"] in SOURCES | {"barometer"})
         or e.get("moment_id") in new_moment_ids
@@ -243,7 +254,7 @@ def _write_day(vault: Vault, day: str, zone_name: str, spans: list, moments: lis
         if folder.exists():
             shutil.rmtree(folder)
         folder.mkdir(parents=True)
-        scene = moment.write(folder)
+        scene = moment.write(folder) | {"source": moment.file}
         meta = {
             "id": moment.id, "title": moment.title, "t0": moment.t0.astimezone(zone).isoformat(timespec="seconds"),
             "duration_s": round(moment.duration_s, 3), "lat": moment.lat, "lon": moment.lon,
@@ -296,6 +307,22 @@ def _write_day(vault: Vault, day: str, zone_name: str, spans: list, moments: lis
     say(f"{day}: {result['places']} visits, {len(transits)} trips, {len(new_events)} place events, "
         f"{len(moments)} moments")  # fmt: skip
     return result
+
+
+def _same_files(day: Path, moments: list[Moment]) -> set[str]:
+    """Ids of moments already in the day that came from the files being imported."""
+    files = {(m.file.get("name"), m.file.get("bytes")) for m in moments}
+    out = set()
+    for scene_path in (day / "moments").glob("mo_*/scene.json") if (day / "moments").exists() else []:
+        if not scene_path.parent.name.startswith(MOMENT_PREFIXES):
+            continue
+        try:
+            source = read_json(scene_path).get("source") or {}
+        except (OSError, ValueError):
+            continue
+        if (source.get("name"), source.get("bytes")) in files:
+            out.add(scene_path.parent.name)
+    return out
 
 
 def _overlap(moment: Moment, places: list[Record]) -> str | None:

@@ -22,7 +22,7 @@ test('a day imported from the phone has its visits, walk and recorded moments', 
     const frame = await fetch(bridge.assetUrl('2026-10-21', `moments/${scanId}/${scan.scene.keyframes[0].file}`));
     return {
       layers: day.layers.map((l: any) => ({ kind: l.kind, name: l.name, points: l.path.length })),
-      walkX: Math.max(...day.layers[1].path.map((p: any) => Math.abs(p.x - 6))),
+      walkX: Math.max(...day.layers[1].path.map((p: any) => Math.abs(p.x - 13))), // around the stage's middle
       scanFit: scan.camera.fit, keyframes: scan.scene.keyframes.length,
       said: voice.transcript.segments.map((s: any) => s.text),
       audio: [audio.status, audio.headers.get('content-type')], frame: frame.status,

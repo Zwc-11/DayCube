@@ -37,6 +37,7 @@ class Audio:
     t0: datetime  # UTC
     duration_s: float
     stamped: str  # what the time came from
+    stamp: datetime | None = None  # the file's own time, whatever it is taken to mean: the moment's id
 
 
 def read(path: Path, *, ends_at_creation: bool = True, start: datetime | None = None) -> Audio:
@@ -44,14 +45,14 @@ def read(path: Path, *, ends_at_creation: bool = True, start: datetime | None = 
     info = probe(path)
     duration = float(info["format"]["duration"])
     if start is not None:
-        return Audio(path, start.astimezone(UTC), duration, "given")
+        return Audio(path, start.astimezone(UTC), duration, "given", start.astimezone(UTC))
     created = (info["format"].get("tags") or {}).get("creation_time")
     if not created:
         raise ValueError(f"{path.name}: no creation time in the file; give the start time")
     stamp = datetime.fromisoformat(created.replace("Z", "+00:00")).astimezone(UTC)
     if ends_at_creation:
-        return Audio(path, stamp - timedelta(seconds=duration), duration, "creation time, taken as the end")
-    return Audio(path, stamp, duration, "creation time, taken as the start")
+        return Audio(path, stamp - timedelta(seconds=duration), duration, "creation time, taken as the end", stamp)
+    return Audio(path, stamp, duration, "creation time, taken as the start", stamp)
 
 
 def transcribe(path: Path, say: Any = print) -> dict | None:

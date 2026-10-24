@@ -40,11 +40,12 @@ const CameraMap: React.FC<{ camera: MomentCamera; t: number }> = ({ camera, t })
     const ys = xy.map((p) => p[1]);
     const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
     const span = Math.max(x1 - x0, y1 - y0, 10);
-    return { xy, x0, y1, span, metres: Math.round(span) };
+    return { xy, x0, y1, span, metres: Math.round(span), tall: Math.max(y1 - y0, 10) / span };
   }, [placed]);
   if (!view) return null;
-  const size = 180;
+  const size = 200;
   const pad = 12;
+  const height = Math.max(60, Math.round(pad * 2 + (size - 2 * pad) * view.tall));
   const at = (p: readonly [number, number]) =>
     [pad + ((p[0] - view.x0) / view.span) * (size - 2 * pad), pad + ((view.y1 - p[1]) / view.span) * (size - 2 * pad)] as const;
   let i = placed.findIndex((p) => p.t >= t);
@@ -53,8 +54,8 @@ const CameraMap: React.FC<{ camera: MomentCamera; t: number }> = ({ camera, t })
   const heading = ((placed[i].heading_deg ?? 0) * Math.PI) / 180;
   const line = view.xy.map((p) => at(p).join(',')).join(' ');
   return (
-    <figure className="float" style={{ margin: 0, padding: 8 }} aria-label="Where the camera went">
-      <svg width={size} height={size} role="img" aria-label={`Camera path, ${view.metres} m across`}>
+    <figure style={{ margin: 0 }} aria-label="Where the camera went">
+      <svg width={size} height={height} role="img" aria-label={`Camera path, ${view.metres} m across`}>
         <polyline points={line} fill="none" stroke="var(--fg-3)" strokeWidth={1.5} />
         <line x1={cx} y1={cy} x2={cx + 14 * Math.sin(heading)} y2={cy - 14 * Math.cos(heading)} stroke="var(--accent, #8dba9f)" strokeWidth={2} />
         <circle cx={cx} cy={cy} r={4} fill="var(--accent, #8dba9f)" />
@@ -106,7 +107,8 @@ export const RecordedMomentModal: React.FC<RecordedMomentModalProps> = ({ date, 
   const { meta, scene, camera } = moment;
   const file = (name: unknown) => (typeof name === 'string' ? backendBridge.assetUrl(date, `moments/${meta.id}/${name}`) : null);
   const audio = file(scene.audio);
-  const video = file(scene.video);
+  // The import's upright, smaller copy when there is one; the original otherwise.
+  const video = file(scene.preview ?? scene.video);
   const keyframes = Array.isArray(scene.keyframes) ? (scene.keyframes as { file: string; t: number }[]) : [];
   const seek = (s: number) => {
     setT(s);
@@ -115,6 +117,11 @@ export const RecordedMomentModal: React.FC<RecordedMomentModalProps> = ({ date, 
   const onTime = (e: React.SyntheticEvent<HTMLMediaElement>) => setT(e.currentTarget.currentTime);
   const reason = typeof scene.reason === 'string' ? scene.reason : null;
   const untranscribed = typeof scene.transcript === 'string' ? scene.transcript : null;
+  // A phone held upright records sideways: the import turns the preview and keyframes upright.
+  const turn = typeof scene.rotate_deg === 'number' ? scene.rotate_deg : 0;
+  const sideways = turn === 90 || turn === 270;
+  const fit = (scene.georeferenced ?? null) as { rmse_m: number } | null;
+  const isScan = scene.kind === 'camera-path';
 
   return (
     <Dialog onClose={onClose} title={meta.title ?? 'Moment'} className="viewer">
@@ -123,7 +130,8 @@ export const RecordedMomentModal: React.FC<RecordedMomentModalProps> = ({ date, 
           <h2 className="dialog__title">{meta.title ?? 'Moment'}</h2>
           <div className="dialog__sub num">
             {placeName ? `${placeName}, ` : ''}
-            {localTime(meta.t0)}, {clockS(meta.duration_s)}
+            {localTime(meta.t0)}, {Math.floor(meta.duration_s / 60) ? `${Math.floor(meta.duration_s / 60)} min ` : ''}
+            {Math.round(meta.duration_s % 60)} s
           </div>
         </div>
         <div className="row">
@@ -148,7 +156,7 @@ export const RecordedMomentModal: React.FC<RecordedMomentModalProps> = ({ date, 
               controls
               preload="metadata"
               onTimeUpdate={onTime}
-              style={{ width: '100%', maxHeight: '70%', objectFit: 'contain', background: '#000' }}
+              style={{ width: '100%', flex: '1 1 0', minHeight: 0, objectFit: 'contain', background: '#000' }}
             />
           ) : null}
           {audio ? (
@@ -166,7 +174,7 @@ export const RecordedMomentModal: React.FC<RecordedMomentModalProps> = ({ date, 
             </div>
           ) : null}
           {keyframes.length ? (
-            <div className="row" style={{ gap: 6, padding: '10px 12px', overflowX: 'auto' }} role="list" aria-label="Keyframes">
+            <div className="row" style={{ gap: 6, padding: '10px 12px', overflowX: 'auto', flexWrap: 'nowrap', flexShrink: 0 }} role="list" aria-label="Keyframes">
               {keyframes.map((k) => (
                 <button
                   key={k.file}
@@ -177,14 +185,15 @@ export const RecordedMomentModal: React.FC<RecordedMomentModalProps> = ({ date, 
                   onClick={() => seek(k.t)}
                   aria-label={`Frame at ${clockS(k.t)}`}
                 >
-                  <img src={file(k.file) ?? undefined} alt="" width={96} height={72} style={{ objectFit: 'cover', display: 'block' }} />
+                  <img
+                    src={file(k.file) ?? undefined}
+                    alt=""
+                    width={sideways ? 54 : 96}
+                    height={72}
+                    style={{ objectFit: 'cover', display: 'block' }}
+                  />
                 </button>
               ))}
-            </div>
-          ) : null}
-          {camera ? (
-            <div className="viewer__overlay viewer__overlay--tr">
-              <CameraMap camera={camera} t={t} />
             </div>
           ) : null}
           {reason ? (
@@ -195,6 +204,26 @@ export const RecordedMomentModal: React.FC<RecordedMomentModalProps> = ({ date, 
         </div>
 
         <div className="viewer__side">
+          {isScan ? (
+            <div className="section" style={{ paddingBottom: 12 }}>
+              <h3 className="section__title" style={{ margin: 0 }}>
+                Capture
+              </h3>
+              <dl className="faint num" style={{ fontSize: 13, margin: '8px 0 0', display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '4px 12px' }}>
+                <dt>Frames</dt>
+                <dd style={{ margin: 0 }}>{String(scene.frames ?? '')}</dd>
+                <dt>On the map</dt>
+                <dd style={{ margin: 0 }}>{fit ? `to ${fit.rmse_m} m, fitted to the GPS track` : 'not placed (no GPS then)'}</dd>
+                <dt>3D scene</dt>
+                <dd style={{ margin: 0 }}>{reason ? 'needs the depth folder' : String(scene.depth ?? 'none')}</dd>
+              </dl>
+              {camera ? (
+                <div style={{ marginTop: 12 }}>
+                  <CameraMap camera={camera} t={t} />
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           <div className="section" style={{ paddingBottom: 12 }}>
             <h3 className="section__title" style={{ margin: 0 }}>
               Transcript
@@ -208,7 +237,7 @@ export const RecordedMomentModal: React.FC<RecordedMomentModalProps> = ({ date, 
           <div className="scroll" style={{ flex: 1, minHeight: 0 }}>
             {segments.length === 0 ? (
               <p className="faint" style={{ padding: '0 16px', fontSize: 13 }}>
-                {untranscribed ?? 'Nothing was said, or there is no sound.'}
+                {untranscribed ?? (isScan ? 'The capture has no sound.' : 'Nothing was said, or there is no sound.')}
               </p>
             ) : (
               segments.map((seg, i) => (
@@ -217,16 +246,21 @@ export const RecordedMomentModal: React.FC<RecordedMomentModalProps> = ({ date, 
                   ref={i === active ? activeRowRef : undefined}
                   type="button"
                   className="seg-row"
+                  style={{ gridTemplateColumns: '40px 1fr' }}
                   aria-current={i === active}
                   onClick={() => seek(seg.start)}
                 >
-                  <span>
-                    <span className="quote__head">
-                      <span className="faint num">{clockS(seg.start)}</span>
-                    </span>
-                    <span className="quote__text" style={{ display: 'block' }}>
-                      {seg.text}
-                    </span>
+                  <span className="faint num" style={{ fontSize: 12, paddingTop: 2 }}>
+                    {clockS(seg.start)}
+                  </span>
+                  <span className="quote__text">
+                    {seg.words.length && i === active
+                      ? seg.words.map((w, wi) => (
+                          <span key={wi} className={t >= w.start && t <= w.end + 0.3 ? 'word--active' : undefined}>
+                            {w.word}{' '}
+                          </span>
+                        ))
+                      : seg.text}
                   </span>
                 </button>
               ))
