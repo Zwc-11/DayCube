@@ -17,6 +17,10 @@ uv run --project services/capture-win python -m capture screen check        # wh
 uv run --project services/capture-win python -m capture screen off          # stop reading other apps (on: again)
 ```
 
+From the repository folder, `.\capture doctor` (or any of these commands) is the same: `capture.cmd`
+runs it in this environment. A bare `python -m capture` uses the system Python, which has no
+`capture` module.
+
 | Module | Does |
 | --- | --- |
 | `capture/api.py` | `GET /status`, `POST /pause`, `/resume`, `/events` (browser records), `/gaze` (fixations and tracker state) |
