@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from conftest import CAPTURE_DAY, capture_session
+from fastapi.testclient import TestClient
 from ingest.ask.query import READ, parse
 from ingest.ask.retrieve import retrieve
 from ingest.ask.service import ask
@@ -13,6 +14,18 @@ from ingest.vault import Vault
 
 TORONTO = ZoneInfo("America/Toronto")
 NOW = datetime(2026, 10, 23, 15, 30, tzinfo=TORONTO)  # a Friday afternoon
+
+
+@pytest.mark.parametrize("question", ["past 999999999999 days", "999999999999 days ago", "on 9999-12-31"])
+def test_out_of_calendar_ranges_fail_explicitly(question: str) -> None:
+    with pytest.raises(ValueError, match="outside the supported calendar"):
+        parse(question, NOW)
+
+
+def test_calendar_overflow_returns_a_client_error(client: TestClient) -> None:
+    response = client.get("/search", params={"q": "past 999999999999 days"})
+    assert response.status_code == 400
+    assert "supported calendar" in response.json()["detail"]
 
 
 def local(value: float) -> str:

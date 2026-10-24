@@ -37,11 +37,11 @@ def test_the_capture_morning_writes_linked_notes(vault: Vault) -> None:
         "Sources/Hash Tables - Computerphile - YouTube.md",  # 6 min on screen
         "Courses/CS 136.md",
     }  # the Google results page (21 s, no attention) gets no note
-    daily = (notes.root / "Daily/2026-10-22.md").read_text()
+    daily = (notes.root / "Daily/2026-10-22.md").read_text(encoding="utf-8")
     assert "- [[Courses/CS 136|CS 136]] due 2026-10-30 23:59 (seen 09:00)" in daily
     assert "“linear probing vs chaining” → [[Sources/Hash table - Wikipedia|Hash table - Wikipedia]]" in daily
     assert "(100% of the lines)" in daily and "(16 s)" in daily
-    course = (notes.root / "Courses/CS 136.md").read_text()
+    course = (notes.root / "Courses/CS 136.md").read_text(encoding="utf-8")
     assert "- 2026-10-30 23:59 (seen 2026-10-22)" in course
     assert "[[Sources/CS 136 Assignment 3 - Hash tables|CS 136 Assignment 3 - Hash tables]]" in course
 
@@ -54,12 +54,14 @@ def test_regenerating_keeps_edits_and_renamed_notes(vault: Vault) -> None:
     source = notes.root / "Sources/Hash table - Wikipedia.md"
     renamed = notes.root / "Sources/Hashing (my notes).md"
     source.rename(renamed)
-    renamed.write_text(renamed.read_text() + "\nLinear probing clusters; see [[Courses/CS 136]].\n")
+    renamed.write_text(
+        renamed.read_text(encoding="utf-8") + "\nLinear probing clusters; see [[Courses/CS 136]].\n", encoding="utf-8"
+    )
     Notes(store).write_day(CAPTURE_DAY)
     assert not source.exists()  # found by its front matter, not its name
-    text = renamed.read_text()
+    text = renamed.read_text(encoding="utf-8")
     assert "Linear probing clusters" in text and text.count(START) == 1
-    daily = (notes.root / "Daily/2026-10-22.md").read_text()
+    daily = (notes.root / "Daily/2026-10-22.md").read_text(encoding="utf-8")
     assert "[[Sources/Hashing (my notes)|Hash table - Wikipedia]]" in daily
 
 

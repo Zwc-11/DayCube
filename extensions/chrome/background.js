@@ -2,7 +2,7 @@
 // Records wait in a queue in extension storage until the receiver acknowledges them, so nothing
 // is lost while it is starting or stopped. The vault token never reaches a page.
 
-import { RECEIVER, allowed, clip, record, sameDocument, searchOf, trim } from './lib.js';
+import { allowed, clip, fetchReceiver, record, sameDocument, searchOf, trim } from './lib.js';
 
 const BATCH = 400;
 const QUEUE_LIMIT = 5000;
@@ -22,7 +22,7 @@ chrome.storage.local.setAccessLevel?.({ accessLevel: 'TRUSTED_CONTEXTS' })?.catc
 
 let pending = [];
 let timer = null;
-let chain = Promise.resolve();
+let delivery = null;
 
 function enqueue(item) {
   pending.push(item);
@@ -30,8 +30,12 @@ function enqueue(item) {
 }
 
 function flush() {
-  chain = chain.then(deliver).catch(error => report('error', String(error)));
-  return chain;
+  if (delivery) return delivery;
+  delivery = deliver().catch(error => report('error', String(error))).finally(() => {
+    delivery = null;
+    if (pending.length && !timer) timer = setTimeout(() => { timer = null; flush(); }, 1000);
+  });
+  return delivery;
 }
 
 // Heartbeats only matter live; everything else waits for the receiver.
@@ -60,16 +64,18 @@ async function deliver() {
     await chrome.storage.local.set({ queue: [] });
     return refreshBadge();
   }
+  // A stopped worker or invalid response must not lose the records moved out of pending.
+  await chrome.storage.local.set({ queue: durable(items) });
   while (items.length) {
     const batch = items.slice(0, BATCH);
     let response;
     try {
-      response = await fetch(`${RECEIVER}/events`, {
+      response = await fetchReceiver('/events', {
         method: 'POST', body: JSON.stringify(batch),
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${s.token}` },
       });
     } catch {
-      return keep(items, 'offline', 'The DayCube receiver is not running');
+      return keep(items, 'offline', 'The DayCube receiver did not return a valid response');
     }
     if (response.status === 409) {
       // Paused at the receiver (from this toolbar, another client or a remembered pause).
@@ -79,7 +85,7 @@ async function deliver() {
     }
     if (response.status === 401) return keep(items, 'error', 'The receiver refused the vault token');
     if (!response.ok) return keep(items, 'error', `The receiver answered ${response.status}`);
-    const body = await response.json();
+    const body = response.body;
     const refused = new Set((body.rejected || []).map(item => item.id));
     if (refused.size) {
       console.warn('DayCube receiver rejected records', body.rejected);
@@ -140,7 +146,7 @@ function act(signals, s) {
 
 async function tellReceiver(paused, token) {
   try {
-    const response = await fetch(`${RECEIVER}/${paused ? 'pause' : 'resume'}`, {
+    const response = await fetchReceiver(`/${paused ? 'pause' : 'resume'}`, {
       method: 'POST', headers: { Authorization: `Bearer ${token}` },
     });
     return response.ok;
@@ -190,7 +196,9 @@ async function tick() {
       if (!s.pauseSynced) {
         if (await tellReceiver(s.paused, s.token)) await chrome.storage.local.set({ pauseSynced: true });
       } else {
-        const status = await (await fetch(`${RECEIVER}/status`)).json();
+        const response = await fetchReceiver('/status');
+        if (!response.ok) throw new Error(`Receiver answered ${response.status}`);
+        const status = response.body;
         if (status.paused !== s.paused) {
           await chrome.storage.local.set({ paused: status.paused });
           if (!status.paused) focusSoon();
@@ -208,7 +216,7 @@ async function syncExclusions() {
   const s = await settings();
   if (!s.token) return;
   try {
-    const response = await fetch(`${RECEIVER}/exclusions`, {
+    const response = await fetchReceiver('/exclusions', {
       method: 'POST', body: JSON.stringify({ domains: s.exclusions }),
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${s.token}` },
     });
@@ -354,11 +362,11 @@ async function readingFor(tab, doc) {
   const show = Boolean(s.showLine) && recording(s) && !tab.incognito && allowed(tab.url, s.exclusions);
   const none = { show, reading: null, point: null, fixation: null };
   if (!show || !tab.active || guarded(tab.id) || typeof doc !== 'string') return none;
-  const response = await fetch(`${RECEIVER}/live?doc=${encodeURIComponent(doc)}`, {
+  const response = await fetchReceiver(`/live?doc=${encodeURIComponent(doc)}`, {
     headers: { Authorization: `Bearer ${s.token}` },
   });
   if (!response.ok) return none;
-  const live = await response.json();
+  const live = response.body;
   return { show, reading: live.reading ?? null, point: live.point ?? null, fixation: live.fixation ?? null };
 }
 

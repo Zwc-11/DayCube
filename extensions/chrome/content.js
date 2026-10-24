@@ -20,6 +20,7 @@
   // One load of this page. crypto.randomUUID exists only on https pages; this works on http too.
   const DOC = [...crypto.getRandomValues(new Uint8Array(8))].map(b => b.toString(16).padStart(2, '0')).join('');
   const MAX_BLOCKS = 150;
+  const MAX_CACHED_BLOCKS = 5000;
   // Where people type: fields, editable areas, and code editors that draw typed text in plain
   // elements (Monaco in Colab and github.dev, CodeMirror, Ace).
   const TYPING = [
@@ -254,8 +255,10 @@
       if (!id) {
         id = `b${(++counter).toString(36)}`;
         ids.set(element, id);
-        elements.set(id, new WeakRef(element));
       }
+      const reference = elements.get(id) ?? new WeakRef(element);
+      elements.delete(id);
+      elements.set(id, reference); // oldest first, including revisits after an eviction
       const left = Math.max(0, group.l);
       const top = Math.max(0, group.t);
       const block = {
@@ -293,12 +296,17 @@
         return;
       }
       if (!follow(reply)) {
-        for (const [id, text] of texts) sent.set(id, text);
-        for (const [id, layout] of layouts) sentLines.set(id, layout);
+        for (const [id, text] of texts) if (elements.has(id)) sent.set(id, text);
+        for (const [id, layout] of layouts) if (elements.has(id)) sentLines.set(id, layout);
       }
     });
-    if (elements.size > 5000) {
-      for (const [id, ref] of elements) if (!ref.deref()) { elements.delete(id); measured.delete(id); }
+    if (elements.size > MAX_CACHED_BLOCKS) {
+      const forget = id => { elements.delete(id); sent.delete(id); sentLines.delete(id); measured.delete(id); };
+      for (const [id, ref] of elements) {
+        if (!ref.deref()) forget(id);
+        if (elements.size <= MAX_CACHED_BLOCKS) break;
+      }
+      while (elements.size > MAX_CACHED_BLOCKS) forget(elements.keys().next().value);
     }
   }
 

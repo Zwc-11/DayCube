@@ -153,6 +153,8 @@ def _rescore(db: sqlite3.Connection, query: bytes, candidates: list[int], k: int
         chunk = candidates[start : start + CHUNK]
         marks = ",".join("?" for _ in chunk)
         rows += db.execute(f"SELECT id, embedding FROM vectors WHERE id IN ({marks})", chunk).fetchall()
+    if not rows:
+        return []  # the selected day may have been deleted before a direct caller rescored it
     matrix = np.frombuffer(b"".join(row[1] for row in rows), np.int8).reshape(len(rows), -1).astype(np.float32)
     q = np.frombuffer(query, np.int8).astype(np.float32)
     norms = np.linalg.norm(matrix, axis=1) * max(float(np.linalg.norm(q)), 1e-9)

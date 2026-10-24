@@ -12,8 +12,9 @@ from datetime import datetime, time, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from ..cache import SegmentedLRU
 from ..store import LifeStore
-from ..vault import Record
+from ..vault import METADATA_CACHE_BYTES, Record
 from .write import Notes
 
 KINDS = {"day": "daily", "page": "source", "course": "course"}
@@ -28,7 +29,7 @@ class DayNotes:
 
     def __init__(self, store: LifeStore) -> None:
         self.store = store
-        self._written: dict[str, str] = {}  # day -> the day's stamp its notes were written from
+        self._written: SegmentedLRU[str, str] = SegmentedLRU(METADATA_CACHE_BYTES)
         self._lock = threading.Lock()
 
     def ensure(self, day: str) -> None:
@@ -41,7 +42,7 @@ class DayNotes:
         with self._lock:
             if self._written.get(day) != row[0] or daily is None:
                 Notes(self.store).write_day(day)
-                self._written[day] = row[0]
+                self._written.put_metadata(day, row[0])
         self.store.sync_notes()  # the person's own notes may have changed too
 
     def view(self, day: str) -> Record:
@@ -49,7 +50,6 @@ class DayNotes:
         it, its local graph (each node with the note it has, if any) and what it holds."""
         self.ensure(day)
         with self.store.connect() as db:
-            notes = {r["path"]: dict(r) for r in db.execute("SELECT path, title, identity FROM notes")}
             daily_row = db.execute("SELECT path FROM notes WHERE identity = ?", (f"day {day}",)).fetchone()
             daily = daily_row[0] if daily_row else None
             out = [r[0] for r in db.execute(
@@ -65,7 +65,27 @@ class DayNotes:
             )
         start = datetime.combine(datetime.fromisoformat(day).date(), time(), ZoneInfo(zone))
         graph = self.store.graph(since=start.timestamp(), until=(start + timedelta(days=1)).timestamp(), limit=150)
-        by_identity = {n["identity"]: path for path, n in notes.items() if n["identity"]}
+        # Only fetch notes this view can display. Loading the entire folder here made every
+        # day view allocate several megabytes for unrelated notes.
+        notes: dict[str, Record] = {}
+        paths = list(dict.fromkeys(([daily] if daily else []) + out + back))
+        identities = [f"{node['kind']} {node['key']}" for node in graph["nodes"]]
+        by_identity: dict[str, str] = {}
+        with self.store.connect() as db:
+            for start in range(0, len(paths), 500):
+                chunk = paths[start : start + 500]
+                marks = ",".join("?" for _ in chunk)
+                notes.update(
+                    (r["path"], dict(r))
+                    for r in db.execute(f"SELECT path, title, identity FROM notes WHERE path IN ({marks})", chunk)
+                )
+            for start in range(0, len(identities), 500):
+                chunk = identities[start : start + 500]
+                marks = ",".join("?" for _ in chunk)
+                # Match the previous table-scan order when multiple notes have one identity.
+                by_identity.update(
+                    db.execute(f"SELECT identity, path FROM notes WHERE identity IN ({marks}) ORDER BY rowid", chunk)
+                )
         for node in graph["nodes"]:
             node["note"] = by_identity.get(f"{node['kind']} {node['key']}")
 
@@ -73,7 +93,7 @@ class DayNotes:
             note = notes[path]
             return {"path": path, "title": note["title"], "kind": note_kind(note["identity"]), "role": role}
 
-        listed = [entry(daily, "daily")] if daily else []
+        listed = [entry(daily, "daily")] if daily in notes else []
         listed += [entry(p, "linked") for p in out if p in notes and p != daily]
         listed += [entry(p, "backlink") for p in back if p in notes and p not in out]
         return {

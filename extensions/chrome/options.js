@@ -1,4 +1,4 @@
-import { RECEIVER, gazeLabel, normalizeDomains, readingLabel } from './lib.js';
+import { fetchReceiver, gazeLabel, normalizeDomains, readingLabel } from './lib.js';
 
 const $ = id => document.getElementById(id);
 const DEFAULTS = {
@@ -47,7 +47,9 @@ async function refresh() {
   show('recording', !s.enabled || !s.token ? 'Off' : s.paused ? 'Paused' : 'On', s.enabled && s.token && !s.paused ? 'good' : '');
   show('queued', `${s.queue.length} record${s.queue.length === 1 ? '' : 's'}`);
   try {
-    const status = await (await fetch(`${RECEIVER}/status`)).json();
+    const response = await fetchReceiver('/status');
+    if (!response.ok) throw new Error(`Receiver answered ${response.status}`);
+    const status = response.body;
     show('receiver', status.paused ? 'Running, paused' : `Running, last record ${ago(status.browser.last)}`, 'good');
     const gaze = status.gaze;
     show('gaze', gazeLabel(gaze, status.accuracy), gaze.tracking ? 'good' : '');

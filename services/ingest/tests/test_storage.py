@@ -50,6 +50,38 @@ def test_lru_demotes_protected_overflow_before_evicting_it() -> None:
     assert cache._sizes[1] <= 5 and len(cache) == 3  # 'a' went back to probation, not out
 
 
+def test_metadata_budget_counts_nested_objects_and_clear_resets_accounting() -> None:
+    cache: SegmentedLRU[str, dict] = SegmentedLRU(4096)
+    for i in range(100):
+        cache.put_metadata(str(i), {"stamp": (i, i, i), "text": "x" * 100})
+        assert cache.size <= cache.capacity
+    assert 0 < len(cache) < 100 and cache.get("99")["stamp"] == (99, 99, 99)
+    cache.put_metadata("huge", {"text": "x" * 10000})
+    assert cache.get("huge") is None
+    cache.clear()
+    assert len(cache) == cache.size == 0
+    with pytest.raises(ValueError, match="nonnegative"):
+        cache.put("bad", {}, -1)
+
+
+def test_summary_eviction_keeps_listings_fresh(vault: Vault) -> None:
+    from conftest import clone_day
+
+    for day in ("2026-10-21", "2026-10-22", "2026-10-23", "2026-10-24"):
+        clone_day(vault, DAY, day)
+    vault._summaries = SegmentedLRU(4096)
+    expected = Vault(vault.root).list_days()
+    assert vault.list_days() == expected
+    assert len(vault._summaries) < len(expected)
+    assert vault.list_days() == expected
+    path = vault.day_path(DAY) / "day.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["stats"]["events"] += 1
+    vault.write_json(path, data)
+    assert vault.list_days() == Vault(vault.root).list_days()
+    assert vault._summaries.size <= 4096
+
+
 def test_snapshot_memory_stays_within_budget(vault: Vault) -> None:
     budget = 3 * vault.snapshot(DAY).source_bytes // 2
     vault._snapshots = SegmentedLRU(budget)

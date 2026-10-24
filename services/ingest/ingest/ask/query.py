@@ -61,6 +61,13 @@ def _midnight(day: date, zone: ZoneInfo) -> datetime:
 
 def parse(question: str, now: datetime) -> Query:
     """``now``: an aware time in the person's zone."""
+    try:
+        return _parse(question, now)
+    except OverflowError as error:
+        raise ValueError("The requested time range is outside the supported calendar") from error
+
+
+def _parse(question: str, now: datetime) -> Query:
     zone = now.tzinfo if isinstance(now.tzinfo, ZoneInfo) else ZoneInfo("UTC")
     today = now.date()
     text = " " + question.strip() + " "
@@ -81,9 +88,7 @@ def parse(question: str, now: datetime) -> Query:
     # Ranges first, then single days, then parts of a day.
     if m := take(r"\b(?:in the )?(?:past|last) (\d+|a|an|one|two|three|four|five|six|seven|ten) (hour|day|week)s?\b"):
         count = int(m[1]) if m[1].isdigit() else NUMBERS[m[1].lower()]
-        span = {"hour": timedelta(hours=count), "day": timedelta(days=count), "week": timedelta(weeks=count)}[
-            m[2].lower()
-        ]
+        span = timedelta(**{f"{m[2].lower()}s": count})
         window, label = (now - span, now), f"past {count} {m[2].lower()}{'s' if count > 1 else ''}"
     elif m := take(r"\b(this|last) (week|month)\b"):
         which, unit = m[1].lower(), m[2].lower()

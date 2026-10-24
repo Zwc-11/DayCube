@@ -275,6 +275,8 @@ class Attention:
             self.reading = None
         if self.front is front:
             self.front = None
+        if self.page is not None and self.page.doc == front.doc:
+            self.page = None
         return ended
 
     def clear(self) -> list[dict]:
@@ -282,6 +284,7 @@ class Attention:
         self.fronts, self.front = {}, None
         self.belief, self.belief_doc = {}, None
         self.reading = None
+        self.page = None
         return self.end() + self.end_visit()
 
     def gaze_state(self, state: GazeState) -> None:
@@ -313,7 +316,9 @@ class Attention:
         self.layouts[key] = lines
         self.layouts.move_to_end(key)
         while len(self.layouts) > LAYOUT_CACHE:
-            self.layouts.popitem(last=False)
+            (old_doc, old_block), _ = self.layouts.popitem(last=False)
+            if self.page is not None and self.page.doc == old_doc:
+                self.page.remove_block(old_block)
         ended = []
         if self.visit is not None and (self.visit.doc, self.visit.block) == key:
             ended = self.end_visit()  # the wrapping changed: its line numbers mean other lines now

@@ -142,31 +142,39 @@ class Notes:
         return written
 
     def _pages(self, db: sqlite3.Connection, ids: set[int]) -> dict[int, Record]:
-        out: dict[int, Record] = {}
-        for page_id in ids:
-            row = db.execute("SELECT id, key, name FROM entities WHERE id = ?", (page_id,)).fetchone()
-            if row is None:
-                continue
-            stats = db.execute(
-                "SELECT sum(CASE WHEN u.type = 'web.visit' THEN coalesce(julianday(u.t_end) - julianday(u.t), 0) * 86400 "
+        found: dict[int, Record] = {}
+        ordered = list(ids)
+        for start in range(0, len(ordered), 500):
+            chunk = ordered[start : start + 500]
+            marks = ",".join("?" for _ in chunk)
+            rows = db.execute(f"SELECT id, key, name FROM entities WHERE id IN ({marks})", chunk)
+            for row in rows:
+                found[row["id"]] = {
+                    "id": row["id"],
+                    "url": row["key"],
+                    "title": row["name"],
+                    "seconds": 0.0,
+                    "noteworthy": False,
+                }
+            for page_id, seconds, attended in db.execute(
+                "SELECT m.entity_id, "
+                "sum(CASE WHEN u.type = 'web.visit' THEN coalesce(julianday(u.t_end) - julianday(u.t), 0) * 86400 "
                 "ELSE 0 END), sum(u.type IN ('web.read', 'web.dwell', 'web.look', 'web.selection')) "
-                "FROM mentions m JOIN units u ON u.id = m.unit_id WHERE m.entity_id = ?",
-                (page_id,),
-            ).fetchone()
-            searched = db.execute(
-                "SELECT 1 FROM links l JOIN entities q ON q.id = l.src WHERE l.dst = ? AND l.kind = 'led_to' "
-                "AND q.kind = 'query' LIMIT 1",
-                (page_id,),
-            ).fetchone()
-            seconds, attended = stats[0] or 0.0, stats[1] or 0
-            out[page_id] = {
-                "id": page_id,
-                "url": row["key"],
-                "title": row["name"],
-                "seconds": seconds,
-                "noteworthy": bool(attended) or bool(searched) or seconds >= SOURCE_MIN_S,
-            }
-        return out
+                f"FROM mentions m JOIN units u ON u.id = m.unit_id WHERE m.entity_id IN ({marks}) GROUP BY m.entity_id",
+                chunk,
+            ):
+                if page_id in found:
+                    found[page_id]["seconds"] = seconds or 0.0
+                    found[page_id]["noteworthy"] = bool(attended) or (seconds or 0.0) >= SOURCE_MIN_S
+            for (page_id,) in db.execute(
+                "SELECT DISTINCT l.dst FROM links l JOIN entities q ON q.id = l.src "
+                f"WHERE l.dst IN ({marks}) AND l.kind = 'led_to' AND q.kind = 'query'",
+                chunk,
+            ):
+                if page_id in found:
+                    found[page_id]["noteworthy"] = True
+        # Keep the caller's order: it also determines the order in which notes are written.
+        return {page_id: found[page_id] for page_id in ordered if page_id in found}
 
     def _entities(self, db: sqlite3.Connection, kind: str, unit_ids: list[int]) -> dict[int, Record]:
         if not unit_ids:

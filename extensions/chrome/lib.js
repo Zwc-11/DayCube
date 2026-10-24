@@ -2,6 +2,21 @@
 
 export const RECEIVER = 'http://127.0.0.1:7700';
 
+/** The deadline covers headers and JSON body. A stalled local receiver must not hold a worker
+ * delivery forever. Callers retain durable records until this complete response acknowledges them. */
+export async function fetchReceiver(path, init = {}, timeoutMs = 5000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(new DOMException('Receiver request timed out', 'TimeoutError')), timeoutMs);
+  try {
+    const response = await fetch(`${RECEIVER}${path}`, { ...init, signal: controller.signal });
+    const body = response.ok ? await response.json() : null;
+    if (!response.ok) await response.body?.cancel();
+    return { ok: response.ok, status: response.status, body };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // Result pages whose address carries the query. Scholar is listed before Google, whose host
 // pattern would also match it.
 const ENGINES = [

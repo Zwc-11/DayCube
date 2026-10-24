@@ -23,6 +23,8 @@ names it), ``at`` (a place), ``with`` (a person).
 from __future__ import annotations
 
 import re
+from bisect import bisect_right
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -228,7 +230,12 @@ def _capture(graph: Graph, c: CaptureDay, units: dict[str, Record], seen_on: dat
         _on(graph, f"capture:media:{m['id']}", m.get("url"), m.get("title"))
     # Searches, and the page each led to: the next page opened in that tab from somewhere other
     # than a results page, within five minutes.
-    navigations = sorted(c.pages, key=lambda p: instant(p["t"]))
+    navigations = sorted(((instant(nav["t"]), nav) for nav in c.pages), key=lambda item: item[0])
+    candidates: dict[int | None, list[tuple[datetime, Record]]] = defaultdict(list)
+    for when, nav in navigations:
+        if not is_search(nav.get("url")):
+            candidates[nav.get("tab")].append((when, nav))
+    starts = {tab: [when for when, _ in pages] for tab, pages in candidates.items()}
     for s in c.searches:
         evidence = f"capture:search:{s['id']}"
         if evidence not in units:
@@ -236,17 +243,16 @@ def _capture(graph: Graph, c: CaptureDay, units: dict[str, Record], seen_on: dat
         query = ("query", " ".join(s["query"].casefold().split()), s["query"].strip())
         graph.mention(evidence, query, "about")
         start = instant(s["t"])
-        for nav in navigations:
-            if nav.get("tab") != s.get("tab") or instant(nav["t"]) <= start:
-                continue
-            if (instant(nav["t"]) - start).total_seconds() > 300:
-                break
-            if not is_search(nav.get("url")):
+        tab = s.get("tab")
+        index = bisect_right(starts.get(tab, ()), start)
+        pages = candidates.get(tab, ())
+        if index < len(pages):
+            when, nav = pages[index]
+            if (when - start).total_seconds() <= 300:
                 graph.link(query, page(nav["url"], nav.get("title")), "led_to", evidence)
-                break
     # A page reached by a link from another page in the same tab.
     last: dict[int, Record] = {}
-    for nav in navigations:
+    for _, nav in navigations:
         tab = nav.get("tab")
         before = last.get(tab)
         if before is not None and nav.get("transition") == "link" and not is_search(before.get("url")):

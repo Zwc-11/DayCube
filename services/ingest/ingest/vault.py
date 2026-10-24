@@ -50,6 +50,7 @@ MOMENT_ID = re.compile(r"[A-Za-z0-9_-]+")
 # few times more); payloads in serialized bytes.
 SNAPSHOT_CACHE_BYTES = 64 << 20
 PAYLOAD_CACHE_BYTES = 32 << 20
+METADATA_CACHE_BYTES = 8 << 20  # each secondary cache; includes Python metadata and entry allowance
 # Finished days can be compacted: large logs become zstd frames beside their name (events.jsonl
 # -> events.jsonl.zst) and every reader decompresses transparently. Level 10 gets within a few
 # percent of the maximum ratio at a fraction of its time.
@@ -323,13 +324,13 @@ class Vault:
         # immediately even where the filesystem clock is coarser than two consecutive writes.
         self._writes: Counter[Path] = Counter()
         self._snapshots: SegmentedLRU[str, DaySnapshot] = SegmentedLRU(SNAPSHOT_CACHE_BYTES)
-        self._validated: dict[str, tuple] = {}
+        self._validated: SegmentedLRU[str, tuple] = SegmentedLRU(METADATA_CACHE_BYTES)
         self._payloads: SegmentedLRU[str, tuple[tuple, bytes, str]] = SegmentedLRU(PAYLOAD_CACHE_BYTES)
-        self._venues: dict[Path, tuple[tuple, Record]] = {}
+        self._venues: SegmentedLRU[Path, tuple[tuple, Record]] = SegmentedLRU(METADATA_CACHE_BYTES)
         self._names: tuple[tuple, dict[str, str]] | None = None
-        self._summaries: dict[Path, tuple[tuple, Record]] = {}
+        self._summaries: SegmentedLRU[Path, tuple[tuple, Record]] = SegmentedLRU(METADATA_CACHE_BYTES)
         # day -> key of the inputs the vault database was last confirmed fresh for.
-        self.fresh_index: dict[str, tuple] = {}
+        self.fresh_index: SegmentedLRU[str, tuple] = SegmentedLRU(METADATA_CACHE_BYTES)
 
     # -- files -------------------------------------------------------------------------------
 
@@ -471,7 +472,7 @@ class Vault:
             data = read_json(path)
             contracts.validate("venue", data)
             cached = (key, data)
-            self._venues[path] = cached
+            self._venues.put_metadata(path, cached)
         return cached[1]
 
     def venue_stamps(self, snapshot: DaySnapshot) -> tuple:
@@ -495,7 +496,7 @@ class Vault:
                 day = read_json(path)
                 places = sorted(day["places"], key=lambda p: p["layer_index"])
                 cached = (key, {"date": day["date"], "stats": day["stats"], "kinds": [p["kind"] for p in places]})
-                self._summaries[path] = cached
+                self._summaries.put_metadata(path, cached)
             result.append(cached[1])
         return result
 
@@ -583,7 +584,7 @@ class Vault:
 
     def invalidate_index(self, day: str) -> None:
         """Make the next search re-check this day's files against the vault database."""
-        self.fresh_index.pop(day, None)
+        self.fresh_index.pop(day)
 
     def refresh_stats(self, day: str) -> None:
         snapshot = self.snapshot(day)
@@ -610,7 +611,7 @@ class Vault:
         expected = tuple((name, written.get(name, stamp)) for name, stamp in files)
         after = self.validation_key(self.snapshot(day))
         if after == (expected, venues):
-            self._validated[day] = after
+            self._validated.put_metadata(day, after)
 
     def validate(self, day: str) -> Record:
         """Check every file and cross-reference of a day. Memoized until any of its files changes."""
@@ -670,7 +671,7 @@ class Vault:
             raise ValueError("Graph contains duplicate nodes or dangling edges")
         if data["stats"] != self._stats(data, events, len(moments)):
             raise ValueError("Day stats differ from the vault records")
-        self._validated[day] = key
+        self._validated.put_metadata(day, key)
         return summary
 
     # -- viewer day --------------------------------------------------------------------------
