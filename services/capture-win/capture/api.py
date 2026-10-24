@@ -28,7 +28,7 @@ import subprocess
 import sys
 import threading
 import time
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -86,6 +86,10 @@ class Receiver:
         self.health_at: datetime | None = None
         self.live: tuple[float, float, float] | None = None  # (epoch t, x, y): the gaze point now, never stored
         self.watched_at = -1e9  # when the extension last asked for the live point
+        # The gaze ring's path, for doctor: when live points arrived, when the page asked, and
+        # whether the answer carried a live point (or fell back to the last fixation).
+        self.live_points: deque[float] = deque(maxlen=1000)
+        self.live_asks: deque[tuple[float, bool]] = deque(maxlen=1000)
         self._warm_texts()
 
     def _warm_texts(self) -> None:
@@ -142,7 +146,22 @@ class Receiver:
             "reading": reading,
             "line_decoding": decoding,
             "gaze_point": point,  # the last fixation placed on a page: viewport CSS px, with that page's scroll
+            "ring": self.ring_health(),
             "capabilities": ["browser", "gaze", "attention"],
+        }
+
+    def ring_health(self, window_s: float = 10.0) -> dict:
+        """The gaze ring's path over the last ``window_s``: live points from the tracker per second,
+        page requests per second (an extension older than 0.7.0 never asks), and the share of
+        requests answered with a live point rather than the last fixation."""
+        now = time.time()
+        points = sum(1 for t in self.live_points if now - t <= window_s)
+        asks = [live for t, live in self.live_asks if now - t <= window_s]
+        return {
+            "points_per_s": round(points / window_s, 1),
+            "asks_per_s": round(len(asks) / window_s, 1),
+            "live_share": round(sum(asks) / len(asks), 2) if asks else None,
+            "ever_asked": bool(self.live_asks),
         }
 
     def set_paused(self, paused: bool) -> None:
@@ -303,6 +322,7 @@ class Receiver:
         if self.paused:
             raise HTTPException(409, "Receiver is paused")
         self.live = (point.t.timestamp(), point.x, point.y)
+        self.live_points.append(time.time())
 
     def live_view(self, doc: str) -> dict:
         """For the gaze ring and line marker on page ``doc``: the live gaze point on it (viewport
@@ -317,6 +337,7 @@ class Receiver:
                 if point is not None:
                     point["t"] = datetime.fromtimestamp(live[0], UTC).isoformat()
             reading, fixation = self.attention.reading, self.attention.gaze_point
+        self.live_asks.append((now, point is not None))
 
         def fresh(item: dict | None) -> dict | None:
             if not item or item.get("doc", doc) != doc:

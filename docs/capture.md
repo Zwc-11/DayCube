@@ -112,7 +112,9 @@ uv run --project services/capture-win python -m capture doctor
 prints one line per check, from what the services recorded while you used the computer: receiver,
 extension, frame rate, face detection, **fixations** (the share of gaze that became fixations, and
 the gaze noise), the **gaze model** (head-aware, and how far your head is from where it was at
-calibration), calibration error, **live accuracy**, today's logs, dwells and the sign-in entry.
+calibration), the **gaze ring** (live points per second from the tracker and requests per second
+from the page: a ring that jumps about once a second is an extension older than 0.7.0, which
+never asks, or a tracker that does not stream), calibration error, **live accuracy**, today's logs, dwells and the sign-in entry.
 It exits with code 1 when a check fails.
 
 Live accuracy comes from clicks. The eyes are on a link or button when it is clicked, so each mouse
