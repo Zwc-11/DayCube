@@ -118,3 +118,23 @@ test('the 2D fallback rests when idle and redraws when scrubbing', async ({ page
   await page.waitForTimeout(200);
   expect(await page.evaluate(() => (window as any).__renderCounters.canvas2d)).toBeGreaterThan(0);
 });
+
+test('a failed-write dialog suspends playback rendering until dismissed', async ({ page }) => {
+  await countRendering(page);
+  await page.goto('/?date=2026-10-20');
+  await expect(page.locator('canvas')).toBeVisible();
+  await page.waitForTimeout(1800);
+  await page.getByRole('button', { name: 'Play the day', exact: true }).click();
+  // No token: the write fails before transport and the place remains unchanged.
+  await page.getByRole('button', { name: 'Rename place', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Place name', exact: true }).fill('Unsaved name');
+  await page.getByRole('button', { name: 'Save name', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('vault token');
+  await page.waitForTimeout(300);
+  await reset(page);
+  await page.waitForTimeout(600);
+  expect((await counters(page)).gpu).toBe(0);
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.waitForTimeout(300);
+  expect((await counters(page)).gpu).toBeGreaterThan(0);
+});

@@ -3,10 +3,34 @@
 import random
 from collections.abc import Iterable, Iterator
 
+import pytest
+from capture import attention as attention_module
+from capture.attention import Attention
 from capture.reading import OFF, LineBox, PageReader, Visit
 
 LEFT, WIDTH, PITCH, HEIGHT = 644.0, 745.0, 28.8, 20.0
 VIEW = (0.0, 1040.0, 2048.0)  # viewport top, bottom (page px) and width
+
+
+def test_line_reader_follows_layout_eviction_and_releases_on_pause(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(attention_module, "LAYOUT_CACHE", 4)
+    attention = Attention()
+    r = attention.page = PageReader("doc", 20, 20)
+    for i in range(4):
+        attention.layout("doc", str(i), [LineBox(0, i * 40, 400, 20, f"Block {i}")])
+    r.update(100, 10, 0, VIEW)
+    assert ("0", 0) in r.alpha
+    for i in range(4, 12):
+        attention.layout("doc", str(i), [LineBox(0, i * 40, 400, 20, f"Block {i}")])
+    assert len(attention.layouts) == len(r.blocks) == 4
+    assert all(key is OFF or key[0] in r.blocks for key in r.alpha)
+    r.update(100, 450, 1, VIEW)  # rebuild without references to an evicted line
+    assert {line.key[0] for line in r.lines} == {"8", "9", "10", "11"}
+    attention.layout("doc", "0", [LineBox(0, 0, 400, 20, "Block 0")])
+    assert r.text(("0", 0)) == "Block 0"
+    assert len(r.blocks) == 4
+    attention.clear()
+    assert attention.page is None
 
 
 def paragraph(top: float, n: int, last: float = 0.4) -> list[LineBox]:

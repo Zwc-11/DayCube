@@ -122,6 +122,14 @@ class PageReader:
             del self.alpha[key]
         self.dirty = True
 
+    def remove_block(self, block: str) -> None:
+        """Forget a layout evicted by the owning attention cache, including its posterior."""
+        if self.blocks.pop(block, None) is None:
+            return
+        for key in [k for k in self.alpha if k is not None and k[0] == block]:
+            del self.alpha[key]
+        self.dirty = True
+
     def _build(self) -> None:
         lines: list[_Line] = []
         for block, boxes in self.blocks.items():

@@ -91,6 +91,7 @@ def retrieve(
         unscoped = day is None and since is None and until is None and not q.types and not q.site
         notes = [("note", c) for c in store.note_keyword(expression, k=CANDIDATES)] if query_terms and unscoped else []
         rows = store.rows(list(dict.fromkeys([*keyword, *meaning])))
+        keyword = [unit for unit in keyword if unit in rows]  # another writer may have replaced these ids
         note_rows = store.note_rows([c for _, c in notes]) if notes else {}
         notes = [n for n in notes if n[1] in note_rows]  # a note deleted since the folder was read
         # An OR query matches a record that shares one common word ("day") with the question. Scale

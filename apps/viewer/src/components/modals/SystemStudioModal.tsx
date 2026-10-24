@@ -34,6 +34,7 @@ export type SettingsSection =
 export type StudioTab = SettingsSection;
 
 interface SettingsProps {
+  date: string;
   section: SettingsSection;
   onSectionChange: (section: SettingsSection) => void;
   onClose: () => void;
@@ -314,7 +315,7 @@ const PrivacySection: React.FC<SettingsProps> = ({
 
 /* -------------------------------------------------------------------------- */
 
-const ConnectionSection: React.FC<SettingsProps> = ({ apiLogs, backendOnline, dataSource, onRefreshBackend }) => {
+const ConnectionSection: React.FC<SettingsProps> = ({ date, apiLogs, backendOnline, dataSource, onRefreshBackend }) => {
   const [token, setToken] = useState(() => backendBridge.getToken());
   const [bound, setBound] = useState(() => backendBridge.getToken() !== '');
   const [checking, setChecking] = useState(false);
@@ -409,7 +410,7 @@ const ConnectionSection: React.FC<SettingsProps> = ({ apiLogs, backendOnline, da
             onClick={async () => {
               setIndexStatus({ state: 'running', text: 'Rebuilding…' });
               try {
-                const res = await backendBridge.triggerReindex('2026-10-20');
+                const res = await backendBridge.triggerReindex(date);
                 setIndexStatus({ state: 'done', text: `Index rebuild ${res.status}` });
               } catch (error) {
                 setIndexStatus({

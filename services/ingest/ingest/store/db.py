@@ -312,7 +312,7 @@ class LifeStore:
             if changed or fill:
                 self.update(day, embed_limit=INLINE_EMBED_LIMIT)
             else:
-                self.fresh[day] = key
+                self.fresh.put_metadata(day, key)
 
     def update(self, day: str, *, embed_limit: int | None = None) -> Record:
         """Replace the day's rows from its files. ``embed_limit`` caps how many new texts this
@@ -346,7 +346,7 @@ class LifeStore:
                 with self.connect() as db, self._write(db):
                     embedded = self._replace(db, day, zone, stamp, units, hashes, vectors)
                     self._graph(db, day, graph)
-                self.fresh[day] = key
+                self.fresh.put_metadata(day, key)
             engine = "sqlite-fts5+int8-vectors" if self.vectors else "sqlite-fts5"
             return {"date": day, "units": len(units), "engine": engine, "unembedded": len(units) - embedded}
         raise RuntimeError(f"{day} kept changing while it was being indexed")
@@ -515,6 +515,8 @@ class LifeStore:
             return []
         query = self.embedder.query(question)
         with self.connect() as db:
+            # Generation, cached block selection and rescoring must refer to one WAL snapshot.
+            db.execute("BEGIN")
             return self.index.search(db, query, k, days=None if day is None else [day], since=since, until=until)
 
     def note_keyword(self, expression: str, *, k: int) -> list[int]:
@@ -533,25 +535,28 @@ class LifeStore:
                 chunk = ids[start : start + CHUNK]
                 marks = ",".join("?" for _ in chunk)
                 for row in db.execute(
-                    f"SELECT c.*, n.title, n.identity, n.mtime_ns FROM note_chunks c JOIN notes n ON n.path = c.path "
+                    f"SELECT c.*, n.title, n.identity, n.mtime_ns, n.size FROM note_chunks c JOIN notes n ON n.path = c.path "
                     f"WHERE c.id IN ({marks})",
                     chunk,
                 ):
                     found[row["id"]] = dict(row)
         # Searches across days re-read the notes folder at most every FULL_CHECK_S: never return a
         # note deleted since, and bring the folder in now if a hit's file changed.
-        stale = False
-        for path in {row["path"] for row in found.values()}:
+        stamps = {row["path"]: (row["mtime_ns"], row["size"]) for row in found.values()}
+        stale: set[str] = set()
+        for path, expected in stamps.items():
             try:
-                current = os.stat(self.notes_root / path).st_mtime_ns
+                stat = os.stat(self.notes_root / path)
+                current = stat.st_mtime_ns, stat.st_size
             except OSError:
                 current = None
-            if current is None:
-                found = {k: v for k, v in found.items() if v["path"] != path}
-            stale |= current != next((r["mtime_ns"] for r in found.values() if r["path"] == path), current)
-            stale |= current is None
+            if current != expected:
+                stale.add(path)
         if stale:
             self.sync_notes()
+            # A rewrite gives its chunks new ids. Old chunks are no longer evidence, even if
+            # their file still exists; the next query can rank the new text.
+            found = {key: row for key, row in found.items() if row["path"] not in stale}
         return found
 
     def rows(self, ids: Sequence[int]) -> dict[int, Record]:

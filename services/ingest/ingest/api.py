@@ -85,6 +85,7 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
         vault, embedder or default_embedder(settings.vector_search, settings.embedding_model), zone=settings.timezone
     )
     jobs: dict[str, Record] = {}
+    jobs_lock = threading.Lock()
     bearer = HTTPBearer(auto_error=False)
 
     day_notes = DayNotes(store)
@@ -328,48 +329,64 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
         return {"accepted": accepted}
 
     def run_job(job_id: str, date: str) -> None:
-        jobs[job_id].update(status="running", stage="index", pct=10)
+        with jobs_lock:
+            jobs[job_id].update(status="running", stage="index", pct=10)
         try:
             result = store.update(date)
-            jobs[job_id].update(status="complete", pct=100, result=result, message="Vault index updated")
         except Exception:
-            jobs[job_id].update(status="failed", message="Index build failed; run daycube validate for diagnostics")
+            log.exception("Index job failed for %s", date)
+            with jobs_lock:
+                jobs[job_id].update(status="failed", message="Index build failed; run daycube validate for diagnostics")
+        else:
+            with jobs_lock:
+                jobs[job_id].update(status="complete", pct=100, result=result, message="Vault index updated")
 
     @app.post("/ingest/{date}", dependencies=[Depends(authorize)], status_code=202)
     def ingest_day(date: str, body: IngestRequest, tasks: BackgroundTasks) -> Record:
         vault.day_path(date)
         if set(body.steps) != {"index"}:
             raise HTTPException(501, "Only the index stage is implemented. Capture/moments/summaries are planned.")
-        job_id = uuid4().hex
-        if len(jobs) >= MAX_JOBS:
-            finished = next((key for key, value in jobs.items() if value["status"] in {"complete", "failed"}), None)
-            if finished:
-                del jobs[finished]
-            else:
-                raise HTTPException(429, "Too many active jobs")
-        jobs[job_id] = {
-            "id": job_id,
-            "date": date,
-            "status": "queued",
-            "stage": "index",
-            "pct": 0,
-            "message": "Queued",
-            "created_at": datetime.now(UTC).isoformat(),
-        }
-        tasks.add_task(run_job, job_id, date)
+        with jobs_lock:
+            # Admission and registration are one operation: concurrent clients share work
+            # already queued or running for this day, including when the queue is full.
+            for key, state in jobs.items():
+                if state["date"] == date and state["status"] in {"queued", "running"}:
+                    return {"job_id": key}
+            job_id = uuid4().hex
+            if len(jobs) >= MAX_JOBS:
+                finished = next((key for key, value in jobs.items() if value["status"] in {"complete", "failed"}), None)
+                if finished:
+                    del jobs[finished]
+                else:
+                    raise HTTPException(429, "Too many active jobs")
+            jobs[job_id] = {
+                "id": job_id,
+                "date": date,
+                "status": "queued",
+                "stage": "index",
+                "pct": 0,
+                "message": "Queued",
+                "created_at": datetime.now(UTC).isoformat(),
+            }
+            tasks.add_task(run_job, job_id, date)
         return {"job_id": job_id}
+
+    def job_snapshot(job_id: str) -> Record | None:
+        with jobs_lock:
+            state = jobs.get(job_id)
+            return dict(state) if state is not None else None
 
     @app.get("/jobs/{job_id}", response_model=None)
     def job(job_id: str, stream: bool = False) -> Record | StreamingResponse:
-        if job_id not in jobs:
+        state = job_snapshot(job_id)
+        if state is None:
             raise HTTPException(404, "Job not found; jobs are process-local and expire on restart")
         if not stream:
-            return jobs[job_id]
+            return state
 
         async def generate() -> AsyncIterator[str]:
             previous = ""
-            while job_id in jobs:
-                state = dict(jobs[job_id])
+            while (state := job_snapshot(job_id)) is not None:
                 serialized = json.dumps(state)
                 if serialized != previous:
                     yield sse("progress", state)

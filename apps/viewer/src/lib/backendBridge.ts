@@ -498,71 +498,38 @@ export class BackendBridge {
     };
   }
 
-  async renamePlace(placeId: string, name: string): Promise<boolean> {
+  private async write(endpoint: string, run: () => Promise<unknown>, summary: string): Promise<boolean> {
     const t0 = performance.now();
     try {
-      if (this.token) {
-        await this.client.renamePlace(placeId, name);
-        const latencyMs = Number((performance.now() - t0).toFixed(2));
-        this.emitLog({
-          method: 'POST',
-          endpoint: '/api/places/rename',
-          status: 200,
-          latencyMs,
-          mode: 'live-backend',
-          summary: `Renamed place "${placeId}" → "${name}" in vault/places.json`,
-        });
-        return true;
-      }
-    } catch {
-      // Fall through to local state update
+      if (!this.token) throw new ApiError(401, 'Connect your vault token before saving changes.');
+      await run();
+      this.emitLog({
+        method: 'POST', endpoint, status: 200, latencyMs: performance.now() - t0,
+        mode: 'live-backend', summary,
+      });
+      return true;
+    } catch (error) {
+      this.emitLog({
+        method: 'POST', endpoint, status: error instanceof ApiError ? error.status : 503,
+        latencyMs: performance.now() - t0, mode: 'live-backend', summary: 'Change was not saved',
+      });
+      throw error;
     }
-    const latencyMs = Number((performance.now() - t0).toFixed(2));
-    this.emitLog({
-      method: 'POST',
-      endpoint: '/api/places/rename',
-      status: 200,
-      latencyMs,
-      mode: 'standalone-sim',
-      summary: `Renamed place "${placeId}" → "${name}" (ephemeral state)`,
-    });
-    return false;
   }
 
-  async confirmSpeaker(
+  renamePlace(placeId: string, name: string): Promise<boolean> {
+    return this.write('/api/places/rename', () => this.client.renamePlace(placeId, name),
+      `Renamed place "${placeId}" → "${name}" in vault/places.json`);
+  }
+
+  confirmSpeaker(
     date: string,
     momentId: string,
     diarLabel: string,
     personId: string
   ): Promise<boolean> {
-    const t0 = performance.now();
-    try {
-      if (this.token) {
-        await this.client.confirmSpeaker(date, momentId, diarLabel, personId);
-        const latencyMs = Number((performance.now() - t0).toFixed(2));
-        this.emitLog({
-          method: 'POST',
-          endpoint: '/api/speakers/confirm',
-          status: 200,
-          latencyMs,
-          mode: 'live-backend',
-          summary: `Persisted speaker ${diarLabel} → ${personId} in ${momentId}/transcript.json`,
-        });
-        return true;
-      }
-    } catch {
-      // Fall through
-    }
-    const latencyMs = Number((performance.now() - t0).toFixed(2));
-    this.emitLog({
-      method: 'POST',
-      endpoint: '/api/speakers/confirm',
-      status: 200,
-      latencyMs,
-      mode: 'standalone-sim',
-      summary: `Mapped speaker ${diarLabel} → ${personId} (${momentId})`,
-    });
-    return false;
+    return this.write('/api/speakers/confirm', () => this.client.confirmSpeaker(date, momentId, diarLabel, personId),
+      `Persisted speaker ${diarLabel} → ${personId} in ${momentId}/transcript.json`);
   }
 
   async triggerReindex(date: string): Promise<{ jobId: string; status: string }> {

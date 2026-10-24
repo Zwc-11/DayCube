@@ -2,6 +2,7 @@
 
 from datetime import date
 
+import pytest
 from conftest import CAPTURE_DAY, DAY, capture_session
 from ingest.graph import canonical_url, courses, deadlines
 from ingest.store import LifeStore
@@ -21,6 +22,30 @@ def test_course_codes_and_due_dates_are_read_exactly() -> None:
 def test_urls_are_known_without_fragments_or_tracking() -> None:
     assert canonical_url("https://WWW.Example.com/a/b/?utm_source=x&id=7#top") == "https://www.example.com/a/b?id=7"
     assert canonical_url("https://example.com") == "https://example.com/"
+
+
+def test_search_navigation_join_keeps_tab_time_cutoff_and_stable_ties() -> None:
+    from ingest.capture.synthesize import CaptureDay
+    from ingest.graph import extract
+
+    capture = CaptureDay(CAPTURE_DAY)
+    capture.searches = [
+        {"id": "a", "tab": 1, "t": "2026-10-22T10:00:00-04:00", "query": "tables"},
+        {"id": "b", "tab": 2, "t": "2026-10-22T14:00:00+00:00", "query": "late"},
+        {"id": "c", "tab": 3, "t": "2026-10-22T14:00:00+00:00", "query": "absent"},
+    ]
+    capture.pages = [
+        {"id": "end", "tab": 1, "t": "2026-10-22T14:05:00+00:00", "url": "https://example.org/first"},
+        {"id": "tie", "tab": 1, "t": "2026-10-22T14:05:00+00:00", "url": "https://example.org/tied"},
+        {"id": "same", "tab": 1, "t": "2026-10-22T14:00:00+00:00", "url": "https://example.org/same-time"},
+        {"id": "wrong-tab", "tab": 4, "t": "2026-10-22T14:00:01+00:00", "url": "https://example.org/wrong-tab"},
+        {"id": "results", "tab": 1, "t": "2026-10-22T14:00:01+00:00", "url": "https://www.google.com/search?q=tables"},
+        {"id": "late", "tab": 2, "t": "2026-10-22T14:05:01+00:00", "url": "https://example.org/late"},
+    ]
+    units = [{"evidence_id": f"capture:search:{s['id']}", "type": "web.search"} for s in capture.searches]
+    graph = extract(CAPTURE_DAY, units, capture)
+    links = [(a[1], b[1], evidence) for a, b, kind, evidence in graph.links if kind == "led_to"]
+    assert links == [("tables", "https://example.org/first", "capture:search:a")]
 
 
 def test_the_capture_morning_becomes_a_graph(vault: Vault) -> None:
@@ -50,14 +75,18 @@ def test_the_capture_morning_becomes_a_graph(vault: Vault) -> None:
     }
 
 
-def test_a_day_rewritten_replaces_its_mentions_and_drops_orphans(vault: Vault) -> None:
+def test_a_day_rewritten_replaces_its_mentions_and_drops_orphans(vault: Vault, monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = [0.0]
+    monkeypatch.setattr("ingest.store.db.monotonic", lambda: clock[0])
     capture_session(vault)
     store = LifeStore(vault)
     store.ensure()
     path = vault.root / "capture" / CAPTURE_DAY / "browser.jsonl"
     path.write_text(
-        "\n".join(line for line in path.read_text().splitlines() if "youtube" not in line) + "\n", encoding="utf-8"
+        "\n".join(line for line in path.read_text(encoding="utf-8").splitlines() if "youtube" not in line) + "\n",
+        encoding="utf-8",
     )
+    clock[0] = 2.01
     kinds = {(n["kind"], n["name"]) for n in store.graph()["nodes"]}
     assert ("site", "youtube.com") not in kinds and ("site", "en.wikipedia.org") in kinds
     import sqlite3

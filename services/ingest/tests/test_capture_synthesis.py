@@ -59,7 +59,9 @@ def test_a_capture_only_day_is_searchable(vault: Vault) -> None:
     assert "October 30" in answer["sentences"][0]["text"]
 
 
-def test_new_capture_lines_reindex_the_day(vault: Vault) -> None:
+def test_new_capture_lines_reindex_the_day(vault: Vault, monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = [0.0]
+    monkeypatch.setattr("ingest.store.db.monotonic", lambda: clock[0])
     capture_session(vault)
     store = LifeStore(vault)
     assert not retrieve(store, "bloom filter")
@@ -67,6 +69,9 @@ def test_new_capture_lines_reindex_the_day(vault: Vault) -> None:
         stream.write(json.dumps({"id": "s2-0000001", "t": f"{CAPTURE_DAY}T10:00:00-04:00", "kind": "search", "tab": 1,
                                  "window": 1, "url": "https://duckduckgo.com/?q=bloom+filter", "title": "",
                                  "engine": "duckduckgo", "query": "bloom filter false positive rate"}) + "\n")  # fmt: skip
+    # Old days are rechecked after the documented two-second window; no real sleep in tests.
+    assert not retrieve(store, "bloom filter")
+    clock[0] = 2.01
     assert retrieve(store, "bloom filter")[0]["text"] == "Searched duckduckgo: bloom filter false positive rate"
 
 

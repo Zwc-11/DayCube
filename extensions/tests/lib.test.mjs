@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { allowed, gazeLabel, normalizeDomains, readingLabel, searchOf, trim } from '../chrome/lib.js';
+import { allowed, fetchReceiver, gazeLabel, normalizeDomains, readingLabel, searchOf, trim } from '../chrome/lib.js';
 
 test('gaze label distinguishes measured rate, target and pause state', () => {
   assert.equal(gazeLabel({ tracking: true, fps: 29.8, target_fps: 30, face: 0.98, error_px: 182.9 }),
@@ -17,6 +17,37 @@ test('gaze label distinguishes measured rate, target and pause state', () => {
     'Tracking, calibrated to 69 px, 58 px now (7 clicks)');
   assert.equal(gazeLabel({ tracking: true, error_px: 69.1 }, { clicks: 3, corrected_error_px: 40 }),
     'Tracking, calibrated to 69 px');
+});
+
+test('receiver requests include JSON consumption in the deadline', async t => {
+  for (const stage of ['headers', 'body']) {
+    let signal;
+    const wait = () => new Promise((_, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }));
+    t.mock.method(globalThis, 'fetch', async (url, init) => {
+      signal = init.signal;
+      assert.equal(url, 'http://127.0.0.1:7700/status');
+      if (stage === 'headers') return wait();
+      return { ok: true, status: 200, json: wait };
+    });
+    await assert.rejects(fetchReceiver('/status', {}, 10), { name: 'TimeoutError' });
+    assert.equal(signal.aborted, true);
+    t.mock.restoreAll();
+  }
+});
+
+test('receiver responses keep rejection status and cancel the unused body', async t => {
+  let cancelled = false;
+  t.mock.method(globalThis, 'fetch', async () => new Response(new ReadableStream({ cancel: () => { cancelled = true; } }), { status: 409 }));
+  assert.deepEqual(await fetchReceiver('/events'), { ok: false, status: 409, body: null });
+  assert.equal(cancelled, true);
+});
+
+test('receiver JSON is parsed once and malformed success bodies fail explicitly', async t => {
+  t.mock.method(globalThis, 'fetch', async () => Response.json({ paused: false }));
+  assert.deepEqual(await fetchReceiver('/status'), { ok: true, status: 200, body: { paused: false } });
+  t.mock.restoreAll();
+  t.mock.method(globalThis, 'fetch', async () => new Response('not JSON'));
+  await assert.rejects(fetchReceiver('/status'), SyntaxError);
 });
 
 test('searches are read from result-page addresses', () => {
