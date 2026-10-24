@@ -1,5 +1,6 @@
-import React, { useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import React, { Suspense, lazy, useMemo, useRef, useState } from 'react';
+import { ChevronLeft, ChevronRight, Database } from 'lucide-react';
+import type { VaultView } from './VaultDialog';
 import { BrandMark } from '../shell/TopBar';
 import type { DaySummary } from '../../lib/days';
 import type { PlaceKind } from '../../types/daycube';
@@ -10,6 +11,9 @@ const KIND_COLOR: Record<PlaceKind, string> = {
   venue: '#8eaee3',
   outdoor: '#8dba9f',
 };
+// Loaded on first use: the calendar paints without the views' code.
+const VaultDialog = lazy(() => import('./VaultDialog'));
+
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const MAX_SLABS = 5;
 
@@ -83,6 +87,7 @@ export const DayCalendar: React.FC<DayCalendarProps> = ({ days, today, onOpen })
   const cells = useMemo(() => monthCells(shown), [shown]);
   const buttons = useRef(new Map<string, HTMLButtonElement>());
   const sample = days?.some((d) => d.sample) ?? false;
+  const [vault, setVault] = useState<VaultView | null>(null);
 
   // Arrow keys walk the grid, landing only on days that have something to open.
   const onKeyDown = (event: React.KeyboardEvent) => {
@@ -103,12 +108,22 @@ export const DayCalendar: React.FC<DayCalendarProps> = ({ days, today, onOpen })
           <BrandMark />
           <span className="brand__name">DayCube</span>
         </span>
-        {sample && (
-          <span className="tag" title="Bundled sample day; the local vault isn't connected">
-            Sample
-          </span>
-        )}
+        <span className="row">
+          {sample && (
+            <span className="tag" title="Bundled sample day; the local vault isn't connected">
+              Sample
+            </span>
+          )}
+          <button type="button" className="btn btn--secondary btn--sm" onClick={() => setVault('data')}>
+            <Database size={13} aria-hidden /> Your data
+          </button>
+        </span>
       </header>
+      {vault && (
+        <Suspense fallback={null}>
+          <VaultDialog view={vault} online={days !== null && !sample} onView={setVault} onClose={() => setVault(null)} />
+        </Suspense>
+      )}
 
       <main className="cal" aria-label="Days">
         <div className="cal__head">

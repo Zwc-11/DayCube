@@ -23,10 +23,11 @@ deleting it costs nothing but the time to rebuild.
 | `units` | Events, transcript segments, on-screen text runs and visits, with `ts` (epoch seconds, since ISO strings with offsets do not sort across DST) and `text_hash` (blake2b-128) |
 | `units_fts` | FTS5 over `units.text` (external content) |
 | `vectors` | Per embedded unit: the int8 embedding (384 bytes) and its sign bits (48 bytes) |
-| `meta` | Embedding model and dimension, and the write counter. A model change replaces every vector |
-| `entities` | The knowledge graph's nodes: kind (site, page, query, course, deadline, place, person, topic), a canonical key, a display name. Shared by every day |
+| `meta` | Embedding model and dimension, the write counter, and the version of what is derived. A model change replaces every vector; a change in what is derived (`DERIVED_VERSION`: units, graph, note links) reads every day and note again on the next use, keeping vectors, which are found again by text |
+| `entities` | The knowledge graph's nodes: kind (site, page, query, course, deadline, place, person, topic, note, day), a canonical key, a display name. Shared by every day |
 | `mentions` | Unit to entity, with a role: `on` (happened on that page or site), `about` (names it), `at` (a place), `with` (a person) |
-| `links` | Entity to entity, per day and with the record that shows it: `part_of`, `led_to`, `mentions`, `due` |
+| `links` | Entity to entity, per day and with the record that shows it: `part_of`, `led_to`, `mentions`, `due`; and `links` from the person's notes (day `''`, the note's path as evidence) |
+| `notes`, `note_chunks`, `note_chunks_fts` | The notes folder as last read: each note's identity and stamp, and the person's own writing in pieces with a keyword index ([notes.md](notes.md)) |
 | `speakers`, `deletions` | Carried over from the per-day index for speaker naming and purges |
 
 Unit ids use `AUTOINCREMENT`, so they are never reused and a vector can never point at another
@@ -91,18 +92,23 @@ needs no language model and no guessing:
 | `page` | URL without fragment, tracking parameters or trailing slash | visits, reads, dwells, looks, clicks, copies, media |
 | `query` | the search, lower case | searches |
 | `course` | a course code (`CS 136`, `MATH 135`: 2-5 capitals, 3 digits) | page titles, text read or stared at |
-| `deadline` | date (and time) plus course | "due October 30 at 11:59 PM" in text read or stared at; without a year, the next such date |
-| `place`, `person`, `topic` | the vault's own ids and names | visits; events' `people` and `topics` |
+| `deadline` | date (and time) plus course, named "CS 136 due Fri Oct 30, 11:59 PM" | "due October 30 at 11:59 PM" in text read or stared at; without a year, the next such date |
+| `place` | the vault's place id, named as in the day or as renamed in `places.json` (a rename shows at once) | visits |
+| `person`, `topic` | the event's own names | events' `people` and `topics` |
 
 Links: a page is `part_of` its site; a search `led_to` the page opened from its results (the next
 page in that tab that is not a results page, within 5 minutes); a page `led_to` the page a link on
-it opened; a page `mentions` a course; a course (or the page, without one) is `due` at a deadline.
+it opened; a page `mentions` a course; a course (or the page, without one) is `due` at a deadline;
+a place `led_to` the next place visited that day.
 Mentions and links are written with the day's units, in the same transaction, and entities that
 nothing points at any more are dropped. A place's records are found through `units.place` rather
 than a mention per event.
 
 `GET /graph?since=&until=&kinds=&limit=` returns the most mentioned entities in a window and the
 links among them; `GET /entity/{id}` one entity with its records (newest first) and neighbours.
+The viewer draws it under Settings → Knowledge graph, and from the calendar under Your data, with
+a deterministic force layout (`apps/viewer/src/lib/graphLayout.ts`: the same graph always gives
+the same picture; 132 nodes lay out in about 40 ms). Click a node for its records and neighbours.
 On the synthetic large day (5,053 units, every event a visit and so a place mention) writing the
 graph adds 45 ms to the day's update (107 to 152 ms); a real day names far fewer entities.
 
@@ -219,6 +225,8 @@ not a result.
 uv sync --extra vector                    # meaning search; without it, keywords only
 uv run daycube index --date 2026-10-20    # or --all: rebuild rows and fill every vector
 uv run daycube stats                      # days, units, units without vectors, size
+uv run daycube data                       # the data center: every source stream and the database
+uv run daycube graph                      # the most mentioned entities and their links, as JSON
 uv run --extra vector python eval/score_retrieval.py
 uv run python eval/vector_bench.py --sizes 100000 500000 1930000
 ```

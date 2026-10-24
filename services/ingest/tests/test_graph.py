@@ -34,7 +34,7 @@ def test_the_capture_morning_becomes_a_graph(vault: Vault) -> None:
     learn = ("page", "CS 136 Assignment 3 - Hash tables")
     wiki = ("page", "Hash table - Wikipedia")
     query = ("query", "linear probing vs chaining")
-    deadline = ("deadline", "CS 136 due 2026-10-30T23:59")
+    deadline = ("deadline", "CS 136 due Fri Oct 30, 11:59 PM")
     assert {course, learn, wiki, query, deadline, ("site", "learn.uwaterloo.ca"), ("site", "en.wikipedia.org")} <= set(
         nodes
     )
@@ -78,6 +78,13 @@ def test_vault_days_add_places_people_and_topics(vault: Vault) -> None:
     assert "place" in kinds
     window = store.graph(kinds=["place"])
     assert window["nodes"] and all(n["kind"] == "place" for n in window["nodes"])
+    # Places carry the day's names, and each visit is linked from the place before it.
+    names = {n["id"]: n["name"] for n in window["nodes"]}
+    assert {"Home · morning", "Maple Café", "Engineering Hall"} <= set(names.values())
+    trail = {(names[e["source"]], names[e["target"]]) for e in window["edges"] if e["kind"] == "led_to"}
+    assert ("Home · morning", "Maple Café") in trail and ("Maple Café", "Engineering Hall") in trail
+    vault.write_json(vault.root / "places.json", {"cafe1": "The usual café"})  # a rename shows at once
+    assert "The usual café" in {n["name"] for n in store.graph(kinds=["place"])["nodes"]}
 
 
 def test_the_api_serves_the_graph_and_an_entity(vault: Vault) -> None:
@@ -96,3 +103,41 @@ def test_the_api_serves_the_graph_and_an_entity(vault: Vault) -> None:
         detail = client.get(f"/entity/{course['id']}").json()
         assert detail["name"] == "CS 136" and detail["mention_count"] >= 1
         assert client.get("/entity/999999").status_code == 404
+
+
+def test_the_data_center_lists_sources_and_the_database(vault: Vault) -> None:
+    from fastapi.testclient import TestClient
+    from ingest.api import create_app
+    from ingest.config import Settings
+    from ingest.notes import Notes
+
+    capture_session(vault)
+    Notes(LifeStore(vault)).write_day(CAPTURE_DAY)
+    with TestClient(create_app(Settings(vault_root=vault.root, vector_search=False, _env_file=None))) as client:
+        data = client.get("/data").json()
+    sources = {s["name"]: s for s in data["sources"]}
+    assert (
+        sources["Computer capture: reading.jsonl"]["files"] == 1
+        and sources["Computer capture: reading.jsonl"]["days"] == 1
+    )
+    assert sources["Notes"]["files"] == 5 and sources["Vault days"]["days"] == 1  # the seeded sample day
+    db = data["database"]
+    assert db["kind"] == "derived" and db["rows"]["units"] > 0 and db["units_by_type"]["web.read"] == 1
+    assert db["entities_by_kind"]["course"] == 1 and db["links_by_kind"]["led_to"] >= 1
+    assert db["rows"]["notes"] == 5 and data["capture_days"] == [CAPTURE_DAY]
+    assert data["totals"]["source_bytes"] > 0 and data["totals"]["derived_bytes"] > 0
+
+
+def test_a_change_in_what_is_derived_reads_every_day_and_note_again(vault: Vault) -> None:
+    import ingest.store.db as db_module
+
+    capture_session(vault)
+    store = LifeStore(vault)
+    store.ensure()
+    with store.connect() as db:
+        db.execute("UPDATE entities SET name = 'stale' WHERE kind = 'deadline'")
+        db.execute("UPDATE meta SET value = '1' WHERE key = 'derived'")
+    fresh = LifeStore(vault)  # a new build of the code opens the same file
+    assert any(n["name"] == "CS 136 due Fri Oct 30, 11:59 PM" for n in fresh.graph(kinds=["deadline"])["nodes"])
+    with fresh.connect() as db:
+        assert db.execute("SELECT value FROM meta WHERE key = 'derived'").fetchone()[0] == db_module.DERIVED_VERSION

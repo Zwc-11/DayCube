@@ -4,6 +4,7 @@ import {
   BarChart3,
   Check,
   Circle,
+  Database,
   Info,
   Network,
   PencilRuler,
@@ -18,8 +19,17 @@ import { type ApiCallLog, backendBridge } from '../../lib/backendBridge';
 import type { GpuTelemetry } from '../diorama/DioramaCanvas3D';
 import { CATEGORY, COLORS, FONTS, formatRange, formatTod } from '../../styles/theme';
 import { Dialog } from '../ui';
+import { DataCenterView, LiveGraph } from './DataSections';
 
-export type SettingsSection = 'privacy' | 'connection' | 'graph' | 'tracer' | 'pipeline' | 'eval' | 'performance';
+export type SettingsSection =
+  | 'privacy'
+  | 'connection'
+  | 'data'
+  | 'graph'
+  | 'tracer'
+  | 'pipeline'
+  | 'eval'
+  | 'performance';
 /** @deprecated kept for older imports */
 export type StudioTab = SettingsSection;
 
@@ -53,7 +63,10 @@ const NAV: { group: string; items: { id: SettingsSection; label: string; icon: R
   },
   {
     group: 'Data',
-    items: [{ id: 'graph', label: 'Knowledge graph', icon: <Network size={15} /> }],
+    items: [
+      { id: 'data', label: 'Data center', icon: <Database size={15} /> },
+      { id: 'graph', label: 'Knowledge graph', icon: <Network size={15} /> },
+    ],
   },
   {
     group: 'Developer',
@@ -109,6 +122,7 @@ export const SystemStudioModal: React.FC<SettingsProps> = (props) => {
         <div className="settings__content scroll">
           {section === 'privacy' && <PrivacySection {...props} />}
           {section === 'connection' && <ConnectionSection {...props} />}
+          {section === 'data' && <DataSection {...props} />}
           {section === 'graph' && <GraphSection {...props} />}
           {section === 'tracer' && <TracerSection />}
           {section === 'pipeline' && <PipelineSection />}
@@ -463,7 +477,25 @@ const NODE_COLOR: Record<string, string> = {
   topic: COLORS.textSecondary,
 };
 
-const GraphSection: React.FC<SettingsProps> = ({ onJumpToLayerTime }) => {
+const DataSection: React.FC<SettingsProps> = ({ backendOnline }) => (
+  <>
+    <h3 className="settings__h">Data center</h3>
+    <DataCenterView online={backendOnline} />
+  </>
+);
+
+/** The vault's knowledge graph when the API is reachable; the sample day's otherwise. */
+const GraphSection: React.FC<SettingsProps> = (props) =>
+  props.backendOnline ? (
+    <>
+      <h3 className="settings__h">Knowledge graph</h3>
+      <LiveGraph />
+    </>
+  ) : (
+    <SampleGraph {...props} />
+  );
+
+const SampleGraph: React.FC<SettingsProps> = ({ onJumpToLayerTime }) => {
   const [hover, setHover] = useState<string | null>(null);
   const nodes = SAMPLE_GRAPH.nodes;
   const linked = (id: string) =>
@@ -476,7 +508,7 @@ const GraphSection: React.FC<SettingsProps> = ({ onJumpToLayerTime }) => {
       <h3 className="settings__h">Knowledge graph</h3>
       <div className="banner">
         <Info size={14} aria-hidden />
-        <span>Built from the sample day. Your vault's graph will appear here once graph extraction runs.</span>
+        <span>Built from the sample day. Connect to the local API to see your vault's graph.</span>
       </div>
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
         <svg viewBox="0 0 960 520" style={{ width: '100%', display: 'block', background: 'var(--bg)' }}>

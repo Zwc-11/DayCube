@@ -28,6 +28,7 @@ def main() -> None:
     which_notes.add_argument("--date")
     which_notes.add_argument("--all", action="store_true")
     commands.add_parser("graph", help="The most mentioned entities and their links, as JSON")
+    commands.add_parser("data", help="The data center: every source stream and the database, with sizes")
     compact = commands.add_parser("compact", help="Compress large logs of finished days; reads stay transparent")
     compact.add_argument("--before", help="Compact every day before this date (default: today)")
     args = parser.parse_args()
@@ -43,7 +44,7 @@ def main() -> None:
             result = {"seeded": False, "message": str(error)}
     elif args.command == "validate":
         result = vault.validate(args.date)
-    elif args.command in {"index", "stats", "notes", "graph"}:
+    elif args.command in {"index", "stats", "notes", "graph", "data"}:
         store = LifeStore(
             vault, default_embedder(settings.vector_search, settings.embedding_model), zone=settings.timezone
         )
@@ -51,6 +52,10 @@ def main() -> None:
             result = store.stats()
         elif args.command == "graph":
             result = store.graph(limit=100)
+        elif args.command == "data":
+            from .datacenter import report
+
+            result = report(store)
         elif args.command == "notes":
             from .notes import Notes
 

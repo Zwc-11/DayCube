@@ -56,6 +56,30 @@ The last row's int8 embeddings now exist (the vault database, [search.md](search
 screen thumbnails still need screenshot capture. Moments dominate whenever they exist. Keep the source video and treat everything derived
 from it as cache.
 
+## Where everything lives: the data center
+
+One rule decides what can be lost: **files are the source of truth, the database is derived.**
+
+| Kind | Where | What |
+| --- | --- | --- |
+| Source | `vault/<date>/` | day.json, events, fixes, on-screen text, moments |
+| Source | `vault/capture/<date>/*.jsonl` | the computer capture: browser, blocks, gaze, attention, reading, health |
+| Source | `vault/notes/` | linked notes (Obsidian), including the person's own writing |
+| Source | `vault/calibration/` | the gaze model and its calibration frames |
+| Derived | `vault/daycube.sqlite` (+ `-wal`) | search units, keyword index, vectors, knowledge graph, notes index ([search.md](search.md)) |
+
+The database is SQLite in WAL mode: one file, no server, transactional per-day replace, FTS5 for
+words and int8 vectors for meaning in the same file, readable by any SQLite tool. A server
+database (Postgres) would add a service to install and keep running on the person's PC for no
+query this single-user vault needs; a columnar store (DuckDB, Parquet) suits scans over months,
+not the per-record lookups and FTS that Ask makes. Deleting the database loses nothing: it is
+rebuilt from the files on the next question.
+
+`GET /data` (and `uv run daycube data`) reports every stream with its files, days, bytes and last
+change, and the database's rows per table, records per kind, entities per kind and links per kind.
+The viewer shows it under Settings → Data center, and from the calendar under Your data, before
+any day is open.
+
 ## What changed in the vault
 
 | Mechanism | What it does | Measured effect |

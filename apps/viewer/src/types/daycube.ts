@@ -260,7 +260,7 @@ export interface TransitSegment {
 
 export interface EvidenceRecord {
   id: string;
-  unitId: number;
+  unitId: number | null; // null for a piece of the person's own notes
   type: EventType | 'ocr.block' | 'place.summary';
   t: number;
   isoTime: string;

@@ -12,6 +12,11 @@ for actions. Do not paste external provider keys there.
 | GET | `/day/{date}/events?t0=...&t1=...&type=...` | Event slice; both offset timestamps or neither |
 | GET | `/day/{date}/skeleton` | GeoJSON fixes |
 | GET | `/day/{date}/graph` | Evidence graph |
+| GET | `/graph?since=&until=&kinds=&limit=` | Knowledge graph across the vault: most mentioned entities in the window and the links among them |
+| GET | `/entity/{id}` | One entity: its records (newest first) and neighbours |
+| GET | `/data` | Data center: source files by stream (vault days, each capture log, notes, calibration) and the database built from them (rows per table, kinds, sizes) |
+| GET | `/notes` | The notes folder as read into the database |
+| POST | `/notes/{date}` | Write or refresh a day's linked notes in `vault/notes` |
 | GET | `/moment/{id}?date=YYYY-MM-DD` | Metadata, scene availability and transcript |
 | GET | `/vault/{date}/{asset}` | Allowlisted media only, with path confinement |
 | POST | `/ask` | `{date?, question}` → extractive answer, citations, location; no `date` searches every day |

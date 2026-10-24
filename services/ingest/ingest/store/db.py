@@ -32,6 +32,10 @@ from .graph import entity_view, graph_view
 from .vectors import VectorIndex, sign_bits
 
 FILE_NAME = "daycube.sqlite"
+# What is derived from the files (units, graph, note links), separately from the table layout:
+# when it changes, every day and note is read again on the next use, keeping the stored vectors
+# (they are found again by text). 2: readable deadline names, note links from the person's text only.
+DERIVED_VERSION = "2"
 SCHEMA_VERSION = 4  # 1: sqlite-vec vectors and per-row triggers, never released; 2: no graph; 3: no notes
 # A query may embed this many new texts before it answers (a few seconds on CPU); a day with
 # more waits for `daycube index`, and is searched by keywords until then.
@@ -169,8 +173,18 @@ class LifeStore:
             self.fresh.clear()
             self.index.clear()
             self._notes = None
+        meta = dict(db.execute("SELECT key, value FROM meta").fetchall())
+        if meta.get("derived") != DERIVED_VERSION:
+            with self._write(db):
+                db.execute("UPDATE days SET stamp = ''")  # every day is extracted again
+                db.execute("INSERT INTO note_chunks_fts(note_chunks_fts) VALUES ('delete-all')")
+                db.execute("DELETE FROM note_chunks")
+                db.execute("DELETE FROM notes")
+                db.execute("DELETE FROM links WHERE day = ''")
+                db.execute("INSERT OR REPLACE INTO meta VALUES ('derived', ?)", (DERIVED_VERSION,))
+            self.fresh.clear()
+            self._notes = None
         if self.embedder is not None:
-            meta = dict(db.execute("SELECT key, value FROM meta").fetchall())
             wanted = {"model": self.embedder.name, "dim": str(self.embedder.dim)}
             if {key: meta.get(key) for key in wanted} != wanted:
                 # Another model's vectors are not comparable with this one's: start over.
@@ -266,19 +280,22 @@ class LifeStore:
         for _ in range(3):
             with self.vault.lock:
                 events: list[Record] = []
+                places: dict[str, str] = {}
                 if self.has_day(day):
                     self.vault.validate(day)
                     units = collect_units(self.vault, day)
                     snapshot = self.vault.snapshot(day)
                     zone = snapshot.day["tz"]
                     events = snapshot.events.records
+                    renamed = self.vault.place_names()
+                    places = {p["id"]: renamed.get(p["id"], p["name"]) for p in snapshot.day["places"]}
                 elif day in capture_days(self.vault):
                     units, zone = [], self.zone
                 else:
                     raise FileNotFoundError(f"No vault day or capture for {day}")
                 capture = read_capture(self.vault, day)
                 units += capture_units(self.vault, day, capture)
-                graph = extract(day, units, capture, events)
+                graph = extract(day, units, capture, events, places)
                 key = self._key(day)
                 stamp = self._stamp(day)
             hashes = [digest(unit["text"]) for unit in units]
@@ -504,13 +521,47 @@ class LifeStore:
         """The most mentioned entities in a time window, and the links among them."""
         self.ensure()
         with self.connect() as db:
-            return graph_view(db, since=since, until=until, kinds=kinds, limit=limit)
+            view = graph_view(db, since=since, until=until, kinds=kinds, limit=limit)
+        names = self.vault.place_names()  # a rename shows at once, before the day is indexed again
+        for node in view["nodes"]:
+            if node["kind"] == "place" and node["key"] in names:
+                node["name"] = names[node["key"]]
+        return view
 
     def entity(self, entity_id: int, *, limit: int = 50) -> Record | None:
         """One entity: what it is, the records that mention it (newest first), its neighbours."""
         self.ensure()
         with self.connect() as db:
-            return entity_view(db, entity_id, limit=limit)
+            found = entity_view(db, entity_id, limit=limit)
+        if found is not None and found["kind"] == "place":
+            found["name"] = self.vault.place_names().get(found["key"], found["name"])
+        return found
+
+    def tables(self) -> Record:
+        """What the database holds: rows per table, units per kind, entities per kind, links per kind."""
+        with self.connect() as db:
+            count = {
+                name: db.execute(f"SELECT count(*) FROM {name}").fetchone()[0]  # noqa: S608 - fixed names
+                for name in ("days", "units", "vectors", "entities", "mentions", "links", "notes", "note_chunks")
+            }
+            return {
+                "rows": count,
+                "units_by_type": dict(
+                    db.execute("SELECT type, count(*) FROM units GROUP BY type ORDER BY 2 DESC").fetchall()
+                ),
+                "entities_by_kind": dict(
+                    db.execute("SELECT kind, count(*) FROM entities GROUP BY kind ORDER BY 2 DESC").fetchall()
+                ),
+                "links_by_kind": dict(
+                    db.execute("SELECT kind, count(*) FROM links GROUP BY kind ORDER BY 2 DESC").fetchall()
+                ),
+                "unembedded": db.execute("SELECT coalesce(sum(unembedded), 0) FROM days").fetchone()[0],
+                "schema": db.execute("PRAGMA user_version").fetchone()[0],
+                "days": [
+                    dict(r)
+                    for r in db.execute("SELECT day, units, unembedded, model FROM days ORDER BY day DESC LIMIT 60")
+                ],
+            }
 
     def stats(self) -> Record:
         with self.connect() as db:

@@ -9,12 +9,13 @@ Every entity is something the records name exactly, so the graph needs no guessi
 | ``query`` | the search, lower case, spaces collapsed | searches |
 | ``course`` | a course code such as ``CS 136`` | page titles and the text read or stared at |
 | ``deadline`` | ISO date (and time) plus the course | "due ..." phrases in text read or stared at |
-| ``place`` | place id | vault day visits (its events name it in their own ``place`` column) |
+| ``place`` | place id, named as in the day (or as renamed) | vault day visits (its events name it in their own ``place`` column) |
 | ``person``, ``topic`` | the event's own names | vault day events' ``people`` and ``topics`` |
 
 Links say how two entities met, each with the record that shows it: a page is ``part_of`` its site,
 a search ``led_to`` the page opened from its results, a page ``led_to`` the page a link on it opened,
-a page ``mentions`` a course, a course is ``due`` at a deadline, an event happened ``at`` a place.
+a page ``mentions`` a course, a course is ``due`` at a deadline, a place ``led_to`` the next place
+visited that day.
 Each mention ties a unit to an entity: ``on`` (it happened on that page or site), ``about`` (it
 names it), ``at`` (a place), ``with`` (a person).
 """
@@ -106,6 +107,15 @@ class Graph:
             self.links.append((source, target, kind, evidence))
 
 
+def readable(when: str) -> str:
+    """``2026-10-30T23:59`` as ``Fri Oct 30, 11:59 PM`` (no platform-specific strftime flags)."""
+    moment = datetime.fromisoformat(when)
+    text = f"{moment:%a} {moment:%b} {moment.day}"
+    if "T" in when:
+        text += f", {(moment.hour % 12) or 12}:{moment.minute:02d} {'AM' if moment.hour < 12 else 'PM'}"
+    return text
+
+
 def page(url: str, title: str | None) -> Entity:
     return ("page", canonical_url(url), (title or "").strip() or canonical_url(url))
 
@@ -120,7 +130,14 @@ def is_search(url: str | None) -> bool:
     return any(host.startswith(s) or host.endswith(s) or s in host for s in SEARCH_HOSTS)
 
 
-def extract(day: str, units: list[Record], capture: CaptureDay | None, events: list[Record] | None = None) -> Graph:
+def extract(
+    day: str,
+    units: list[Record],
+    capture: CaptureDay | None,
+    events: list[Record] | None = None,
+    places: dict[str, str] | None = None,
+) -> Graph:
+    """``places``: place id -> name, from the day's ``day.json``."""
     graph = Graph()
     seen_on = date.fromisoformat(day)
     by_evidence = {u["evidence_id"]: u for u in units}
@@ -136,9 +153,15 @@ def extract(day: str, units: list[Record], capture: CaptureDay | None, events: l
             graph.mention(evidence, ("person", str(person).casefold(), str(person)), "with")
         for topic in event.get("topics") or []:
             graph.mention(evidence, ("topic", str(topic).casefold(), str(topic)), "about")
-    for unit in units:
-        if unit["type"] == "place.visit" and unit.get("place"):
-            graph.mention(unit["evidence_id"], ("place", unit["place"], unit["text"].removeprefix("Visited ")), "at")
+    previous: Entity | None = None
+    visits = [u for u in units if u["type"] == "place.visit" and u.get("place")]
+    for unit in sorted(visits, key=lambda u: instant(u["t"])):
+        name = (places or {}).get(unit["place"]) or unit["text"].removeprefix("Visited ")
+        place = ("place", unit["place"], name)
+        graph.mention(unit["evidence_id"], place, "at")
+        if previous is not None:
+            graph.link(previous, place, "led_to", unit["evidence_id"])
+        previous = place
     return graph
 
 
@@ -164,7 +187,7 @@ def _text(graph: Graph, evidence: str, where: Entity | None, title: str, text: s
         if where is not None:
             graph.link(where, course, "mentions", evidence)
     for when in deadlines(text, seen_on):
-        label = f"{codes[0]} due {when}" if codes else f"Due {when}"
+        label = f"{codes[0]} due {readable(when)}" if codes else f"Due {readable(when)}"
         deadline = ("deadline", f"{when}|{codes[0] if codes else ''}", label)
         graph.mention(evidence, deadline, "about")
         if codes:
