@@ -105,8 +105,10 @@ def import_phone(args: argparse.Namespace) -> None:
     vault = Vault(Settings().vault_root)
     vault.initialize()
     result = run_import(vault, args.paths, transcribe=not args.no_transcribe)
-    for day, written in result.items():
+    for day, written in result["days"].items():
         print(f"{day}: {written['places']} visits, {written['transits']} trips, {len(written['moments'])} moments")
+    for item in result["skipped"]:
+        print(f"left out {', '.join(Path(p).name for p in item['paths'])}: {item['reason']}")
 
 
 def screen_file(vault_root: Path) -> Path:

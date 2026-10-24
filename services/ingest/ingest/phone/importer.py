@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import subprocess
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, time, timedelta
@@ -31,6 +32,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from .. import contracts
+from ..moments.media import executable
 from ..skeleton.floors import estimate_floors, floor_events
 from ..vault import Record, Vault, read_json, read_lines
 from . import sensor_logger, stray, voice
@@ -83,7 +85,9 @@ def import_phone(
     audio_ends_at_creation: bool = True,
     say: Any = print,
 ) -> dict:
-    """Import ``paths`` (see the module); returns what was written per day."""
+    """Import ``paths`` (see the module). Returns what was written per day (``days``) and what was
+    left out and why (``skipped``: a memo or scan that could not be read, say with FFmpeg missing);
+    the rest is imported regardless. Raises ValueError when nothing could be."""
     found = classify([Path(p) for p in paths])
     if not any(found[k] for k in ("sensor", "audio", "scans")):
         raise ValueError("Nothing to import: no Sensor Logger recording, voice memo or Stray Scanner capture")
@@ -92,19 +96,34 @@ def import_phone(
     zone = ZoneInfo(zone_name)
     fixes = sorted((f for r in recordings for f in r.fixes), key=lambda f: f.t)
     spans = [(r, s) for r in recordings for s in segment(r)]
-    moments = [_voice(p, found["transcripts"], len(found["audio"]) == 1, transcribe, audio_ends_at_creation, say)
-               for p in found["audio"]]  # fmt: skip
-    moments += [_scan(files, fixes, say) for files in found["scans"]]
+    moments: list[Moment] = []
+    skipped: list[dict] = []
+    for path in found["audio"]:
+        try:
+            moments.append(_voice(path, found["transcripts"], len(found["audio"]) == 1, transcribe,
+                                  audio_ends_at_creation, say))  # fmt: skip
+        except (RuntimeError, OSError, ValueError, subprocess.SubprocessError) as error:
+            skipped.append({"paths": [str(path)], "reason": str(error)})
+    for files in found["scans"]:
+        try:
+            moments.append(_scan(files, fixes, say))
+        except (RuntimeError, OSError, ValueError, subprocess.SubprocessError) as error:
+            skipped.append({"paths": [str(f) for f in files.values()], "reason": str(error)})
+    for item in skipped:
+        say(f"left out {', '.join(Path(p).name for p in item['paths'])}: {item['reason']}")
+    if not spans and not moments:
+        raise ValueError("Nothing could be imported: " + "; ".join(item["reason"] for item in skipped))
     days: dict[str, dict] = defaultdict(lambda: {"spans": [], "moments": []})
     for recording, span in spans:
         for day, piece in _by_day(span, zone):
             days[day]["spans"].append((recording, piece))
     for moment in moments:
         days[moment.t0.astimezone(zone).date().isoformat()]["moments"].append(moment)
-    return {
+    written = {
         day: _write_day(vault, day, zone_name, parts["spans"], parts["moments"], say)
         for day, parts in sorted(days.items())
     }
+    return {"days": written, "skipped": skipped}
 
 
 def vault_timezone(vault: Vault) -> str:
@@ -138,6 +157,7 @@ def _voice(path: Path, transcripts: list[Path], only: bool, run: bool, ends: boo
 
 
 def _scan(files: dict[str, Path], fixes: list, say: Any) -> Moment:
+    executable("ffmpeg")  # for the keyframes, before anything is written
     scan = stray.read(files)
     fit = stray.georeference(scan, fixes) if fixes else None
     if fit:

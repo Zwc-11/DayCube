@@ -183,7 +183,7 @@ def test_an_afternoon_of_recordings_becomes_a_vault_day(tmp_path: Path) -> None:
     paths = [sensor_zip(drop), *voice_memo(drop), scan(drop)]
     said: list[str] = []
     result = import_phone(vault, paths, transcribe=False, say=said.append)
-    assert list(result) == ["2026-10-24"]
+    assert list(result["days"]) == ["2026-10-24"] and result["skipped"] == []
     day = read_json(vault.root / "2026-10-24/day.json")
     places = day["places"]
     assert [(p["name"], p["kind"]) for p in places] == [
@@ -271,3 +271,29 @@ def test_a_scan_is_found_among_loose_attachment_files(tmp_path: Path) -> None:
     assert {k: v.name for k, v in found.items()} == {
         "video": "rgb.mp4", "odometry": "84120dfe-odometry.csv", "camera": "4093546f-camera_matrix.csv",
     }  # fmt: skip
+
+
+@needs_ffmpeg
+def test_without_ffmpeg_the_recording_is_imported_and_the_memo_waits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    vault = Vault(tmp_path / "vault")
+    vault.initialize()
+    drop = inbox.folder(vault)
+    sensor_zip(drop)
+    memo, _ = voice_memo(drop)
+    real = shutil.which
+    monkeypatch.setattr(shutil, "which", lambda name: None if name in ("ffmpeg", "ffprobe") else real(name))
+    result = inbox.process(vault, now=time.time() + 60, say=lambda _: None, transcribe=False)
+    assert result["imported"] and list(result["days"]) == ["2026-10-24"] and result["left"] == [memo.name]
+    assert memo.exists() and "Install FFmpeg" in (drop / "errors.jsonl").read_text()
+    assert inbox.process(vault, now=time.time() + 60, say=lambda _: None) is None  # waits until it changes
+    monkeypatch.setattr(shutil, "which", real)
+    os.utime(memo, (time.time() - 100, time.time() - 100))  # touched (re-copied) once FFmpeg is installed
+    again = inbox.process(vault, now=time.time() + 60, say=lambda _: None, transcribe=False)
+    assert again["imported"] and not memo.exists()
+    events = read_lines(vault.root / "2026-10-24/events.jsonl")
+    # The memo joined the day the recording made, which it kept.
+    assert (
+        sum(e["type"] == "moment.audio" for e in events) == 1 and sum(e["type"] == "place.visit" for e in events) == 3
+    )

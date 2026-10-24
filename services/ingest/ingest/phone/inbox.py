@@ -57,10 +57,12 @@ def process(vault: Vault, *, now: float | None = None, say: Any = print, **optio
     if any(now - mtime / 1e9 < SETTLE_S for _, _, mtime in stamp):
         return None  # still being copied
     errors = inbox / "errors.jsonl"
-    if errors.exists() and any(
-        json.loads(line).get("stamp") == stamp for line in errors.read_text("utf-8").splitlines() if line
-    ):
-        return None  # failed before, unchanged since
+    if errors.exists():
+        failed = [json.loads(line).get("stamp") for line in errors.read_text("utf-8").splitlines() if line]
+        waiting = [w for w in waiting if _stamp([w]) not in failed]  # failed before, unchanged since
+        if not waiting or stamp in failed:
+            return None
+        stamp = _stamp(waiting)
     when = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     try:
         result = import_phone(vault, waiting, say=say, **options)
@@ -69,10 +71,20 @@ def process(vault: Vault, *, now: float | None = None, say: Any = print, **optio
             out.write(json.dumps({"t": when, "error": f"{type(error).__name__}: {error}", "stamp": stamp}) + "\n")
         say(f"phone inbox: could not import {len(waiting)} item(s): {error}")
         return {"imported": False, "error": str(error)}
+    # What was left out (a memo with FFmpeg missing) stays, noted, until it changes.
+    left = {Path(p).resolve() for item in result["skipped"] for p in item["paths"]}
+    stays = [w for w in waiting if any(p == w.resolve() or w.resolve() in p.parents for p in left)]
+    if stays:
+        reasons = "; ".join(item["reason"] for item in result["skipped"])
+        with errors.open("a", encoding="utf-8") as out:
+            for path in stays:
+                out.write(json.dumps({"t": when, "error": f"left out: {reasons}", "stamp": _stamp([path])}) + "\n")
+    moved = [w for w in waiting if w not in stays]
     done = inbox / "imported" / when
     done.mkdir(parents=True, exist_ok=True)
-    for path in waiting:
+    for path in moved:
         shutil.move(str(path), done / path.name)
     with (inbox / "imported.jsonl").open("a", encoding="utf-8") as out:
-        out.write(json.dumps({"t": when, "items": [p.name for p in waiting], "days": result}) + "\n")
-    return {"imported": True, "days": result, "moved_to": str(done)}
+        out.write(json.dumps({"t": when, "items": [p.name for p in moved], "days": result["days"],
+                              "left": [p.name for p in stays]}) + "\n")  # fmt: skip
+    return {"imported": True, "days": result["days"], "left": [p.name for p in stays], "moved_to": str(done)}
