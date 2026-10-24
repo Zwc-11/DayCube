@@ -552,3 +552,46 @@ def test_the_doctor_reports_the_webcam_rate_and_how_to_get_60(vault: Vault, monk
     assert webcam(camera_fps=59.6, camera_mode="1280x720 MJPG 60 fps") == (
         doctor.PASS, "60 frames/s in 1280x720 MJPG 60 fps",
     )  # fmt: skip
+
+
+def test_the_doctor_names_the_tracker_crash_and_reads_the_saved_calibration(
+    vault: Vault, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """From the user's PC (2026-10-24): the tracker kept exiting with code 1 while doctor showed only
+    the restart line, a stale 37 px calibration and the head-aware video model as EyeTrax."""
+    import json as _json
+    from zoneinfo import ZoneInfo
+
+    from capture import doctor
+
+    now = datetime.now(UTC)
+    monkeypatch.setattr(doctor.sys, "platform", "linux")
+    logs = vault.root / "logs"
+    logs.mkdir(exist_ok=True)
+    (logs / "gaze.log").write_text(
+        "2026-10-24 11:20:01,100 gaze INFO tracking with camera 0 in 1280x720 MJPG 60 fps at up to 60 fps\n"
+        "2026-10-24 11:20:09,200 gaze ERROR the tracker stopped on an error\n"
+        "Traceback (most recent call last):\n"
+        '  File "gaze/track.py", line 300, in state\n'
+        "    drawn = sum(1 for t in self._drawn if now - t <= 1.0)\n"
+        "RuntimeError: deque mutated during iteration\n",
+        encoding="utf-8",
+    )
+    (logs / "capture.log").write_text(
+        "2026-10-24 11:20:10,300 capture.gaze WARNING eye tracker exited with code 1; restarting in 5 s\n",
+        encoding="utf-8",
+    )
+    calibration = vault.root / "calibration"
+    calibration.mkdir(exist_ok=True)
+    (calibration / "gaze.json").write_text(_json.dumps(
+        {"t": "2026-10-24T15:18:00+00:00", "model": "head-video", "error_px": 85.0, "monitor": [2560, 1440]}
+    ))  # fmt: skip
+    status = {"paused": False, "browser": {"last": now.isoformat()}, "reading": None,
+              "gaze": {"tracking": False, "reason": "stopped", "model": "head-video", "error_px": 37.0}}  # fmt: skip
+    found = {name: (v, d) for v, name, d in doctor.checks(status, vault.root, ZoneInfo("America/Toronto"), now, None)}
+    assert found["eye tracker"][0] == doctor.FAIL
+    assert "(the tracker's error: RuntimeError: deque mutated during iteration)" in found["eye tracker"][1]
+    assert found["gaze model"] == (doctor.PASS, "head-aware (video landmarks): follows head movement")
+    assert found["calibration"] == (
+        doctor.PASS, "85 px median held-out error (limit 160), saved 2026-10-24 15:18 UTC",
+    )  # fmt: skip

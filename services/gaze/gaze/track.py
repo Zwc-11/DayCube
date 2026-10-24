@@ -266,7 +266,7 @@ class Tracker:
             "head_moved_mm": round(float(np.median([m for _, m, _ in self.heads])), 0) if self.heads else None,
             "head_turned_deg": round(float(np.median([d for _, _, d in self.heads])), 1) if self.heads else None,
             "timing_ms": self._timing(),
-            "overlay": self.overlay.state() if self.overlay is not None else None,
+            "overlay": self._overlay_state(),
             "camera_fps": self.camera.rate() if hasattr(self.camera, "rate") else None,
             "camera_mode": _describe(self.calibration.get("camera_mode")),
         }
@@ -319,6 +319,16 @@ class Tracker:
         if idle > AWAY_IDLE_S and now - self.last_face > AWAY_NO_FACE_S:
             return "away"
         return None
+
+    def _overlay_state(self) -> dict | None:
+        """The ring's state for the report. The ring is a display: a fault in it is reported,
+        never allowed to stop tracking."""
+        if self.overlay is None:
+            return None
+        try:
+            return self.overlay.state()
+        except Exception as error:  # noqa: BLE001
+            return {"running": False, "error": f"{type(error).__name__}: {error}"[:200]}
 
     def _ring(self) -> Any:
         """The overlay to draw on, or None: made on first need, hidden while the receiver does not

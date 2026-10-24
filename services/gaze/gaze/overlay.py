@@ -177,8 +177,12 @@ class Overlay:
         self._ready = threading.Event()
         self._shown: tuple[bool, float] | None = None  # (dashed, opacity) on screen, None when hidden
         self._at: tuple[int, int] | None = None
-        self._drawn: deque[float] = deque()  # display frames drawn with the ring on screen, last 2 s
-        self._moved: deque[float] = deque()  # frames on which it moved
+        # Display frames drawn with the ring on screen, and those on which it moved, over the last
+        # 2 s. Written by the overlay thread, read by the tracker's (``state``): under ``_count``,
+        # since iterating a deque while another thread appends raises RuntimeError.
+        self._drawn: deque[float] = deque()
+        self._moved: deque[float] = deque()
+        self._count = threading.Lock()
         self._thread: threading.Thread | None = None
         if start:
             self._thread = threading.Thread(target=self._run, name="gaze overlay", daemon=True)
@@ -209,8 +213,9 @@ class Overlay:
         """For the tracker's state: whether the ring is on screen, frames drawn per second while it
         is, and how often it moved (at most the display's refresh rate)."""
         now = self.clock()
-        drawn = sum(1 for t in self._drawn if now - t <= 1.0)
-        moved = sum(1 for t in self._moved if now - t <= 1.0)
+        with self._count:
+            drawn = sum(1 for t in self._drawn if now - t <= 1.0)
+            moved = sum(1 for t in self._moved if now - t <= 1.0)
         return {
             "running": self.running,
             "shown": self._shown is not None,
@@ -267,16 +272,21 @@ class Overlay:
         if at != self._at:  # moved first: a ring appearing shows where the eyes are, not where it last was
             backend.move(*at)
             self._at = at
-            self._moved.append(now)
+            moved = True
+        else:
+            moved = False
         look = (not on, opacity)
         if self._shown != look:
             backend.show(*look)
             self._shown = look
-        self._drawn.append(now)
-        while self._drawn and now - self._drawn[0] > 2.0:
-            self._drawn.popleft()
-        while self._moved and now - self._moved[0] > 2.0:
-            self._moved.popleft()
+        with self._count:
+            self._drawn.append(now)
+            if moved:
+                self._moved.append(now)
+            while self._drawn and now - self._drawn[0] > 2.0:
+                self._drawn.popleft()
+            while self._moved and now - self._moved[0] > 2.0:
+                self._moved.popleft()
         backend.wait()
         return True
 
