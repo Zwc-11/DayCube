@@ -1,0 +1,116 @@
+// Pure helpers shared by the service worker and its tests (node --test extensions/chrome/tests).
+
+export const RECEIVER = 'http://127.0.0.1:7700';
+
+/** The deadline covers headers and JSON body. A stalled local receiver must not hold a worker
+ * delivery forever. Callers retain durable records until this complete response acknowledges them. */
+export async function fetchReceiver(path, init = {}, timeoutMs = 5000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(new DOMException('Receiver request timed out', 'TimeoutError')), timeoutMs);
+  try {
+    const response = await fetch(`${RECEIVER}${path}`, { ...init, signal: controller.signal });
+    const body = response.ok ? await response.json() : null;
+    if (!response.ok) await response.body?.cancel();
+    return { ok: response.ok, status: response.status, body };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Result pages whose address carries the query. Scholar is listed before Google, whose host
+// pattern would also match it.
+const ENGINES = [
+  { engine: 'google_scholar', host: /^scholar\.google\.[a-z.]+$/, path: /^\/scholar$/, param: 'q' },
+  { engine: 'google', host: /(^|\.)google\.[a-z.]+$/, path: /^\/search$/, param: 'q' },
+  { engine: 'bing', host: /(^|\.)bing\.com$/, path: /^\/search$/, param: 'q' },
+  { engine: 'duckduckgo', host: /(^|\.)duckduckgo\.com$/, path: /^\/$/, param: 'q' },
+  { engine: 'brave', host: /^search\.brave\.com$/, path: /^\/search$/, param: 'q' },
+  { engine: 'yahoo', host: /^search\.yahoo\.com$/, path: /^\/search/, param: 'p' },
+  { engine: 'baidu', host: /^www\.baidu\.com$/, path: /^\/s$/, param: 'wd' },
+  { engine: 'perplexity', host: /(^|\.)perplexity\.ai$/, path: /^\/search/, param: 'q' },
+  { engine: 'youtube', host: /(^|\.)youtube\.com$/, path: /^\/results$/, param: 'search_query' },
+  { engine: 'github', host: /^github\.com$/, path: /^\/search$/, param: 'q' },
+  { engine: 'wikipedia', host: /\.wikipedia\.org$/, path: /^\/w\/index\.php$/, param: 'search' },
+  { engine: 'reddit', host: /(^|\.)reddit\.com$/, path: /^\/search\/?$/, param: 'q' },
+  { engine: 'x', host: /^(x|twitter)\.com$/, path: /^\/search$/, param: 'q' },
+  { engine: 'amazon', host: /(^|\.)amazon\.[a-z.]+$/, path: /^\/s$/, param: 'k' },
+];
+
+export function searchOf(address) {
+  let url;
+  try { url = new URL(address); } catch { return null; }
+  for (const { engine, host, path, param } of ENGINES) {
+    if (!host.test(url.hostname) || !path.test(url.pathname)) continue;
+    const query = (url.searchParams.get(param) || '').trim();
+    return query ? { engine, query: query.slice(0, 1000) } : null;
+  }
+  return null;
+}
+
+/** Whether a page may be recorded: http(s), not the receiver, not an excluded domain or its subdomains. */
+export function allowed(address, exclusions = []) {
+  let url;
+  try { url = new URL(address); } catch { return false; }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
+  if (url.origin === RECEIVER) return false;
+  const host = url.hostname.toLowerCase();
+  return !exclusions.some(domain => host === domain || host.endsWith(`.${domain}`));
+}
+
+/** Whether two addresses differ only in the fragment (#section), i.e. are the same page. */
+export function sameDocument(a, b) {
+  if (!a || !b) return false;
+  try {
+    const [x, y] = [new URL(a), new URL(b)];
+    x.hash = '';
+    y.hash = '';
+    return x.href === y.href;
+  } catch {
+    return false;
+  }
+}
+
+export function normalizeDomains(text) {
+  return [...new Set(text.split(/[\s,]+/).map(value => value.trim().toLowerCase()
+    .replace(/^[a-z]+:\/\//, '').replace(/[/:].*$/, '').replace(/^\*?\./, '')).filter(Boolean))];
+}
+
+/** Bound the offline queue: drop the oldest text snapshots first, then the oldest records. */
+export function trim(queue, limit) {
+  if (queue.length <= limit) return queue;
+  let excess = queue.length - limit;
+  const kept = queue.filter(item => !(excess > 0 && item.kind === 'blocks' && excess-- > 0));
+  return kept.length > limit ? kept.slice(kept.length - limit) : kept;
+}
+
+export function record(kind, fields) {
+  return { id: crypto.randomUUID(), t: new Date().toISOString(), kind, ...fields };
+}
+
+export const clip = (value, length) => String(value ?? '').slice(0, length);
+
+export function gazeLabel(gaze = {}, accuracy = {}) {
+  if (!gaze.tracking) return `Not tracking: ${gaze.reason || 'unknown'}`;
+  const rate = Number.isFinite(gaze.fps) ? `, ${gaze.fps}${Number.isFinite(gaze.target_fps) ? `/${gaze.target_fps}` : ''} fps` : '';
+  const face = Number.isFinite(gaze.face) ? `, face ${Math.round(gaze.face * 100)}%` : '';
+  const error = Number.isFinite(gaze.error_px) ? `, calibrated to ${Math.round(gaze.error_px)} px` : '';
+  // Measured from clicks while browsing: how far off the tracker is now, after correction.
+  const live = Number.isFinite(accuracy?.corrected_error_px) && accuracy.clicks >= 5
+    ? `, ${Math.round(accuracy.corrected_error_px)} px now (${accuracy.clicks} clicks)` : '';
+  return `Tracking${rate}${face}${error}${live}`;
+}
+
+// The line being read now (/status `reading`), or why there is none (`line_decoding`).
+export function readingLabel(reading, decoding) {
+  if (reading) return `Line ${reading.line + 1} of ${reading.lines} (${Math.round(reading.p * 100)}%): ${reading.text.slice(0, 60)}`;
+  if (!decoding?.fixations) return 'No line now: no gaze on pages yet';
+  // Where the rest went, largest first: the reason no line is shown.
+  const missed = [
+    [decoding.outside, 'outside the browser page'], [decoding.no_page, 'with no browser page on screen'],
+    [decoding.stale, 'while the page was not reporting'], [decoding.other_monitor, 'with the page on another monitor'],
+  ].filter(([n]) => n > 0).sort((a, b) => b[0] - a[0]).map(([n, why]) => `${n} ${why}`);
+  const page = decoding.page;
+  const text = page ? ` ${page.host}: ${page.with_lines} of ${page.blocks} text blocks have lines.` : '';
+  const rest = missed.length ? ` (${missed.join(', ')})` : '';
+  return `No line now. Last ${decoding.fixations} fixations: ${decoding.on_page} on a page${rest}, ${decoding.on_line} on a line.${text}`;
+}

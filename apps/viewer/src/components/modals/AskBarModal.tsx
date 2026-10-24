@@ -9,6 +9,7 @@ import { Dialog, FidelityTag } from '../ui';
 const SUGGESTIONS = PRESET_QUESTIONS.slice(0, 3);
 
 interface AskBarModalProps {
+  date: string;
   isOpen: boolean;
   onClose: () => void;
   layers: Layer[];
@@ -23,6 +24,7 @@ interface AskBarModalProps {
 type Status = 'idle' | 'loading' | 'done' | 'error';
 
 export const AskBarModal: React.FC<AskBarModalProps> = ({
+  date,
   isOpen,
   onClose,
   layers,
@@ -54,7 +56,7 @@ export const AskBarModal: React.FC<AskBarModalProps> = ({
     setError('');
     setStatus('loading');
     try {
-      const res = await backendBridge.ask('2026-10-20', q, layers, true, (layerIndex, t) => {
+      const res = await backendBridge.ask(date, q, layers, true, (layerIndex, t) => {
         // The stream reports where the answer is before the sentences arrive.
         onTeleport({ ...emptyResult(q), layerIndex, t });
       });

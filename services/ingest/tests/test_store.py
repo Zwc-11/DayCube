@@ -5,14 +5,83 @@ import shutil
 import sqlite3
 from contextlib import closing
 
+import pytest
 from conftest import DAY, WordEmbedder, clone_day
 from ingest.ask.retrieve import retrieve
 from ingest.index.build import UNIT_COLUMNS
 from ingest.store import LifeStore
+from ingest.store.vectors import Block, VectorIndex
 from ingest.time import instant
 from ingest.vault import Vault
 
 OTHER = "2026-10-21"
+
+
+def test_retrieval_prepares_each_day_once(vault: Vault, monkeypatch: pytest.MonkeyPatch) -> None:
+    clone_day(vault, DAY, OTHER)
+    store = LifeStore(vault)
+    expected = retrieve(store, "hinge inference loop")
+    calls: list[str] = []
+    snapshot = vault.snapshot
+
+    def counted(day: str) -> object:
+        calls.append(day)
+        return snapshot(day)
+
+    monkeypatch.setattr(vault, "snapshot", counted)
+    assert retrieve(store, "hinge inference loop") == expected
+    assert len(expected) > 2 and sorted(calls) == [DAY, OTHER]
+
+
+def test_vector_scope_loads_only_requested_days(vault: Vault, monkeypatch: pytest.MonkeyPatch) -> None:
+    clone_day(vault, DAY, OTHER)
+    store = LifeStore(vault, WordEmbedder())
+    store.ensure()
+    loaded: list[str] = []
+    load = Block.load
+
+    def counted(cls: type[Block], db: sqlite3.Connection, day: str) -> Block:
+        loaded.append(day)
+        return load(db, day)
+
+    monkeypatch.setattr(Block, "load", classmethod(counted))
+    first = store.nearest("citation panel", day=DAY, k=3)
+    assert first and store.nearest("citation panel", day=DAY, k=3) == first
+    assert loaded == [DAY]
+    assert store.nearest("citation panel", day=OTHER, k=3)
+    assert loaded == [DAY, OTHER]
+
+
+@pytest.mark.parametrize("budget", [1, 2048])
+def test_vector_cache_eviction_preserves_results(vault: Vault, budget: int) -> None:
+    clone_day(vault, DAY, OTHER)
+    embedder = WordEmbedder()
+    store = LifeStore(vault, embedder)
+    store.ensure()
+    index = VectorIndex(cache_bytes=budget)
+    query = embedder.query("citation panel")
+    with store.connect() as db:
+        for day in [DAY, OTHER, DAY, OTHER]:
+            expected = VectorIndex().search(db, query, 3, days=[day])
+            assert index.search(db, query, 3, days=(d for d in [day])) == expected
+            assert index.cache_size_bytes <= budget
+        index.clear()
+        assert index.cache_size_bytes == 0
+        assert index.search(db, query, 3, days=[DAY]) == VectorIndex().search(db, query, 3, days=[DAY])
+        assert index.search(db, query, 0) == []
+        with pytest.raises(ValueError, match="nonnegative"):
+            index.search(db, query, -1)
+
+
+def test_vector_cache_never_returns_a_deleted_day(vector_store: LifeStore) -> None:
+    vector_store.ensure([DAY])
+    assert vector_store.nearest("citation panel", day=DAY, k=3)
+    assert vector_store.embedder is not None
+    query = vector_store.embedder.query("citation panel")
+    with vector_store.connect() as db:
+        vector_store._delete_day(db, DAY)
+        assert vector_store.index.search(db, query, 3) == []
+        assert vector_store.index.search(db, query, 3, days=[DAY]) == []
 
 
 def snapshot(store: LifeStore) -> list[tuple]:
@@ -166,4 +235,6 @@ def test_a_database_from_another_schema_version_is_rebuilt(vault: Vault) -> None
     assert hits and retrieve(store, "stale", day=DAY) == []
     with closing(sqlite3.connect(path)) as db:
         db.execute("INSERT INTO units_fts(units_fts, rank) VALUES ('integrity-check', 1)")
-        assert db.execute("PRAGMA user_version").fetchone()[0] == 2
+        from ingest.store.db import SCHEMA_VERSION
+
+        assert db.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION

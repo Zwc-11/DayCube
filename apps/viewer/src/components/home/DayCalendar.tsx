@@ -1,5 +1,6 @@
-import React, { useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import React, { Suspense, lazy, useMemo, useRef, useState } from 'react';
+import { ChevronLeft, ChevronRight, Database } from 'lucide-react';
+import type { VaultView } from './VaultDialog';
 import { BrandMark } from '../shell/TopBar';
 import type { DaySummary } from '../../lib/days';
 import type { PlaceKind } from '../../types/daycube';
@@ -10,6 +11,9 @@ const KIND_COLOR: Record<PlaceKind, string> = {
   venue: '#8eaee3',
   outdoor: '#8dba9f',
 };
+// Loaded on first use: the calendar paints without the views' code.
+const VaultDialog = lazy(() => import('./VaultDialog'));
+
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const MAX_SLABS = 5;
 
@@ -43,14 +47,15 @@ const longDate = (iso: string) =>
     new Date(`${iso}T00:00:00Z`)
   );
 
-/** The day as the viewer draws it: one slab per place, the first visit at the bottom. */
-const DayGlyph: React.FC<{ kinds: PlaceKind[] }> = ({ kinds }) => {
-  const slabs = kinds.slice(0, MAX_SLABS);
+/** The day as the viewer draws it: one slab per place, the first visit at the bottom, and a
+ *  lavender slab on top for time at the computer. */
+const COMPUTER = '#c6b4ff';
+const DayGlyph: React.FC<{ kinds: PlaceKind[]; capture: boolean }> = ({ kinds, capture }) => {
+  const colors = [...kinds.slice(0, capture ? MAX_SLABS - 1 : MAX_SLABS).map((k) => KIND_COLOR[k]), ...(capture ? [COMPUTER] : [])];
   return (
     <svg className="glyph" viewBox="0 0 32 40" aria-hidden>
-      {slabs.map((kind, i) => {
+      {colors.map((color, i) => {
         const y = 21 - i * 5;
-        const color = KIND_COLOR[kind];
         const left = `2,${y + 7} 16,${y + 14} 16,${y + 18} 2,${y + 11}`;
         const right = `16,${y + 14} 30,${y + 7} 30,${y + 11} 16,${y + 18}`;
         return (
@@ -83,6 +88,7 @@ export const DayCalendar: React.FC<DayCalendarProps> = ({ days, today, onOpen })
   const cells = useMemo(() => monthCells(shown), [shown]);
   const buttons = useRef(new Map<string, HTMLButtonElement>());
   const sample = days?.some((d) => d.sample) ?? false;
+  const [vault, setVault] = useState<VaultView | null>(null);
 
   // Arrow keys walk the grid, landing only on days that have something to open.
   const onKeyDown = (event: React.KeyboardEvent) => {
@@ -103,12 +109,22 @@ export const DayCalendar: React.FC<DayCalendarProps> = ({ days, today, onOpen })
           <BrandMark />
           <span className="brand__name">DayCube</span>
         </span>
-        {sample && (
-          <span className="tag" title="Bundled sample day; the local vault isn't connected">
-            Sample
-          </span>
-        )}
+        <span className="row">
+          {sample && (
+            <span className="tag" title="Bundled sample day; the local vault isn't connected">
+              Sample
+            </span>
+          )}
+          <button type="button" className="btn btn--secondary btn--sm" onClick={() => setVault('data')}>
+            <Database size={13} aria-hidden /> Your data
+          </button>
+        </span>
       </header>
+      {vault && (
+        <Suspense fallback={null}>
+          <VaultDialog view={vault} online={days !== null && !sample} onView={setVault} onClose={() => setVault(null)} />
+        </Suspense>
+      )}
 
       <main className="cal" aria-label="Days">
         <div className="cal__head">
@@ -151,7 +167,10 @@ export const DayCalendar: React.FC<DayCalendarProps> = ({ days, today, onOpen })
                 </span>
               );
             }
-            const counts = `${day.places} ${day.places === 1 ? 'place' : 'places'}, ${day.events} events`;
+            const counts =
+              day.places === 0 && day.capture
+                ? `computer only${day.records ? `, ${day.records} records` : ''}`
+                : `${day.places} ${day.places === 1 ? 'place' : 'places'}, ${day.events} events${day.capture ? ', computer' : ''}`;
             return (
               <button
                 key={date}
@@ -168,7 +187,7 @@ export const DayCalendar: React.FC<DayCalendarProps> = ({ days, today, onOpen })
                 onClick={() => onOpen(date)}
               >
                 <span className="cal__num">{number}</span>
-                <DayGlyph kinds={day.kinds} />
+                <DayGlyph kinds={day.kinds} capture={day.capture} />
               </button>
             );
           })}

@@ -15,7 +15,7 @@ class Word(BaseModel):
 
 class Segment(BaseModel):
     model_config = ConfigDict(
-        extra='forbid',
+        extra="forbid",
     )
     start: confloat(ge=0.0)
     end: confloat(ge=0.0)
@@ -26,7 +26,7 @@ class Segment(BaseModel):
 
 class Transcript(BaseModel):
     model_config = ConfigDict(
-        extra='forbid',
+        extra="forbid",
     )
     speaker_map: dict[str, str]
     segments: list[Segment]

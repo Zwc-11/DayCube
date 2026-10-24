@@ -2,12 +2,18 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import re
 import secrets
+import threading
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from datetime import date as date_type
+from datetime import time as time_type
+from time import perf_counter
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 import httpx
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request
@@ -16,13 +22,19 @@ from fastapi.responses import FileResponse, JSONResponse, Response, StreamingRes
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field
 
+from .ask.retrieve import retrieve
 from .ask.service import ask
+from .capture.synthesize import capture_days
 from .config import Settings
 from .contracts import ContractError
 from .generated.event import Event
 from .index.embed import Embedder, default_embedder
+from .notes.read import DayNotes, attach_notes, read_note
 from .store import LifeStore
+from .time import instant
 from .vault import Record, Vault, read_json
+
+log = logging.getLogger("daycube.api")
 
 MEDIA_SUFFIXES = frozenset({".jpg", ".jpeg", ".png", ".svg", ".mp4", ".wav", ".glb", ".ply", ".spz"})
 SAFE_ID = re.compile(r"[A-Za-z0-9_-]+")
@@ -63,17 +75,36 @@ def sse(event: str, value: Record) -> str:
     return f"event: {event}\ndata: {json.dumps(value)}\n\n"
 
 
-def create_app(settings: Settings | None = None, *, embedder: Embedder | None = None) -> FastAPI:
-    """``embedder`` replaces the configured model (tests pass a deterministic one)."""
+def create_app(settings: Settings | None = None, *, embedder: Embedder | None = None, warm: bool = False) -> FastAPI:
+    """``embedder`` replaces the configured model (tests pass a deterministic one). ``warm``: at
+    startup, bring the vault database up to date and load the embedding model and vector index in
+    the background, so the first question is answered as fast as the rest."""
     settings = settings or Settings()
     vault = Vault(settings.vault_root)
-    store = LifeStore(vault, embedder or default_embedder(settings.vector_search, settings.embedding_model))
+    store = LifeStore(
+        vault, embedder or default_embedder(settings.vector_search, settings.embedding_model), zone=settings.timezone
+    )
     jobs: dict[str, Record] = {}
+    jobs_lock = threading.Lock()
     bearer = HTTPBearer(auto_error=False)
+
+    day_notes = DayNotes(store)
+
+    def warm_up() -> None:
+        started = perf_counter()
+        try:
+            store.ensure()
+            retrieve(store, "warm up the search")
+        except Exception:  # noqa: BLE001 - a cold first question is the only cost
+            log.exception("Warming up search failed")
+        else:
+            log.info("Search warm in %.1f s", perf_counter() - started)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         vault.initialize()
+        if warm:
+            threading.Thread(target=warm_up, name="warm-up", daemon=True).start()
         yield
 
     app = FastAPI(
@@ -129,7 +160,25 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
 
     @app.get("/days")
     def days() -> list[Record]:
-        return vault.list_days()
+        """Newest first: vault days, and days with only computer capture (no places). ``capture``
+        says the day has capture logs; ``records`` is its searchable record count once indexed."""
+        listed = {d["date"]: {**d, "capture": False, "records": None} for d in vault.list_days()}
+        for day in capture_days(vault):
+            listed.setdefault(
+                day,
+                {
+                    "date": day,
+                    "stats": {"events": 0, "moments": 0, "places": 0, "floor_changes": 0},
+                    "kinds": [],
+                    "records": None,
+                },
+            )["capture"] = True
+        if store.path.exists():
+            with store.connect() as db:
+                for day, units in db.execute("SELECT day, units FROM days"):
+                    if day in listed:
+                        listed[day]["records"] = units
+        return [listed[day] for day in sorted(listed, reverse=True)]
 
     @app.get("/day/{date}")
     def day(date: str, request: Request) -> Response:
@@ -152,6 +201,83 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
     @app.get("/day/{date}/graph")
     def graph(date: str) -> Record:
         return vault.snapshot(date).graph
+
+    def epoch(value: str | None) -> float | None:
+        """A date (local midnight, in the vault's time zone) or an ISO time, as epoch seconds."""
+        if not value:
+            return None
+        if len(value) == 10:
+            return datetime.combine(
+                date_type.fromisoformat(value), time_type(), ZoneInfo(settings.timezone)
+            ).timestamp()
+        return instant(value).timestamp()
+
+    @app.get("/graph")
+    def knowledge_graph(
+        since: str | None = None,
+        until: str | None = None,
+        kinds: str | None = None,
+        limit: int = Query(200, ge=1, le=2000),
+    ) -> Record:
+        """Entities the records name (sites, pages, searches, courses, deadlines, places, people)
+        most mentioned between ``since`` and ``until``, and the links among them."""
+        return store.graph(
+            since=epoch(since), until=epoch(until), kinds=kinds.split(",") if kinds else None, limit=limit
+        )
+
+    @app.get("/entity/{entity_id}")
+    def entity(entity_id: int, limit: int = Query(50, ge=1, le=500)) -> Record:
+        found = store.entity(entity_id, limit=limit)
+        if found is None:
+            raise FileNotFoundError(entity_id)
+        return found
+
+    @app.get("/search")
+    def search(q: str = Query(..., min_length=1, max_length=500), date: str | None = None) -> Record:
+        """Ask without the vault token, for search as you type: the same extractive answer and
+        evidence as ``POST /ask``, each result with the note it is in (``note``) and the words to
+        find there (``match``), and how long it took (``took_ms``). Reads only, like the other
+        GET routes."""
+        started = perf_counter()
+        result = ask(store, date, q.strip())
+        attach_notes(store, result["evidence"])
+        result["took_ms"] = round((perf_counter() - started) * 1000, 1)
+        return result
+
+    @app.get("/day/{date}/notes")
+    def knowledge(date: str) -> Record:
+        """The day's knowledge base: its daily note (written or refreshed now if its records changed),
+        the notes it links to and that link to it, and its local graph."""
+        return day_notes.view(date)
+
+    @app.get("/note")
+    def note(path: str = Query(..., max_length=1000)) -> Record:
+        """One note in vault/notes: its Markdown, its links (each with the note it opens) and backlinks."""
+        return read_note(store, path)
+
+    @app.get("/data")
+    def data_center() -> Record:
+        """Everything the vault holds: its source files by stream (days, capture logs, notes,
+        calibration) and the database derived from them (rows per table, kinds, sizes)."""
+        from .datacenter import report
+
+        return report(store)
+
+    @app.post("/notes/{date}", dependencies=[Depends(authorize)])
+    def write_notes(date: str) -> Record:
+        """Write (or refresh) the linked notes of a day in vault/notes; the person's edits stay."""
+        from .notes import Notes
+
+        writer = Notes(store)
+        return {"notes": sorted(p.relative_to(writer.root).as_posix() for p in writer.write_day(date))}
+
+    @app.get("/notes")
+    def list_notes() -> list[Record]:
+        """The notes folder as last read into the database: path, title, and the entity a
+        generated note stands for."""
+        store.sync_notes()
+        with store.connect() as db:
+            return [dict(r) for r in db.execute("SELECT path, title, identity FROM notes ORDER BY path")]
 
     @app.get("/moment/{moment_id}")
     def moment(moment_id: str, date: str = Query(...)) -> Record:
@@ -203,48 +329,64 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
         return {"accepted": accepted}
 
     def run_job(job_id: str, date: str) -> None:
-        jobs[job_id].update(status="running", stage="index", pct=10)
+        with jobs_lock:
+            jobs[job_id].update(status="running", stage="index", pct=10)
         try:
             result = store.update(date)
-            jobs[job_id].update(status="complete", pct=100, result=result, message="Vault index updated")
         except Exception:
-            jobs[job_id].update(status="failed", message="Index build failed; run daycube validate for diagnostics")
+            log.exception("Index job failed for %s", date)
+            with jobs_lock:
+                jobs[job_id].update(status="failed", message="Index build failed; run daycube validate for diagnostics")
+        else:
+            with jobs_lock:
+                jobs[job_id].update(status="complete", pct=100, result=result, message="Vault index updated")
 
     @app.post("/ingest/{date}", dependencies=[Depends(authorize)], status_code=202)
     def ingest_day(date: str, body: IngestRequest, tasks: BackgroundTasks) -> Record:
         vault.day_path(date)
         if set(body.steps) != {"index"}:
             raise HTTPException(501, "Only the index stage is implemented. Capture/moments/summaries are planned.")
-        job_id = uuid4().hex
-        if len(jobs) >= MAX_JOBS:
-            finished = next((key for key, value in jobs.items() if value["status"] in {"complete", "failed"}), None)
-            if finished:
-                del jobs[finished]
-            else:
-                raise HTTPException(429, "Too many active jobs")
-        jobs[job_id] = {
-            "id": job_id,
-            "date": date,
-            "status": "queued",
-            "stage": "index",
-            "pct": 0,
-            "message": "Queued",
-            "created_at": datetime.now(UTC).isoformat(),
-        }
-        tasks.add_task(run_job, job_id, date)
+        with jobs_lock:
+            # Admission and registration are one operation: concurrent clients share work
+            # already queued or running for this day, including when the queue is full.
+            for key, state in jobs.items():
+                if state["date"] == date and state["status"] in {"queued", "running"}:
+                    return {"job_id": key}
+            job_id = uuid4().hex
+            if len(jobs) >= MAX_JOBS:
+                finished = next((key for key, value in jobs.items() if value["status"] in {"complete", "failed"}), None)
+                if finished:
+                    del jobs[finished]
+                else:
+                    raise HTTPException(429, "Too many active jobs")
+            jobs[job_id] = {
+                "id": job_id,
+                "date": date,
+                "status": "queued",
+                "stage": "index",
+                "pct": 0,
+                "message": "Queued",
+                "created_at": datetime.now(UTC).isoformat(),
+            }
+            tasks.add_task(run_job, job_id, date)
         return {"job_id": job_id}
+
+    def job_snapshot(job_id: str) -> Record | None:
+        with jobs_lock:
+            state = jobs.get(job_id)
+            return dict(state) if state is not None else None
 
     @app.get("/jobs/{job_id}", response_model=None)
     def job(job_id: str, stream: bool = False) -> Record | StreamingResponse:
-        if job_id not in jobs:
+        state = job_snapshot(job_id)
+        if state is None:
             raise HTTPException(404, "Job not found; jobs are process-local and expire on restart")
         if not stream:
-            return jobs[job_id]
+            return state
 
         async def generate() -> AsyncIterator[str]:
             previous = ""
-            while job_id in jobs:
-                state = dict(jobs[job_id])
+            while (state := job_snapshot(job_id)) is not None:
                 serialized = json.dumps(state)
                 if serialized != previous:
                     yield sse("progress", state)
@@ -309,4 +451,4 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
     return app
 
 
-app = create_app()
+app = create_app(warm=True)

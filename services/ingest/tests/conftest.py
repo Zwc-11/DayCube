@@ -10,6 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 from ingest.api import create_app
 from ingest.ask.retrieve import STOP_WORDS
+from ingest.capture.sample import write_sample_capture
 from ingest.config import PROJECT_ROOT, Settings
 from ingest.store import LifeStore
 from ingest.vault import Vault
@@ -93,3 +94,11 @@ def clone_day(vault: Vault, source: str, target: str) -> None:
     for path in destination.rglob("*"):
         if path.is_file() and path.suffix in {".json", ".jsonl", ".geojson"}:
             path.write_text(path.read_text(encoding="utf-8").replace(source, target), encoding="utf-8")
+
+
+CAPTURE_DAY = "2026-10-22"
+
+
+def capture_session(vault: Vault, day: str = CAPTURE_DAY) -> None:
+    """A morning of computer capture as the receiver writes it (``ingest.capture.sample``)."""
+    write_sample_capture(vault, day)

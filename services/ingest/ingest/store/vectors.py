@@ -31,8 +31,12 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from ..cache import SegmentedLRU
+
 OVERSAMPLE = 40
 CHUNK = 500
+CACHE_BYTES = 64 << 20
+ENTRY_BYTES = 512  # allowance for the key, tuple, array headers and cache bookkeeping
 
 
 def sign_bits(vector: bytes) -> bytes:
@@ -60,7 +64,8 @@ class Block:
         ).fetchall()
         if not rows:
             return cls(np.empty(0, np.int64), np.empty(0), np.empty((0, 0), np.uint64))
-        packed = np.frombuffer(b"".join(_words(row[2]).tobytes() for row in rows), np.uint64)
+        padding = b"\0" * (-len(rows[0][2]) % 8)
+        packed = np.frombuffer(b"".join(row[2] + padding for row in rows), np.uint64)
         return cls(
             np.fromiter((row[0] for row in rows), np.int64, len(rows)),
             np.fromiter((row[1] for row in rows), np.float64, len(rows)),
@@ -69,26 +74,25 @@ class Block:
 
 
 class VectorIndex:
-    """Sign-bit blocks per day, kept in step with the database's ``days.generation``."""
+    """Scoped sign-bit blocks, keyed by the database's non-reused day generation.
 
-    def __init__(self) -> None:
-        self._blocks: dict[str, Block] = {}
-        self._generations: dict[str, int] = {}
+    Only requested days load. Retained arrays are size-bounded; an oversized day's
+    working block can exceed the budget during that search but is never cached.
+    Old generations expire through eviction and are never selected for a new search.
+    """
+
+    def __init__(self, cache_bytes: int = CACHE_BYTES) -> None:
+        self._cache: SegmentedLRU[tuple[str, int], Block] = SegmentedLRU(cache_bytes)
         self._lock = threading.Lock()
+
+    @property
+    def cache_size_bytes(self) -> int:
+        """Retained array bytes plus a fixed allowance per cache entry, not process RSS."""
+        return self._cache.size
 
     def clear(self) -> None:
         with self._lock:
-            self._blocks.clear()
-            self._generations.clear()
-
-    def _sync(self, db: sqlite3.Connection) -> None:
-        current = dict(db.execute("SELECT day, generation FROM days").fetchall())
-        for day in set(self._blocks) - set(current):
-            del self._blocks[day], self._generations[day]
-        for day, generation in current.items():
-            if self._generations.get(day) != generation:
-                self._blocks[day] = Block.load(db, day)
-                self._generations[day] = generation
+            self._cache = SegmentedLRU(self._cache.capacity)
 
     def search(
         self,
@@ -101,13 +105,25 @@ class VectorIndex:
         until: float | None = None,
     ) -> list[tuple[int, float]]:
         """(unit id, cosine similarity) of the ``k`` nearest units in scope, nearest first."""
+        if k < 0:
+            raise ValueError("k must be nonnegative")
+        if k == 0:
+            return []
         with self._lock:
-            self._sync(db)
-            blocks = [self._blocks[d] for d in days if d in self._blocks] if days is not None else self._blocks.values()
+            current = dict(db.execute("SELECT day, generation FROM days").fetchall())
+            scope = current if days is None else days
             q = _words(sign_bits(query))
             want = OVERSAMPLE * k
             ids, distances = [], []
-            for block in blocks:
+            for day in scope:
+                if day not in current:
+                    continue
+                key = day, current[day]
+                block = self._cache.get(key)
+                if block is None:
+                    block = Block.load(db, day)
+                    size = block.ids.nbytes + block.ts.nbytes + block.words.nbytes + ENTRY_BYTES
+                    self._cache.put(key, block, size)
                 lo = 0 if since is None else int(np.searchsorted(block.ts, since, "left"))
                 hi = len(block.ts) if until is None else int(np.searchsorted(block.ts, until, "left"))
                 if hi <= lo:
@@ -119,7 +135,8 @@ class VectorIndex:
                     keep = np.argpartition(d, want)[:want]
                     d, chosen = d[keep], block.ids[lo:hi][keep]
                 else:
-                    chosen = block.ids[lo:hi]
+                    # Candidates must not retain a view into an evicted day's arrays.
+                    chosen = block.ids[lo:hi].copy()
                 ids.append(chosen)
                 distances.append(d)
         if not ids:
@@ -136,6 +153,8 @@ def _rescore(db: sqlite3.Connection, query: bytes, candidates: list[int], k: int
         chunk = candidates[start : start + CHUNK]
         marks = ",".join("?" for _ in chunk)
         rows += db.execute(f"SELECT id, embedding FROM vectors WHERE id IN ({marks})", chunk).fetchall()
+    if not rows:
+        return []  # the selected day may have been deleted before a direct caller rescored it
     matrix = np.frombuffer(b"".join(row[1] for row in rows), np.int8).reshape(len(rows), -1).astype(np.float32)
     q = np.frombuffer(query, np.int8).astype(np.float32)
     norms = np.linalg.norm(matrix, axis=1) * max(float(np.linalg.norm(q)), 1e-9)

@@ -1,9 +1,11 @@
-# Starter exclusions for the future native sampler. That sampler is not implemented yet.
-# The Chrome receiver uses its own domain exclusions, configured in extension options.
+# Used by `python -m capture import-history` (and the future native window sampler).
+# The extension keeps its own domain exclusions in its options page.
+domains: []          # e.g. [mybank.com, health.example.org]; subdomains are excluded too
 apps: []
 title_patterns:
   - "(?i)password"
   - "(?i)private browsing"
-url_patterns:
+url_patterns:        # shell-style patterns matched against the whole URL
   - "chrome://*"
   - "chrome-extension://*"
+  - "opera://*"

@@ -19,21 +19,21 @@ class Coordinate1(RootModel[confloat(ge=-90.0, le=90.0)]):
 
 class Geometry(BaseModel):
     model_config = ConfigDict(
-        extra='forbid',
+        extra="forbid",
     )
-    type: Literal['Point']
+    type: Literal["Point"]
     coordinates: tuple[Coordinate, Coordinate1]
 
 
 class Fidelity(Enum):
-    known = 'known'
-    estimated = 'estimated'
-    illustrative = 'illustrative'
+    known = "known"
+    estimated = "estimated"
+    illustrative = "illustrative"
 
 
 class Properties(BaseModel):
     model_config = ConfigDict(
-        extra='forbid',
+        extra="forbid",
     )
     t: AwareDatetime
     alt_rel: float | None = None
@@ -49,16 +49,16 @@ class Properties(BaseModel):
 
 class Feature(BaseModel):
     model_config = ConfigDict(
-        extra='forbid',
+        extra="forbid",
     )
-    type: Literal['Feature']
+    type: Literal["Feature"]
     geometry: Geometry
     properties: Properties
 
 
 class Skeleton(BaseModel):
     model_config = ConfigDict(
-        extra='forbid',
+        extra="forbid",
     )
-    type: Literal['FeatureCollection']
+    type: Literal["FeatureCollection"]
     features: list[Feature]

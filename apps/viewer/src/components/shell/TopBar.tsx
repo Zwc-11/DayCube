@@ -1,5 +1,5 @@
 import React from 'react';
-import { PanelLeft, PanelRight, Search, Settings } from 'lucide-react';
+import { NotebookText, PanelLeft, PanelRight, Search, Settings } from 'lucide-react';
 
 export type ViewMode = 'layer' | 'stack' | 'shelf';
 
@@ -23,6 +23,8 @@ interface TopBarProps {
   viewMode: ViewMode;
   onViewModeChange: (mode: ViewMode) => void;
   onOpenAsk: () => void;
+  /** Show the day as its notes; absent when there is nowhere to go. */
+  onOpenNotes?: () => void;
   /** 'off' when the capture service isn't running on this computer. */
   capture: 'on' | 'paused' | 'off';
   onToggleCapture: () => void;
@@ -39,6 +41,7 @@ export const TopBar = React.memo(function TopBar({
   viewMode,
   onViewModeChange,
   onOpenAsk,
+  onOpenNotes,
   capture,
   onToggleCapture,
   onOpenSettings,
@@ -84,6 +87,17 @@ export const TopBar = React.memo(function TopBar({
       </div>
 
       <div className="topbar__right">
+        {onOpenNotes && (
+          <button
+            type="button"
+            className="btn btn--secondary btn--sm"
+            onClick={onOpenNotes}
+            aria-label="Notes"
+            data-tip="This day as linked notes"
+          >
+            <NotebookText size={14} aria-hidden /> Notes
+          </button>
+        )}
         <button type="button" className="search-trigger" onClick={onOpenAsk} aria-label="Ask about your day">
           <Search size={15} aria-hidden />
           <span className="search-trigger__text">Ask</span>

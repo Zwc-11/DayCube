@@ -17,22 +17,22 @@ from pydantic import (
 
 class Camera(BaseModel):
     model_config = ConfigDict(
-        extra='forbid',
+        extra="forbid",
     )
     fov_deg: confloat(lt=180.0, gt=0.0)
 
 
 class Fidelity(Enum):
-    known = 'known'
-    estimated = 'estimated'
-    illustrative = 'illustrative'
+    known = "known"
+    estimated = "estimated"
+    illustrative = "illustrative"
 
 
 class Moment(BaseModel):
     model_config = ConfigDict(
-        extra='forbid',
+        extra="forbid",
     )
-    id: constr(pattern=r'^[A-Za-z0-9_-]+$')
+    id: constr(pattern=r"^[A-Za-z0-9_-]+$")
     title: str | None = None
     t0: AwareDatetime
     duration_s: PositiveFloat

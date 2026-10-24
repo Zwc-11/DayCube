@@ -1,0 +1,71 @@
+{
+  "environment": {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.9",
+    "cpu": "AMD64 Family 26 Model 68 Stepping 0, AuthenticAMD"
+  },
+  "revision": "1af2039e597e5c736d81abbcfba82b18c711d216",
+  "source_hashes": {
+    "services/ingest/ingest/notes/read.py": "cb26878a1406c30eca221eef8528ab6ea6b90e9865e0d2614d698f39bf446065",
+    "services/ingest/ingest/notes/write.py": "c851cf58b9c66a762fd83523c86c9236f81d6796ab5a061b6da02da93b7bc237",
+    "services/ingest/ingest/store/db.py": "a0f69f05e00a655200e375230743ec982904088f709b32b24f44bc7d243ba68c",
+    "services/ingest/ingest/store/notes.py": "f85f292f5d52d367987a2cc681d0dfbbb92b7437f1c94fc6b2e5a064aba4e1ee",
+    "services/ingest/ingest/store/graph.py": "b37ce18978635b788de3c21203b2d40fe714aa2b9a0c8f80556e8c402609e7e1",
+    "services/ingest/ingest/cache.py": "a6d45ba6f665b32f26b3dfdf69c0a9fbe801dec5fb4975b15a09b33753cf832c",
+    "eval/benchmark_notes.py": "5359aa9de867c64fc08f294f95f323e1b4c2103dba8739c3e0982280e77a3aab",
+    "eval/search_latency.py": "28429c2ccbae0fa058556e35e0140e2cedf512f37a0fcc6de75ceb4314d7a06e"
+  },
+  "workload": {
+    "pages": 200,
+    "unrelated_notes": 5000,
+    "repeats": 11,
+    "warmups": 1,
+    "seed": 7
+  },
+  "operations": {
+    "page_metadata": {
+      "wall_ms": [
+        0.5194999976083636,
+        0.4866000381298363,
+        0.4696999676525593,
+        0.4875999875366688,
+        0.4689999623224139,
+        0.47069997526705265,
+        0.4858000320382416,
+        0.4807999939657748,
+        0.4668000037781894,
+        0.5373999592848122,
+        0.49020000733435154
+      ],
+      "median_ms": 0.4858000320382416,
+      "p95_ms": 0.5373999592848122,
+      "median_cpu_ms": 0.0,
+      "traced_peak_bytes": 87199,
+      "sha256": "24f15e44a939786963d4e6b9cee6489bc6bdff8b153e99f15e0c54bde9346903",
+      "profile": "         210 function calls in 0.001 seconds\n\n   Ordered by: cumulative time\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n        1    0.000    0.000    0.001    0.001 benchmark_notes.py:108(<lambda>)\n        1    0.000    0.000    0.001    0.001 write.py:144(_pages)\n        3    0.000    0.000    0.000    0.000 {method 'execute' of 'sqlite3.Connection' objects}\n        1    0.000    0.000    0.000    0.000 {method 'join' of 'str' objects}\n      201    0.000    0.000    0.000    0.000 write.py:149(<genexpr>)\n        1    0.000    0.000    0.000    0.000 write.py:177(<dictcomp>)\n        1    0.000    0.000    0.000    0.000 {built-in method builtins.len}\n        1    0.000    0.000    0.000    0.000 {method 'disable' of '_lsprof.Profiler' objects}\n\n\n",
+      "sql_statements": 3
+    },
+    "warm_day_view": {
+      "wall_ms": [
+        14.634199964348227,
+        14.696299971546978,
+        22.545100015122443,
+        14.48270003311336,
+        14.316199987661093,
+        14.53169999876991,
+        14.39979998394847,
+        15.041999984532595,
+        14.485299994703382,
+        14.415699988603592,
+        15.030000009573996
+      ],
+      "median_ms": 14.53169999876991,
+      "p95_ms": 22.545100015122443,
+      "median_cpu_ms": 15.625,
+      "traced_peak_bytes": 5065796,
+      "sha256": "4f92e09bef54be70dcbcc25ecbd3a1514f455788de236c0fccfd663d0fe238dd",
+      "profile": "         29659 function calls (29640 primitive calls) in 0.021 seconds\n\n   Ordered by: cumulative time\n   List reduced from 145 to 12 due to restriction <12>\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n        1    0.000    0.000    0.021    0.021 benchmark_notes.py:114(<lambda>)\n        1    0.000    0.000    0.021    0.021 read.py:48(view)\n        1    0.000    0.000    0.014    0.014 read.py:35(ensure)\n        1    0.000    0.000    0.012    0.012 db.py:263(sync_notes)\n        1    0.000    0.000    0.011    0.011 notes.py:48(scan)\n      4/1    0.009    0.002    0.011    0.011 notes.py:54(walk)\n     16/8    0.000    0.000    0.004    0.001 {built-in method builtins.next}\n        8    0.000    0.000    0.004    0.001 db.py:159(connect)\n       15    0.004    0.000    0.004    0.000 {method 'execute' of 'sqlite3.Connection' objects}\n        1    0.000    0.000    0.003    0.003 db.py:572(graph)\n      8/4    0.000    0.000    0.003    0.001 contextlib.py:132(__enter__)\n      8/4    0.000    0.000    0.002    0.000 contextlib.py:141(__exit__)\n\n\n"
+    }
+  },
+  "limits": "Warm local SQLite/filesystem; tracemalloc is a separate call, not RSS or GPU memory. No HTTP/browser timing. Eleven samples do not estimate production tail latency."
+}

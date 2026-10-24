@@ -1,0 +1,58 @@
+{
+  "environment": {
+    "platform": "win32",
+    "arch": "x64",
+    "cpu": "AMD Ryzen 7 9800X3D 8-Core Processor           ",
+    "node": "v24.11.1",
+    "chromium": "156.0.8078.4"
+  },
+  "source_sha256": "b1e0cc6131334dcd5ee123ff743437a39696bad734b04df9fd3755273fb31394",
+  "workload": {
+    "batches": 80,
+    "blocks_per_batch": 150,
+    "repeats": 3,
+    "viewport": [
+      1200,
+      800
+    ]
+  },
+  "samples": [
+    {
+      "duration_ms": 201.39999997615814,
+      "caches": {
+        "elements": 5000,
+        "sent": 4999,
+        "sentLines": 4999,
+        "measured": 5000
+      },
+      "revisited_text_resent": true,
+      "heap_used_bytes": 4162468,
+      "latest_sha256": "5bfd90ae33b451bb393ed6d6fe927c47ca17fdb58ad78c88c9b9ebee5cd54bca"
+    },
+    {
+      "duration_ms": 197.30000001192093,
+      "caches": {
+        "elements": 5000,
+        "sent": 4999,
+        "sentLines": 4999,
+        "measured": 5000
+      },
+      "revisited_text_resent": true,
+      "heap_used_bytes": 4158532,
+      "latest_sha256": "5bfd90ae33b451bb393ed6d6fe927c47ca17fdb58ad78c88c9b9ebee5cd54bca"
+    },
+    {
+      "duration_ms": 199.9000000357628,
+      "caches": {
+        "elements": 5000,
+        "sent": 4999,
+        "sentLines": 4999,
+        "measured": 5000
+      },
+      "revisited_text_resent": true,
+      "heap_used_bytes": 4157456,
+      "latest_sha256": "5bfd90ae33b451bb393ed6d6fe927c47ca17fdb58ad78c88c9b9ebee5cd54bca"
+    }
+  ],
+  "limits": "Headless Chromium, synthetic DOM only. Private cache-size hook is inspection code, not production telemetry. Timed traversal includes layout and cache work; heap is measured after GC separately. Cache eviction may resend text; identity, geometry and reconstructed text must agree."
+}

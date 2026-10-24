@@ -1,7 +1,7 @@
 [project]
 name = "daycube-capture-win"
 version = "0.1.0"
-description = "Opt-in local browser event receiver; native recording is not implemented yet"
+description = "DayCube capture receiver: browser records and gaze into the local vault, dwell detection, autostart"
 requires-python = ">=3.11,<3.14"
 dependencies = ["daycube-ingest", "pyyaml>=6,<7"]
 
@@ -11,7 +11,6 @@ windows = [
   "pillow>=11,<13", "pystray>=0.19,<1", "pynput>=1.8,<2"
 ]
 ocr = ["rapidocr-onnxruntime>=1.4,<2", "rapidfuzz>=3,<4"]
-gaze = ["mediapipe>=0.10,<1", "opencv-python>=4.10,<5", "scikit-learn>=1.6,<2"]
 
 [tool.uv]
 package = true
@@ -23,5 +22,13 @@ daycube-ingest = { path = "../ingest", editable = true }
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.hatch.build]
+# The parent repository ignores /capture/ runtime data. It must not hide this Python package.
+# Both distribution targets explicitly limit their contents below.
+ignore-vcs = true
+
 [tool.hatch.build.targets.wheel]
 packages = ["capture"]
+
+[tool.hatch.build.targets.sdist]
+only-include = ["capture", "pyproject.toml"]

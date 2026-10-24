@@ -1,0 +1,65 @@
+{
+  "kind": "synthetic-search-warm-filesystem",
+  "environment": {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.9 (tags/v3.11.9:de54cf5, Apr  2 2024, 10:12:12) [MSC v.1938 64 bit (AMD64)]",
+    "numpy": "2.4.6"
+  },
+  "revision": "877099f2c29a35a5b45b4a711e05744187e8f1c3",
+  "source_sha256": {
+    "services/ingest/ingest/ask/retrieve.py": "db5cc5dc0f31883e959d3474f18ee0575edb2157a9041acdc0de549f63d87d37",
+    "services/ingest/ingest/store/vectors.py": "9dff9fff56b364d9cdea0dca2648d6bd080a4532586e0cf372acf269e2824510",
+    "services/ingest/ingest/cache.py": "6eba0d8e5739c3b2019b42dffb64965d2cc8f16926a6485d51a3c8ee2ead22f1",
+    "eval/benchmark_search.py": "d6b681dd48d523719967e13eaca7bcfe8e1ff8bbeb3fbe1c3d95354ec863eb97"
+  },
+  "workload": {
+    "vector_days": 100,
+    "vectors_per_day": 1000,
+    "dimension": 384,
+    "k": 10,
+    "seed": 20261023
+  },
+  "boundaries": "Fixture creation and output hashing excluded; one warmup, then timed repeats. Cold index means a new VectorIndex with a warm SQLite connection.",
+  "repeats": 5,
+  "metrics": {
+    "keyword_ten_hits": {
+      "median_ms": 11.316400021314621,
+      "samples_ms": [
+        10.979800019413233,
+        11.368900013621897,
+        11.239300016313791,
+        11.316400021314621,
+        11.725199990905821
+      ],
+      "output_sha256": "7d5ae959e6f972156185b15bb5e97c2a493fbaba6bf8682a3b0d4789c3b84a99"
+    },
+    "vector_cold_one_day": {
+      "median_ms": 102.33280004467815,
+      "samples_ms": [
+        102.58090001298115,
+        100.73629999533296,
+        102.33280004467815,
+        106.68389999773353,
+        99.70580000663176
+      ],
+      "output_sha256": "1b5072cfbc25bca207d56b5fedaed7d951ba34a9b0e39b67270ee4565319d391"
+    },
+    "vector_cold_all_days": {
+      "median_ms": 104.11060001933947,
+      "samples_ms": [
+        104.11060001933947,
+        108.41879999497905,
+        110.6475000269711,
+        103.92370005138218,
+        103.53370005032048
+      ],
+      "output_sha256": "38be10169302295cc630cdb01d648aaea13787203e46d2cbb5f022f996f63e01"
+    }
+  },
+  "retrieval_calls": {
+    "vault.py:snapshot_key": 11,
+    "vault.py:snapshot": 10,
+    "vault.py:place_names": 10
+  },
+  "retained_vector_cache_bytes_after_one_day": 6400000
+}

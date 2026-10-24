@@ -14,7 +14,8 @@ test('real browser can read a day and retrieve its cited location', async ({ pag
     return { days, day, answer: await response.json(), status: response.status };
   }, token);
   expect(result.status).toBe(200);
-  expect(result.days[0].date).toBe('2026-10-20');
+  expect(result.days[0]).toMatchObject({ date: '2026-10-22', capture: true });
+  expect(result.days.some((day: { date: string }) => day.date === '2026-10-20')).toBe(true);
   expect(result.day.layers).toHaveLength(5);
   expect(result.day.layers[0].t0).toBe(28800);
   expect(result.answer.layer_index).toBe(3);

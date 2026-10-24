@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections import OrderedDict
+from pathlib import PurePath
+from sys import getsizeof
 from threading import Lock
 from typing import Generic, TypeVar
 
@@ -17,7 +19,8 @@ class SegmentedLRU(Generic[K, V]):
     ``protected_share`` of the capacity; overflow there demotes the least recent protected entry
     back to probation, and eviction takes from probation first. A single pass over many keys,
     such as reindexing or exporting every day, only cycles probation, so the days a person keeps
-    returning to stay resident. Every operation is O(1).
+    returning to stay resident. Lookups and recency updates are O(1); insertion may evict several
+    entries. Metadata admission also walks the supplied value to account for its retained size.
 
     The access pattern here is a handful of hot days, strongly recency-biased, with occasional
     scans. That rules out plain LRU (scans flush it) and gives frequency sketches such as
@@ -66,6 +69,8 @@ class SegmentedLRU(Generic[K, V]):
 
     def put(self, key: K, value: V, size: int) -> None:
         """Insert or replace. An entry larger than the whole capacity is not kept."""
+        if size < 0:
+            raise ValueError("entry size must be nonnegative")
         with self._lock:
             self._discard(key)
             if size > self.capacity:
@@ -73,6 +78,37 @@ class SegmentedLRU(Generic[K, V]):
             self._probation[key] = (value, size)
             self._sizes[0] += size
             self._evict()
+
+    def put_metadata(self, key: K, value: V) -> None:
+        """Charge Python metadata recursively, plus 512 bytes for cache bookkeeping.
+
+        Used for stamps and small records, never native arrays. This bounds accounted retained
+        objects, not RSS: the allocator, shared objects and caller-owned working sets differ.
+        """
+        stack: list[object] = [key, value]
+        seen: set[int] = set()
+        size = 512
+        while stack:
+            item = stack.pop()
+            if id(item) in seen:
+                continue
+            seen.add(id(item))
+            size += getsizeof(item)
+            if isinstance(item, dict):
+                stack.extend(item.keys())
+                stack.extend(item.values())
+            elif isinstance(item, (tuple, list, set, frozenset)):
+                stack.extend(item)
+            elif isinstance(item, PurePath):
+                # Include the path's strings, which are stored behind slots rather than in a dict.
+                stack.extend((str(item), item.parts))
+        self.put(key, value, size)
+
+    def clear(self) -> None:
+        with self._lock:
+            self._probation.clear()
+            self._protected.clear()
+            self._sizes[:] = [0, 0]
 
     def pop(self, key: K) -> None:
         with self._lock:

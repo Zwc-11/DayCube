@@ -1,0 +1,31 @@
+{
+  "days": 20,
+  "units": 5680,
+  "vectors": true,
+  "index_s": 325.6,
+  "questions": 10,
+  "scopes": {
+    "one day": {
+      "server_ms": {
+        "p50": 13.9,
+        "p95": 18.7,
+        "max": 27.0
+      },
+      "request_ms": {
+        "p50": 16.3,
+        "p95": 22.4
+      }
+    },
+    "every day": {
+      "server_ms": {
+        "p50": 29.0,
+        "p95": 52.2,
+        "max": 64.7
+      },
+      "request_ms": {
+        "p50": 31.2,
+        "p95": 59.5
+      }
+    }
+  }
+}
