@@ -45,6 +45,7 @@ USER_MM_PER_PX = 0.233  # 27", 2560 px
 BANDS = ((0, 100), (100, 300), (300, 1000), (1000, 10**9))
 WARMUP = 100
 GATE: float | None = None  # --gate-k: override gaze.learn.GATE_K
+HEAD_TERMS = True  # --no-head-terms: learn the eye terms only
 
 
 class Estimator(HeadEstimator):
@@ -65,13 +66,14 @@ def person(path: Path, outliers: float, label_mm: float, seed: int) -> dict:
     cal = np.flatnonzero((days == cal_day) & found)[:CALIBRATION]
     later = np.flatnonzero((days > cal_day) & found)  # the days after calibration, in order
     mm_per_px = float(d["screen_mm"][0] / d["screen_px"][0])
+    moved_mm = np.linalg.norm(d["face_center"] - d["face_center"][cal].mean(0), axis=1)  # head from calibration
     monitor = (int(d["screen_px"][0]), int(d["screen_px"][1]))
 
     poser = Poser(Camera.nominal(*size))
     heads = {int(i): poser.measure(Face(d["points"][i].astype(float), size)) for i in np.flatnonzero(found)}
     model = GazeModel(Screen.below_camera(monitor, float(d["screen_mm"][0]))).fit([heads[i] for i in cal], target[cal])
     static = GazeModel(model.screen, eyes=list(model.eyes))
-    learner = Learner(Estimator(model, monitor), monitor, None, None)
+    learner = Learner(Estimator(model, monitor), monitor, None, None, head_terms=HEAD_TERMS)
     if GATE is not None:
         learner.gate_k = GATE
 
@@ -107,7 +109,7 @@ def person(path: Path, outliers: float, label_mm: float, seed: int) -> dict:
         "bands_mm": bands,
         "updates": learner.version,
         "outcomes": outcomes,
-        "raw": (s[after], e[after]),
+        "raw": (s[after], e[after], moved_mm[later][after]),
     }
 
 
@@ -115,6 +117,12 @@ def run(paths: list[Path], outliers: float, label_mm: float) -> dict:
     results = [person(p, outliers, label_mm, seed=k) for k, p in enumerate(paths)]
     s = np.concatenate([r["raw"][0] for r in results])
     e = np.concatenate([r["raw"][1] for r in results])
+    moved = np.concatenate([r["raw"][2] for r in results])
+    by_move = {}
+    for lo, hi in ((0, 20), (20, 40), (40, 80), (80, 10**9)):
+        sel = (moved >= lo) & (moved < hi)
+        label = f"{lo}-{hi}" if hi < 10**9 else f"{lo}+"
+        by_move[label] = [round(float(np.nanmedian(s[sel])), 1), round(float(np.nanmedian(e[sel])), 1), int(sel.sum())]
     better = sum(r["learned_mm"] < r["calibration_mm"] for r in results)
     worse = [r["person"] for r in results if r["learned_mm"] > r["calibration_mm"] * 1.02]
     for r in results:
@@ -131,6 +139,7 @@ def run(paths: list[Path], outliers: float, label_mm: float) -> dict:
             "calibration": round(float(np.nanpercentile(s, 90)), 1),
             "learned": round(float(np.nanpercentile(e, 90)), 1),
         },  # fmt: skip
+        "by_head_moved_mm": by_move,  # [calibration alone, learned, images]
         "people_better": f"{better} of {len(results)}",
         "people_worse_by_2pct": worse,
         "people": results,
@@ -143,10 +152,12 @@ def main() -> None:
     parser.add_argument("--people", nargs="*")
     parser.add_argument("--out", type=Path)
     parser.add_argument("--gate-k", type=float)
+    parser.add_argument("--no-head-terms", action="store_true", help="Learn only the eye terms, as before")
     parser.add_argument("--runs", nargs="*", help="Only runs whose name starts with these (typical, bad, clean)")
     args = parser.parse_args()
-    global GATE
+    global GATE, HEAD_TERMS
     GATE = args.gate_k
+    HEAD_TERMS = not args.no_head_terms
     paths = sorted(args.cache.glob("p*.npz"))
     if args.people:
         paths = [p for p in paths if p.stem in args.people]

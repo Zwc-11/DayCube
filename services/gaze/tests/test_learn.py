@@ -144,3 +144,44 @@ def test_in_the_tracker_a_fit_runs_beside_the_frames() -> None:
         if learner._worker is not None:
             learner._worker.join()  # a test waits; the tracker does not
     assert learner.version >= 1 and error(est, test) < 0.5 * before
+
+
+def test_head_terms_learn_an_error_that_follows_where_the_head_is() -> None:
+    """A webcam whose field of view is not the assumed one puts the head in the wrong place, so the
+    gaze error grows as the head moves from where it was at calibration. Eye terms alone cannot
+    learn that; the head's place and turn as terms can."""
+    from gaze.head import Camera
+
+    wrong = Camera.nominal(1280, 720, hfov_deg=50.0)  # the real webcam is 65 degrees
+    rng = np.random.default_rng(21)
+
+    def measured(target: tuple[float, float], R: np.ndarray, t: np.ndarray) -> np.ndarray:
+        return pack(Poser(wrong).measure(face(target, R, t, rng)))
+
+    def calibrated() -> HeadEstimator:
+        heads = [Poser(wrong).measure(face(p, *HOME, rng)) for p in GRID for _ in range(3)]
+        out = HeadEstimator(MONITOR, SCREEN.mm_per_px, landmarker=object())
+        out.model = GazeModel(SCREEN).fit(heads, np.array([p for p in GRID for _ in range(3)], dtype=float))
+        return out
+
+    poses = [(R, t + np.array([dx, dy, dz])) for R, t in [HOME, *MOVED] for dx, dy, dz in
+             [(0, 0, 0), (60, 0, 0), (-60, 20, 0), (0, 0, 120), (40, -30, -80)]]  # fmt: skip
+    stream, test = [], []
+    for k in range(260):
+        R, t = poses[k % len(poses)]
+        looked = rng.uniform([60, 60], [1860, 1020])
+        stream.append((float(looked[0]), float(looked[1]), measured(tuple(looked), R, t)))
+    for k in range(60):
+        R, t = poses[(7 * k + 3) % len(poses)]
+        looked = rng.uniform([60, 60], [1860, 1020])
+        test.append((float(looked[0]), float(looked[1]), measured(tuple(looked), R, t), looked))
+
+    results = {}
+    for head_terms in (False, True):
+        est = calibrated()
+        learner = Learner(est, MONITOR, None, CALIBRATED, head_terms=head_terms)
+        for k, (x, y, vector) in enumerate(stream):
+            learner.add(1_800_000_000.0 + 2 * k, x, y, vector)
+        results[head_terms] = error(est, test)
+    before = error(calibrated(), test)
+    assert results[False] < before and results[True] < 0.8 * results[False], (before, results)
