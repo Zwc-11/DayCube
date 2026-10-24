@@ -267,11 +267,17 @@ under your gaze (`services/capture-win/capture/screen.py`):
    from where the recognised paragraphs moved. Its text is sent once, and reading a paragraph
    goes on across a scroll. A retitled window ("● unsaved", an unread count) stays the same page;
    when nothing on screen matches what was there before (another file or chat in the same
-   window, a jump of more than a screen), it becomes a new page.
+   window, a jump of more than a screen), it becomes a new page. Returning after the eyes left
+   starts a new document lifetime, since the content may have changed in the meantime.
 
 Where a page and an app window overlap, the window read from the screen wins: it is read only
 while it is the one shown under the gaze. Fixations arrive about a second after they end, so the
 window keeps taking the ones from before the eyes left it for 3 s.
+Pixels belonging to covering windows are masked before OCR. The reader checks the selected
+window and covering rectangles before and after taking the screenshot; a changed or vanished
+selection fails explicitly. Moving and retitling together refreshes the gaze coordinates.
+Failed text writes stay visible in `/status.screen.error` and retry at the normal read interval,
+even when the window's pixels have not changed.
 
 The app in front is logged in `windows.jsonl` each time it changes, and `away` when the screen
 locks or there has been no input for 5 minutes and no gaze; a pause ends it too. The vault turns
@@ -665,7 +671,8 @@ wrong, and `doctor` says to recalibrate ([Simulation](#simulation)).
 - **Other apps are read by OCR.** What OCR misreads is stored misread; text smaller than about 9
   px or on busy backgrounds is missed; an app redrawing constantly (a video, a game) is read every
   16 s at most. Only the window under the gaze is read, on the calibrated monitor. UWP apps show
-  as `applicationframehost.exe`. There is no tray icon: the toolbar badge and Windows' own camera indicator show
+  as `applicationframehost.exe`. Clicks across apps refine the calibrated head-aware gaze model
+  through the click learner described above. There is no tray icon: the toolbar badge and Windows' own camera indicator show
   that recording is on.
 - **No synthesis yet.** The logs are not yet turned into day events in the viewer.
 

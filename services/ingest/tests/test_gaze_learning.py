@@ -8,7 +8,7 @@ import math
 from pathlib import Path
 
 from fastapi.testclient import TestClient
-from ingest.gaze_learning import TAILS, report
+from ingest.gaze_learning import MAX_LINE_BYTES, TAILS, _Tails, report
 from ingest.vault import Vault
 
 CALIBRATED = "2026-10-24T15:00:00+00:00"
@@ -77,6 +77,48 @@ def test_new_clicks_are_parsed_without_reading_the_log_again(tmp_path: Path) -> 
 
 def test_no_calibration_reports_so(tmp_path: Path) -> None:
     assert report(tmp_path) == {"calibrated": False}
+
+
+def test_same_size_log_rewrite_replaces_cached_clicks(tmp_path: Path) -> None:
+    folder = tmp_path / "calibration"
+    write(folder, [click(0, 90.0, 90.0, 0)], [])
+    assert report(tmp_path)["clicks"]["error_px"] == [90.0]
+    path = folder / "clicks.jsonl"
+    size = path.stat().st_size
+    path.write_text(json.dumps(click(0, 80.0, 90.0, 0)) + "\n")
+    assert path.stat().st_size == size
+    assert report(tmp_path)["clicks"]["error_px"] == [80.0]
+
+
+def test_learning_tail_cache_keeps_only_recent_records_and_bounds_open_vaults(tmp_path: Path) -> None:
+    tails = _Tails(max_files=2, max_rows=3)
+    for k in range(4):
+        path = tmp_path / f"{k}.jsonl"
+        path.write_text("".join(json.dumps({"n": n}) + "\n" for n in range(10)))
+        assert tails.read(path, lambda row: row) == [{"n": n} for n in (7, 8, 9)]
+        assert len(tails._tails) <= 2
+    assert tmp_path / "0.jsonl" not in tails._tails
+    assert tails.read(tmp_path / "0.jsonl", lambda row: row) == [{"n": n} for n in (7, 8, 9)]
+
+
+def test_log_rewritten_and_regrown_between_polls_does_not_mix_old_rows(tmp_path: Path) -> None:
+    tails = _Tails()
+    path = tmp_path / "clicks.jsonl"
+    path.write_text('{"n": 1}\n')
+    assert tails.read(path, lambda row: row) == [{"n": 1}]
+    path.write_text('{"n": 2}\n{"n": 3}\n')
+    assert tails.read(path, lambda row: row) == [{"n": 2}, {"n": 3}]
+
+
+def test_oversized_incomplete_log_record_is_bounded_and_does_not_hide_later_rows(tmp_path: Path) -> None:
+    tails = _Tails()
+    path = tmp_path / "clicks.jsonl"
+    path.write_bytes(b'{"text":"' + b"x" * MAX_LINE_BYTES)
+    assert tails.read(path, lambda row: row) == []
+    assert len(tails._tails[path].partial) <= MAX_LINE_BYTES
+    with path.open("ab") as out:
+        out.write(b'"}\n[]\n{"n": 2}\n')
+    assert tails.read(path, lambda row: row) == [{"n": 2}]
 
 
 def test_the_endpoint_serves_it_and_answers_304_until_a_click_lands(client: TestClient, vault: Vault) -> None:
