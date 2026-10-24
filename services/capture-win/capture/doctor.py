@@ -23,6 +23,8 @@ from zoneinfo import ZoneInfo
 
 import httpx
 
+from .restart import code_stamp
+
 PASS, WARN, FAIL, INFO = "pass", "warn", "FAIL", "info"
 # Median error at which paragraphs at 100% zoom stop being separable: a 1920 px wide 24" monitor at
 # about 60 cm; scaled by monitor width. Matches services/gaze/gaze/calibrate.py.
@@ -36,7 +38,7 @@ LOGS = (
     "health.jsonl",
     "windows.jsonl",
 )
-RESTART = "end its python processes in Task Manager, then run python -m capture install-autostart"
+RESTART = "run python -m capture restart"
 
 
 def _age(iso: str | None, now: datetime) -> float | None:
@@ -129,7 +131,10 @@ def _screen(status: dict) -> list[tuple[str, str, str]]:
         return [(WARN, "screen reading", f"failing: {screen['error']}")]
     reads, apps, ms = screen.get("reads_10min", 0), screen.get("apps_10min") or [], screen.get("ocr_ms")
     now = screen.get("reading")
-    detail = f"{screen.get('engine')} OCR, {reads} reads in 10 min" + (f" of {', '.join(apps)}" if apps else "")
+    language = f" ({screen['language']})" if screen.get("language") else ""
+    detail = f"{screen.get('engine')} OCR{language}, {reads} reads in 10 min" + (
+        f" of {', '.join(apps)}" if apps else ""
+    )
     detail += f", {ms:.0f} ms each" if ms is not None else ""
     if now:
         detail += f"; reading {now['app']} now"
@@ -143,8 +148,8 @@ def checks(status: dict | None, vault: Path, zone: ZoneInfo, now: datetime, auto
     if status is None:
         return [(FAIL, "receiver", "not running on 127.0.0.1:7700: start it, or sign out and in (autostart)")]
     out.append((WARN if status["paused"] else PASS, "receiver", "paused" if status["paused"] else "running"))
-    if "reading" not in status:  # added with line decoding: this process runs older code
-        out.append((FAIL, "receiver code", "older than this checkout: stop it and start it again (" + RESTART + ")"))
+    if status.get("code") != code_stamp():  # it runs the code it started with, not the checkout's
+        out.append((FAIL, "receiver code", "older than this checkout (started before the last update): " + RESTART))
 
     age = _age(status.get("browser", {}).get("last"), now)
     if age is None:

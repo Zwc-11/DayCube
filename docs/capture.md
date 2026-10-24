@@ -208,8 +208,13 @@ under your gaze (`services/capture-win/capture/screen.py`):
    and click-through overlays such as the gaze ring. That is the window your eyes are on, which
    need not be the one with focus.
 2. **Its text.** It captures that window's pixels and reads them with `Windows.Media.Ocr` (the
-   OCR in Windows, local, in your Windows display language; RapidOCR with `uv sync --extra ocr`
-   where Windows has no OCR language). Only when the window changed since the last read (1 in 8
+   OCR in Windows, local; RapidOCR with `uv sync --extra ocr` where Windows has no OCR language).
+   Windows OCR reads one language at a time, and a Chinese recogniser reads English badly
+   (`PowerSheII`, `t0`, `10 ． 0`). When Windows has a CJK recogniser and an English one (a
+   Chinese Windows usually has both), each window is judged by the share of CJK characters the
+   CJK recogniser finds in it: under 5% English text (read in English), 50% or more CJK text,
+   between both (a Chinese interface around English content: both read, each line kept from the
+   recogniser of its script). The judgement is redone every 5 reads of the window. Only when the window changed since the last read (1 in 8
    pixels compared; a blinking cursor is not a change), at most once a second, less often while
    reads find no new text (a video: 2, 4, ... up to 16 s), and at least every 30 s. Lines are
    grouped into paragraphs: a line joins the one right above it when they overlap sideways, so
@@ -246,7 +251,12 @@ for web pages. `python -m capture screen --exclude slack` adds an app to never r
 the window in front once and prints what OCR found, and the receiver's `--no-screen` leaves it
 out.
 
-`doctor` reports it: `screen reading: windows OCR, 14 reads in 10 min of code.exe,
+After `git pull`, `python -m capture restart` stops the running receiver and eye tracker and
+starts them on the new code (`install-autostart` does it too when the running receiver is older;
+`/status` reports a stamp of the code it loaded, and `doctor` says "receiver code: older than this
+checkout" until then).
+
+`doctor` reports it: `screen reading: windows OCR (zh-Hans-CN + en-US), 14 reads in 10 min of code.exe,
 sumatrapdf.exe, 182 ms each; reading code.exe now`. Checked here: the window-finding, capture and
 reader loop in Wine 9 (a window on top wins over the one beneath, the desktop is
 none, a click-through overlay is looked through); reading a paragraph across a scroll with real

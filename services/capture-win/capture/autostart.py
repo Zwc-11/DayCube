@@ -62,7 +62,7 @@ def current() -> str | None:
         return None
 
 
-def start_detached(command: list[str]) -> None:
+def start_detached(command: list[str] | str) -> None:
     """Start the service now, outliving this console, as the next sign-in would."""
     flags = 0x00000008 | 0x00000200 | 0x08000000  # DETACHED_PROCESS, CREATE_NEW_PROCESS_GROUP, CREATE_NO_WINDOW
     subprocess.Popen(

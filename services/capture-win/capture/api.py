@@ -47,6 +47,7 @@ from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 from .attention import Attention
 from .reading import LineBox
 from .records import Blocks, BrowserRecord, GazeBatch, LivePoint, View
+from .restart import code_stamp
 
 log = logging.getLogger("capture")
 
@@ -66,6 +67,7 @@ NATIVE_FRESH = timedelta(
     seconds=5
 )  # the tracker reports every second: older, pages draw the ring again  # the tracker reports every second while it runs
 HEALTH_EVERY = timedelta(minutes=10)
+CODE = code_stamp()  # the code this receiver loaded; `capture restart` and doctor compare it with the files
 
 
 class Display(BaseModel):
@@ -195,6 +197,7 @@ class Receiver:
         return {
             "paused": self.paused,
             "since": self.since,
+            "code": CODE,
             "browser": {"last": self.last.get("browser")},
             "gaze": {"last": self.last.get("gaze"), **gaze},
             "dwell": {"threshold_s": a.threshold_s, "factor": a.factor, "wpm": a.wpm},

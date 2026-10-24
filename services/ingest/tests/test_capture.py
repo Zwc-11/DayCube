@@ -296,7 +296,7 @@ def test_the_doctor_judges_capture_from_what_it_recorded(vault: Vault, monkeypat
                  "timing_ms": {"camera_wait": 15.0, "landmarks": 12.4, "model": 0.3, "tracking": 0.05,
                                "network": 0.1, "frame": 12.9, "live_post": 0.6}},
         "accuracy": {"clicks": 7, "rejected": 0, "live_error_px": 120.0, "corrected_error_px": 58.0},
-        "reading": None,
+        "reading": None, "code": doctor.code_stamp(),
     }  # fmt: skip
     monkeypatch.setattr(doctor.sys, "platform", "linux")
     results = {name: (verdict, detail) for verdict, name, detail in doctor.checks(status, vault.root, zone, now, None)}
@@ -343,7 +343,7 @@ def test_the_doctor_judges_capture_from_what_it_recorded(vault: Vault, monkeypat
     assert results["live accuracy"] == doctor.FAIL and results["clicks"] == doctor.WARN
     assert doctor.checks(None, vault.root, zone, now, None)[0][0] == doctor.FAIL
     # A receiver or tracker started before a pull runs the old code: say so.
-    old = {k: v for k, v in status.items() if k != "reading"} | {
+    old = {k: v for k, v in status.items() if k not in ("reading", "code")} | {
         "gaze": status["gaze"] | {"coverage": None, "noise_px": None}
     }
     results = {name: verdict for verdict, name, _ in doctor.checks(old, vault.root, zone, now, None)}

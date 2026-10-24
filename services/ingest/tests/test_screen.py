@@ -88,7 +88,7 @@ class FakeOcr:
         self.lines = page_lines()
         self.calls = 0
 
-    def read(self, image: np.ndarray) -> list[OcrLine]:
+    def read(self, image: np.ndarray, key: str | None = None) -> list[OcrLine]:
         assert image.shape == (1000, 1200, 4)
         self.calls += 1
         return list(self.lines)
@@ -481,12 +481,15 @@ def test_questions_about_apps_filter_to_them() -> None:
 def test_the_doctor_says_whether_and_what_the_screen_reader_reads() -> None:
     from capture.doctor import _screen
 
-    running = {"running": True, "engine": "windows", "enabled": True, "reading": {"app": "code.exe", "title": "x"},
+    running = {"running": True, "engine": "windows", "language": "zh-Hans-CN + en-US", "enabled": True, "reading": {"app": "code.exe", "title": "x"},
                "skipped": None, "away": False, "reads_10min": 14, "apps_10min": ["code.exe", "sumatrapdf.exe"],
                "ocr_ms": 182.0, "error": None}  # fmt: skip
     ((verdict, name, detail),) = _screen({"screen": running})
     assert (verdict, name) == ("pass", "screen reading")
-    assert detail == "windows OCR, 14 reads in 10 min of code.exe, sumatrapdf.exe, 182 ms each; reading code.exe now"
+    assert detail == (
+        "windows OCR (zh-Hans-CN + en-US), 14 reads in 10 min of code.exe, sumatrapdf.exe, 182 ms each; "
+        "reading code.exe now"
+    )
     ((verdict, _, detail),) = _screen({"screen": {**running, "reading": None, "skipped": "browser"}})
     assert detail.endswith("not reading now: browser")
     ((verdict, _, detail),) = _screen(
@@ -548,3 +551,107 @@ def test_a_retitled_window_stays_one_page_until_its_content_is_replaced(vault: V
         assert third["doc"] != first["doc"] and third["geometry"]["scroll_y"] == SCROLL_ORIGIN
         assert third["blocks"][0]["text"] == "A different document altogether"
         assert reader.current.doc == third["doc"] and reader.current.generation == 1
+
+
+# -- the right recogniser for the script on screen ---------------------------------------------------
+
+
+def test_a_chinese_windows_reads_english_windows_with_the_english_recogniser() -> None:
+    from capture.screen import Scripts, join_words, tidy
+
+    english = [
+        OcrLine("Windows PowerShell", (0, 0, 300, 20), 2),
+        OcrLine("PS E:\\DAYCUBE> uv sync", (0, 30, 400, 20), 3),
+    ]
+    misread = [OcrLine("Windows PowerSheII", (0, 0, 300, 20), 2), OcrLine("卧", (500, 0, 20, 20), 1),
+               OcrLine("PS E ： \\DAYCUBE> uv sync", (0, 30, 400, 20), 3)]  # fmt: skip
+    chinese = [OcrLine("今天的作业在周五之前提交", (0, 0, 300, 20), 12)]
+    calls = {"cjk": 0, "latin": 0}
+    screen = {"text": misread, "latin": english}
+
+    def cjk(image: np.ndarray) -> list[OcrLine]:
+        calls["cjk"] += 1
+        return screen["text"]
+
+    def latin(image: np.ndarray) -> list[OcrLine]:
+        calls["latin"] += 1
+        return screen["latin"]
+
+    scripts = Scripts(cjk, latin)
+    image = np.zeros((10, 10, 4), np.uint8)
+    assert scripts.read(image, "terminal") == english and scripts.modes["terminal"][0] == "latin"
+    for _ in range(4):  # judged: only the English recogniser until the next check
+        assert scripts.read(image, "terminal") == english
+    assert calls == {"cjk": 1, "latin": 5}
+    scripts.read(image, "terminal")
+    assert calls == {"cjk": 2, "latin": 6}  # the fifth read later: checked again
+    # A Chinese page: the Chinese recogniser alone.
+    screen["text"] = chinese
+    assert scripts.read(image, "wechat") == chinese and scripts.modes["wechat"][0] == "cjk"
+    # A Chinese interface around English text: each line from the recogniser of its script.
+    screen["text"] = [OcrLine("文件 编辑 选择 查看 帮助", (0, 0, 300, 20), 5)] + misread[2:] * 3
+    screen["latin"] = [
+        OcrLine("x1x2 garbled", (0, 0, 300, 20), 2),
+        OcrLine("PS E:\\DAYCUBE> uv sync", (0, 30, 400, 20), 3),
+    ]
+    lines = scripts.read(image, "editor")
+    assert scripts.modes["editor"][0] == "both"
+    assert [line.text for line in lines] == ["文件 编辑 选择 查看 帮助", "PS E:\\DAYCUBE> uv sync"]
+    # Only one recogniser installed: it reads everything.
+    assert Scripts(None, latin).read(image, "x") == screen["latin"]
+    # Words: no spaces inside Chinese, full-width punctuation in Latin text as ASCII.
+    assert join_words(["今", "天", "OCR", "works", "很", "好"]) == "今天 OCR works 很好"
+    assert tidy("E ： \\DAYCUBE 10 ． 0 ． 28000") == "E : \\DAYCUBE 10 . 0 . 28000"
+    assert tidy("今天，明天。") == "今天，明天。"
+
+
+# -- restarting on new code ---------------------------------------------------------------------------
+
+
+def test_restart_stops_the_receiver_and_its_tracker_but_never_itself() -> None:
+    from capture.restart import ours, restart
+
+    found = [
+        {"pid": 10, "parent": 1, "command": r'"E:\DAYCUBE\services\capture-win\.venv\Scripts\pythonw.exe" -m capture run --receive --gaze'},
+        {"pid": 11, "parent": 10, "command": r'"C:\uv\python\cpython-3.11\pythonw.exe" -m capture run --receive --gaze'},
+        {"pid": 12, "parent": 11, "command": r'"E:\DAYCUBE\services\gaze\.venv\Scripts\pythonw.exe" -m gaze track --vault E:\DAYCUBE\vault --receiver http://127.0.0.1:7700 --supervised'},
+        {"pid": 20, "parent": 2, "command": "python -m capture restart"},  # the venv launcher of this process
+        {"pid": 21, "parent": 20, "command": "python -m capture restart"},  # this process
+        {"pid": 30, "parent": 3, "command": "python -m gaze calibrate"},
+        {"pid": 31, "parent": 3, "command": "python -m capture doctor"},
+        {"pid": 32, "parent": 3, "command": "python -m capture --receive"},  # started the older way
+        {"pid": 33, "parent": 3, "command": "python -m capture_tools run"},
+    ]  # fmt: skip
+    assert ours(found, 21) == [10, 11, 12, 32]
+
+    answers = iter([{"code": "old"}, {"code": "old"}, None, None, None, {"code": "new"}])
+    ended, started = [], []
+    stopped, status = restart(
+        ["pythonw.exe", "-m", "capture", "run"], lambda: next(answers), started.append,
+        find=lambda: found, end=ended.append, sleep=lambda _: None, me=21,
+    )  # fmt: skip
+    assert stopped == [10, 11, 12, 32] and ended == [[10, 11, 12, 32]]
+    assert started == [["pythonw.exe", "-m", "capture", "run"]] and status == {"code": "new"}
+
+
+def test_the_code_stamp_follows_the_files(tmp_path: Path) -> None:
+    from capture.restart import code_stamp
+
+    (tmp_path / "api.py").write_bytes(b"x = 1\n")
+    first = code_stamp(tmp_path)
+    (tmp_path / "api.py").write_bytes(b"x = 1\r\n")  # the same file checked out on Windows
+    assert code_stamp(tmp_path) == first
+    (tmp_path / "api.py").write_bytes(b"x = 2\n")
+    assert code_stamp(tmp_path) != first
+
+
+def test_the_receiver_reports_its_code_and_doctor_compares_it(vault: Vault) -> None:
+    from capture import doctor
+    from capture.restart import code_stamp
+
+    receiver = create_capture_app(Settings(vault_root=vault.root, _env_file=None), receive=True).state.receiver
+    assert receiver.status()["code"] == code_stamp()
+    results = {name: verdict for verdict, name, _ in doctor.checks({"paused": False, "code": "0ld"}, vault.root,
+                                                                    __import__("zoneinfo").ZoneInfo("UTC"),
+                                                                    datetime.now(UTC), None)}  # fmt: skip
+    assert results["receiver code"] == doctor.FAIL
