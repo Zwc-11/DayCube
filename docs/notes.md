@@ -39,6 +39,29 @@ The folder is read back into the vault database whenever a note changes:
   generated note connects to the page, course or day it stands for; a link to a note not written
   yet still makes a node, as in Obsidian. `.obsidian/` and other hidden folders are skipped.
 
+## Reading a day in the viewer
+
+Click a day on the calendar. A day with only computer capture opens as its notes; a day with places
+opens in 3D, and **Notes** in the top bar switches to its notes (**3D** switches back).
+
+| Pane | Shows |
+| --- | --- |
+| Left | The day's notes: its daily note, the sources and courses it links to, and your own notes that link to it. While searching: the results |
+| Middle | The note, rendered: `[[links]]` open the note they name (a link to a note not written yet is dimmed), the generated region is marked, front matter shows as properties, and **Open in Obsidian** opens the file there |
+| Right | The day's local graph (click a node with a note to open it), the note's backlinks and outgoing links |
+
+Search sits in the top bar (`/` or `Ctrl K`): results update as you type, for this day or all days,
+with the time, kind and site words of [search.md](search.md#question-filters). Enter or a click opens
+the result in its note (a page's source note, else the day's daily note) with the line marked.
+
+Notes hold text from the web, so the viewer renders Markdown itself, to React elements: no HTML from
+a note is ever inserted into the page, and links open only http(s), mailto and obsidian URLs.
+
+Opening a day writes its notes if its records changed since they were last written (`GET
+/day/{date}/notes`), so a day is never older than its capture logs; today's page refreshes every
+minute. `GET /note?path=` returns one note with its links resolved and its backlinks
+(`note_links` keeps every link of every note, generated or written, with the note it opens).
+
 ## When notes are written
 
 - While the capture receiver runs, it refreshes today's notes (and yesterday's, until its last
@@ -47,5 +70,7 @@ The folder is read back into the vault database whenever a note changes:
 - On demand: `uv run daycube notes --date 2026-10-22` (or `--all`), or `POST /notes/{date}` with
   the vault token. `GET /notes` lists the notes as last read.
 
-Code: `services/ingest/ingest/notes/` (Markdown and writing), `services/ingest/ingest/store/notes.py`
-(reading back). Tests: `services/ingest/tests/test_notes.py`.
+Code: `services/ingest/ingest/notes/` (Markdown, writing, and `read.py` for the viewer),
+`services/ingest/ingest/store/notes.py` (reading back), `apps/viewer/src/components/knowledge/`
+and `apps/viewer/src/lib/markdown.tsx` (the page). Tests: `services/ingest/tests/test_notes.py`,
+`test_knowledge.py`, `apps/viewer/e2e/knowledge.spec.ts`.

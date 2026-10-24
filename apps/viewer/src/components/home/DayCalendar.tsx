@@ -47,14 +47,15 @@ const longDate = (iso: string) =>
     new Date(`${iso}T00:00:00Z`)
   );
 
-/** The day as the viewer draws it: one slab per place, the first visit at the bottom. */
-const DayGlyph: React.FC<{ kinds: PlaceKind[] }> = ({ kinds }) => {
-  const slabs = kinds.slice(0, MAX_SLABS);
+/** The day as the viewer draws it: one slab per place, the first visit at the bottom, and a
+ *  lavender slab on top for time at the computer. */
+const COMPUTER = '#c6b4ff';
+const DayGlyph: React.FC<{ kinds: PlaceKind[]; capture: boolean }> = ({ kinds, capture }) => {
+  const colors = [...kinds.slice(0, capture ? MAX_SLABS - 1 : MAX_SLABS).map((k) => KIND_COLOR[k]), ...(capture ? [COMPUTER] : [])];
   return (
     <svg className="glyph" viewBox="0 0 32 40" aria-hidden>
-      {slabs.map((kind, i) => {
+      {colors.map((color, i) => {
         const y = 21 - i * 5;
-        const color = KIND_COLOR[kind];
         const left = `2,${y + 7} 16,${y + 14} 16,${y + 18} 2,${y + 11}`;
         const right = `16,${y + 14} 30,${y + 7} 30,${y + 11} 16,${y + 18}`;
         return (
@@ -166,7 +167,10 @@ export const DayCalendar: React.FC<DayCalendarProps> = ({ days, today, onOpen })
                 </span>
               );
             }
-            const counts = `${day.places} ${day.places === 1 ? 'place' : 'places'}, ${day.events} events`;
+            const counts =
+              day.places === 0 && day.capture
+                ? `computer only${day.records ? `, ${day.records} records` : ''}`
+                : `${day.places} ${day.places === 1 ? 'place' : 'places'}, ${day.events} events${day.capture ? ', computer' : ''}`;
             return (
               <button
                 key={date}
@@ -183,7 +187,7 @@ export const DayCalendar: React.FC<DayCalendarProps> = ({ days, today, onOpen })
                 onClick={() => onOpen(date)}
               >
                 <span className="cal__num">{number}</span>
-                <DayGlyph kinds={day.kinds} />
+                <DayGlyph kinds={day.kinds} capture={day.capture} />
               </button>
             );
           })}

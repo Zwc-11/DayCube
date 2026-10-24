@@ -63,7 +63,8 @@ export const evidenceSchema = z.object({
 });
 /** What a question's time, kind and site words were read as. */
 export const askFiltersSchema = z.object({
-  labels: z.array(z.string()), since: z.string().nullable(), until: z.string().nullable(),
+  // since and until: epoch seconds.
+  labels: z.array(z.string()), since: z.number().nullable(), until: z.number().nullable(),
   types: z.array(z.string()).nullable(), site: z.string().nullable(), search: z.string(),
 });
 export const askResultSchema = z.object({
@@ -128,3 +129,36 @@ export const dataCenterSchema = z.object({
 });
 export type DataSource = z.infer<typeof dataSourceSchema>;
 export type DataCenter = z.infer<typeof dataCenterSchema>;
+
+// A day's knowledge base (GET /day/{date}/notes), one note (GET /note) and search as you type
+// (GET /search).
+export const dayNotesSchema = z.object({
+  date: z.string(),
+  daily: z.string().nullable(),
+  notes: z.array(z.object({
+    path: z.string(), title: z.string(), kind: z.enum(['daily', 'source', 'course', 'note']),
+    role: z.enum(['daily', 'linked', 'backlink']),
+  })),
+  graph: z.object({
+    nodes: z.array(graphNodeSchema.extend({ note: z.string().nullable() })),
+    edges: z.array(graphEdgeSchema),
+  }),
+  records: z.number().int(),
+  kinds: z.record(z.string(), z.number().int()),
+  places: z.boolean(),
+});
+export const noteSchema = z.object({
+  path: z.string(), title: z.string(), identity: z.string().nullable(),
+  kind: z.enum(['daily', 'source', 'course', 'note']), markdown: z.string(),
+  links: z.array(z.object({ target: z.string(), label: z.string().nullable(), path: z.string().nullable() })),
+  backlinks: z.array(z.object({ path: z.string(), title: z.string() })),
+  file: z.string(), modified: z.string(),
+});
+export const searchResultSchema = askResultSchema.extend({
+  evidence: z.array(evidenceSchema.extend({ note: z.string().nullable(), match: z.string() })),
+  took_ms: z.number(),
+});
+export type DayNotes = z.infer<typeof dayNotesSchema>;
+export type Note = z.infer<typeof noteSchema>;
+export type SearchResult = z.infer<typeof searchResultSchema>;
+export type SearchEvidence = SearchResult['evidence'][number];

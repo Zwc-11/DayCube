@@ -14,7 +14,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(prog="daycube", description="DAYCUBE local vault tools")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("init", help="Initialize vault and private bearer token")
-    commands.add_parser("seed", help="Copy the synthetic fixture; never overwrite existing days")
+    seed = commands.add_parser("seed", help="Copy the synthetic fixture; never overwrite existing days")
+    seed.add_argument(
+        "--capture", action="store_true", help="Also write a scripted morning of computer capture (2026-10-22)"
+    )
     commands.add_parser("doctor", help="Check local runtime and optional integrations")
     commands.add_parser("stats", help="Days, units and size of the vault database")
     validate = commands.add_parser("validate")
@@ -42,6 +45,14 @@ def main() -> None:
             result = {"date": vault.seed(), "seeded": True}
         except FileExistsError as error:
             result = {"seeded": False, "message": str(error)}
+        if args.capture:
+            from .capture.sample import SAMPLE_CAPTURE_DAY, write_sample_capture
+
+            if (vault.root / "capture" / SAMPLE_CAPTURE_DAY).exists():
+                result["capture"] = {"seeded": False, "message": f"Capture for {SAMPLE_CAPTURE_DAY} already exists"}
+            else:
+                write_sample_capture(vault, damaged=False)
+                result["capture"] = {"date": SAMPLE_CAPTURE_DAY, "seeded": True}
     elif args.command == "validate":
         result = vault.validate(args.date)
     elif args.command in {"index", "stats", "notes", "graph", "data"}:

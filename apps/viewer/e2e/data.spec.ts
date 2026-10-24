@@ -33,7 +33,8 @@ test('the knowledge graph shows the vault and opens an entity', async ({ page })
   await expect(panel).toContainText('Engineering Hall');
   // Filtering by kind hides the nodes of that kind.
   await page.getByRole('group', { name: 'Kinds shown' }).getByRole('button', { name: 'Place' }).click();
-  await expect(page.getByTestId('graph-empty')).toBeVisible();
+  await expect(page.getByTestId('graph-node').filter({ has: page.locator('title', { hasText: /^Place:/ }) })).toHaveCount(0);
+  await expect(page.getByTestId('graph-node').first()).toBeVisible(); // the computer capture's pages and sites stay
 });
 
 test('the calendar opens the data center before any day', async ({ page }) => {
@@ -53,12 +54,16 @@ test('a search across days returns the person\'s own notes through the client co
   try {
     await page.goto('/');
     const token = (await readFile(path.resolve('.daycube-e2e-vault/.token'), 'utf8')).trim();
-    const result = await page.evaluate(async ({ token, modulePath }) => {
-      const { BackendBridge } = await import(modulePath);
-      const bridge = new BackendBridge();
-      bridge.setToken(token);
-      return (bridge as any).client.ask(null, 'cuckoo hashing'); // parsed by the zod contract
-    }, { token, modulePath: '/src/lib/backendBridge.ts' });
+    const ask = () =>
+      page.evaluate(async ({ token, modulePath }) => {
+        const { BackendBridge } = await import(modulePath);
+        const bridge = new BackendBridge();
+        bridge.setToken(token);
+        return (bridge as any).client.ask(null, 'cuckoo hashing'); // parsed by the zod contract
+      }, { token, modulePath: '/src/lib/backendBridge.ts' });
+    // Searches across days re-read the notes folder at most every 2 s.
+    await expect.poll(async () => (await ask()).evidence[0]?.type, { timeout: 5000 }).toBe('note.text');
+    const result = await ask();
     expect(result.evidence[0]).toMatchObject({ type: 'note.text', unit_id: null, t: null, day: null });
     expect(result.evidence[0].source_ref).toBe('notes/Ideas/Cuckoo hashing.md');
   } finally {

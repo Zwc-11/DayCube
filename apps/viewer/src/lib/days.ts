@@ -15,6 +15,10 @@ export interface DaySummary {
   /** Place kinds in visit order; drawn as the slabs of the day's cube. */
   kinds: PlaceKind[];
   sample: boolean;
+  /** The day has computer capture; with no places, that is all it has. */
+  capture: boolean;
+  /** Searchable records, once the day is indexed. */
+  records: number | null;
 }
 
 export interface LoadedDay {
@@ -31,6 +35,8 @@ const SAMPLE_SUMMARY: DaySummary = {
   events: SAMPLE_DAY_LAYERS.reduce((n, layer) => n + layer.events.length, 0),
   kinds: SAMPLE_DAY_LAYERS.map((layer) => layer.kind),
   sample: true,
+  capture: false,
+  records: null,
 };
 
 export async function listDays(): Promise<DaySummary[]> {

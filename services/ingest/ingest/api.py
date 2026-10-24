@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import re
 import secrets
+import threading
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from datetime import date as date_type
 from datetime import time as time_type
+from time import perf_counter
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
@@ -19,14 +22,19 @@ from fastapi.responses import FileResponse, JSONResponse, Response, StreamingRes
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field
 
+from .ask.retrieve import retrieve
 from .ask.service import ask
+from .capture.synthesize import capture_days
 from .config import Settings
 from .contracts import ContractError
 from .generated.event import Event
 from .index.embed import Embedder, default_embedder
+from .notes.read import DayNotes, attach_notes, read_note
 from .store import LifeStore
 from .time import instant
 from .vault import Record, Vault, read_json
+
+log = logging.getLogger("daycube.api")
 
 MEDIA_SUFFIXES = frozenset({".jpg", ".jpeg", ".png", ".svg", ".mp4", ".wav", ".glb", ".ply", ".spz"})
 SAFE_ID = re.compile(r"[A-Za-z0-9_-]+")
@@ -67,8 +75,10 @@ def sse(event: str, value: Record) -> str:
     return f"event: {event}\ndata: {json.dumps(value)}\n\n"
 
 
-def create_app(settings: Settings | None = None, *, embedder: Embedder | None = None) -> FastAPI:
-    """``embedder`` replaces the configured model (tests pass a deterministic one)."""
+def create_app(settings: Settings | None = None, *, embedder: Embedder | None = None, warm: bool = False) -> FastAPI:
+    """``embedder`` replaces the configured model (tests pass a deterministic one). ``warm``: at
+    startup, bring the vault database up to date and load the embedding model and vector index in
+    the background, so the first question is answered as fast as the rest."""
     settings = settings or Settings()
     vault = Vault(settings.vault_root)
     store = LifeStore(
@@ -77,9 +87,23 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
     jobs: dict[str, Record] = {}
     bearer = HTTPBearer(auto_error=False)
 
+    day_notes = DayNotes(store)
+
+    def warm_up() -> None:
+        started = perf_counter()
+        try:
+            store.ensure()
+            retrieve(store, "warm up the search")
+        except Exception:  # noqa: BLE001 - a cold first question is the only cost
+            log.exception("Warming up search failed")
+        else:
+            log.info("Search warm in %.1f s", perf_counter() - started)
+
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         vault.initialize()
+        if warm:
+            threading.Thread(target=warm_up, name="warm-up", daemon=True).start()
         yield
 
     app = FastAPI(
@@ -135,7 +159,25 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
 
     @app.get("/days")
     def days() -> list[Record]:
-        return vault.list_days()
+        """Newest first: vault days, and days with only computer capture (no places). ``capture``
+        says the day has capture logs; ``records`` is its searchable record count once indexed."""
+        listed = {d["date"]: {**d, "capture": False, "records": None} for d in vault.list_days()}
+        for day in capture_days(vault):
+            listed.setdefault(
+                day,
+                {
+                    "date": day,
+                    "stats": {"events": 0, "moments": 0, "places": 0, "floor_changes": 0},
+                    "kinds": [],
+                    "records": None,
+                },
+            )["capture"] = True
+        if store.path.exists():
+            with store.connect() as db:
+                for day, units in db.execute("SELECT day, units FROM days"):
+                    if day in listed:
+                        listed[day]["records"] = units
+        return [listed[day] for day in sorted(listed, reverse=True)]
 
     @app.get("/day/{date}")
     def day(date: str, request: Request) -> Response:
@@ -188,6 +230,29 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
         if found is None:
             raise FileNotFoundError(entity_id)
         return found
+
+    @app.get("/search")
+    def search(q: str = Query(..., min_length=1, max_length=500), date: str | None = None) -> Record:
+        """Ask without the vault token, for search as you type: the same extractive answer and
+        evidence as ``POST /ask``, each result with the note it is in (``note``) and the words to
+        find there (``match``), and how long it took (``took_ms``). Reads only, like the other
+        GET routes."""
+        started = perf_counter()
+        result = ask(store, date, q.strip())
+        attach_notes(store, result["evidence"])
+        result["took_ms"] = round((perf_counter() - started) * 1000, 1)
+        return result
+
+    @app.get("/day/{date}/notes")
+    def knowledge(date: str) -> Record:
+        """The day's knowledge base: its daily note (written or refreshed now if its records changed),
+        the notes it links to and that link to it, and its local graph."""
+        return day_notes.view(date)
+
+    @app.get("/note")
+    def note(path: str = Query(..., max_length=1000)) -> Record:
+        """One note in vault/notes: its Markdown, its links (each with the note it opens) and backlinks."""
+        return read_note(store, path)
 
     @app.get("/data")
     def data_center() -> Record:
@@ -369,4 +434,4 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
     return app
 
 
-app = create_app()
+app = create_app(warm=True)

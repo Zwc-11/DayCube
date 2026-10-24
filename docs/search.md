@@ -42,7 +42,10 @@ unit.
 - **Set statements, not triggers.** The keyword index and vectors are updated by one statement
   per day rather than a trigger per row; per-row triggers made a 5,053-unit day take 507 ms.
 - **Cheap freshness.** A query re-checks a day only when its file stamps changed since the
-  last check; otherwise it costs a few stats per day.
+  last check; otherwise it costs a few stats per day. Search as you type sends a request per
+  pause in typing, so across every day it re-checks older days and the notes folder at most every
+  2 s (`FULL_CHECK_S`) and today and yesterday, where capture is arriving, every time. A note hit
+  whose file was deleted since is dropped, and a changed one brings the folder in at once.
 - **Reuse before embedding.** Embedding is the slow step: bge-small manages 28–47 texts a second
   on two CPU cores. Re-indexing a day reuses the vectors of its unchanged units, and repeated
   text on other days ("Visited Home", the same document) reuses theirs. Only new text is
@@ -219,6 +222,32 @@ not a result.
   unanswerable questions scored up to 0.60 ("Did I go swimming?" returns two records). Saying
   "nothing in your days answers this" is the answer checker's job.
 
+## Search as you type
+
+`GET /search?q=&date=` returns what `POST /ask` returns, without the vault token (reads only, like
+the other GET routes), with each result's note and the words to mark there, and `took_ms`. The
+viewer's notes page calls it 90 ms after the last keystroke and cancels the request it replaces.
+The API loads the vault database, the embedding model and the vector index in the background when
+it starts, so the first question is as fast as the rest.
+
+`eval/search_latency.py` builds days of synthetic computer capture (80 pages a day, real English
+lines from these docs) and times 10 questions, 3 rounds, warm, through the API (two CPU cores):
+
+| Vault | Search | One day, p50 / p95 | Every day, p50 / p95 |
+| --- | --- | ---: | ---: |
+| 90 days, 25,560 records | keywords | 5.5 / 10.1 ms | 7.5 / 13.9 ms |
+| 20 days, 5,680 records | keywords and meaning (bge-small) | 13.9 / 18.7 ms | 29.0 / 52.2 ms |
+
+Server time; the request adds 2-4 ms. Embedding the question is most of the meaning-search cost.
+Getting there: the result-to-note lookup walked every page entity until a `CROSS JOIN` fixed its
+order (4.3 ms to 0.04 ms at 30 days), and searches across days stopped re-checking 90 days of files
+per keystroke (39 to 7.5 ms). Embedding the 5,680 records the first time took 326 s; that is
+`daycube index`'s job, not a search's.
+
+Opening a day's notes at 60 days (4,862 notes): 36 ms once written, 415 ms when its notes are
+written first; one note 25 ms. The notes folder is listed with `os.scandir` (on Windows the
+listing carries each file's times and size).
+
 ## Commands
 
 ```powershell
@@ -229,6 +258,7 @@ uv run daycube data                       # the data center: every source stream
 uv run daycube graph                      # the most mentioned entities and their links, as JSON
 uv run --extra vector python eval/score_retrieval.py
 uv run python eval/vector_bench.py --sizes 100000 500000 1930000
+uv run python eval/search_latency.py --days 90 --output eval/results/search-latency.json
 ```
 
 `DAYCUBE_VECTOR_SEARCH=false` turns meaning search off; `DAYCUBE_EMBEDDING_MODEL` picks another

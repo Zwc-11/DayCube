@@ -141,3 +141,22 @@ def test_a_change_in_what_is_derived_reads_every_day_and_note_again(vault: Vault
     assert any(n["name"] == "CS 136 due Fri Oct 30, 11:59 PM" for n in fresh.graph(kinds=["deadline"])["nodes"])
     with fresh.connect() as db:
         assert db.execute("SELECT value FROM meta WHERE key = 'derived'").fetchone()[0] == db_module.DERIVED_VERSION
+
+
+def test_a_database_from_before_note_links_gains_them_in_place(vault: Vault) -> None:
+    import sqlite3
+
+    capture_session(vault)
+    store = LifeStore(vault)
+    store.ensure()
+    with sqlite3.connect(store.path) as db:  # as built by schema 4 before note links, or their first form
+        db.execute("DROP TABLE note_links")
+        db.execute("CREATE TABLE note_links (path TEXT NOT NULL, target TEXT NOT NULL, label TEXT, resolved TEXT)")
+        db.execute("DROP INDEX mentions_unit")
+        db.execute("UPDATE meta SET value = '2' WHERE key = 'derived'")
+    units = store.stats()["units"]
+    fresh = LifeStore(vault)
+    with fresh.connect() as db:
+        assert "name" in {row[1] for row in db.execute("PRAGMA table_info(note_links)")}
+        assert "mentions_unit" in {row[1] for row in db.execute("PRAGMA index_list(mentions)")}
+    assert fresh.stats()["units"] == units  # nothing rebuilt
