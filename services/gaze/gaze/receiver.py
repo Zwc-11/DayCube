@@ -39,6 +39,8 @@ class Receiver:
         self.opener = build_opener(ProxyHandler({}))  # never route localhost through a system proxy
         self.refusal: str | None = None  # why the receiver last refused a report, for the log
         self.live = False  # the receiver wants the live gaze point: something on screen shows it
+        self.ring = False  # the receiver wants the ring drawn over every window (gaze.overlay)
+        self.offset_grid: dict | None = None  # its click correction, for that ring (see ``corrected``)
         self.token: str | None = None
         self._next: tuple[float, float, float] | None = None  # the live point waiting to go out
         self._busy = False
@@ -70,7 +72,7 @@ class Receiver:
             with self.opener.open(request, timeout=self.timeout) as response:
                 body = response.read()
         except HTTPError as error:
-            self.live = False
+            self.live = self.ring = False
             if error.code == 409:
                 self.queue.clear()
                 return "paused"
@@ -81,15 +83,18 @@ class Receiver:
             self.refusal = f"{error.code} {body}".strip()
             return "refused"
         except (URLError, OSError):
-            self.live = False
+            self.live = self.ring = False
             return "offline"
         for _ in batch:
             self.queue.popleft()
         self.token = token
         try:
-            self.live = bool(json.loads(body).get("live"))
+            answer = json.loads(body)
+            self.live, self.ring = bool(answer.get("live")), bool(answer.get("ring"))
+            self.offset_grid = _grid(answer.get("offset_grid"))
         except (ValueError, AttributeError):
-            self.live = False
+            self.live = self.ring = False
+            self.offset_grid = None
         return "ok"
 
     def send_live(self, t: float, x: float, y: float) -> None:
@@ -162,3 +167,36 @@ class Receiver:
         except (URLError, OSError):
             return False
         return True
+
+
+def _grid(value: object) -> dict | None:
+    """The receiver's click-correction grid, if well formed."""
+    if not isinstance(value, dict):
+        return None
+    cols, rows, dx, dy = value.get("cols"), value.get("rows"), value.get("dx"), value.get("dy")
+    if not (isinstance(cols, int) and isinstance(rows, int) and cols >= 2 and rows >= 2):
+        return None
+    if not (isinstance(dx, list) and isinstance(dy, list) and len(dx) == len(dy) == cols * rows):
+        return None
+    if not all(isinstance(v, int | float) for v in (*dx, *dy)):
+        return None
+    return {"cols": cols, "rows": rows, "dx": [float(v) for v in dx], "dy": [float(v) for v in dy]}
+
+
+def corrected(grid: dict | None, fx: float, fy: float) -> tuple[float, float]:
+    """A gaze point (monitor fractions) with the receiver's click correction taken off, the
+    correction interpolated between the grid's points as the receiver would compute it there."""
+    if grid is None:
+        return fx, fy
+    cols, rows = grid["cols"], grid["rows"]
+    gx = min(max(fx, 0.0), 1.0) * (cols - 1)
+    gy = min(max(fy, 0.0), 1.0) * (rows - 1)
+    i, j = min(int(gx), cols - 2), min(int(gy), rows - 2)
+    u, v = gx - i, gy - j
+
+    def at(values: list[float]) -> float:
+        a, b = values[j * cols + i], values[j * cols + i + 1]
+        c, d = values[(j + 1) * cols + i], values[(j + 1) * cols + i + 1]
+        return (1 - u) * (1 - v) * a + u * (1 - v) * b + (1 - u) * v * c + u * v * d
+
+    return fx - at(grid["dx"]), fy - at(grid["dy"])

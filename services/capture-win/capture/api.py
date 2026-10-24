@@ -57,8 +57,15 @@ WARM_TEXT_BYTES = 64 << 20  # block texts are reloaded from logs up to this size
 # Fixations arrive about a second after they end, so a run is closed only after this extra wait.
 GAZE_LATENCY = timedelta(seconds=3)
 LIVE_WATCH_S = 10.0  # the tracker streams live gaze while something asked for it this recently
-GAZE_SILENT = timedelta(seconds=30)  # the tracker reports every second while it runs
+GAZE_SILENT = timedelta(seconds=30)
+NATIVE_FRESH = timedelta(
+    seconds=5
+)  # the tracker reports every second: older, pages draw the ring again  # the tracker reports every second while it runs
 HEALTH_EVERY = timedelta(minutes=10)
+
+
+class Display(BaseModel):
+    gaze_ring: bool
 
 
 class Exclusions(BaseModel):
@@ -90,6 +97,10 @@ class Receiver:
         # whether the answer carried a live point (or fell back to the last fixation).
         self.live_points: deque[float] = deque(maxlen=1000)
         self.live_asks: deque[tuple[float, bool]] = deque(maxlen=1000)
+        # Whether the tracker draws the gaze ring over every window (the extension's "Show where my
+        # eyes are" option, or `python -m capture ring on|off`), remembered across restarts.
+        self.display_file = self.vault.root / "capture" / "display.json"
+        self.ring = self._read_display().get("gaze_ring", False)
         self._warm_texts()
 
     def _warm_texts(self) -> None:
@@ -116,6 +127,43 @@ class Receiver:
                         with contextlib.suppress(TypeError, ValueError, KeyError):
                             lines = [LineBox(*line["rect"], line.get("text", "")) for line in block["lines"]]
                             self.attention.layout(record["doc"], block["id"], lines)
+
+    def _read_display(self) -> dict:
+        try:
+            value = json.loads(self.display_file.read_text(encoding="utf-8"))
+            return value if isinstance(value, dict) else {}
+        except (OSError, ValueError):
+            return {}
+
+    def set_ring(self, on: bool) -> None:
+        with self.lock:
+            self.ring = on
+            self.display_file.parent.mkdir(parents=True, exist_ok=True)
+            self.display_file.write_text(json.dumps({**self._read_display(), "gaze_ring": on}) + "\n", encoding="utf-8")
+
+    def native_ring(self) -> bool:
+        """Whether the tracker is drawing the ring over every window now, so pages do not draw theirs:
+        switched on, not paused, and the tracker said so within the last few seconds."""
+        gaze = self.gaze or {}
+        overlay = gaze.get("overlay") or {}
+        if not (self.ring and not self.paused and overlay.get("running") and gaze.get("at")):
+            return False
+        return datetime.now(UTC) - datetime.fromisoformat(gaze["at"]) <= NATIVE_FRESH
+
+    def offset_grid(self, now: float, cols: int = 9, rows: int = 5) -> dict | None:
+        """The click correction (attention.anchors) sampled on a grid over the monitor, for the
+        tracker to correct the ring it draws as the receiver corrects fixations: offsets in monitor
+        fractions at (i / (cols - 1), j / (rows - 1)), row by row. None without clicks to learn from."""
+        anchors = self.attention.anchors
+        if not anchors.anchors or anchors.monitor is None:
+            return None
+        dx, dy = [], []
+        for j in range(rows):
+            for i in range(cols):
+                ox, oy = anchors.offset(i / (cols - 1), j / (rows - 1), now)
+                dx.append(round(ox, 5))
+                dy.append(round(oy, 5))
+        return {"cols": cols, "rows": rows, "dx": dx, "dy": dy}
 
     # -- state -------------------------------------------------------------------------------------
 
@@ -147,6 +195,7 @@ class Receiver:
             "line_decoding": decoding,
             "gaze_point": point,  # the last fixation placed on a page: viewport CSS px, with that page's scroll
             "ring": self.ring_health(),
+            "display": {"gaze_ring": self.ring, "native": self.native_ring()},
             "capabilities": ["browser", "gaze", "attention"],
         }
 
@@ -314,9 +363,16 @@ class Receiver:
             self._remember_ids(ids)
             if accepted:
                 self.last["gaze"] = now.isoformat()
-        # "live": the extension is showing the gaze ring, so the tracker streams the point now.
-        live = time.time() - self.watched_at < LIVE_WATCH_S
-        return {"accepted": accepted, "duplicates": duplicates, "stale": stale, "live": live}
+        # "live": a page shows the gaze ring, so the tracker streams the point to it now; not needed
+        # while the tracker draws the ring itself ("ring"), with the click correction as a grid.
+        native = self.native_ring()
+        live = time.time() - self.watched_at < LIVE_WATCH_S and not native
+        with self.lock:
+            grid = self.offset_grid(now.timestamp()) if self.ring else None
+        return {
+            "accepted": accepted, "duplicates": duplicates, "stale": stale, "live": live,
+            "ring": self.ring and not self.paused, "offset_grid": grid,
+        }  # fmt: skip
 
     def live_point(self, point: LivePoint) -> None:
         if self.paused:
@@ -330,6 +386,14 @@ class Receiver:
         that does not stream live points)."""
         now = time.time()
         self.watched_at = now
+        if self.native_ring():  # drawn over every window by the tracker: the page draws no ring
+            with self.lock:
+                reading = self.attention.reading
+            if reading and (
+                reading.get("doc", doc) != doc or now - datetime.fromisoformat(reading["t"]).timestamp() > 10
+            ):
+                reading = None
+            return {"point": None, "reading": reading, "fixation": None, "native": True}
         with self.lock:
             live, point = self.live, None
             if live is not None and now - live[0] <= 2.0 and not self.paused:
@@ -413,6 +477,16 @@ def create_capture_app(
         """The extension's excluded domains, so the history import leaves them out too."""
         receiver.set_exclusions(body)
         return {"domains": len(body.domains)}
+
+    @app.get("/display")
+    def display() -> dict:
+        return {"gaze_ring": receiver.ring, "native": receiver.native_ring()}
+
+    @app.post("/display", dependencies=[Depends(authorize)])
+    def set_display(body: Display) -> dict:
+        """Show or hide the gaze ring (the extension's "Show where my eyes are" option)."""
+        receiver.set_ring(body.gaze_ring)
+        return {"gaze_ring": receiver.ring, "native": receiver.native_ring()}
 
     @app.post("/gaze", dependencies=[Depends(authorize)])
     def gaze(batch: GazeBatch) -> dict:

@@ -30,7 +30,7 @@ from typing import Any, Protocol
 import numpy as np
 
 from .fixations import FixationDetector, Smoother
-from .receiver import Receiver
+from .receiver import Receiver, corrected
 from .system import System
 
 log = logging.getLogger("gaze")
@@ -79,6 +79,7 @@ class LatestFrame:
         self._ready = threading.Condition()
         self._frame: Any = None
         self._made = self._taken = 0
+        self._arrivals: deque[float] = deque(maxlen=1200)  # when frames came, for ``rate``
         self._stop = False
         self._opened = threading.Event()
         self._error: BaseException | None = None
@@ -106,12 +107,21 @@ class LatestFrame:
                 if ok:
                     with self._ready:
                         self._frame, self._made = frame, self._made + 1
+                        self._arrivals.append(time.monotonic())
                         self._ready.notify_all()
                 else:
                     time.sleep(0.02)
         finally:
             camera.release()
             _com_end(com)
+
+    def rate(self, window: float = 10.0) -> float | None:
+        """Frames the camera delivered per second over the last ``window`` seconds (whether or not
+        the tracker took them all)."""
+        now = time.monotonic()
+        with self._ready:
+            times = [t for t in self._arrivals if now - t <= window]
+        return round((len(times) - 1) / (times[-1] - times[0]), 1) if len(times) > 1 and times[-1] > times[0] else None
 
     def first(self, seconds: float) -> bool:
         """Whether a frame arrives within ``seconds`` (not taken: ``read`` still returns it)."""
@@ -131,6 +141,12 @@ class LatestFrame:
         with self._ready:
             self._ready.notify_all()
         self._thread.join(timeout=2.0)
+
+
+def _describe(mode: dict | None) -> str:
+    from .camera import describe
+
+    return describe(mode) if mode else "default mode"
 
 
 def _com_start() -> bool:
@@ -187,6 +203,7 @@ class Tracker:
         clock: Callable[[], float] = time.time,
         sleep: Callable[[float], None] = time.sleep,
         timer: Callable[[], float] = time.monotonic,
+        overlay: Callable[[], Any] | None = None,
     ) -> None:
         if not math.isfinite(fps) or fps <= 0:
             raise ValueError("fps must be positive and finite")
@@ -225,6 +242,9 @@ class Tracker:
         self.fixated: deque[tuple[float, int]] = deque()  # (time, samples) of fixations over the last 30 s
         self.heads: deque[tuple[float, float, float]] = deque()  # (time, mm, degrees) from calibration, 10 s
         self.timing: deque[tuple[float, ...]] = deque()  # (time, ms per stage...) of frames with a face, 10 s
+        # The ring drawn over every window (gaze.overlay), made when the receiver first asks for it.
+        self._overlay_factory = overlay
+        self.overlay: Any = None
 
     # -- state -------------------------------------------------------------------------------------
 
@@ -250,6 +270,9 @@ class Tracker:
             "head_moved_mm": round(float(np.median([m for _, m, _ in self.heads])), 0) if self.heads else None,
             "head_turned_deg": round(float(np.median([d for _, _, d in self.heads])), 1) if self.heads else None,
             "timing_ms": self._timing(),
+            "overlay": self.overlay.state() if self.overlay is not None else None,
+            "camera_fps": self.camera.rate() if hasattr(self.camera, "rate") else None,
+            "camera_mode": _describe(self.calibration.get("camera_mode")),
         }
 
     def _timing(self) -> dict | None:
@@ -301,7 +324,24 @@ class Tracker:
             return "away"
         return None
 
+    def _ring(self) -> Any:
+        """The overlay to draw on, or None: made on first need, hidden while the receiver does not
+        want the ring (switched off, paused, not answering)."""
+        if not getattr(self.receiver, "ring", False):
+            if self.overlay is not None:
+                self.overlay.clear()
+            return None
+        if self.overlay is None and self._overlay_factory is not None:
+            try:
+                self.overlay = self._overlay_factory()
+            except Exception as error:  # noqa: BLE001 - tracking goes on without the ring
+                log.warning("the gaze ring overlay could not start: %s", error)
+            self._overlay_factory = None  # one attempt per run: its state says why it failed
+        return self.overlay if self.overlay is not None and self.overlay.running else None
+
     def _release(self) -> None:
+        if self.overlay is not None:
+            self.overlay.clear()
         if self.camera is not None:
             self.camera.release()
             self.camera = None
@@ -325,6 +365,7 @@ class Tracker:
             return
         self.reported_at, self.pending = now, False
         result = self.receiver.send(self.state())
+        self._ring()  # the ring switched off or on: act now, not at the next face
         if result in ("ok", "paused"):  # only an answer from the receiver changes the pause state
             if result == "ok":
                 self.confirmed_at = now
@@ -455,6 +496,9 @@ class Tracker:
             self.smoother.reset()  # a lost face/ray breaks continuity just as it does for fixations
         x, y = self.smoother(now, x, y)
         fx, fy = x / self.width, y / self.height
+        ring = self._ring()
+        if ring is not None:  # in memory, every frame; off the monitor it waits at the edge
+            ring.push(*corrected(getattr(self.receiver, "offset_grid", None), fx, fy))
         if -0.05 <= fx <= 1.05 and -0.05 <= fy <= 1.05:  # off-screen samples end the fixation
             if getattr(self.receiver, "live", False) and now - self.live_at >= LIVE_EVERY_S:
                 self.live_at = now
@@ -472,6 +516,8 @@ class Tracker:
                 self.step()
         finally:
             self._release()
+            if self.overlay is not None:
+                self.overlay.close()
             self.hold = "stopped"
             self.reported_at = -1e9
             with contextlib.suppress(SystemExit):

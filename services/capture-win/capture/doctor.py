@@ -106,6 +106,19 @@ def checks(status: dict | None, vault: Path, zone: ZoneInfo, now: datetime, auto
             out.append((WARN, "tracker code", "older than this checkout: restarting the receiver restarts it"))
         fps, target = gaze.get("fps"), gaze.get("target_fps") or 30
         out.append((PASS if fps and fps >= 0.8 * target else WARN, "frame rate", f"{fps} of {target} frames/s"))
+        camera_fps, mode = gaze.get("camera_fps"), gaze.get("camera_mode")
+        if camera_fps is not None:
+            if camera_fps >= 50:
+                out.append((PASS, "webcam", f"{camera_fps:.0f} frames/s in {mode}"))
+            else:
+                hint = (
+                    ": calibrating again (uv run --project services/gaze python -m gaze calibrate) tries its 60 fps modes"
+                    if mode == "default mode"
+                    else ""
+                )
+                out.append(
+                    (INFO, "webcam", f"{camera_fps:.0f} frames/s in {mode}, so {camera_fps:.0f} gaze points/s{hint}")
+                )
         face = gaze.get("face")
         verdict = PASS if face is not None and face >= 0.8 else WARN if face is not None and face >= 0.5 else FAIL
         out.append((verdict, "face found", "unknown" if face is None else f"{face:.0%} of frames"))
@@ -131,8 +144,44 @@ def checks(status: dict | None, vault: Path, zone: ZoneInfo, now: datetime, auto
             noise = gaze.get("noise_px")
             out.append((verdict, "fixations", f"{coverage:.0%} of gaze" + (f", noise {noise:.0f} px" if noise else "")))
 
+    display = status.get("display")
+    overlay = gaze.get("overlay") or {}
+    native = bool(display and display.get("native"))
+    if display is not None and not display.get("gaze_ring"):
+        out.append((
+            INFO,
+            "gaze ring",
+            "off: turn on \"Show where my eyes are\" in the extension's options, or run python -m capture ring on",
+        ))  # fmt: skip
+    elif display is not None and gaze.get("tracking"):
+        if native and overlay.get("shown") and overlay.get("fps") is not None:
+            refresh = overlay.get("refresh_hz")
+            fps, moves = overlay["fps"], overlay.get("moves_per_s") or 0
+            verdict = PASS if refresh is None or fps >= 0.9 * min(refresh, 60) else WARN
+            out.append((
+                verdict,
+                "gaze ring",
+                f"drawn over every window: {fps:.0f} frames/s"
+                + (f" on a {refresh:.0f} Hz display" if refresh else "")
+                + f", moving {moves:.0f} times/s between {gaze.get('fps') or 0:.0f} gaze points/s",
+            ))  # fmt: skip
+        elif native:
+            out.append((INFO, "gaze ring", "drawn over every window; hidden now (no gaze in the last 4 s)"))
+        elif overlay.get("error"):
+            out.append((
+                WARN,
+                "gaze ring",
+                f"the window over the screen could not open ({overlay['error']}); pages draw the ring instead",
+            ))  # fmt: skip
+        elif not overlay:
+            out.append((
+                WARN,
+                "gaze ring",
+                "the tracker is older than this checkout and draws no ring of its own: " + RESTART,
+            ))  # fmt: skip
+
     ring = status.get("ring")
-    if gaze.get("tracking") and ring is not None:
+    if gaze.get("tracking") and ring is not None and not native:
         points, asks, share = ring.get("points_per_s", 0), ring.get("asks_per_s", 0), ring.get("live_share")
         if not ring.get("ever_asked"):
             out.append((

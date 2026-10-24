@@ -149,6 +149,7 @@ class LifeStore:
         self.notes_root = vault.root / "notes"
         self._notes: dict[str, tuple[int, int]] | None = None  # the notes folder as last synced
         self._everything_at = -FULL_CHECK_S  # when every day's files were last checked (monotonic)
+        self._newest: list[str] = []  # the two newest days at that check
 
     @property
     def vectors(self) -> bool:
@@ -277,19 +278,22 @@ class LifeStore:
         """Bring the given days (default: every day in the vault, and the notes) up to date. A
         repeat call with unchanged files costs a few stats per day. ``quick`` (search as you type,
         a request per pause in typing): across every day, older days and the notes are checked at
-        most every ``FULL_CHECK_S``; today and yesterday, where capture is arriving, every time."""
+        most every ``FULL_CHECK_S``; the newest days, where records arrive (today, yesterday, and
+        the last two days with any), every time."""
         everything = days is None
         if not self.path.exists():
             self._forget()  # deleted underneath us: every day must be written again
             self._everything_at = -FULL_CHECK_S
         if everything and quick and monotonic() - self._everything_at < FULL_CHECK_S:
             today = datetime.now(ZoneInfo(self.zone)).date()
-            recent = [(today - timedelta(days=n)).isoformat() for n in (1, 0)]
-            days, everything = [d for d in recent if self.knows(d)], False
+            recent = {(today - timedelta(days=n)).isoformat() for n in (1, 0)} | set(self._newest)
+            days, everything = sorted(d for d in recent if self.knows(d)), False
         elif everything:
             self._everything_at = monotonic()
             self.sync_notes()
         wanted = self.days() if everything else list(days)
+        if everything:
+            self._newest = wanted[:2]  # days() is newest first
         stale = [day for day in wanted if self.fresh.get(day) != self._key(day)]
         if not stale and not everything:
             return

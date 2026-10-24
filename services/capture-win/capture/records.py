@@ -174,6 +174,16 @@ class Fixation(Strict):
     samples: int = Field(ge=1)
 
 
+class OverlayState(Strict):
+    model_config = TOLERANT
+    running: bool = False
+    shown: bool = False
+    fps: float | None = Field(default=None, ge=0)
+    moves_per_s: float | None = Field(default=None, ge=0)
+    refresh_hz: float | None = Field(default=None, ge=0)
+    error: str | None = Field(default=None, max_length=200)
+
+
 class GazeState(Strict):
     model_config = TOLERANT
     tracking: bool
@@ -192,6 +202,11 @@ class GazeState(Strict):
     # Median ms per frame by stage over the last 10 s: camera_wait, landmarks, model, tracking,
     # network, frame (all processing), live_post (a live point's round trip, on its own thread).
     timing_ms: dict[str, Annotated[float, Field(ge=0)]] | None = Field(default=None, max_length=12)
+    # The gaze ring drawn over every window by the tracker (gaze.overlay): whether its window is up,
+    # on screen, frames drawn and moves per second while it is, the display's refresh rate.
+    overlay: OverlayState | None = None
+    camera_fps: float | None = Field(default=None, ge=0)  # frames the webcam delivered per second, last 10 s
+    camera_mode: str | None = Field(default=None, max_length=40)  # e.g. "1280x720 MJPG 60 fps"
 
 
 class LivePoint(Strict):

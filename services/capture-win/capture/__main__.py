@@ -116,6 +116,40 @@ def doctor(_: argparse.Namespace) -> None:
     raise SystemExit(check(settings.vault_root, settings.timezone, PORT))
 
 
+def ring(args: argparse.Namespace) -> None:
+    """Show or hide the gaze ring over every window: tells a running receiver, else remembers it
+    for the next start."""
+    import json
+    from urllib.error import URLError
+    from urllib.request import ProxyHandler, Request, build_opener
+
+    from ingest.vault import Vault
+
+    settings = Settings()
+    vault = Vault(settings.vault_root)
+    vault.initialize()
+    on = args.state == "on"
+    request = Request(
+        f"http://127.0.0.1:{PORT}/display",
+        data=json.dumps({"gaze_ring": on}).encode(),
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {vault.token}"},
+        method="POST",
+    )
+    try:
+        with build_opener(ProxyHandler({})).open(request, timeout=3) as response:
+            response.read()
+        print(f"Gaze ring {args.state}.")
+    except (URLError, OSError):
+        path = vault.root / "capture" / "display.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            current = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            current = {}
+        path.write_text(json.dumps({**current, "gaze_ring": on}) + "\n", encoding="utf-8")
+        print(f"The receiver is not running; the gaze ring will be {args.state} when it starts.")
+
+
 def import_history(args: argparse.Namespace) -> None:
     from ingest.vault import Vault
 
@@ -168,6 +202,10 @@ def main(argv: list[str] | None = None) -> None:
     commands.add_parser(
         "doctor", help="Check capture from what it recorded: receiver, extension, eye tracker, accuracy, autostart"
     ).set_defaults(handler=doctor)
+
+    show = commands.add_parser("ring", help="Show or hide the gaze ring drawn over every window")
+    show.add_argument("state", choices=["on", "off"])
+    show.set_defaults(handler=ring)
 
     history = commands.add_parser("import-history", help="Copy Opera's history into vault/capture/<date>/history.jsonl")
     history.add_argument("--profile", type=Path, help="A Chromium History file (default: Opera's)")
