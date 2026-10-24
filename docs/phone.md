@@ -15,8 +15,10 @@ were recorded on (`services/ingest/ingest/phone`).
 
 Copy the exports into `vault/inbox/phone` (an iCloud Drive or OneDrive folder synced to the PC
 works). While the capture receiver runs, it looks every minute and imports what has stopped
-changing for 30 s, then moves it to `inbox/phone/imported/<when>/`. A failed import is written to
-`inbox/phone/errors.jsonl` and not tried again until a file changes. By hand:
+changing for 30 s, then moves it to `inbox/phone/imported/<when>/`. A memo or scan that cannot be
+read (FFmpeg not on PATH, say) is left in the inbox while the rest is imported; it and any failed
+import are written to `inbox/phone/errors.jsonl` and not tried again until the file changes (copy
+it in again once fixed). By hand:
 
     .\capture import-phone "C:\path\to\export.zip" "C:\path\to\memo.m4a" "C:\path\to\scan folder"
     uv run daycube import-phone <files...> [--no-transcribe] [--inbox]
