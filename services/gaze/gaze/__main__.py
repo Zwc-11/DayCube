@@ -45,7 +45,7 @@ def do_calibrate(args: argparse.Namespace) -> None:
     print("A full-screen window opens. Keep your head still and follow each green dot with your eyes.")
     print("After 13 dots it asks you to move your head; then 4 more dots. Esc cancels. About 45 seconds.")
     try:
-        result = calibration.calibrate(args.vault, camera=args.camera, model=args.model)
+        result = calibration.calibrate(args.vault, camera=args.camera, model=args.model, fps=args.fps)
     except calibration.Aborted:
         raise SystemExit("Calibration cancelled.") from None
     finally:
@@ -112,8 +112,6 @@ def _track(args: argparse.Namespace, log: logging.Logger) -> None:
     if result["error_px"] > usable_limit(result["monitor"][0]) and not args.force:
         log.error("calibration error %.0f px is too coarse; recalibrate (or pass --force)", result["error_px"])
         raise SystemExit(NOT_CALIBRATED)
-    from eyetrax.utils.video import open_camera
-
     from .receiver import Receiver
     from .system import primary_monitor
     from .track import Tracker
@@ -133,18 +131,24 @@ def _track(args: argparse.Namespace, log: logging.Logger) -> None:
         path = args.vault / "calibration" / calibration.CALIBRATION_FILE
         return not path.is_file() or path.stat().st_mtime_ns != calibrated
 
+    from .camera import describe, open_camera
+    from .overlay import create as overlay
     from .track import open_camera_thread
+
+    mode = result.get("camera_mode")
+    fps = args.fps or (mode["fps"] if mode else DEFAULT_FPS)
 
     tracker = Tracker(
         estimator,
-        lambda: open_camera_thread(lambda: open_camera(camera)),
+        lambda: open_camera_thread(lambda: open_camera(camera, mode)),
         receiver,
         result,
-        fps=args.fps,
+        fps=fps,
         supervised=args.supervised,
         recalibrated=recalibrated,
+        overlay=overlay,
     )
-    log.info("tracking with camera %s at up to %s fps", camera, args.fps)
+    log.info("tracking with camera %s in %s at up to %s fps", camera, describe(mode), fps)
     try:
         tracker.run()
     except KeyboardInterrupt:
@@ -196,12 +200,18 @@ def main(argv: list[str] | None = None) -> None:
         "or another EyeTrax model: elastic_net, svr, tiny_mlp",
     )
     cal.add_argument("--receiver", default="http://127.0.0.1:7700")
+    cal.add_argument(
+        "--fps", type=float, default=60.0,
+        help="Frame rate to ask the webcam for (default 60: used if it delivers it, else its default mode)",
+    )  # fmt: skip
     cal.set_defaults(handler=do_calibrate)
 
     track = commands.add_parser("track", parents=[common], help="Send fixations to the capture receiver until stopped")
     track.add_argument("--camera", type=int, help="Default: the calibrated camera")
     track.add_argument("--receiver", default="http://127.0.0.1:7700")
-    track.add_argument("--fps", type=float, default=DEFAULT_FPS, help="Processing target in frames/s (default: 30)")
+    track.add_argument(
+        "--fps", type=float, help="Processing target in frames/s (default: the calibrated camera mode's, else 30)"
+    )
     track.add_argument("--force", action="store_true", help="Track even with a coarse calibration")
     track.add_argument("--supervised", action="store_true", help=argparse.SUPPRESS)
     track.set_defaults(handler=do_track)
@@ -212,7 +222,11 @@ def main(argv: list[str] | None = None) -> None:
     check.set_defaults(handler=do_check)
 
     args = parser.parse_args(argv)
-    if args.command == "track" and (not math.isfinite(args.fps) or args.fps <= 0):
+    if (
+        args.command in ("track", "calibrate")
+        and args.fps is not None
+        and (not math.isfinite(args.fps) or args.fps <= 0)
+    ):
         parser.error("--fps must be positive and finite")
     args.vault = args.vault.resolve()
     args.handler(args)

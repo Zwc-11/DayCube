@@ -302,3 +302,37 @@ test('reading a paragraph is followed line by line and recorded', async () => {
   expect(record.coverage).toBeGreaterThanOrEqual(0.8);
   expect(record.lines[0].text).toBe(block.lines[0].text);
 });
+
+test('the page draws no ring while the eye tracker draws one over every window', async () => {
+  const page = await open(`${SITE}/reading`, 1);
+  const token = readFileSync(path.join(vault, '.token'), 'utf8').trim();
+  const auth = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+  await worker.evaluate(() => chrome.storage.local.set({ showLine: true }));
+  const display = await until(() => fetch(`${RECEIVER}/display`).then(r => r.json()), d => d.gaze_ring === true);
+  expect(display.gaze_ring, 'the option reached the receiver').toBe(true);
+  const report = (overlay: object | null) => fetch(`${RECEIVER}/gaze`, {
+    method: 'POST', headers: auth,
+    body: JSON.stringify({
+      state: { tracking: true, calibrated: true, error_px: 12, monitor: [SCREEN.width, SCREEN.height], ...(overlay ? { overlay } : {}) },
+      fixations: [],
+    }),
+  });
+  const point = () => fetch(`${RECEIVER}/gaze/live`, {
+    method: 'POST', headers: auth, body: JSON.stringify({ t: new Date().toISOString(), x: 0.4, y: 0.4 }),
+  });
+  let overlay: object | null = null;
+  const tracker = setInterval(() => { report(overlay); point(); }, 100);
+  try {
+    // A tracker that cannot draw it (not Windows): the page draws the ring from the live point.
+    await expect(page.locator('[data-daycube="gaze"]')).toHaveCount(1, { timeout: 8000 });
+    // The tracker draws it over every window: the page drops its own at once.
+    overlay = { running: true, shown: true, fps: 60, moves_per_s: 60, refresh_hz: 60 };
+    await expect(page.locator('[data-daycube="gaze"]')).toHaveCount(0, { timeout: 3000 });
+    expect((await fetch(`${RECEIVER}/status`).then(r => r.json())).display).toEqual({ gaze_ring: true, native: true });
+  } finally {
+    clearInterval(tracker);
+    await worker.evaluate(() => chrome.storage.local.set({ showLine: false }));
+  }
+  const off = await until(() => fetch(`${RECEIVER}/display`).then(r => r.json()), d => d.gaze_ring === false);
+  expect(off.gaze_ring, 'switching the option off reaches the receiver too').toBe(false);
+});

@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -234,18 +235,28 @@ def held_out_points(width: int, height: int) -> list[tuple[int, int]]:
     return [(int(width * x), int(height * y)) for x, y in HELD_OUT]
 
 
-def calibrate(vault: Path, camera: int = 0, model: str = AUTO) -> dict:
+def calibrate(
+    vault: Path, camera: int = 0, model: str = AUTO, fps: float = 60.0, report: Callable[[str], None] = print
+) -> dict:
+    """``fps``: the frame rate to ask the webcam for. Above 30, its modes are tried first
+    (``camera.probe``, up to about 15 s) and the first that delivers it is used and saved for
+    tracking; otherwise, or when none does, the webcam's default mode."""
     import cv2
-    from eyetrax.utils.video import open_camera
 
+    from .camera import describe, open_camera, probe
     from .system import monitor_mm_per_px, primary_monitor
     from .track import open_camera_thread
 
     width, height = primary_monitor()
     pitch = monitor_mm_per_px()
+    mode = None
+    if fps > 30:
+        report(f"Checking which modes of camera {camera} give {fps:g} frames a second:")
+        mode = probe(camera, fps, report=report)
+        report(f"Using {describe(mode)}." + ("" if mode else " (No faster mode delivered.)"))
     # Calibration runs two landmarkers and draws full-screen targets. Read the newest frame
     # rather than pairing an older queued eye position with the current dot.
-    capture = open_camera_thread(lambda: open_camera(camera))
+    capture = open_camera_thread(lambda: open_camera(camera, mode))
     session = Session(capture, width, height)
     cv2.namedWindow(WINDOW, cv2.WND_PROP_FULLSCREEN)
     cv2.setWindowProperty(WINDOW, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
@@ -266,7 +277,7 @@ def calibrate(vault: Path, camera: int = 0, model: str = AUTO) -> dict:
         capture.release()
         session.close()
         cv2.destroyAllWindows()
-    return choose(session.frames, vault, (width, height), camera, pitch, model)
+    return choose(session.frames, vault, (width, height), camera, pitch, model, camera_mode=mode)
 
 
 # -- choosing a model ----------------------------------------------------------------------------
@@ -363,6 +374,7 @@ def choose(
     camera: int,
     pitch: tuple[float, str],
     model: str = AUTO,
+    camera_mode: dict | None = None,
 ) -> dict:
     """Fit the candidates on the training dots, score them on the held-out ones, keep the best."""
     phases = np.array([f.phase for f in frames])
@@ -428,6 +440,8 @@ def choose(
         "monitor": list(monitor),
         "camera": camera,
         "camera_size": list(frames[0].size),
+        # The mode tracking must open the webcam in (the model is fitted to its image); None: default.
+        "camera_mode": camera_mode,
         "model": chosen,
         "model_file": model_file(chosen),
         # Errors after the tracker's smoother, which is what fixations are made of.
