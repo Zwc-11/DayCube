@@ -1,4 +1,5 @@
-"""The tracking loop: webcam frames -> EyeTrax gaze -> One Euro -> I-DT fixations -> receiver.
+"""The tracking loop: webcam frames -> gaze (gaze.head, or an older EyeTrax calibration) -> One
+Euro -> I-DT fixations -> receiver.
 
 Frames are processed in memory and dropped; only fixations leave this process, and, while the
 receiver says the extension's gaze ring is on screen, the smoothed gaze point ten times a second
@@ -102,6 +103,7 @@ class Tracker:
         self.frames: deque[tuple[float, bool]] = deque()  # (time, had a face) over the last 10 s
         self.samples: deque[float] = deque()  # gaze samples given to the detector over the last 30 s
         self.fixated: deque[tuple[float, int]] = deque()  # (time, samples) of fixations over the last 30 s
+        self.heads: deque[tuple[float, float, float]] = deque()  # (time, mm, degrees) from calibration, 10 s
 
     # -- state -------------------------------------------------------------------------------------
 
@@ -122,6 +124,10 @@ class Tracker:
             if len(self.samples) >= 30
             else None,
             "noise_px": None if self.detector.noise_px is None else round(self.detector.noise_px, 1),
+            "model": self.calibration.get("model"),
+            # Where the head is against where it was while calibrating (head-aware model only).
+            "head_moved_mm": round(float(np.median([m for _, m, _ in self.heads])), 0) if self.heads else None,
+            "head_turned_deg": round(float(np.median([d for _, _, d in self.heads])), 1) if self.heads else None,
         }
 
     def _open(self) -> int:
@@ -170,6 +176,7 @@ class Tracker:
         self.frames.clear()
         self.samples.clear()
         self.fixated.clear()
+        self.heads.clear()
         self._prediction_input = None
 
     def _report(self, now: float) -> None:
@@ -241,6 +248,12 @@ class Tracker:
             self.frames.popleft()
         if face:
             self.last_face = now
+            moved = getattr(self.estimator, "moved", None)
+            where = moved() if moved is not None else None
+            if where is not None:
+                self.heads.append((started, *where))
+                while started - self.heads[0][0] > 10:
+                    self.heads.popleft()
         if face and not blink:
             # EyeTrax already returns an ndarray: asarray is a view, and the caller-owned
             # prediction row is reused until shape/dtype changes or tracking releases it.
@@ -253,18 +266,24 @@ class Tracker:
                 self._prediction_input = np.empty((1, values.size), dtype=values.dtype)
             self._prediction_input[0] = values
             x, y = (float(v) for v in self.estimator.predict(self._prediction_input)[0])
-            x, y = self.smoother(now, x, y)
-            fx, fy = x / self.width, y / self.height
-            if -0.05 <= fx <= 1.05 and -0.05 <= fy <= 1.05:  # off-screen samples end the fixation
-                if getattr(self.receiver, "live", False) and now - self.live_at >= LIVE_EVERY_S:
-                    self.live_at = now
-                    self.receiver.send_live(now, fx, fy)
-                self.samples.append(now)
-                while now - self.samples[0] > 30:
-                    self.samples.popleft()
-                self._fixations(now, self.detector.add(now, fx, fy))
+            # A gaze ray that never meets the screen's plane (a bad frame's landmarks) is nan,
+            # which must not reach the smoother: its state would stay nan.
+            if math.isfinite(x) and math.isfinite(y):
+                self._gaze(now, x, y)
         self._report(now)
         self.sleep(max(0.0, self.period - (self.timer() - started)))
+
+    def _gaze(self, now: float, x: float, y: float) -> None:
+        x, y = self.smoother(now, x, y)
+        fx, fy = x / self.width, y / self.height
+        if -0.05 <= fx <= 1.05 and -0.05 <= fy <= 1.05:  # off-screen samples end the fixation
+            if getattr(self.receiver, "live", False) and now - self.live_at >= LIVE_EVERY_S:
+                self.live_at = now
+                self.receiver.send_live(now, fx, fy)
+            self.samples.append(now)
+            while now - self.samples[0] > 30:
+                self.samples.popleft()
+            self._fixations(now, self.detector.add(now, fx, fy))
 
     def run(self, should_stop: Callable[[], bool] = lambda: False) -> None:
         try:

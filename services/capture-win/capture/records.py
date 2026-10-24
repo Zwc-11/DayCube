@@ -186,6 +186,9 @@ class GazeState(Strict):
     face: float | None = Field(default=None, ge=0, le=1)  # share of recent frames with a usable face
     coverage: float | None = Field(default=None, ge=0, le=1)  # share of recent gaze samples inside fixations
     noise_px: float | None = Field(default=None, ge=0)  # scatter of the smoothed gaze, monitor pixels
+    model: str | None = Field(default=None, max_length=40)  # "head" (follows head movement) or an EyeTrax model
+    head_moved_mm: float | None = Field(default=None, ge=0)  # head position against calibration, last 10 s
+    head_turned_deg: float | None = Field(default=None, ge=0, le=180)
 
 
 class LivePoint(Strict):

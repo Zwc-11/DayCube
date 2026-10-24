@@ -284,3 +284,36 @@ def test_a_completed_fixation_is_reported_within_a_quarter_second() -> None:
         t.step()
     assert clock.now - completed <= 0.3 and len(receiver.states) > reported
     assert completed - ended < 0.3  # the smoother follows the saccade within a few frames
+
+
+def test_head_position_since_calibration_is_reported() -> None:
+    class HeadAware(Estimator):
+        def moved(self) -> tuple[float, float]:
+            return 52.0, 7.5
+
+    t, scene, receiver, *_, clock, log = tracker()
+    t.estimator = HeadAware()
+    t.calibration = {**CALIBRATION, "model": "head"}
+    run_for(t, clock, 2)
+    state = receiver.states[-1]
+    assert state["model"] == "head" and state["head_moved_mm"] == 52 and state["head_turned_deg"] == 7.5
+    scene.point = None  # no face: the last ten seconds still describe the head
+    run_for(t, clock, 1)
+    assert receiver.states[-1]["head_moved_mm"] == 52
+
+
+def test_an_eyetrax_calibration_reports_no_head_position() -> None:
+    t, scene, receiver, *_, clock, log = tracker()
+    run_for(t, clock, 2)
+    assert receiver.states[-1]["model"] == "ridge" and receiver.states[-1]["head_moved_mm"] is None
+
+
+def test_a_gaze_ray_that_misses_the_screen_is_skipped() -> None:
+    t, scene, receiver, *_, clock, log = tracker()
+    run_for(t, clock, 2)
+    scene.point = (float("nan"), float("nan"))
+    run_for(t, clock, 0.5)
+    scene.point = (960.0, 540.0)
+    run_for(t, clock, 2)
+    assert t.smoother.x.value == 960.0
+    assert all(abs(f.x - 0.5) < 1e-6 for f in receiver.fixations)

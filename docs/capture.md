@@ -13,10 +13,12 @@ flowchart LR
 
 - **The extension** reports pages, focus, searches, clicks, selections, media, and snapshots of
   the text on screen with where the viewport sits on the monitor.
-- **The eye tracker** turns webcam frames into fixations with EyeTrax (MIT). Frames stay in
-  memory; only fixations leave the process, and, while the gaze ring is on screen, the current
-  gaze point ten times a second (shown, never stored). It runs in its own environment because EyeTrax
-  needs numpy<2 and the rest of DayCube needs numpy>=2.
+- **The eye tracker** turns webcam frames into fixations with a gaze model that follows head
+  movement ([below](#when-your-head-moves)), on MediaPipe face landmarks; EyeTrax (MIT) runs the
+  camera and the calibration screens. Frames stay in memory; only fixations leave the process,
+  and, while the gaze ring is on screen, the current gaze point ten times a second (shown, never
+  stored). It runs in its own environment because EyeTrax needs numpy<2 and the rest of DayCube
+  needs numpy>=2.
 - **The receiver** writes the logs, decides which paragraph each fixation belongs to and which
   line is being read, and detects dwells. It learns the tracker's live error from clicks (people look at what they click) and
   corrects for it. It starts the eye tracker and restarts it if it stops.
@@ -35,7 +37,8 @@ uv sync --project services/gaze
 # 1. The webcam: frame rate and how often a face is found. Aim for 15+ frames/s and 90%+.
 uv run --project services/gaze python -m gaze check
 
-# 2. Calibrate: 13 dots, about 30 s. Sit as you normally do, about an arm's length away.
+# 2. Calibrate: 13 dots, about 30 s. Sit as you normally do, about an arm's length away, and keep
+#    your head still while the dots show. Afterwards your head may move.
 uv run --project services/gaze python -m gaze calibrate
 
 # 3. Start everything now and at every sign-in (no administrator rights needed).
@@ -59,16 +62,19 @@ uv run --project services/capture-win python -m capture import-history
 ```
 
 After pulling a new version, reload the extension at `opera://extensions` (its card shows the
-version: 0.6.0 now; 0.5.0 or later puts its page script into tabs already open, so they need no refresh;
+version: 0.7.0 now; 0.5.0 or later puts its page script into tabs already open, so they need no refresh;
 before 0.5.0, refresh them), and restart the receiver
 (sign out and in, or end its `pythonw.exe` and `python.exe` processes in Task Manager and run
 `python -m capture install-autostart` again), so the extension, receiver and tracker run the same
 code; `python -m capture doctor` reports a receiver still running older code. A newer tracker or
 extension still works with an older receiver: fields it does not know are ignored.
 
-Recalibrate when your seat, lighting or monitor changes (`python -m gaze calibrate`). It pauses
-recording for the half minute it takes, which frees the webcam, and the receiver restarts the
-tracker with the new calibration.
+Recalibrate when your lighting, webcam or monitor changes, or the glasses you wear
+(`python -m gaze calibrate`); moving your chair or head does not need it. It pauses recording for
+the half minute it takes, which frees the webcam, and the receiver restarts the tracker with the
+new calibration. A calibration made before the head-aware model (an EyeTrax `ridge` model in
+`vault/calibration/gaze.json`) keeps working, but only while your head stays where it was; `doctor`
+reports it, and one recalibration switches to the head-aware model.
 
 ### Processing rate and live checks
 
@@ -105,7 +111,8 @@ uv run --project services/capture-win python -m capture doctor
 
 prints one line per check, from what the services recorded while you used the computer: receiver,
 extension, frame rate, face detection, **fixations** (the share of gaze that became fixations, and
-the gaze noise), calibration error, **live accuracy**, today's logs, dwells and the sign-in entry.
+the gaze noise), the **gaze model** (head-aware, and how far your head is from where it was at
+calibration), calibration error, **live accuracy**, today's logs, dwells and the sign-in entry.
 It exits with code 1 when a check fails.
 
 Live accuracy comes from clicks. The eyes are on a link or button when it is clicked, so each mouse
@@ -213,8 +220,8 @@ yesterday's snapshots, so dwells on pages already open still know their text.
 
 ## How gaze is placed on a page
 
-1. The tracker predicts a screen point per frame (EyeTrax ridge regression on MediaPipe eye
-   landmarks), smooths it with a One Euro filter, and groups samples into fixations (I-DT, at
+1. The tracker predicts a screen point per frame (the head-aware model, [next](#when-your-head-moves),
+   on MediaPipe face landmarks), smooths it with a One Euro filter, and groups samples into fixations (I-DT, at
    least 0.1 s, split at 1 s so a long stare is reported while it lasts). The dispersion
    threshold starts at 6% of the screen width and rises with the gaze noise measured over the
    last 8 seconds, so a noisy session is not broken into pieces too short to keep. The tracker
@@ -239,6 +246,60 @@ Returning to a tab or window sends a fresh block-position snapshot even when the
 changed. Block ids remain stable;
 already acknowledged text is not duplicated. Reload the unpacked extension and refresh open
 pages after updating the reporter script.
+
+## When your head moves
+
+EyeTrax, which the tracker used until now, maps the eye landmarks straight to screen pixels with a
+regression learned while the head held still at calibration. That map is right only for that
+head position: lean back 5 cm or turn 10 degrees and the same picture of the eyes means another
+screen point, which the regression cannot know (its features drop where the head is, and the head
+angles it does see never varied while it learned). The tracker now separates the two:
+
+1. **Head pose, every frame.** MediaPipe's 478 face landmarks are fitted to its canonical 3D face
+   (perspective-n-point on the 33 rigid landmarks MediaPipe itself weighs for pose), giving the
+   head's rotation and position in millimetres in front of the camera.
+2. **Each eye's direction within the head.** The iris centre's camera ray is met with that eye's
+   eyeball (12 mm radius, its centre 10 mm behind the eye corners), giving the direction from the
+   eyeball's centre to the iris in the head's own frame; the lids' heights, measured on their own
+   depth in the head, add the vertical, which the iris shows least. Calibration fits, per eye, a
+   ridge regression from these to the direction the eye needed to look at each dot, computed from
+   the head pose at that frame.
+3. **Geometry to the screen.** Each eye's ray, rotated by the head's pose and starting at its
+   eyeball, meets the screen's plane; the two eyes' points are averaged.
+
+Turning or moving the head changes step 1, which is measured, and leaves step 2's inputs as they
+were, so the calibration stays valid. The landmarks come from MediaPipe's image mode (the face
+found afresh each frame): its video mode, which EyeTrax used, placed the eye landmarks worse
+(33-66 mm against 27-38 mm median error on four people).
+
+Measured on real webcam images, not a simulation: [MPIIFaceGaze](https://www.mpi-inf.mpg.de/departments/computer-vision-and-machine-learning/research/gaze-based-human-computer-interaction/its-written-all-over-your-face-full-face-appearance-based-gaze-estimation)
+(15 people on their own laptops over days to weeks, each image with the screen point they looked
+at). Each person is calibrated on 20 images from one sitting and tested on every image from the
+other days (36,000 images), when they sat elsewhere, nearer or farther, the head turned otherwise
+(`eval/head_bench.py`, results in `eval/results/head-bench.json`):
+
+| median error on screen | EyeTrax (until now) | head-aware |
+| --- | --- | --- |
+| other days | 78 mm (x 44, y 48) | **43 mm** (x 26, y 28) |
+| head 0-2 cm from where it was at calibration | 56 mm | **31 mm** |
+| head 2-4 cm away | 65 mm | **35 mm** |
+| head 4-8 cm away | 71 mm | **38 mm** |
+| head 8+ cm away | 88 mm | **50 mm** |
+| head turned 20+ degrees | 106 mm | **52 mm** |
+| each day's offset removed (what click correction can reach) | 59 mm | **34 mm** |
+| calibrated on 13 images / 40 images | 90 / 64 mm | **45 / 41 mm** |
+
+These are single frames from laptop webcams in everyday light, so they are noisier than a
+fixation (several frames averaged) at a desk: the absolute numbers are larger than on your
+monitor; the comparison is what carries over. EyeTrax here also gets the better image-mode
+landmarks, so the tracker's old error was larger still. The model's camera and screen are the
+assumed ones (webcam centred above the screen, 65 degree field of view); with each laptop's
+measured camera and screen it does no better (43 mm), so the assumptions cost nothing measurable.
+
+`/status` reports the gaze model (`gaze.model`: `head`) and how far the head is from where it was
+at calibration (`gaze.head_moved_mm`, `gaze.head_turned_deg`); `doctor` prints them. The webcam's
+image may come mirrored from some drivers and virtual cameras; the calibration notices (the eyes
+seem to turn the wrong way) and runs once more with the frames flipped back.
 
 ## Which line you are reading
 
@@ -280,11 +341,17 @@ wrong, and `doctor` says to recalibrate ([Simulation](#simulation)).
 
 ## Limits
 
-- **Accuracy.** Webcam gaze is good to roughly 2-4 degrees: paragraphs, not words. Calibration
-  reports the median error on four held-out targets and refuses to track above 120 px at 1920 px
-  wide (scaled to your screen width; 160 px on a 2560 px monitor). Glasses, backlight and head
-  movement make it worse; the live accuracy from clicks shows when, and `doctor` says to
-  recalibrate.
+- **Accuracy.** Webcam gaze is good to roughly 3-5 degrees: paragraphs and, while reading, lines;
+  not words. Calibration reports the median error on four held-out targets and refuses to track
+  above 120 px at 1920 px wide (scaled to your screen width; 160 px on a 2560 px monitor). Head
+  movement is followed, but error still grows with it (31 mm to 50 mm median from a still head to
+  8+ cm away, [above](#when-your-head-moves)); glasses and backlight make it worse; the live
+  accuracy from clicks shows when, and `doctor` says to recalibrate.
+- **Webcam geometry is assumed.** The model takes the webcam to sit centred above the screen, in
+  its plane, with a field of view of 65 degrees, and the screen's size from Windows (from the
+  monitor's own report) or 0.25 mm a pixel. On the benchmark a screen size 25% off or a field of
+  view of 55 or 78 degrees cost up to 4 mm; a webcam well off to the side of the screen is not
+  modelled.
 - **One monitor.** Gaze is calibrated on the primary monitor. Pages in windows on other monitors
   are recorded, but gaze is not placed on them.
 - **Windows acceptance.** The webcam, calibration, live receiver, Opera settings and browsing
