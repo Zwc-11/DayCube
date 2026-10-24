@@ -62,17 +62,26 @@ def test_a_capture_only_day_is_searchable(vault: Vault) -> None:
 def test_new_capture_lines_reindex_the_day(vault: Vault, monkeypatch: pytest.MonkeyPatch) -> None:
     clock = [0.0]
     monkeypatch.setattr("ingest.store.db.monotonic", lambda: clock[0])
-    capture_session(vault)
+    older = "2026-10-15"
+    capture_session(vault)  # 2026-10-22, the newest day
+    capture_session(vault, older)
     store = LifeStore(vault)
     assert not retrieve(store, "bloom filter")
-    with (vault.root / "capture" / CAPTURE_DAY / "browser.jsonl").open("a", encoding="utf-8") as stream:
-        stream.write(json.dumps({"id": "s2-0000001", "t": f"{CAPTURE_DAY}T10:00:00-04:00", "kind": "search", "tab": 1,
-                                 "window": 1, "url": "https://duckduckgo.com/?q=bloom+filter", "title": "",
-                                 "engine": "duckduckgo", "query": "bloom filter false positive rate"}) + "\n")  # fmt: skip
-    # Old days are rechecked after the documented two-second window; no real sleep in tests.
-    assert not retrieve(store, "bloom filter")
-    clock[0] = 2.01
+
+    def append(day: str, id: str, query: str) -> None:
+        with (vault.root / "capture" / day / "browser.jsonl").open("a", encoding="utf-8") as stream:
+            stream.write(json.dumps({"id": id, "t": f"{day}T10:00:00-04:00", "kind": "search", "tab": 1, "window": 1,
+                                     "url": "https://duckduckgo.com/?q=x", "title": "", "engine": "duckduckgo",
+                                     "query": query}) + "\n")  # fmt: skip
+
+    # The newest days, where records arrive, are checked on every search: found at once.
+    append(CAPTURE_DAY, "s2-0000001", "bloom filter false positive rate")
     assert retrieve(store, "bloom filter")[0]["text"] == "Searched duckduckgo: bloom filter false positive rate"
+    # Older days are rechecked after the documented two-second window; no real sleep in tests.
+    append(older, "s3-0000001", "cuckoo hashing")
+    assert not retrieve(store, "cuckoo")
+    clock[0] = 2.01
+    assert retrieve(store, "cuckoo")[0]["day"] == older
 
 
 def test_a_vault_day_keeps_its_units_and_gains_its_capture(vault: Vault) -> None:
