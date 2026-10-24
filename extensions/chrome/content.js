@@ -549,6 +549,13 @@
     }
   }
 
+  function dropRing() {
+    if (ringFrame) cancelAnimationFrame(ringFrame);
+    ringFrame = 0;
+    ring?.remove();
+    ring = null;
+  }
+
   // One display frame of the ring: ease toward the target, and keep going until there.
   function drawRing(now) {
     ringFrame = 0;
@@ -579,7 +586,8 @@
       const reply = await send({ kind: 'reading', doc: DOC });
       wanted = Boolean(reply?.show);
       place(reply?.reading);
-      look(reply?.point, reply?.fixation);
+      if (reply?.native) dropRing(); // drawn over every window by the eye tracker
+      else look(reply?.point, reply?.fixation);
     } else {
       place(null);
       look(null, null);
