@@ -16,10 +16,10 @@ It does not install GPU model weights or create external accounts.
 | Skeleton inference | NumPy, scikit-learn | Optional `skeleton` extra; GPX parsing already uses stdlib |
 | Local scene helpers | Pillow, trimesh, NumPy | Optional `moments` extra; GLB generation still planned |
 | Cloud jobs | Modal SDK | Optional `modal` extra; separate account; no jobs deployed |
-| Browser receiver | Shared FastAPI/Pydantic libraries | Separate capture environment installed; not started |
+| Capture receiver | Shared FastAPI/Pydantic libraries, PyYAML | Separate `services/capture-win` environment ([capture.md](capture.md)) |
 | Native capture | pywin32, psutil, mss, Pillow, pystray, pynput | Separate capture project, optional `windows` extra |
 | OCR | RapidOCR ONNX, RapidFuzz | Separate capture project, optional `ocr` extra |
-| Gaze | MediaPipe, OpenCV, scikit-learn | Separate capture project, optional `gaze` extra |
+| Gaze | EyeTrax 0.4.0 (MIT), which brings MediaPipe, OpenCV, scikit-learn and numpy<2 | Separate `services/gaze` environment, because of numpy<2 |
 
 Install optional backend groups only when working on those integrations:
 

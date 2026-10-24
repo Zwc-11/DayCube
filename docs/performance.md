@@ -1,4 +1,11 @@
-# Viewer rendering performance
+# Performance measurements
+
+The [2026-10-24 review](review-2026-10-24.md) adds notes/graph/cache measurements and a
+production-build viewer profile. Its renderer and scope limits are recorded with the results.
+
+See the [search measurements](efficiency-review.md#search-measurements) for scoped vector
+queries, cache retention and streaming checks. Earlier viewer, service, storage and gaze
+measurements follow.
 
 The viewer uses demand-driven rendering. A paused diorama should finish camera easing and stop
 drawing. OrbitControls invalidates frames while orbiting/zooming; playback requests animation
@@ -166,4 +173,69 @@ conditional day loads, path simplification, OCR runs and compaction are in
 
 Every other output hash matches. Use [core-storage.json](../eval/results/core-storage.json) as the
 `--compare` baseline from here on.
+
+## Windows gaze processing at 30 FPS
+
+Measured on 2026-10-23 on the same Windows PC: AMD Ryzen 7 9800X3D, Logitech C920,
+640×480 through OpenCV's MSMF backend, Python 3.11.9 and EyeTrax 0.4.0. The camera mode,
+calibration, native landmark extraction, prediction model and fixation thresholds stayed unchanged.
+
+| Live tracker | Target | Median measured rate | Status samples |
+| --- | ---: | ---: | ---: |
+| Before, `47e631d` | 15 FPS | 14.8 FPS | 6 |
+| After, source hashes in the report | 30 FPS | 29.3 FPS | 15 |
+
+The after sample ranged from 29.1 to 29.5 FPS and reported a usable face in 100% of recent
+frames throughout. Before face fractions ranged from 46% to 58%; these were sequential live
+sessions, not replayed identical images. Most of the rate increase comes from raising the cap,
+not faster inference. The prediction input buffer is now reused, but its independent timing
+benefit was not isolated. Synthetic correctness checks verify identical prediction inputs and
+screen positions at both configured rates; sample counts intentionally increase at 30 FPS.
+
+An earlier in-memory throughput probe used ten warmup frames and four seconds per backend.
+Both MSMF and DSHOW processed about 30 FPS. MSMF averaged 28.309 ms reading a frame,
+4.707 ms extracting landmarks and 0.297 ms predicting; DSHOW averaged 28.181, 4.909 and
+0.251 ms respectively. Camera reads include waiting for the next frame. This probe bypassed
+tracker pacing, transport and recording, and does not measure end-to-end tracking latency.
+
+The live measurements sample `/status` once a second after startup has settled. Each FPS
+value covers the tracker's rolling ten-second window, so samples are correlated, not independent
+latency observations. The report retains rate samples, source hashes and measurement boundaries
+without images, page content or recording data:
+[Windows rate report](../eval/results/gaze-windows-30fps.json).
+
+Repeat the read-only live measurement with an already running tracker:
+
+```powershell
+uv run python eval/profile_gaze.py --seconds 15 --output test-results/gaze-rate.json
+```
+
+This establishes near-30 FPS processing on this camera/CPU in a short session. It does not
+establish 1080p capture, long-session tail latency, accurate paragraph placement or performance
+parity with DeepInfer. The browser dwell, pause/lock, video-call camera handoff and sign-in tests
+remain separate acceptance checks.
+
+## Full-codebase follow-up, 2026-10-24
+
+See [the measured review](review-2026-10-24.md) and [file ledger](review-ledger.json). The follow-up
+batches notes queries, indexes navigation joins, bounds metadata/text/layout retention, coalesces
+index jobs and checks failure/rewrite races. Its reports include regressions and measurement limits.
+Production viewer profiles identify SwiftShader; they do not establish real-GPU performance or
+DeepInfer parity. Earlier measurements below retain their original scope and provenance.
+
+## Final algorithm pass, 2026-10-24
+
+The [algorithm follow-up](algorithm-review-2026-10-24.md) profiles history pause filtering and
+reading geometry calculations. On named synthetic fixtures, history import median fell from
+470 to 242 ms and aligned two-column decoding from 343 to 286 ms, with identical output hashes.
+Single-column decoding was essentially unchanged. The report records CPU, sampled tails, memory,
+reference/source revisions and remaining limits; these are not camera-FPS or DeepInfer parity claims.
+
+## Camera and gaze follow-up
+
+The [camera/algorithm review](gaze-tracking-review-2026-10-24.md) records RGB-buffer reuse,
+batched binocular prediction, calibration frame freshness and recovery after gaze gaps. Synthetic
+head prediction was about 10% faster and 1080p frame preparation 30% faster with identical outputs.
+The current 640×480 preparation case showed a small median gain and a slightly worse sampled tail.
+Freshness and recovery checks are separate from the CPU measurements; live accuracy needs calibration.
 

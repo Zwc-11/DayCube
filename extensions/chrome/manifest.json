@@ -1,13 +1,72 @@
 {
   "manifest_version": 3,
-  "name": "DAYCUBE Local Capture",
-  "version": "0.1.0",
-  "description": "Opt-in browser metadata for your local DAYCUBE vault. Disabled by default.",
-  "permissions": ["storage", "tabs"],
-  "host_permissions": ["http://127.0.0.1:7700/*"],
-  "background": {"service_worker": "background.js", "type": "module"},
-  "content_scripts": [{"matches": ["http://*/*", "https://*/*"], "js": ["content.js"], "run_at": "document_idle"}],
+  "name": "DayCube Capture",
+  "version": "0.9.0",
+  "description": "Records your browsing into your local DayCube vault. Nothing leaves this computer.",
+  "minimum_chrome_version": "116",
+  "permissions": [
+    "storage",
+    "unlimitedStorage",
+    "tabs",
+    "webNavigation",
+    "idle",
+    "alarms",
+    "notifications",
+    "scripting"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:7700/*",
+    "http://*/*",
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "guard.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": true
+    },
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
   "options_page": "options.html",
-  "action": {"default_title": "DAYCUBE: open recording settings"},
+  "action": {
+    "default_title": "DayCube",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "commands": {
+    "toggle-recording": {
+      "suggested_key": {
+        "default": "Alt+Shift+D"
+      },
+      "description": "Pause or resume DayCube recording"
+    }
+  },
   "incognito": "not_allowed"
 }

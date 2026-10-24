@@ -1,5 +1,7 @@
 import { DaycubeClient, ApiError } from '@daycube/api-client';
-import type { AskResult as SchemaAskResult, DayResponse } from '@daycube/schemas';
+import type {
+  AskResult as SchemaAskResult, DataCenter, DayNotes, DayResponse, Entity, KnowledgeGraph, Note, SearchResult,
+} from '@daycube/schemas';
 import {
   AskResult,
   EventPin,
@@ -217,11 +219,20 @@ export class BackendBridge {
   }
 
   /** Recorded days, oldest first, or null when the API is unreachable. */
-  async listDays(): Promise<{ date: string; places: number; events: number; kinds: string[] }[] | null> {
+  async listDays(): Promise<
+    { date: string; places: number; events: number; kinds: string[]; capture: boolean; records: number | null }[] | null
+  > {
     try {
       const days = await this.client.days();
       return days
-        .map((d) => ({ date: d.date, places: d.stats.places, events: d.stats.events, kinds: d.kinds ?? [] }))
+        .map((d) => ({
+          date: d.date,
+          places: d.stats.places,
+          events: d.stats.events,
+          kinds: d.kinds ?? [],
+          capture: d.capture ?? false,
+          records: d.records ?? null,
+        }))
         .sort((a, b) => a.date.localeCompare(b.date));
     } catch {
       return null;
@@ -362,43 +373,18 @@ export class BackendBridge {
     if (this.token) {
       try {
         if (useSseStream) {
-          const response = await globalThis.fetch(`/api/ask?stream=1`, {
+          const answerPayload = await this.client.askStream(date, question,
+            (layer, seconds) => onEarlyLocation?.(layer, seconds / 3600));
+          const latencyMs = Number((performance.now() - t0).toFixed(2));
+          this.emitLog({
             method: 'POST',
-            cache: 'no-store',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${this.token}`,
-            },
-            body: JSON.stringify({ date, question }),
+            endpoint: '/api/ask?stream=1 (SSE)',
+            status: 200,
+            latencyMs,
+            mode: 'live-backend',
+            summary: `SSE stream teleported to L${answerPayload.layer_index ?? 0} (${answerPayload.sentences.length} citations)`,
           });
-          if (response.ok && response.body) {
-            const text = await response.text();
-            const lines = text.split(/\r?\n/);
-            let answerPayload: SchemaAskResult | null = null;
-            for (const line of lines) {
-              if (line.startsWith('data: ')) {
-                const parsed = JSON.parse(line.slice(6));
-                if (parsed.layer_index != null && parsed.t != null && parsed.sentences === undefined && onEarlyLocation) {
-                  onEarlyLocation(parsed.layer_index, parsed.t / 3600);
-                }
-                if (parsed.sentences !== undefined) {
-                  answerPayload = parsed as SchemaAskResult;
-                }
-              }
-            }
-            if (answerPayload) {
-              const latencyMs = Number((performance.now() - t0).toFixed(2));
-              this.emitLog({
-                method: 'POST',
-                endpoint: '/api/ask?stream=1 (SSE)',
-                status: 200,
-                latencyMs,
-                mode: 'live-backend',
-                summary: `SSE stream teleported to L${answerPayload.layer_index ?? 0} (${answerPayload.sentences.length} citations)`,
-              });
-              return this.adaptSchemaAskResult(answerPayload, layers, latencyMs);
-            }
-          }
+          return this.adaptSchemaAskResult(answerPayload, layers, latencyMs);
         }
 
         const schemaRes = await this.client.ask(date, question);
@@ -493,8 +479,8 @@ export class BackendBridge {
               id: ev.id,
               unitId: ev.unit_id,
               type: ev.type as any,
-              t: Number((ev.t / 3600).toFixed(3)),
-              isoTime: ev.iso_time,
+              t: ev.t !== null ? Number((ev.t / 3600).toFixed(3)) : todHours,
+              isoTime: ev.iso_time ?? '',
               placeId: ev.place ?? '',
               placeName: ev.place_name ?? 'Unknown place',
               layerIndex: ev.layer_index ?? layerIndex,
@@ -512,71 +498,38 @@ export class BackendBridge {
     };
   }
 
-  async renamePlace(placeId: string, name: string): Promise<boolean> {
+  private async write(endpoint: string, run: () => Promise<unknown>, summary: string): Promise<boolean> {
     const t0 = performance.now();
     try {
-      if (this.token) {
-        await this.client.renamePlace(placeId, name);
-        const latencyMs = Number((performance.now() - t0).toFixed(2));
-        this.emitLog({
-          method: 'POST',
-          endpoint: '/api/places/rename',
-          status: 200,
-          latencyMs,
-          mode: 'live-backend',
-          summary: `Renamed place "${placeId}" → "${name}" in vault/places.json`,
-        });
-        return true;
-      }
-    } catch {
-      // Fall through to local state update
+      if (!this.token) throw new ApiError(401, 'Connect your vault token before saving changes.');
+      await run();
+      this.emitLog({
+        method: 'POST', endpoint, status: 200, latencyMs: performance.now() - t0,
+        mode: 'live-backend', summary,
+      });
+      return true;
+    } catch (error) {
+      this.emitLog({
+        method: 'POST', endpoint, status: error instanceof ApiError ? error.status : 503,
+        latencyMs: performance.now() - t0, mode: 'live-backend', summary: 'Change was not saved',
+      });
+      throw error;
     }
-    const latencyMs = Number((performance.now() - t0).toFixed(2));
-    this.emitLog({
-      method: 'POST',
-      endpoint: '/api/places/rename',
-      status: 200,
-      latencyMs,
-      mode: 'standalone-sim',
-      summary: `Renamed place "${placeId}" → "${name}" (ephemeral state)`,
-    });
-    return false;
   }
 
-  async confirmSpeaker(
+  renamePlace(placeId: string, name: string): Promise<boolean> {
+    return this.write('/api/places/rename', () => this.client.renamePlace(placeId, name),
+      `Renamed place "${placeId}" → "${name}" in vault/places.json`);
+  }
+
+  confirmSpeaker(
     date: string,
     momentId: string,
     diarLabel: string,
     personId: string
   ): Promise<boolean> {
-    const t0 = performance.now();
-    try {
-      if (this.token) {
-        await this.client.confirmSpeaker(date, momentId, diarLabel, personId);
-        const latencyMs = Number((performance.now() - t0).toFixed(2));
-        this.emitLog({
-          method: 'POST',
-          endpoint: '/api/speakers/confirm',
-          status: 200,
-          latencyMs,
-          mode: 'live-backend',
-          summary: `Persisted speaker ${diarLabel} → ${personId} in ${momentId}/transcript.json`,
-        });
-        return true;
-      }
-    } catch {
-      // Fall through
-    }
-    const latencyMs = Number((performance.now() - t0).toFixed(2));
-    this.emitLog({
-      method: 'POST',
-      endpoint: '/api/speakers/confirm',
-      status: 200,
-      latencyMs,
-      mode: 'standalone-sim',
-      summary: `Mapped speaker ${diarLabel} → ${personId} (${momentId})`,
-    });
-    return false;
+    return this.write('/api/speakers/confirm', () => this.client.confirmSpeaker(date, momentId, diarLabel, personId),
+      `Persisted speaker ${diarLabel} → ${personId} in ${momentId}/transcript.json`);
   }
 
   async triggerReindex(date: string): Promise<{ jobId: string; status: string }> {
@@ -606,6 +559,71 @@ export class BackendBridge {
       throw error;
     }
     throw new ApiError(401, 'Bind the vault token before rebuilding the index.');
+  }
+
+  /** A read the views can live without: logged, and null when the API cannot be reached. */
+  private async read<T>(endpoint: string, run: () => Promise<T>, summary: (value: T) => string): Promise<T | null> {
+    const t0 = performance.now();
+    try {
+      const value = await run();
+      const latencyMs = Number((performance.now() - t0).toFixed(2));
+      this.emitLog({ method: 'GET', endpoint, status: 200, latencyMs, mode: 'live-backend', summary: summary(value) });
+      return value;
+    } catch (error) {
+      const latencyMs = Number((performance.now() - t0).toFixed(2));
+      const status = error instanceof ApiError ? error.status : 503;
+      this.emitLog({ method: 'GET', endpoint, status, latencyMs, mode: 'live-backend', summary: 'Request failed' });
+      return null;
+    }
+  }
+
+  /** The knowledge graph across the vault, or null offline. */
+  knowledgeGraph(options: { since?: string; until?: string; kinds?: string[]; limit?: number } = {}) {
+    return this.read<KnowledgeGraph>(
+      '/api/graph',
+      () => this.client.knowledgeGraph(options),
+      (g) => `${g.nodes.length} entities, ${g.edges.length} links`
+    );
+  }
+
+  entity(id: number) {
+    return this.read<Entity>(`/api/entity/${id}`, () => this.client.entity(id), (e) => `${e.name}: ${e.mention_count} records`);
+  }
+
+  /** Every source stream in the vault and the database built from them, or null offline. */
+  dataCenter() {
+    return this.read<DataCenter>(
+      '/api/data',
+      () => this.client.dataCenter(),
+      (d) => `${d.sources.length} sources, ${d.database.rows.units ?? 0} records indexed`
+    );
+  }
+
+  /** The day's knowledge base (notes, links, local graph), or null when it cannot be loaded. */
+  dayNotes(date: string) {
+    return this.read<DayNotes>(`/api/day/${date}/notes`, () => this.client.dayNotes(date), (d) => `${d.notes.length} notes, ${d.records} records`);
+  }
+
+  note(path: string) {
+    return this.read<Note>(`/api/note?path=${path}`, () => this.client.note(path), (n) => `${n.links.length} links, ${n.backlinks.length} backlinks`);
+  }
+
+  /** Search as you type. Not logged: one request per keystroke would flood the request log. */
+  search(q: string, date: string | null, signal?: AbortSignal): Promise<SearchResult> {
+    return this.client.search(q, date, signal);
+  }
+
+  /** Write a day's linked notes into vault/notes (needs the vault token); returns the notes written. */
+  async writeNotes(date: string): Promise<string[]> {
+    if (!this.token) throw new ApiError(401, 'Connect your vault token to write notes.');
+    const t0 = performance.now();
+    const { notes } = await this.client.writeNotes(date);
+    const latencyMs = Number((performance.now() - t0).toFixed(2));
+    this.emitLog({
+      method: 'POST', endpoint: `/api/notes/${date}`, status: 200, latencyMs, mode: 'live-backend',
+      summary: `${notes.length} notes written`,
+    });
+    return notes;
   }
 }
 

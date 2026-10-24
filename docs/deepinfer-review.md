@@ -1,5 +1,12 @@
 # DeepInfer reference review
 
+The [final algorithm pass](algorithm-review-2026-10-24.md) rechecks the current reference and
+applies scoped work sharing to reading geometry, with a sorted interval index for history filtering.
+
+The [2026-10-24 follow-up](review-2026-10-24.md#current-deepinfer-reference) records the newer
+upstream revision and additional implementations examined. The pinned reference below remains
+the provenance of the original review.
+
 Reference: [deepseek-ai/DeepInfer](https://github.com/deepseek-ai/DeepInfer), revision
 [`774ce244b87cc0eb8d4b94ab9f5de2ab22049f01`](https://github.com/deepseek-ai/DeepInfer/tree/774ce244b87cc0eb8d4b94ab9f5de2ab22049f01).
 
@@ -89,7 +96,31 @@ Two more changes came out of profiling rather than from the reference:
 The lint configuration now matches the reference rule families: `E`, `F`, `UP`, `B`, `SIM`, `I` and
 `ANN`, without its CUDA-specific ignores. Measurements are in [performance notes](performance.md#second-pass-measurements).
 
-The [engineering standard](engineering.md) defines the ongoing expectations and remaining gaps.
-The earlier viewer fixes and idle measurements are documented separately in
-[performance notes](performance.md). Neither pass establishes general performance parity
-with DeepInfer or finishes the remaining live-mode and capture work.
+## Gaze processing rate
+
+The Windows gaze pass revisited the pinned CUDA graph runner's separation of owned buffers from
+per-step work. DAYCUBE keeps EyeTrax's native landmark extraction and calibrated model unchanged;
+the tracker reuses one prediction input matrix, releasing it with the camera. Pacing and FPS
+telemetry use a monotonic timer, while evidence timestamps keep their wall-clock timebase.
+
+Profiling at 640×480 found about 4.7–4.9 ms/frame in native landmarks and 0.25–0.30 ms/frame
+in prediction. The existing synchronous path processed about 30 frames/s with either Windows
+backend, so adding capture threads or a GPU inference dependency was not justified. The live
+tracker's 14.8 frames/s reflected its configured 15 frames/s cap. Its default target is now 30,
+with a separate measured rate, invalid-rate checks and tests for unchanged synthetic positions.
+The gain from raising the cap must not be attributed to the small input-buffer allocation saving.
+
+This pass also fixes stale "tracking" status during pause and adds measured/target FPS and face
+percentage to the extension options. See [capture rate checks](capture.md#processing-rate-and-live-checks).
+These are camera/CPU workload improvements, not evidence of accelerator throughput parity.
+
+## Codebase-wide follow-up
+
+The [codebase review](efficiency-review.md) examines module boundaries and frequently executed
+paths across the repository. The resulting changes are scoped vector caching, per-day evidence
+enrichment, incremental API streaming and a common Windows/Linux check command. The review
+includes before/after search measurements, output checks and remaining profiling work.
+
+Follow the [engineering guide](engineering.md) for further changes. Earlier viewer fixes and
+idle measurements are in [performance notes](performance.md). These reviews do not establish
+performance parity with DeepInfer; live-mode and capture acceptance work remains open.

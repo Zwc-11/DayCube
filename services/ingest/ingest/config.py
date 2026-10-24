@@ -8,9 +8,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(
-        env_prefix="DAYCUBE_", env_file=PROJECT_ROOT / ".env", extra="ignore"
-    )
+    model_config = SettingsConfigDict(env_prefix="DAYCUBE_", env_file=PROJECT_ROOT / ".env", extra="ignore")
 
     vault_root: Path = PROJECT_ROOT / "vault"
     timezone: str = "America/Toronto"

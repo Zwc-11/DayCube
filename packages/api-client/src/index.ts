@@ -1,8 +1,10 @@
 import {
-  askResultSchema, dayResponseSchema, eventSchema, graphSchema, momentSchema,
-  skeletonSchema, transcriptSchema,
-  type AskResult, type Day, type DayResponse, type Event,
+  askResultSchema, dataCenterSchema, dayNotesSchema, dayResponseSchema, entitySchema, eventSchema, graphSchema,
+  knowledgeGraphSchema, momentSchema, noteSchema, searchResultSchema, skeletonSchema, transcriptSchema,
+  type AskResult, type DataCenter, type Day, type DayNotes, type DayResponse, type Entity, type Event,
+  type KnowledgeGraph, type Note, type SearchResult,
 } from '@daycube/schemas';
+import { consumeSse } from './sse.mjs';
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message); this.name = 'ApiError'; }
@@ -13,7 +15,11 @@ export class ApiError extends Error {
   }
 }
 
-export interface DaySummary { date: string; stats: Day['stats']; kinds?: string[] }
+/** `capture`: the day has computer capture logs (a day with no places has only those);
+ *  `records`: its searchable record count, once indexed. */
+export interface DaySummary {
+  date: string; stats: Day['stats']; kinds?: string[]; capture?: boolean; records?: number | null;
+}
 
 export interface ClientOptions {
   baseUrl?: string;
@@ -32,7 +38,7 @@ export class DaycubeClient {
     this.transport = options.fetch ?? globalThis.fetch.bind(globalThis);
   }
 
-  private async request(path: string, init: RequestInit = {}): Promise<unknown> {
+  private async response(path: string, init: RequestInit = {}): Promise<Response> {
     const headers = new Headers(init.headers);
     if (init.body) headers.set('Content-Type', 'application/json');
     if (init.method && init.method !== 'GET') {
@@ -42,7 +48,11 @@ export class DaycubeClient {
     }
     const response = await this.transport(`${this.baseUrl}${path}`, { ...init, headers });
     if (!response.ok) throw await ApiError.from(response);
-    return response.json();
+    return response;
+  }
+
+  private async request(path: string, init: RequestInit = {}): Promise<unknown> {
+    return (await this.response(path, init)).json();
   }
 
   health() { return this.request('/health') as Promise<{ status: string; version: string; capabilities: Record<string, unknown> }>; }
@@ -65,6 +75,43 @@ export class DaycubeClient {
   }
   async skeleton(date: string) { return skeletonSchema.parse(await this.request(`/day/${encodeURIComponent(date)}/skeleton`)); }
   async graph(date: string) { return graphSchema.parse(await this.request(`/day/${encodeURIComponent(date)}/graph`)); }
+  /** The knowledge graph across the vault: the most mentioned entities between `since` and `until`
+   *  (dates or ISO times) and the links among them. */
+  async knowledgeGraph(
+    options: { since?: string; until?: string; kinds?: string[]; limit?: number } = {}, signal?: AbortSignal,
+  ): Promise<KnowledgeGraph> {
+    const query = new URLSearchParams();
+    if (options.since) query.set('since', options.since);
+    if (options.until) query.set('until', options.until);
+    if (options.kinds?.length) query.set('kinds', options.kinds.join(','));
+    if (options.limit) query.set('limit', String(options.limit));
+    const suffix = query.size ? `?${query}` : '';
+    return knowledgeGraphSchema.parse(await this.request(`/graph${suffix}`, { signal }));
+  }
+  async entity(id: number, signal?: AbortSignal): Promise<Entity> {
+    return entitySchema.parse(await this.request(`/entity/${id}`, { signal }));
+  }
+  /** Every source stream in the vault and the database built from them. */
+  async dataCenter(signal?: AbortSignal): Promise<DataCenter> {
+    return dataCenterSchema.parse(await this.request('/data', { signal }));
+  }
+  /** The day's knowledge base; its notes are written or refreshed on the server first. */
+  async dayNotes(date: string, signal?: AbortSignal): Promise<DayNotes> {
+    return dayNotesSchema.parse(await this.request(`/day/${encodeURIComponent(date)}/notes`, { signal }));
+  }
+  async note(path: string, signal?: AbortSignal): Promise<Note> {
+    return noteSchema.parse(await this.request(`/note?path=${encodeURIComponent(path)}`, { signal }));
+  }
+  /** Search as you type: no token needed; `date: null` searches every day. */
+  async search(q: string, date: string | null, signal?: AbortSignal): Promise<SearchResult> {
+    const query = new URLSearchParams({ q });
+    if (date) query.set('date', date);
+    return searchResultSchema.parse(await this.request(`/search?${query}`, { signal }));
+  }
+  notes() { return this.request('/notes') as Promise<{ path: string; title: string; identity: string | null }[]>; }
+  writeNotes(date: string) {
+    return this.request(`/notes/${encodeURIComponent(date)}`, { method: 'POST' }) as Promise<{ notes: string[] }>;
+  }
   async moment(date: string, id: string) {
     const data = await this.request(`/moment/${encodeURIComponent(id)}?date=${encodeURIComponent(date)}`) as Record<string, unknown>;
     return { meta: momentSchema.parse(data.meta), transcript: transcriptSchema.parse(data.transcript), scene: data.scene };
@@ -72,6 +119,28 @@ export class DaycubeClient {
   /** `date: null` searches every day in the vault. */
   async ask(date: string | null, question: string, signal?: AbortSignal): Promise<AskResult> {
     return askResultSchema.parse(await this.request('/ask', { method: 'POST', body: JSON.stringify({ date, question }), signal }));
+  }
+  /** Location callbacks run on receipt; the final answer uses the canonical contract. */
+  async askStream(
+    date: string | null, question: string,
+    onLocation?: (layerIndex: number, seconds: number) => void, signal?: AbortSignal
+  ): Promise<AskResult> {
+    const response = await this.response('/ask?stream=1', {
+      method: 'POST', body: JSON.stringify({ date, question }), signal,
+    });
+    let answer: AskResult | undefined;
+    await consumeSse(response, ({ event, data }) => {
+      const value = JSON.parse(data);
+      if (event === 'location' && value.layer_index !== null && value.t !== null) {
+        if (!Number.isInteger(value.layer_index) || value.layer_index < 0 || !Number.isFinite(value.t)) {
+          throw new Error('Invalid streamed location');
+        }
+        onLocation?.(value.layer_index, value.t);
+      }
+      if (event === 'answer') answer = askResultSchema.parse(value);
+    });
+    if (!answer) throw new Error('The event stream ended without an answer');
+    return answer;
   }
   appendEvents(date: string, events: Event[]) {
     events.forEach(event => eventSchema.parse(event));

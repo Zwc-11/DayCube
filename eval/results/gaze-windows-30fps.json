@@ -1,0 +1,222 @@
+{
+  "kind": "gaze-processing-rate-comparison",
+  "date": "2026-10-23",
+  "machine": {
+    "os": "Windows",
+    "cpu": "AMD Ryzen 7 9800X3D",
+    "camera": "Logitech HD Pro Webcam C920",
+    "capture_width": 640,
+    "capture_height": 480,
+    "backend": "MSMF",
+    "python": "3.11.9",
+    "eyetrax": "0.4.0"
+  },
+  "boundaries": {
+    "live": "Existing tracker, one read-only /status request per second after startup settled; correlated rolling 10-second frame-rate windows, not latency samples.",
+    "native_probe": "10 warmup frames, 4 seconds per backend; read + extract_features + predict; pacing, transport and recording excluded.",
+    "correctness": "Deterministic tests verify reused prediction inputs and steady-look screen positions at 15 and 30 FPS. Different live sessions do not establish identical-output replay."
+  },
+  "before": {
+    "running_source_revision": "47e631d",
+    "target_fps": 15,
+    "paused": false,
+    "samples": [
+      {
+        "tracking": true,
+        "fps": 14.8,
+        "face": 0.58
+      },
+      {
+        "tracking": true,
+        "fps": 14.8,
+        "face": 0.58
+      },
+      {
+        "tracking": true,
+        "fps": 14.8,
+        "face": 0.56
+      },
+      {
+        "tracking": true,
+        "fps": 14.8,
+        "face": 0.57
+      },
+      {
+        "tracking": true,
+        "fps": 14.8,
+        "face": 0.51
+      },
+      {
+        "tracking": true,
+        "fps": 14.8,
+        "face": 0.46
+      }
+    ]
+  },
+  "after": {
+    "kind": "read-only-live-gaze-status",
+    "sample_interval_s": 1,
+    "samples": [
+      {
+        "paused": false,
+        "tracking": true,
+        "reason": null,
+        "target_fps": 30.0,
+        "fps": 29.5,
+        "face": 1.0
+      },
+      {
+        "paused": false,
+        "tracking": true,
+        "reason": null,
+        "target_fps": 30.0,
+        "fps": 29.5,
+        "face": 1.0
+      },
+      {
+        "paused": false,
+        "tracking": true,
+        "reason": null,
+        "target_fps": 30.0,
+        "fps": 29.3,
+        "face": 1.0
+      },
+      {
+        "paused": false,
+        "tracking": true,
+        "reason": null,
+        "target_fps": 30.0,
+        "fps": 29.3,
+        "face": 1.0
+      },
+      {
+        "paused": false,
+        "tracking": true,
+        "reason": null,
+        "target_fps": 30.0,
+        "fps": 29.3,
+        "face": 1.0
+      },
+      {
+        "paused": false,
+        "tracking": true,
+        "reason": null,
+        "target_fps": 30.0,
+        "fps": 29.4,
+        "face": 1.0
+      },
+      {
+        "paused": false,
+        "tracking": true,
+        "reason": null,
+        "target_fps": 30.0,
+        "fps": 29.3,
+        "face": 1.0
+      },
+      {
+        "paused": false,
+        "tracking": true,
+        "reason": null,
+        "target_fps": 30.0,
+        "fps": 29.3,
+        "face": 1.0
+      },
+      {
+        "paused": false,
+        "tracking": true,
+        "reason": null,
+        "target_fps": 30.0,
+        "fps": 29.2,
+        "face": 1.0
+      },
+      {
+        "paused": false,
+        "tracking": true,
+        "reason": null,
+        "target_fps": 30.0,
+        "fps": 29.1,
+        "face": 1.0
+      },
+      {
+        "paused": false,
+        "tracking": true,
+        "reason": null,
+        "target_fps": 30.0,
+        "fps": 29.1,
+        "face": 1.0
+      },
+      {
+        "paused": false,
+        "tracking": true,
+        "reason": null,
+        "target_fps": 30.0,
+        "fps": 29.1,
+        "face": 1.0
+      },
+      {
+        "paused": false,
+        "tracking": true,
+        "reason": null,
+        "target_fps": 30.0,
+        "fps": 29.2,
+        "face": 1.0
+      },
+      {
+        "paused": false,
+        "tracking": true,
+        "reason": null,
+        "target_fps": 30.0,
+        "fps": 29.1,
+        "face": 1.0
+      },
+      {
+        "paused": false,
+        "tracking": true,
+        "reason": null,
+        "target_fps": 30.0,
+        "fps": 29.1,
+        "face": 1.0
+      }
+    ],
+    "active_samples": 15,
+    "median_fps": 29.3,
+    "source_sha256": {
+      "services/gaze/gaze/track.py": "4c5f8a16ef9ab2443d3e82a5a0c908f1857460983f2e7a9801e3f10cf52dacde",
+      "services/gaze/gaze/__main__.py": "058285f45ebc7d19f4a315a133f2114510e838e26f71745d0c5f2a66d015297f",
+      "services/capture-win/capture/api.py": "e33693f7f4ab0402cbe187a27a5ef2e264826d1f002c55d14b204b364c8d717d",
+      "services/capture-win/capture/records.py": "c35d35063ec905a51180004814bc2f915347c6b1bc666657fc84780da9b663ec",
+      "eval/profile_gaze.py": "3a82d16a63ac53524ce28a1544f5f2cf35e27b1f0b60064c4b86aeeda0839a4d"
+    }
+  },
+  "native_probe": [
+    {
+      "backend": "MSMF",
+      "width": 640,
+      "height": 480,
+      "camera_fps": 30.0,
+      "processed_fps": 30.02,
+      "face_percent": 90.9,
+      "read_ms_per_frame": 28.309,
+      "landmarks_ms_per_frame": 4.707,
+      "prediction_ms_per_frame": 0.297
+    },
+    {
+      "backend": "DSHOW",
+      "width": 640,
+      "height": 480,
+      "camera_fps": 0.0,
+      "processed_fps": 29.99,
+      "face_percent": 95.0,
+      "read_ms_per_frame": 28.181,
+      "landmarks_ms_per_frame": 4.909,
+      "prediction_ms_per_frame": 0.251
+    }
+  ],
+  "limits": [
+    "The main throughput gain is the raised processing cap. Buffer reuse savings were not isolated.",
+    "Before and after face fractions differ because these are sequential live camera sessions.",
+    "No frames or page content saved in this report.",
+    "1080p throughput, long-session latency and paragraph placement remain unverified.",
+    "No DeepInfer performance parity claim."
+  ]
+}

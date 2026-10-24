@@ -18,7 +18,7 @@ import { TopBar, type ViewMode } from './components/shell/TopBar';
 import { Itinerary } from './components/shell/Itinerary';
 import { Timeline } from './components/shell/Timeline';
 import { StageControls, type SceneOptions } from './components/shell/StageControls';
-import { formatTod } from './styles/theme';
+import { Dialog } from './components/ui';
 
 const AskBarModal = lazy(() =>
   import('./components/modals/AskBarModal').then((m) => ({ default: m.AskBarModal }))
@@ -71,6 +71,8 @@ interface AppProps {
   days: DaySummary[] | null;
   /** Open another day, or the calendar with null. */
   onOpenDate: (date: string | null) => void;
+  /** Show this day as its notes (the knowledge page). */
+  onOpenNotes?: () => void;
 }
 
 function isTypingTarget(target: EventTarget | null): boolean {
@@ -79,7 +81,7 @@ function isTypingTarget(target: EventTarget | null): boolean {
   return el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName);
 }
 
-export const App: React.FC<AppProps> = ({ date, day, days, onOpenDate }) => {
+export const App: React.FC<AppProps> = ({ date, day, days, onOpenDate, onOpenNotes }) => {
   const pageVisible = usePageVisible();
   const [focus] = useState(() => initialFocus(date, day.layers));
   const [layers, setLayers] = useState<Layer[]>(day.layers);
@@ -112,7 +114,8 @@ export const App: React.FC<AppProps> = ({ date, day, days, onOpenDate }) => {
 
   const [speakerOverrides, setSpeakerOverrides] = useState<Record<string, string>>({});
   const [capturePaused, setCapturePaused] = useState(false);
-  const [deletions, setDeletions] = useState<DeletionAudit[]>([]);
+  const [deletions] = useState<DeletionAudit[]>([]);
+  const [mutationError, setMutationError] = useState<string | null>(null);
 
   const [backendOnline, setBackendOnline] = useState(false);
   const [captureAvailable, setCaptureAvailable] = useState(false);
@@ -127,6 +130,7 @@ export const App: React.FC<AppProps> = ({ date, day, days, onOpenDate }) => {
   // on top. Settings › Performance keeps rendering so its numbers stay live.
   const suspended =
     !pageVisible ||
+    mutationError !== null ||
     askOpen ||
     Boolean(activeMomentId || activeScreenShotId) ||
     (settingsSection !== null && settingsSection !== 'performance');
@@ -276,14 +280,22 @@ export const App: React.FC<AppProps> = ({ date, day, days, onOpenDate }) => {
     setSelectedPin(matchPin);
   };
 
-  const handleConfirmSpeaker = useCallback((diarLabel: string, personName: string, momentId = 'mo_001') => {
-    setSpeakerOverrides((prev) => ({ ...prev, [diarLabel]: personName }));
-    backendBridge.confirmSpeaker(date, momentId, diarLabel, `person:${personName.toLowerCase()}`);
+  const handleConfirmSpeaker = useCallback(async (diarLabel: string, personName: string, momentId = 'mo_001') => {
+    try {
+      await backendBridge.confirmSpeaker(date, momentId, diarLabel, `person:${personName.toLowerCase()}`);
+      setSpeakerOverrides((prev) => ({ ...prev, [diarLabel]: personName }));
+    } catch (error) {
+      setMutationError(error instanceof Error ? error.message : 'The speaker name could not be saved.');
+    }
   }, [date]);
 
-  const handleRenamePlace = useCallback((placeId: string, newName: string) => {
-    setLayers((prev) => prev.map((l) => (l.placeId === placeId ? { ...l, name: newName } : l)));
-    backendBridge.renamePlace(placeId, newName);
+  const handleRenamePlace = useCallback(async (placeId: string, newName: string) => {
+    try {
+      await backendBridge.renamePlace(placeId, newName);
+      setLayers((prev) => prev.map((l) => (l.placeId === placeId ? { ...l, name: newName } : l)));
+    } catch (error) {
+      setMutationError(error instanceof Error ? error.message : 'The place name could not be saved.');
+    }
   }, []);
 
   const changeViewMode = useCallback((mode: ViewMode) => {
@@ -316,39 +328,8 @@ export const App: React.FC<AppProps> = ({ date, day, days, onOpenDate }) => {
   const togglePlay = useCallback(() => setPlaying((p) => !p), []);
   const cycleSpeed = useCallback(() => setPlaySpeed((s) => SPEEDS[(SPEEDS.indexOf(s) + 1) % SPEEDS.length]), []);
 
-  const handleDeleteHours = (t0: number, t1: number, reason: string) => {
-    let purgedCount = 0;
-    setLayers((prev) =>
-      prev.map((lyr) => ({
-        ...lyr,
-        events: lyr.events.map((ev) => {
-          if (ev.t >= t0 && ev.t <= t1 && !ev.deleted) {
-            purgedCount++;
-            return { ...ev, deleted: true };
-          }
-          return ev;
-        }),
-      }))
-    );
-    const fallbackEntry = (): DeletionAudit => ({
-      id: `del_${Date.now()}`,
-      t0,
-      t1,
-      isoT0: `${date}T${formatTod(t0)}:00-07:00`,
-      isoT1: `${date}T${formatTod(t1)}:00-07:00`,
-      reason,
-      appliedAt: new Date().toISOString(),
-      purgedEventsCount: purgedCount,
-    });
-    fetch('/api/delete-hours', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      cache: 'no-store',
-      body: JSON.stringify({ t0, t1, reason, purgedEventsCount: purgedCount }),
-    })
-      .then((r) => r.json())
-      .then((res) => setDeletions((d) => [res?.data?.deletion ?? fallbackEntry(), ...d]))
-      .catch(() => setDeletions((d) => [fallbackEntry(), ...d]));
+  const handleDeleteHours = () => {
+    setMutationError('Deleting a time range is not supported by the local API yet. No records were deleted.');
   };
 
   const activeLayer = layers[activeLayerIndex] || layers[0];
@@ -380,6 +361,7 @@ export const App: React.FC<AppProps> = ({ date, day, days, onOpenDate }) => {
         viewMode={viewMode}
         onViewModeChange={changeViewMode}
         onOpenAsk={openAsk}
+        onOpenNotes={onOpenNotes}
         capture={captureAvailable ? (capturePaused ? 'paused' : 'on') : 'off'}
         onToggleCapture={toggleCapture}
         onOpenSettings={openSettings}
@@ -505,6 +487,7 @@ export const App: React.FC<AppProps> = ({ date, day, days, onOpenDate }) => {
       <Suspense fallback={null}>
         {askOpen && (
           <AskBarModal
+            date={date}
             isOpen={askOpen}
             onClose={() => setAskOpen(false)}
             layers={layers}
@@ -524,7 +507,7 @@ export const App: React.FC<AppProps> = ({ date, day, days, onOpenDate }) => {
             momentId={activeMomentId}
             onClose={() => setActiveMomentId(null)}
             speakerOverrides={speakerOverrides}
-            onConfirmSpeaker={handleConfirmSpeaker}
+            onConfirmSpeaker={(label, name) => handleConfirmSpeaker(label, name, activeMomentId)}
           />
         )}
 
@@ -538,6 +521,7 @@ export const App: React.FC<AppProps> = ({ date, day, days, onOpenDate }) => {
 
         {settingsSection && (
           <SystemStudioModal
+            date={date}
             section={settingsSection}
             onSectionChange={setSettingsSection}
             onClose={() => setSettingsSection(null)}
@@ -563,6 +547,15 @@ export const App: React.FC<AppProps> = ({ date, day, days, onOpenDate }) => {
           />
         )}
       </Suspense>
+      {mutationError && (
+        <Dialog title="Change not saved" onClose={() => setMutationError(null)}>
+          <div className="dialog__head"><h2 className="dialog__title">Change not saved</h2></div>
+          <div className="card">
+            <p role="alert" className="card__text">{mutationError}</p>
+            <button className="btn btn--secondary" onClick={() => setMutationError(null)}>Close</button>
+          </div>
+        </Dialog>
+      )}
     </div>
   );
 };

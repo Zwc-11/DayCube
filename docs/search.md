@@ -23,7 +23,11 @@ deleting it costs nothing but the time to rebuild.
 | `units` | Events, transcript segments, on-screen text runs and visits, with `ts` (epoch seconds, since ISO strings with offsets do not sort across DST) and `text_hash` (blake2b-128) |
 | `units_fts` | FTS5 over `units.text` (external content) |
 | `vectors` | Per embedded unit: the int8 embedding (384 bytes) and its sign bits (48 bytes) |
-| `meta` | Embedding model and dimension, and the write counter. A model change replaces every vector |
+| `meta` | Embedding model and dimension, the write counter, and the version of what is derived. A model change replaces every vector; a change in what is derived (`DERIVED_VERSION`: units, graph, note links) reads every day and note again on the next use, keeping vectors, which are found again by text |
+| `entities` | The knowledge graph's nodes: kind (site, page, query, course, deadline, place, person, topic, note, day), a canonical key, a display name. Shared by every day |
+| `mentions` | Unit to entity, with a role: `on` (happened on that page or site), `about` (names it), `at` (a place), `with` (a person) |
+| `links` | Entity to entity, per day and with the record that shows it: `part_of`, `led_to`, `mentions`, `due`; and `links` from the person's notes (day `''`, the note's path as evidence) |
+| `notes`, `note_chunks`, `note_chunks_fts` | The notes folder as last read: each note's identity and stamp, and the person's own writing in pieces with a keyword index ([notes.md](notes.md)) |
 | `speakers`, `deletions` | Carried over from the per-day index for speaker naming and purges |
 
 Unit ids use `AUTOINCREMENT`, so they are never reused and a vector can never point at another
@@ -38,7 +42,10 @@ unit.
 - **Set statements, not triggers.** The keyword index and vectors are updated by one statement
   per day rather than a trigger per row; per-row triggers made a 5,053-unit day take 507 ms.
 - **Cheap freshness.** A query re-checks a day only when its file stamps changed since the
-  last check; otherwise it costs a few stats per day.
+  last check; otherwise it costs a few stats per day. Search as you type sends a request per
+  pause in typing, so across every day it re-checks older days and the notes folder at most every
+  2 s (`FULL_CHECK_S`) and today and yesterday, where capture is arriving, every time. A note hit
+  whose file was deleted since is dropped, and a changed one brings the folder in at once.
 - **Reuse before embedding.** Embedding is the slow step: bge-small manages 28–47 texts a second
   on two CPU cores. Re-indexing a day reuses the vectors of its unchanged units, and repeated
   text on other days ("Visited Home", the same document) reuses theirs. Only new text is
@@ -57,6 +64,78 @@ unit.
 The database rewrites a day in place, in a shared file with an embedding column, where the old
 index wrote a fresh file per day. The extra 50 ms is mostly the insert into a table with a
 uniqueness index (46 ms for 5,053 rows).
+
+## What the computer capture adds
+
+Days are searched whether they have a vault day folder, computer capture
+(`vault/capture/<date>/`, [capture.md](capture.md)), or both. `ingest/capture/synthesize.py` reads
+a day's capture logs once and turns them into units:
+
+| Unit type | From | Text |
+| --- | --- | --- |
+| `web.visit` | navigation, focus and idle records: the page in front, idle and locked time left out, the same page back within a minute merged, spans under 3 s dropped | "Opened *title* (*site*) for 5 min" |
+| `web.read` | the line decoder's reads (`reading.jsonl`) | "Read in *title* (*site*): *the lines read*"; attention = line coverage, confidence = the decoder's |
+| `web.dwell` | dwells (`attention.jsonl`), one per dwell | "Stayed 16 s on this in *title*: *the block*" |
+| `web.look` | fixations placed on a block, 3 s or more in all, for blocks not read line by line (headings, figures, tables) | "Looked at in *title*: *the block*" |
+| `web.search`, `web.click`, `web.selection`, `web.media` | the browser records of those kinds | "Searched google: *query*", "Clicked “*link*” to *site*", "Copied in *title*: “*text*”", "Played media for 5 min in *title*" |
+
+Block texts are sent once per page load, so the previous day's text snapshots are read too. A
+line that does not parse is skipped. The day's source stamp covers its capture logs (compacted or
+not), so new capture lines re-index the day at the next search. A capture-only day takes the
+receiver's time zone (`DAYCUBE_TIMEZONE`, default America/Toronto) and has no places.
+
+## Knowledge graph
+
+`ingest/graph/extract.py` names entities only where a record names them exactly, so the graph
+needs no language model and no guessing:
+
+| Kind | Key | From |
+| --- | --- | --- |
+| `site` | domain without `www.` | every capture record with a URL |
+| `page` | URL without fragment, tracking parameters or trailing slash | visits, reads, dwells, looks, clicks, copies, media |
+| `query` | the search, lower case | searches |
+| `course` | a course code (`CS 136`, `MATH 135`: 2-5 capitals, 3 digits) | page titles, text read or stared at |
+| `deadline` | date (and time) plus course, named "CS 136 due Fri Oct 30, 11:59 PM" | "due October 30 at 11:59 PM" in text read or stared at; without a year, the next such date |
+| `place` | the vault's place id, named as in the day or as renamed in `places.json` (a rename shows at once) | visits |
+| `person`, `topic` | the event's own names | events' `people` and `topics` |
+
+Links: a page is `part_of` its site; a search `led_to` the page opened from its results (the next
+page in that tab that is not a results page, within 5 minutes); a page `led_to` the page a link on
+it opened; a page `mentions` a course; a course (or the page, without one) is `due` at a deadline;
+a place `led_to` the next place visited that day.
+Mentions and links are written with the day's units, in the same transaction, and entities that
+nothing points at any more are dropped. A place's records are found through `units.place` rather
+than a mention per event.
+
+`GET /graph?since=&until=&kinds=&limit=` returns the most mentioned entities in a window and the
+links among them; `GET /entity/{id}` one entity with its records (newest first) and neighbours.
+The viewer draws it under Settings → Knowledge graph, and from the calendar under Your data, with
+a deterministic force layout (`apps/viewer/src/lib/graphLayout.ts`: the same graph always gives
+the same picture; 132 nodes lay out in about 40 ms). Click a node for its records and neighbours.
+On the synthetic large day (5,053 units, every event a visit and so a place mention) writing the
+graph adds 45 ms to the day's update (107 to 152 ms); a real day names far fewer entities.
+
+## Question filters
+
+A question's time, kind and site words narrow the search and are taken out of it
+(`ingest/ask/query.py`, patterns only, no language model):
+
+| Words | Filter |
+| --- | --- |
+| today, tonight, yesterday, last night, *N* days ago, on Monday, last Friday, October 22, Oct 22nd, 2026-10-22 | that day (a date ahead of today means last year) |
+| morning, afternoon, evening, night after a day; this morning | 5-12, 12-17, 17-24, 18-24 h of it |
+| this week, last week, this month, last month, since Tuesday, past 3 days, past 2 hours | the range up to now |
+| read / searched, googled, looked up / stared at / clicked / copied / watched, videos / visited, opened / said, talked about | reads, dwells, looks, on-screen text and pages read; searches; dwells; clicks; copies; media; visits; conversations |
+| on YouTube, in D2L, on Wikipedia, on GitHub, on example.com | records on that site (or its subdomains), through the site's mentions |
+
+"What did I read about hash tables yesterday on Wikipedia" searches for "hash tables" in reads,
+dwells and looks between yesterday's midnights, on wikipedia.org. A question that is all filters
+("what did I search yesterday") lists the records instead (up to 20, in time order). When the
+words match nothing within the filters, the filtered records are listed and the answer says so
+("Nothing matched “quantum”; showing yesterday, reading instead."). Ask reports what it read the
+question as in `filters` (labels, window, kinds, site, the words searched). Meaning search embeds
+the question without its filter words and drops hits outside the kinds and site afterwards. Notes
+are searched only by questions without filters, since they have no time, kind or site.
 
 ## Retrieval
 
@@ -143,14 +222,43 @@ not a result.
   unanswerable questions scored up to 0.60 ("Did I go swimming?" returns two records). Saying
   "nothing in your days answers this" is the answer checker's job.
 
+## Search as you type
+
+`GET /search?q=&date=` returns what `POST /ask` returns, without the vault token (reads only, like
+the other GET routes), with each result's note and the words to mark there, and `took_ms`. The
+viewer's notes page calls it 90 ms after the last keystroke and cancels the request it replaces.
+The API loads the vault database, the embedding model and the vector index in the background when
+it starts, so the first question is as fast as the rest.
+
+`eval/search_latency.py` builds days of synthetic computer capture (80 pages a day, real English
+lines from these docs) and times 10 questions, 3 rounds, warm, through the API (two CPU cores):
+
+| Vault | Search | One day, p50 / p95 | Every day, p50 / p95 |
+| --- | --- | ---: | ---: |
+| 90 days, 25,560 records | keywords | 5.5 / 10.1 ms | 7.5 / 13.9 ms |
+| 20 days, 5,680 records | keywords and meaning (bge-small) | 13.9 / 18.7 ms | 29.0 / 52.2 ms |
+
+Server time; the request adds 2-4 ms. Embedding the question is most of the meaning-search cost.
+Getting there: the result-to-note lookup walked every page entity until a `CROSS JOIN` fixed its
+order (4.3 ms to 0.04 ms at 30 days), and searches across days stopped re-checking 90 days of files
+per keystroke (39 to 7.5 ms). Embedding the 5,680 records the first time took 326 s; that is
+`daycube index`'s job, not a search's.
+
+Opening a day's notes at 60 days (4,862 notes): 36 ms once written, 415 ms when its notes are
+written first; one note 25 ms. The notes folder is listed with `os.scandir` (on Windows the
+listing carries each file's times and size).
+
 ## Commands
 
 ```powershell
 uv sync --extra vector                    # meaning search; without it, keywords only
 uv run daycube index --date 2026-10-20    # or --all: rebuild rows and fill every vector
 uv run daycube stats                      # days, units, units without vectors, size
+uv run daycube data                       # the data center: every source stream and the database
+uv run daycube graph                      # the most mentioned entities and their links, as JSON
 uv run --extra vector python eval/score_retrieval.py
 uv run python eval/vector_bench.py --sizes 100000 500000 1930000
+uv run python eval/search_latency.py --days 90 --output eval/results/search-latency.json
 ```
 
 `DAYCUBE_VECTOR_SEARCH=false` turns meaning search off; `DAYCUBE_EMBEDDING_MODEL` picks another

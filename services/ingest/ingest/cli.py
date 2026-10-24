@@ -14,7 +14,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(prog="daycube", description="DAYCUBE local vault tools")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("init", help="Initialize vault and private bearer token")
-    commands.add_parser("seed", help="Copy the synthetic fixture; never overwrite existing days")
+    seed = commands.add_parser("seed", help="Copy the synthetic fixture; never overwrite existing days")
+    seed.add_argument(
+        "--capture", action="store_true", help="Also write a scripted morning of computer capture (2026-10-22)"
+    )
     commands.add_parser("doctor", help="Check local runtime and optional integrations")
     commands.add_parser("stats", help="Days, units and size of the vault database")
     validate = commands.add_parser("validate")
@@ -23,6 +26,12 @@ def main() -> None:
     which = index.add_mutually_exclusive_group(required=True)
     which.add_argument("--date")
     which.add_argument("--all", action="store_true")
+    notes = commands.add_parser("notes", help="Write the linked notes (vault/notes, Obsidian-compatible) of a day")
+    which_notes = notes.add_mutually_exclusive_group(required=True)
+    which_notes.add_argument("--date")
+    which_notes.add_argument("--all", action="store_true")
+    commands.add_parser("graph", help="The most mentioned entities and their links, as JSON")
+    commands.add_parser("data", help="The data center: every source stream and the database, with sizes")
     compact = commands.add_parser("compact", help="Compress large logs of finished days; reads stay transparent")
     compact.add_argument("--before", help="Compact every day before this date (default: today)")
     args = parser.parse_args()
@@ -36,14 +45,37 @@ def main() -> None:
             result = {"date": vault.seed(), "seeded": True}
         except FileExistsError as error:
             result = {"seeded": False, "message": str(error)}
+        if args.capture:
+            from .capture.sample import SAMPLE_CAPTURE_DAY, write_sample_capture
+
+            if (vault.root / "capture" / SAMPLE_CAPTURE_DAY).exists():
+                result["capture"] = {"seeded": False, "message": f"Capture for {SAMPLE_CAPTURE_DAY} already exists"}
+            else:
+                write_sample_capture(vault, damaged=False)
+                result["capture"] = {"date": SAMPLE_CAPTURE_DAY, "seeded": True}
     elif args.command == "validate":
         result = vault.validate(args.date)
-    elif args.command in {"index", "stats"}:
-        store = LifeStore(vault, default_embedder(settings.vector_search, settings.embedding_model))
+    elif args.command in {"index", "stats", "notes", "graph", "data"}:
+        store = LifeStore(
+            vault, default_embedder(settings.vector_search, settings.embedding_model), zone=settings.timezone
+        )
         if args.command == "stats":
             result = store.stats()
+        elif args.command == "graph":
+            result = store.graph(limit=100)
+        elif args.command == "data":
+            from .datacenter import report
+
+            result = report(store)
+        elif args.command == "notes":
+            from .notes import Notes
+
+            writer = Notes(store)
+            days = store.days() if args.all else [args.date]
+            paths = sorted({p.relative_to(writer.root).as_posix() for day in days for p in writer.write_day(day)})
+            result = {"folder": str(writer.root), "notes": paths}
         else:
-            result = [store.update(d["date"]) for d in vault.list_days()] if args.all else store.update(args.date)
+            result = [store.update(day) for day in store.days()] if args.all else store.update(args.date)
     elif args.command == "compact":
         before = args.before or datetime.now(ZoneInfo(settings.timezone)).date().isoformat()
         result = {d["date"]: vault.compact_day(d["date"]) for d in vault.list_days() if d["date"] < before}

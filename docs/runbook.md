@@ -50,7 +50,8 @@ reload automatically. API code edits hot reload when started with `npm run api`.
 ## Recovery
 
 - API is offline: start `npm run api`; check `/health` and `/docs`.
-- No days listed: run `npm run demo:seed`. Existing days are preserved.
+- No days listed: run `npm run demo:seed`. Existing days are preserved. `uv run daycube seed --capture`
+  also writes a scripted morning of computer capture (2026-10-22) to try the notes view on.
 - Invalid vault: run `uv run daycube validate --date YYYY-MM-DD` for the exact contract failure.
 - Invalid/stale index: run `uv run daycube index --date YYYY-MM-DD` (or `--all`); the vault database
   is rebuilt from files. Deleting `vault/daycube.sqlite*` is also safe: the next search rebuilds it.

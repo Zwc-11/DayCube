@@ -81,7 +81,7 @@ def test_appending_events_keeps_a_valid_day_validated(vault: Vault) -> None:
     vault.validate(DAY)
     event = dict(vault.events(DAY)[0], id="ev_appended")
     vault.append_events(DAY, [event])
-    assert vault._validated[DAY] == vault.validation_key(vault.snapshot(DAY))
+    assert vault._validated.get(DAY) == vault.validation_key(vault.snapshot(DAY))
     assert Vault(vault.root).validate(DAY)["events"] == 15  # a cold check agrees
 
 

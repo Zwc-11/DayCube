@@ -1,0 +1,472 @@
+{
+  "revision": "1af2039e597e5c736d81abbcfba82b18c711d216",
+  "environment": {
+    "platform": "win32",
+    "arch": "x64",
+    "cpu": "AMD Ryzen 7 9800X3D 8-Core Processor           ",
+    "node": "v24.11.1",
+    "chromium": "156.0.8078.4",
+    "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"
+  },
+  "harness_sha256": "2a9d41e439e9089032a286e7915fe0f5aec3c98df786a20f6969543eed9d44db",
+  "fixture": "Bundled synthetic sample; every API route returns 503; uncompressed localhost static assets",
+  "samples": [
+    {
+      "repeat": 0,
+      "name": "calendar-cold",
+      "ready_ms": 96.77109999999999,
+      "fcp_ms": null,
+      "resources": [
+        {
+          "name": "index-mVkQXTIK.js",
+          "transfer_bytes": 346963,
+          "encoded_bytes": 346663
+        },
+        {
+          "name": "index-Es9JCQGi.css",
+          "transfer_bytes": 42039,
+          "encoded_bytes": 41739
+        },
+        {
+          "name": "vendor-react-GuXCnis6.js",
+          "transfer_bytes": 148724,
+          "encoded_bytes": 148424
+        },
+        {
+          "name": "instrument-sans-latin-wdth-normal-BVScPF0l.woff2",
+          "transfer_bytes": 57632,
+          "encoded_bytes": 57332
+        }
+      ]
+    },
+    {
+      "repeat": 0,
+      "name": "stage-cold",
+      "ready_ms": 344.0864,
+      "fcp_ms": 40,
+      "resources": [
+        {
+          "name": "index-mVkQXTIK.js",
+          "transfer_bytes": 0,
+          "encoded_bytes": 346663
+        },
+        {
+          "name": "vendor-react-GuXCnis6.js",
+          "transfer_bytes": 0,
+          "encoded_bytes": 148424
+        },
+        {
+          "name": "index-Es9JCQGi.css",
+          "transfer_bytes": 0,
+          "encoded_bytes": 41739
+        },
+        {
+          "name": "instrument-sans-latin-wdth-normal-BVScPF0l.woff2",
+          "transfer_bytes": 0,
+          "encoded_bytes": 57332
+        },
+        {
+          "name": "App-C7VjDfhp.js",
+          "transfer_bytes": 67804,
+          "encoded_bytes": 67504
+        },
+        {
+          "name": "vendor-three-Ds9-c6WA.js",
+          "transfer_bytes": 833396,
+          "encoded_bytes": 833096
+        },
+        {
+          "name": "theme-DpUzhezp.js",
+          "transfer_bytes": 2475,
+          "encoded_bytes": 2175
+        },
+        {
+          "name": "index-B0Z_BNTg.js",
+          "transfer_bytes": 5628,
+          "encoded_bytes": 5328
+        }
+      ]
+    },
+    {
+      "repeat": 0,
+      "name": "stage-warm",
+      "ready_ms": 307.11839999999995,
+      "fcp_ms": 68,
+      "resources": [
+        {
+          "name": "index-mVkQXTIK.js",
+          "transfer_bytes": 0,
+          "encoded_bytes": 346663
+        },
+        {
+          "name": "vendor-react-GuXCnis6.js",
+          "transfer_bytes": 0,
+          "encoded_bytes": 148424
+        },
+        {
+          "name": "index-Es9JCQGi.css",
+          "transfer_bytes": 0,
+          "encoded_bytes": 41739
+        },
+        {
+          "name": "instrument-sans-latin-wdth-normal-BVScPF0l.woff2",
+          "transfer_bytes": 0,
+          "encoded_bytes": 57332
+        },
+        {
+          "name": "App-C7VjDfhp.js",
+          "transfer_bytes": 0,
+          "encoded_bytes": 67504
+        },
+        {
+          "name": "vendor-three-Ds9-c6WA.js",
+          "transfer_bytes": 0,
+          "encoded_bytes": 833096
+        },
+        {
+          "name": "theme-DpUzhezp.js",
+          "transfer_bytes": 0,
+          "encoded_bytes": 2175
+        },
+        {
+          "name": "index-B0Z_BNTg.js",
+          "transfer_bytes": 0,
+          "encoded_bytes": 5328
+        }
+      ]
+    },
+    {
+      "repeat": 1,
+      "name": "calendar-cold",
+      "ready_ms": 86.66440000000875,
+      "fcp_ms": null,
+      "resources": [
+        {
+          "name": "index-mVkQXTIK.js",
+          "transfer_bytes": 346963,
+          "encoded_bytes": 346663
+        },
+        {
+          "name": "index-Es9JCQGi.css",
+          "transfer_bytes": 42039,
+          "encoded_bytes": 41739
+        },
+        {
+          "name": "vendor-react-GuXCnis6.js",
+          "transfer_bytes": 148724,
+          "encoded_bytes": 148424
+        },
+        {
+          "name": "instrument-sans-latin-wdth-normal-BVScPF0l.woff2",
+          "transfer_bytes": 57632,
+          "encoded_bytes": 57332
+        }
+      ]
+    },
+    {
+      "repeat": 1,
+      "name": "stage-cold",
+      "ready_ms": 333.5372000000061,
+      "fcp_ms": 40,
+      "resources": [
+        {
+          "name": "index-mVkQXTIK.js",
+          "transfer_bytes": 0,
+          "encoded_bytes": 346663
+        },
+        {
+          "name": "vendor-react-GuXCnis6.js",
+          "transfer_bytes": 0,
+          "encoded_bytes": 148424
+        },
+        {
+          "name": "index-Es9JCQGi.css",
+          "transfer_bytes": 0,
+          "encoded_bytes": 41739
+        },
+        {
+          "name": "instrument-sans-latin-wdth-normal-BVScPF0l.woff2",
+          "transfer_bytes": 0,
+          "encoded_bytes": 57332
+        },
+        {
+          "name": "App-C7VjDfhp.js",
+          "transfer_bytes": 67804,
+          "encoded_bytes": 67504
+        },
+        {
+          "name": "vendor-three-Ds9-c6WA.js",
+          "transfer_bytes": 833396,
+          "encoded_bytes": 833096
+        },
+        {
+          "name": "theme-DpUzhezp.js",
+          "transfer_bytes": 2475,
+          "encoded_bytes": 2175
+        },
+        {
+          "name": "index-B0Z_BNTg.js",
+          "transfer_bytes": 5628,
+          "encoded_bytes": 5328
+        }
+      ]
+    },
+    {
+      "repeat": 1,
+      "name": "stage-warm",
+      "ready_ms": 301.6051000000007,
+      "fcp_ms": 60,
+      "resources": [
+        {
+          "name": "index-mVkQXTIK.js",
+          "transfer_bytes": 0,
+          "encoded_bytes": 346663
+        },
+        {
+          "name": "vendor-react-GuXCnis6.js",
+          "transfer_bytes": 0,
+          "encoded_bytes": 148424
+        },
+        {
+          "name": "index-Es9JCQGi.css",
+          "transfer_bytes": 0,
+          "encoded_bytes": 41739
+        },
+        {
+          "name": "instrument-sans-latin-wdth-normal-BVScPF0l.woff2",
+          "transfer_bytes": 0,
+          "encoded_bytes": 57332
+        },
+        {
+          "name": "App-C7VjDfhp.js",
+          "transfer_bytes": 0,
+          "encoded_bytes": 67504
+        },
+        {
+          "name": "vendor-three-Ds9-c6WA.js",
+          "transfer_bytes": 0,
+          "encoded_bytes": 833096
+        },
+        {
+          "name": "theme-DpUzhezp.js",
+          "transfer_bytes": 0,
+          "encoded_bytes": 2175
+        },
+        {
+          "name": "index-B0Z_BNTg.js",
+          "transfer_bytes": 0,
+          "encoded_bytes": 5328
+        }
+      ]
+    },
+    {
+      "repeat": 2,
+      "name": "calendar-cold",
+      "ready_ms": 119.0171999999875,
+      "fcp_ms": 80,
+      "resources": [
+        {
+          "name": "index-mVkQXTIK.js",
+          "transfer_bytes": 346963,
+          "encoded_bytes": 346663
+        },
+        {
+          "name": "index-Es9JCQGi.css",
+          "transfer_bytes": 42039,
+          "encoded_bytes": 41739
+        },
+        {
+          "name": "vendor-react-GuXCnis6.js",
+          "transfer_bytes": 148724,
+          "encoded_bytes": 148424
+        },
+        {
+          "name": "instrument-sans-latin-wdth-normal-BVScPF0l.woff2",
+          "transfer_bytes": 57632,
+          "encoded_bytes": 57332
+        }
+      ]
+    },
+    {
+      "repeat": 2,
+      "name": "stage-cold",
+      "ready_ms": 334.13760000000184,
+      "fcp_ms": 40,
+      "resources": [
+        {
+          "name": "index-mVkQXTIK.js",
+          "transfer_bytes": 0,
+          "encoded_bytes": 346663
+        },
+        {
+          "name": "vendor-react-GuXCnis6.js",
+          "transfer_bytes": 0,
+          "encoded_bytes": 148424
+        },
+        {
+          "name": "index-Es9JCQGi.css",
+          "transfer_bytes": 0,
+          "encoded_bytes": 41739
+        },
+        {
+          "name": "instrument-sans-latin-wdth-normal-BVScPF0l.woff2",
+          "transfer_bytes": 0,
+          "encoded_bytes": 57332
+        },
+        {
+          "name": "App-C7VjDfhp.js",
+          "transfer_bytes": 67804,
+          "encoded_bytes": 67504
+        },
+        {
+          "name": "theme-DpUzhezp.js",
+          "transfer_bytes": 2475,
+          "encoded_bytes": 2175
+        },
+        {
+          "name": "vendor-three-Ds9-c6WA.js",
+          "transfer_bytes": 833396,
+          "encoded_bytes": 833096
+        },
+        {
+          "name": "index-B0Z_BNTg.js",
+          "transfer_bytes": 5628,
+          "encoded_bytes": 5328
+        }
+      ]
+    },
+    {
+      "repeat": 2,
+      "name": "stage-warm",
+      "ready_ms": 309.1993000000075,
+      "fcp_ms": 60,
+      "resources": [
+        {
+          "name": "index-mVkQXTIK.js",
+          "transfer_bytes": 0,
+          "encoded_bytes": 346663
+        },
+        {
+          "name": "vendor-react-GuXCnis6.js",
+          "transfer_bytes": 0,
+          "encoded_bytes": 148424
+        },
+        {
+          "name": "index-Es9JCQGi.css",
+          "transfer_bytes": 0,
+          "encoded_bytes": 41739
+        },
+        {
+          "name": "instrument-sans-latin-wdth-normal-BVScPF0l.woff2",
+          "transfer_bytes": 0,
+          "encoded_bytes": 57332
+        },
+        {
+          "name": "App-C7VjDfhp.js",
+          "transfer_bytes": 0,
+          "encoded_bytes": 67504
+        },
+        {
+          "name": "vendor-three-Ds9-c6WA.js",
+          "transfer_bytes": 0,
+          "encoded_bytes": 833096
+        },
+        {
+          "name": "theme-DpUzhezp.js",
+          "transfer_bytes": 0,
+          "encoded_bytes": 2175
+        },
+        {
+          "name": "index-B0Z_BNTg.js",
+          "transfer_bytes": 0,
+          "encoded_bytes": 5328
+        }
+      ]
+    }
+  ],
+  "playback": [
+    {
+      "engine": "3d",
+      "seconds": 30,
+      "idle_draws": 0,
+      "playback_draws": 14944,
+      "task_ms": 19717.540999999997,
+      "script_ms": 544.994,
+      "heap_before_bytes": 8044304,
+      "heap_after_gc_bytes": 10870968
+    },
+    {
+      "engine": "2d",
+      "seconds": 30,
+      "idle_draws": 0,
+      "playback_draws": 300,
+      "task_ms": 1324.5929999999967,
+      "script_ms": 747.1099999999999,
+      "heap_before_bytes": 10483520,
+      "heap_after_gc_bytes": 10690216
+    }
+  ],
+  "assets": {
+    "App-C7VjDfhp.js": {
+      "bytes": 67504,
+      "sha256": "d7737e8737421265668fd3d34519e64871543dfb164e1784fdf44d9a286861ef"
+    },
+    "AskBarModal-CvaGsjmX.js": {
+      "bytes": 7283,
+      "sha256": "c9a7627fc48ca2ee963670593ebf90f28eae8d4a41ac04b9684399ffa054132c"
+    },
+    "DataSections-B24xdyJA.js": {
+      "bytes": 15725,
+      "sha256": "a7679d3e33de1691b83915f7832789a2ea4a4955a95d16c5148fb4b086c428f1"
+    },
+    "graphLayout-BGGVL5UR.js": {
+      "bytes": 2175,
+      "sha256": "49e203c56a757fe646d5a8df3a9b47b07295ae857b5bac958e1da5284fd40beb"
+    },
+    "index-B0Z_BNTg.js": {
+      "bytes": 5328,
+      "sha256": "e6e57c057c4d3c3a3d80a4e9958e88d17e4c55a3bd933adfd887703fe6f1548f"
+    },
+    "index-Es9JCQGi.css": {
+      "bytes": 41739,
+      "sha256": "48c9e668e6ddeea55487348af831b8b9212f5cf0712a87ec589405a46e3b6015"
+    },
+    "index-mVkQXTIK.js": {
+      "bytes": 346663,
+      "sha256": "cdb6a8f5c50b71c81d0c839e6c5160acc2a106e89718cd256063981772aaf5cb"
+    },
+    "KnowledgePage-B2VXGfxx.js": {
+      "bytes": 23201,
+      "sha256": "d7c08edcf1ce2421f9931ee1721b98ac2bb0c521591bf377ece15e906103dbdf"
+    },
+    "MindGazeInspectorModal-BOwVPcsj.js": {
+      "bytes": 6363,
+      "sha256": "e8489fd77eab92e3551f913da39c68c25a1e6c515429be6786306bf0a3157099"
+    },
+    "MomentPortalModal-BVDWB-gV.js": {
+      "bytes": 8847,
+      "sha256": "a258bd4021d5c34ef3b7658069e3c7778f5392d2b809339887f082b8c097c498"
+    },
+    "SystemStudioModal-CL5O1Xj2.js": {
+      "bytes": 24843,
+      "sha256": "35ea403665184e77e495e5de5edc7ab05112b964ab463d1203efe01cc3dd22d1"
+    },
+    "theme-DpUzhezp.js": {
+      "bytes": 2175,
+      "sha256": "84f307d840ec3d8762e6ac64428358ad5c86b108754e5d26f93b5810cc4827f2"
+    },
+    "VaultDialog-DoWUWm2s.js": {
+      "bytes": 1394,
+      "sha256": "48acf60bbea1df89c152b8102dc4ccf5148592567e0c7ecf069fdbdeb0da6d34"
+    },
+    "vendor-react-GuXCnis6.js": {
+      "bytes": 148424,
+      "sha256": "1a255561c17271d4280046876d0ca112202f2e357adacea824a245155ec2efcb"
+    },
+    "vendor-three-Ds9-c6WA.js": {
+      "bytes": 833096,
+      "sha256": "cf0e8398ffd290cf69a337e3809929dc8c5ed7267736a00d9f1adce0b706e85e"
+    }
+  },
+  "limits": "Three cold contexts, warm stage reload within each context. Headless Chromium, no CPU/network throttle. Ready time includes Playwright polling. Short playback and post-GC JS heap do not prove hours-long stability, RSS bounds or real-GPU frame latency. No before/after viewer speed claim."
+}

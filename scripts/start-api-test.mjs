@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 
 const cwd = fileURLToPath(new URL('../', import.meta.url));
 const env = { ...process.env, DAYCUBE_VAULT_ROOT: '.daycube-e2e-vault' };
-for (const args of [['run', 'daycube', 'init'], ['run', 'daycube', 'seed'], ['run', 'daycube', 'index', '--date', '2026-10-20']]) {
+for (const args of [['run', 'daycube', 'init'], ['run', 'daycube', 'seed', '--capture'], ['run', 'daycube', 'index', '--date', '2026-10-20']]) {
   const result = spawnSync('uv', args, { cwd, env, stdio: 'inherit', windowsHide: true });
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
