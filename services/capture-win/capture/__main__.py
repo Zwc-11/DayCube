@@ -66,11 +66,19 @@ def run(args: argparse.Namespace) -> None:
     )
     if supervisor is not None:
         supervisor.start()
+    librarian = None
+    if args.receive and not args.no_notes:
+        from .librarian import Librarian
+
+        librarian = Librarian(settings.vault_root, settings.timezone)
+        librarian.start()
     try:
         uvicorn.run(app, host="127.0.0.1", port=args.port, log_config=None, access_log=False)
     finally:
         if supervisor is not None:
             supervisor.stop()
+        if librarian is not None:
+            librarian.stop()
         log.info("receiver stopped")
 
 
@@ -137,6 +145,9 @@ def main(argv: list[str] | None = None) -> None:
     start = commands.add_parser("run", help="Start the receiver (the default command)")
     start.add_argument("--receive", action="store_true", help="Receive from the start unless a pause is remembered")
     start.add_argument("--gaze", action="store_true", help="Also run the eye tracker from services/gaze")
+    start.add_argument(
+        "--no-notes", action="store_true", help="Do not keep the day's search index and linked notes current"
+    )
     start.add_argument("--dwell-seconds", type=float, default=8.0, help="Shortest fixation time that counts as a dwell")
     start.add_argument(
         "--dwell-factor", type=float, default=2.0, help="A dwell also needs this many times the text's reading time"
