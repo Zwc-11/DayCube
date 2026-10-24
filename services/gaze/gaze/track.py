@@ -432,6 +432,9 @@ class Tracker:
             self.timing.popleft()
 
     def _gaze(self, now: float, x: float, y: float) -> None:
+        previous = self.smoother.x.t
+        if previous is not None and now - previous > self.detector.max_gap:
+            self.smoother.reset()  # a lost face/ray breaks continuity just as it does for fixations
         x, y = self.smoother(now, x, y)
         fx, fy = x / self.width, y / self.height
         if -0.05 <= fx <= 1.05 and -0.05 <= fy <= 1.05:  # off-screen samples end the fixation
@@ -442,6 +445,8 @@ class Tracker:
             while now - self.samples[0] > 30:
                 self.samples.popleft()
             self._fixations(now, self.detector.add(now, fx, fy))
+        else:
+            self._fixations(now, self.detector.flush())
 
     def run(self, should_stop: Callable[[], bool] = lambda: False) -> None:
         try:

@@ -157,6 +157,7 @@ class Landmarker:
         from mediapipe.tasks.python.core.base_options import BaseOptions
 
         self._mp, self.video, self._last_ms = mp, video, 0
+        self._rgb: np.ndarray | None = None  # conversion scratch; each mp.Image owns its copy
         mode = vision.RunningMode.VIDEO if video else vision.RunningMode.IMAGE
         options = vision.FaceLandmarkerOptions(
             base_options=BaseOptions(model_asset_path=str(model_path(path))),
@@ -174,7 +175,10 @@ class Landmarker:
         converting all of them is a quarter of a millisecond of Python per frame."""
         import cv2
 
-        rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
+        shape = (*image_bgr.shape[:2], 3)
+        if self._rgb is None or self._rgb.shape != shape or self._rgb.dtype != image_bgr.dtype:
+            self._rgb = np.empty(shape, dtype=image_bgr.dtype)
+        rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB, dst=self._rgb)
         image = self._mp.Image(image_format=self._mp.ImageFormat.SRGB, data=rgb)
         if self.video:
             ms = max(int(time.monotonic() * 1000), self._last_ms + 1)
@@ -195,4 +199,7 @@ class Landmarker:
         return Face(points, (width, height))
 
     def close(self) -> None:
-        self._landmarker.close()
+        try:
+            self._landmarker.close()
+        finally:
+            self._rgb = None

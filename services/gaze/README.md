@@ -33,6 +33,12 @@ from 56 to 88 mm ([docs/capture.md](../../docs/capture.md#when-your-head-moves),
 The webcam is released while recording is paused, the session is locked, another app uses the
 camera, or you are away.
 
+Calibration uses the latest-frame reader too, so slow dual-landmarker/UI work does not build an
+ever-older FIFO of target observations when the backend supports that reader. Gaze gaps longer than
+250 ms restart smoothing; shorter blinks retain its normal response. Looking off-screen ends an
+open fixation. RGB conversion scratch is reused, while each MediaPipe image owns its pixels.
+The [tracking review](../../docs/gaze-tracking-review-2026-10-24.md) records measurements and limits.
+
 Tests: `cd services/gaze; uv run pytest` (the head-aware model on synthetic faces posed in front
 of a camera, fixations, smoothing, calibration fitting, the tracking loop with a scripted camera,
 the receiver client).

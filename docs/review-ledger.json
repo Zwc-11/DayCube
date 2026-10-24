@@ -1,19 +1,19 @@
 {
-  "baseline_revision": "33c97030ba8fac88b916746ee934add73259ebe5",
+  "baseline_revision": "abb6f48d96af2ff981e94329bd46b432d98542bb",
   "scope": "Every tracked file and new non-ignored file, except this generated ledger itself. No vendored source is tracked; dependencies live in ignored environments and lockfiles.",
   "limits": "Structural checks cover every listed file; manual_review only identifies implementations actually examined. Neither is a proof of maximum efficiency, a dependency audit or DeepInfer throughput parity. Missing manual_review is explicitly unreviewed at the semantic level.",
   "counts": {
     "configuration": 35,
-    "documentation": 25,
-    "test": 44,
-    "source": 142,
+    "documentation": 26,
+    "test": 47,
+    "source": 144,
     "asset": 16,
     "fixture": 13,
-    "measurement_or_fixture": 35,
+    "measurement_or_fixture": 40,
     "lockfile": 4,
     "generated": 11
   },
-  "manual_reviews": 222,
+  "manual_reviews": 227,
   "files": [
     {
       "path": ".env.example",
@@ -765,6 +765,14 @@
       "structural_check": "UTF-8 text inventory; build/configuration review is separate"
     },
     {
+      "path": "docs/gaze-tracking-review-2026-10-24.md",
+      "sha256": "0d67a7e7bb7734330b43dd6973410734f14b876bc1be429bc1aaea91f1c5cf65",
+      "category": "documentation",
+      "bytes": 8403,
+      "lines": 116,
+      "structural_check": "UTF-8 text inventory; build/configuration review is separate"
+    },
+    {
       "path": "docs/implementation-status.md",
       "sha256": "759e63be35fcdb3558870fabab3b5716f8ef15b2f139617558b4d35d53b2e5bf",
       "category": "documentation",
@@ -824,10 +832,10 @@
     },
     {
       "path": "docs/performance.md",
-      "sha256": "40f84e77ba1a2b6f2d28ce97bf228d284e27a059ccb971526fde973e6741da07",
+      "sha256": "579bfd5b8a7640c3f67f6eab943b1f718a604facfc39c866b409182d396a200f",
       "category": "documentation",
-      "bytes": 12482,
-      "lines": 233,
+      "bytes": 13006,
+      "lines": 241,
       "structural_check": "UTF-8 text inventory; build/configuration review is separate"
     },
     {
@@ -908,6 +916,34 @@
       "manual_review": {
         "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
         "notes": "Isolated small/large synthetic vaults, warmup, samples outside hashing, output/index equivalence and revision/source fingerprints. No general HTTP/tail latency claim."
+      }
+    },
+    {
+      "path": "eval/benchmark_gaze_pipeline.py",
+      "sha256": "b28666f5ba1d07ae977a680ef3a0c8c76cfb6b93642d864d5f912e929cf63a6a",
+      "category": "source",
+      "bytes": 7801,
+      "lines": 202,
+      "functions": [
+        "fingerprint:42 (loops including nested scopes: 0)",
+        "measure:46 (loops including nested scopes: 1)",
+        "preparation:86 (loops including nested scopes: 1)",
+        "prediction:108 (loops including nested scopes: 7)",
+        "main:146 (loops including nested scopes: 5)",
+        "__init__:77 (loops including nested scopes: 1)",
+        "detect:81 (loops including nested scopes: 0)",
+        "run:97 (loops including nested scopes: 1)",
+        "predict:118 (loops including nested scopes: 1)",
+        "track:132 (loops including nested scopes: 1)",
+        "detect:124 (loops including nested scopes: 0)"
+      ],
+      "review_signals": [
+        "168: check subprocess timeout or explicit process ownership at subprocess.check_output"
+      ],
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Camera/gaze algorithm and resource follow-up, 2026-10-24; see docs/gaze-tracking-review-2026-10-24.md",
+        "notes": "Reviewed isolated gaze-environment harness, synthetic fixture/calibration construction, stage boundaries, warm timing, output hashing and separate profile/tracemalloc passes. Actual color conversion and native Image copies are included; detector neural inference is substituted. Four exact output comparisons and source hashes verified. Warm retained RGB scratch is outside traced allocations; read docs before interpreting memory/FPS."
       }
     },
     {
@@ -1278,6 +1314,29 @@
       }
     },
     {
+      "path": "eval/profile_camera_freshness.py",
+      "sha256": "afeb47f505c611f1137d1b1243718b818194901379f4fa88c1c679f944c5bfa3",
+      "category": "source",
+      "bytes": 4967,
+      "lines": 130,
+      "functions": [
+        "run:55 (loops including nested scopes: 1)",
+        "main:86 (loops including nested scopes: 4)",
+        "__init__:25 (loops including nested scopes: 0)",
+        "produce:32 (loops including nested scopes: 1)",
+        "read:42 (loops including nested scopes: 0)",
+        "release:48 (loops including nested scopes: 0)"
+      ],
+      "review_signals": [
+        "102: check subprocess timeout or explicit process ownership at subprocess.check_output"
+      ],
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Camera/gaze algorithm and resource follow-up, 2026-10-24; see docs/gaze-tracking-review-2026-10-24.md",
+        "notes": "Reviewed bounded synthetic producer queue, monotonic frame-age measurement, FIFO versus production LatestFrame mode, finite argument checks and thread cleanup. Metadata-only frames remain in memory. One overloaded trial per mode illustrates freshness, not real-camera or population percentile guarantees."
+      }
+    },
+    {
       "path": "eval/profile_gaze.py",
       "sha256": "3a82d16a63ac53524ce28a1544f5f2cf35e27b1f0b60064c4b86aeeda0839a4d",
       "category": "source",
@@ -1309,6 +1368,14 @@
       "category": "measurement_or_fixture",
       "bytes": 2367,
       "lines": 21,
+      "structural_check": "JSON parsed"
+    },
+    {
+      "path": "eval/results/camera-freshness.json",
+      "sha256": "4b6ae0833036330140c5ca65ea1444679f51d3e8a8cede57ca436d2b24917faf",
+      "category": "measurement_or_fixture",
+      "bytes": 3667,
+      "lines": 136,
       "structural_check": "JSON parsed"
     },
     {
@@ -1384,6 +1451,30 @@
       "structural_check": "JSON parsed"
     },
     {
+      "path": "eval/results/gaze-live-2026-10-24.json",
+      "sha256": "e9f9b35c64f6788ad5b620976df59b58ee65cc9a0c3161368a199db9a8596c59",
+      "category": "measurement_or_fixture",
+      "bytes": 3969,
+      "lines": 150,
+      "structural_check": "JSON parsed"
+    },
+    {
+      "path": "eval/results/gaze-pipeline-after.json",
+      "sha256": "7435452ef0891c1d6e42c56c72978f1e6bf0871c5ffb0908fb25fc42c338fb27",
+      "category": "measurement_or_fixture",
+      "bytes": 9513,
+      "lines": 117,
+      "structural_check": "JSON parsed"
+    },
+    {
+      "path": "eval/results/gaze-pipeline-before.json",
+      "sha256": "31ce63ba4ebf18e50aea3c3a8777b5d851a7298bf6905fe6942cd1ce0d7351f6",
+      "category": "measurement_or_fixture",
+      "bytes": 9477,
+      "lines": 117,
+      "structural_check": "JSON parsed"
+    },
+    {
       "path": "eval/results/gaze-sim-lines.json",
       "sha256": "74b4699f628f919f7fe7258c6edd96bffb280d7c2c3ac39d8c14d03f5a19d63a",
       "category": "measurement_or_fixture",
@@ -1397,6 +1488,14 @@
       "category": "measurement_or_fixture",
       "bytes": 37955,
       "lines": 1462,
+      "structural_check": "JSON parsed"
+    },
+    {
+      "path": "eval/results/gaze-tracking-regression.json",
+      "sha256": "678de321a72d78cb6673dfefe8ec7e237ba669f1570c3eaef8a558f11f5ef5b1",
+      "category": "measurement_or_fixture",
+      "bytes": 65200,
+      "lines": 2137,
       "structural_check": "JSON parsed"
     },
     {
@@ -2800,10 +2899,10 @@
     },
     {
       "path": "services/gaze/README.md",
-      "sha256": "f952f6ddba1b24b8481caff9d2280cc6fc429e7d178eaca0de08f875051feaaa",
+      "sha256": "a1326b778e74172a8c2eac5bed3adee6590ad233db574a3eee6c073d01bcc862",
       "category": "documentation",
-      "bytes": 2370,
-      "lines": 38,
+      "bytes": 2858,
+      "lines": 44,
       "structural_check": "UTF-8 text inventory; build/configuration review is separate"
     },
     {
@@ -2846,10 +2945,10 @@
     },
     {
       "path": "services/gaze/gaze/calibrate.py",
-      "sha256": "a3042bbd5798a0a830bb481094f4d20f460d454cc21997144e9dc87e35ce45e8",
+      "sha256": "2148435d7fd950fd8b97f3f2e0541fa01787a73a15f9a09d86df5fb07b7aa64d",
       "category": "source",
-      "bytes": 19161,
-      "lines": 483,
+      "bytes": 19400,
+      "lines": 486,
       "functions": [
         "usable_limit:69 (loops including nested scopes: 0)",
         "model_file:73 (loops including nested scopes: 0)",
@@ -2857,14 +2956,14 @@
         "grid_points:227 (loops including nested scopes: 0)",
         "held_out_points:233 (loops including nested scopes: 1)",
         "calibrate:237 (loops including nested scopes: 0)",
-        "_blinks:272 (loops including nested scopes: 1)",
-        "_rows:282 (loops including nested scopes: 3)",
-        "errors:334 (loops including nested scopes: 2)",
-        "_summary:351 (loops including nested scopes: 0)",
-        "choose:356 (loops including nested scopes: 9)",
-        "_save_frames:448 (loops including nested scopes: 6)",
-        "load_frames:461 (loops including nested scopes: 1)",
-        "load:476 (loops including nested scopes: 0)",
+        "_blinks:275 (loops including nested scopes: 1)",
+        "_rows:285 (loops including nested scopes: 3)",
+        "errors:337 (loops including nested scopes: 2)",
+        "_summary:354 (loops including nested scopes: 0)",
+        "choose:359 (loops including nested scopes: 9)",
+        "_save_frames:451 (loops including nested scopes: 6)",
+        "load_frames:464 (loops including nested scopes: 1)",
+        "load:479 (loops including nested scopes: 0)",
         "__init__:107 (loops including nested scopes: 0)",
         "close:114 (loops including nested scopes: 0)",
         "_show:118 (loops including nested scopes: 0)",
@@ -2874,27 +2973,27 @@
         "wait_for_face:161 (loops including nested scopes: 1)",
         "message:191 (loops including nested scopes: 1)",
         "dots:210 (loops including nested scopes: 2)",
-        "detect:311 (loops including nested scopes: 0)",
-        "close:314 (loops including nested scopes: 0)",
-        "__init__:321 (loops including nested scopes: 0)",
-        "train:324 (loops including nested scopes: 0)",
-        "predict:327 (loops including nested scopes: 0)",
-        "save_model:330 (loops including nested scopes: 0)",
-        "points:465 (loops including nested scopes: 0)"
+        "detect:314 (loops including nested scopes: 0)",
+        "close:317 (loops including nested scopes: 0)",
+        "__init__:324 (loops including nested scopes: 0)",
+        "train:327 (loops including nested scopes: 0)",
+        "predict:330 (loops including nested scopes: 0)",
+        "save_model:333 (loops including nested scopes: 0)",
+        "points:468 (loops including nested scopes: 0)"
       ],
       "review_signals": [],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
       "manual_review": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Target plan, held-out/smoothed scoring, head movement comparison, model choice and saved numeric landmarks. Model/metadata files are not one atomic bundle; npz reader cleanup is a remaining resource issue. No webcam frames saved."
+        "scope": "Camera/gaze algorithm and resource follow-up, 2026-10-24; see docs/gaze-tracking-review-2026-10-24.md",
+        "notes": "Target phases, blink exclusion, held-out/moved-head scoring, fitting and numeric-landmark serialization reviewed. Calibration now uses the production latest-frame reader/fallback to avoid FIFO age under overload; cancellation lifecycle is tested. Synthetic freshness is not proof of live optical accuracy. Model/metadata files are still not one atomic bundle and npz reader cleanup remains open."
       }
     },
     {
       "path": "services/gaze/gaze/face.py",
-      "sha256": "d2590091a3532946e4e427aa3d9440766c67970919e10c128f367f92b3c62a90",
+      "sha256": "1a660762461cdc191978a3a1b543ea9d0faf44ffd0176e358bf08aaec782b379",
       "category": "source",
-      "bytes": 8460,
-      "lines": 198,
+      "bytes": 8834,
+      "lines": 205,
       "functions": [
         "model_path:33 (loops including nested scopes: 0)",
         "_fields:40 (loops including nested scopes: 1)",
@@ -2904,14 +3003,14 @@
         "mirrored:112 (loops including nested scopes: 0)",
         "eyetrax_features:119 (loops including nested scopes: 0)",
         "__init__:154 (loops including nested scopes: 0)",
-        "detect:171 (loops including nested scopes: 2)",
-        "close:197 (loops including nested scopes: 0)"
+        "detect:172 (loops including nested scopes: 2)",
+        "close:201 (loops including nested scopes: 0)"
       ],
       "review_signals": [],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
       "manual_review": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Lazy MediaPipe ownership, coordinate/mirror maps, blink features, landmark/model timing and close. Native inference tested only through existing synthetic fixtures this run."
+        "scope": "Camera/gaze algorithm and resource follow-up, 2026-10-24; see docs/gaze-tracking-review-2026-10-24.md",
+        "notes": "Landmark coordinate conversion and MediaPipe ownership reviewed. RGB conversion scratch is reused per shape/dtype and released on close; native Image ownership and prior-result immutability are verified in image/video tests. Named CPU-stage benchmark preserves output hashes. Warm traced peaks exclude already-retained scratch and some native allocations; no neural inference accuracy/throughput claim."
       }
     },
     {
@@ -2945,15 +3044,15 @@
     },
     {
       "path": "services/gaze/gaze/head.py",
-      "sha256": "8325d159abdf17a6ae7c9f3719e441184c64ac5f20b0f2f0185d86e968a62b8c",
+      "sha256": "2c5a7b6af4afb271f1d79d5c54ca390249862eb7ce4f4e1180a7a2df35951dcf",
       "category": "source",
-      "bytes": 23674,
-      "lines": 483,
+      "bytes": 23775,
+      "lines": 484,
       "functions": [
         "_head_frame:46 (loops including nested scopes: 0)",
         "directions:215 (loops including nested scopes: 0)",
-        "pack:322 (loops including nested scopes: 0)",
-        "unpack:326 (loops including nested scopes: 1)",
+        "pack:323 (loops including nested scopes: 0)",
+        "unpack:327 (loops including nested scopes: 1)",
         "nominal:59 (loops including nested scopes: 0)",
         "matrix:63 (loops including nested scopes: 0)",
         "rays:66 (loops including nested scopes: 0)",
@@ -2970,32 +3069,32 @@
         "required:237 (loops including nested scopes: 2)",
         "fit:245 (loops including nested scopes: 2)",
         "_stacked:258 (loops including nested scopes: 3)",
-        "directions_of:267 (loops including nested scopes: 1)",
-        "predict_arrays:275 (loops including nested scopes: 0)",
-        "direction:291 (loops including nested scopes: 2)",
-        "predict:295 (loops including nested scopes: 3)",
-        "to_json:300 (loops including nested scopes: 1)",
-        "from_json:309 (loops including nested scopes: 1)",
-        "__init__:335 (loops including nested scopes: 0)",
-        "__call__:340 (loops including nested scopes: 0)",
-        "__init__:362 (loops including nested scopes: 0)",
-        "measure:386 (loops including nested scopes: 0)",
-        "_detect:394 (loops including nested scopes: 0)",
-        "extract_features:401 (loops including nested scopes: 0)",
-        "train:421 (loops including nested scopes: 2)",
-        "predict:428 (loops including nested scopes: 0)",
-        "mirrored:435 (loops including nested scopes: 1)",
-        "moved:445 (loops including nested scopes: 0)",
-        "save_model:454 (loops including nested scopes: 0)",
-        "load_model:468 (loops including nested scopes: 0)",
-        "close:479 (loops including nested scopes: 0)",
-        "openness:341 (loops including nested scopes: 0)"
+        "directions_of:267 (loops including nested scopes: 0)",
+        "predict_arrays:276 (loops including nested scopes: 0)",
+        "direction:292 (loops including nested scopes: 2)",
+        "predict:296 (loops including nested scopes: 3)",
+        "to_json:301 (loops including nested scopes: 1)",
+        "from_json:310 (loops including nested scopes: 1)",
+        "__init__:336 (loops including nested scopes: 0)",
+        "__call__:341 (loops including nested scopes: 0)",
+        "__init__:363 (loops including nested scopes: 0)",
+        "measure:387 (loops including nested scopes: 0)",
+        "_detect:395 (loops including nested scopes: 0)",
+        "extract_features:402 (loops including nested scopes: 0)",
+        "train:422 (loops including nested scopes: 2)",
+        "predict:429 (loops including nested scopes: 0)",
+        "mirrored:436 (loops including nested scopes: 1)",
+        "moved:446 (loops including nested scopes: 0)",
+        "save_model:455 (loops including nested scopes: 0)",
+        "load_model:469 (loops including nested scopes: 0)",
+        "close:480 (loops including nested scopes: 0)",
+        "openness:342 (loops including nested scopes: 0)"
       ],
       "review_signals": [],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
       "manual_review": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Pose estimation, eye/head coordinate transforms, ray/screen intersection, ridge fitting, batch prediction, pack/unpack and model serialization. Synthetic geometric tests; no new real-person/dataset accuracy claim."
+        "scope": "Camera/gaze algorithm and resource follow-up, 2026-10-24; see docs/gaze-tracking-review-2026-10-24.md",
+        "notes": "Pose/eye geometry, direction regression and screen intersections reviewed. Batched binocular matrix multiplication preserves independent per-eye outputs, handles zero/single/multiple frames and retains missing-ray semantics without modifying inputs. Synthetic prediction outputs match before/after hashes. Calibration fitting and model format are unchanged; real head-motion accuracy requires held-out device validation."
       }
     },
     {
@@ -3050,10 +3149,10 @@
     },
     {
       "path": "services/gaze/gaze/track.py",
-      "sha256": "18a06043011f59d2986face0efac2fe8b60b35427294c51912e051f889604004",
+      "sha256": "e904a8495206fe769f52878311eec790cec95325efee22c03d899243080dc163",
       "category": "source",
-      "bytes": 19964,
-      "lines": 455,
+      "bytes": 20248,
+      "lines": 460,
       "functions": [
         "_com_start:134 (loops including nested scopes: 0)",
         "_com_end:146 (loops including nested scopes: 0)",
@@ -3078,13 +3177,13 @@
         "step:338 (loops including nested scopes: 3)",
         "_time:416 (loops including nested scopes: 1)",
         "_gaze:434 (loops including nested scopes: 1)",
-        "run:446 (loops including nested scopes: 1)"
+        "run:451 (loops including nested scopes: 1)"
       ],
       "review_signals": [],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
       "manual_review": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Paced loop, latest-frame reader, reused prediction buffer, fixation/live transport, lock/away/camera-busy states and release. Blocked native camera reads can outlive join timeout; real device acceptance remains manual."
+        "scope": "Camera/gaze algorithm and resource follow-up, 2026-10-24; see docs/gaze-tracking-review-2026-10-24.md",
+        "notes": "Existing paced loop/latest-frame ownership and state machine reviewed with gap recovery changes. Smoothing resets after the detector continuity gap, short blinks keep the old response, and off-screen points flush the open fixation at its last accepted sample. Deterministic failures reproduced before and pass after. Six hundred paired synthetic sessions per revision have mixed outcome shifts with 300/300 no-dwell cases passing; not a general accuracy gain. Native read/join and manual device-acceptance limits remain."
       }
     },
     {
@@ -3127,6 +3226,26 @@
       }
     },
     {
+      "path": "services/gaze/tests/test_calibration_camera.py",
+      "sha256": "88aeb2193262586d5e10595e9e25b830916428937607911761228a568d5a1571",
+      "category": "test",
+      "bytes": 1715,
+      "lines": 42,
+      "functions": [
+        "test_calibration_uses_fresh_frames_and_releases_on_cancel:13 (loops including nested scopes: 0)",
+        "latest:20 (loops including nested scopes: 0)",
+        "__init__:30 (loops including nested scopes: 0)",
+        "wait_for_face:33 (loops including nested scopes: 0)",
+        "close:36 (loops including nested scopes: 0)"
+      ],
+      "review_signals": [],
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Camera/gaze algorithm and resource follow-up, 2026-10-24; see docs/gaze-tracking-review-2026-10-24.md",
+        "notes": "Monkeypatched camera/window/session verifies use of the latest-frame wrapper and camera/landmarker/window cleanup on cancellation. No fullscreen window or device is opened by this test; real Windows camera acceptance is separate."
+      }
+    },
+    {
       "path": "services/gaze/tests/test_cli.py",
       "sha256": "73113bfa2f5257a77acac8ae0e7cb1bbc9238fe9d33ed1f050f47606b41fce68",
       "category": "test",
@@ -3141,6 +3260,28 @@
       "manual_review": {
         "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
         "notes": "Fixture/setup, assertions, loops, mocks and resource cleanup inspected. Tests use synthetic inputs; suite execution and remaining device/port restrictions are recorded in docs/review-2026-10-24.md."
+      }
+    },
+    {
+      "path": "services/gaze/tests/test_face.py",
+      "sha256": "8eabafb78f122b60bf5db6fd1bdb20c2912ceeddd0eecd6b97821334f7e075ea",
+      "category": "test",
+      "bytes": 3330,
+      "lines": 78,
+      "functions": [
+        "landmarker:32 (loops including nested scopes: 0)",
+        "test_rgb_scratch_is_reused_without_changing_prior_images:41 (loops including nested scopes: 0)",
+        "test_rgb_scratch_follows_resolution_and_selective_landmarks:61 (loops including nested scopes: 0)",
+        "__init__:14 (loops including nested scopes: 0)",
+        "detect:20 (loops including nested scopes: 0)",
+        "detect_for_video:24 (loops including nested scopes: 0)",
+        "close:28 (loops including nested scopes: 0)"
+      ],
+      "review_signals": [],
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Camera/gaze algorithm and resource follow-up, 2026-10-24; see docs/gaze-tracking-review-2026-10-24.md",
+        "notes": "Synthetic RGB/BGRA and selective-landmark fixtures use actual native MediaPipe Image copies with a substituted detector. Tests cover scratch reuse/resize/release, old-image/point ownership, image/video paths, timestamp monotonicity and no-face results. No camera or saved pixel fixtures."
       }
     },
     {
@@ -3197,6 +3338,23 @@
       }
     },
     {
+      "path": "services/gaze/tests/test_head_prediction.py",
+      "sha256": "f16855a244260ce532adaa0214b4c430ab45ed7b2fd3d4d6ad01eee46fda0f84",
+      "category": "test",
+      "bytes": 1885,
+      "lines": 42,
+      "functions": [
+        "test_binocular_batch_preserves_each_eye_and_inputs:10 (loops including nested scopes: 3)",
+        "test_predict_keeps_one_eye_when_the_other_ray_misses:30 (loops including nested scopes: 1)"
+      ],
+      "review_signals": [],
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Camera/gaze algorithm and resource follow-up, 2026-10-24; see docs/gaze-tracking-review-2026-10-24.md",
+        "notes": "Independent per-eye NumPy reference checks binocular batching for zero, one and multiple frames; inputs and retained outputs stay unchanged. Screen-ray tests cover both-valid, one-valid and neither-valid cases. All inputs are synthetic."
+      }
+    },
+    {
       "path": "services/gaze/tests/test_receiver.py",
       "sha256": "f434f0704a3283924e3bb0221eed75c07b22ca755ce52a609ae014b28c1505ef",
       "category": "test",
@@ -3225,10 +3383,10 @@
     },
     {
       "path": "services/gaze/tests/test_track.py",
-      "sha256": "379f06a6af2559e4e63c9410d4a15b4700e3aaa5e13eebff14dee5d0ff2a944a",
+      "sha256": "6703275cab005042c0dc14cdcd17e5aff69c6c17aa53e388765aadbb6ffe11c2",
       "category": "test",
-      "bytes": 16441,
-      "lines": 471,
+      "bytes": 17858,
+      "lines": 509,
       "functions": [
         "tracker:86 (loops including nested scopes: 0)",
         "run_for:95 (loops including nested scopes: 1)",
@@ -3254,8 +3412,11 @@
         "test_head_position_since_calibration_is_reported:365 (loops including nested scopes: 0)",
         "test_an_eyetrax_calibration_reports_no_head_position:381 (loops including nested scopes: 0)",
         "test_a_gaze_ray_that_misses_the_screen_is_skipped:387 (loops including nested scopes: 1)",
-        "test_a_webcam_slow_to_start_stays_open:398 (loops including nested scopes: 0)",
-        "test_a_camera_that_works_only_on_the_tracker_thread_is_still_used:430 (loops including nested scopes: 0)",
+        "test_reacquiring_a_face_starts_at_its_new_gaze_point:398 (loops including nested scopes: 0)",
+        "test_a_short_blink_keeps_the_continuous_smoothing_response:411 (loops including nested scopes: 1)",
+        "test_looking_off_screen_ends_the_open_fixation:425 (loops including nested scopes: 0)",
+        "test_a_webcam_slow_to_start_stays_open:436 (loops including nested scopes: 0)",
+        "test_a_camera_that_works_only_on_the_tracker_thread_is_still_used:468 (loops including nested scopes: 0)",
         "__init__:12 (loops including nested scopes: 0)",
         "__call__:15 (loops including nested scopes: 0)",
         "sleep:18 (loops including nested scopes: 0)",
@@ -3280,21 +3441,21 @@
         "read:327 (loops including nested scopes: 0)",
         "release:330 (loops including nested scopes: 0)",
         "moved:367 (loops including nested scopes: 0)",
-        "__init__:408 (loops including nested scopes: 0)",
-        "read:412 (loops including nested scopes: 0)",
-        "release:419 (loops including nested scopes: 0)",
-        "__init__:440 (loops including nested scopes: 0)",
-        "read:445 (loops including nested scopes: 0)",
-        "release:448 (loops including nested scopes: 0)",
-        "__init__:457 (loops including nested scopes: 0)",
-        "read:460 (loops including nested scopes: 0)",
-        "release:466 (loops including nested scopes: 0)"
+        "__init__:446 (loops including nested scopes: 0)",
+        "read:450 (loops including nested scopes: 0)",
+        "release:457 (loops including nested scopes: 0)",
+        "__init__:478 (loops including nested scopes: 0)",
+        "read:483 (loops including nested scopes: 0)",
+        "release:486 (loops including nested scopes: 0)",
+        "__init__:495 (loops including nested scopes: 0)",
+        "read:498 (loops including nested scopes: 0)",
+        "release:504 (loops including nested scopes: 0)"
       ],
       "review_signals": [],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
       "manual_review": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Fixture/setup, assertions, loops, mocks and resource cleanup inspected. Tests use synthetic inputs; suite execution and remaining device/port restrictions are recorded in docs/review-2026-10-24.md."
+        "scope": "Camera/gaze algorithm and resource follow-up, 2026-10-24; see docs/gaze-tracking-review-2026-10-24.md",
+        "notes": "Scripted clock/camera/receiver fixtures and new recovery assertions reviewed. Reacquisition, off-screen fixation closure and unchanged short-blink response are covered without real devices; full gaze suite passes. Timing budgets remain in benchmarks, not correctness assertions."
       }
     },
     {

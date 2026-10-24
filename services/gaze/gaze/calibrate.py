@@ -239,10 +239,13 @@ def calibrate(vault: Path, camera: int = 0, model: str = AUTO) -> dict:
     from eyetrax.utils.video import open_camera
 
     from .system import monitor_mm_per_px, primary_monitor
+    from .track import open_camera_thread
 
     width, height = primary_monitor()
     pitch = monitor_mm_per_px()
-    capture = open_camera(camera)
+    # Calibration runs two landmarkers and draws full-screen targets. Read the newest frame
+    # rather than pairing an older queued eye position with the current dot.
+    capture = open_camera_thread(lambda: open_camera(camera))
     session = Session(capture, width, height)
     cv2.namedWindow(WINDOW, cv2.WND_PROP_FULLSCREEN)
     cv2.setWindowProperty(WINDOW, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
