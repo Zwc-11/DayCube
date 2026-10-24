@@ -78,15 +78,22 @@ path differs from metres east and north by a rotation and a shift, fitted by lea
 a 160 m walk) went onto the map with 2.0 m RMS residual. Every camera position, with its compass
 heading, is in `camera.json`; a keyframe every 8 s lets the moment be browsed without the video.
 
+**Upright.** The sensor is landscape, so a phone held upright records sideways, and nothing in the
+file says so. ARKit's poses do: on 2026-10-24 the world's up was the camera's -x (-0.99), so the
+frames are turned 90 degrees clockwise. The keyframes and `preview.mp4` (540 px, 15 frames/s,
+H.264: 14 MB for the 2 min capture) are upright; `video.mp4` is the original, kept for
+reconstruction.
+
 **3D.** A scene needs the capture's `depth/` folder (one PNG per frame) fused with the poses; only
 the video and poses have come so far, so the moment says so instead of showing a reconstruction.
 
 ## In the viewer
 
-Each visit is a layer; drives are the trips between them. Double-click a voice memo or scan on the
-day to open it: the recording itself (audio or video), the transcript (a line seeks the recording
-there), the keyframes, and for a scan the camera's path seen from above with where it is and which
-way it looks.
+Each visit is a layer (an outdoor visit on an open park stage); drives are the trips between them.
+Double-click a voice memo or scan on the day to open it: the recording itself (audio, or the upright
+preview), the transcript by time (a line seeks the recording there), the keyframes, and for a scan
+the capture's details and its path seen from above with where the camera is and which way it
+looks.
 
 ## Tests
 
