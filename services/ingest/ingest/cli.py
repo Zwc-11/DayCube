@@ -2,6 +2,7 @@ import argparse
 import json
 import sys
 from datetime import datetime
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from .config import Settings
@@ -32,6 +33,17 @@ def main() -> None:
     which_notes.add_argument("--all", action="store_true")
     commands.add_parser("graph", help="The most mentioned entities and their links, as JSON")
     commands.add_parser("data", help="The data center: every source stream and the database, with sizes")
+    phone = commands.add_parser(
+        "import-phone", help="Import phone recordings: Sensor Logger, voice memos, Stray Scanner captures"
+    )
+    phone.add_argument("paths", nargs="*", type=Path, help="Files or folders exported from the phone")
+    phone.add_argument("--inbox", action="store_true", help="Import what waits in vault/inbox/phone")
+    phone.add_argument("--no-transcribe", action="store_true", help="Keep voice memos without transcribing them")
+    phone.add_argument(
+        "--audio-stamped-at-start",
+        action="store_true",
+        help="The recording app stamps audio files with their start, not their end (Voice Memos: the end)",
+    )
     compact = commands.add_parser("compact", help="Compress large logs of finished days; reads stay transparent")
     compact.add_argument("--before", help="Compact every day before this date (default: today)")
     args = parser.parse_args()
@@ -76,6 +88,18 @@ def main() -> None:
             result = {"folder": str(writer.root), "notes": paths}
         else:
             result = [store.update(day) for day in store.days()] if args.all else store.update(args.date)
+    elif args.command == "import-phone":
+        options = {"transcribe": not args.no_transcribe, "audio_ends_at_creation": not args.audio_stamped_at_start}
+        if args.inbox:
+            from .phone.inbox import process
+
+            result = process(vault, say=lambda m: print(m, file=sys.stderr), **options) or {"imported": False}
+        elif not args.paths:
+            parser.error("give the files to import, or --inbox")
+        else:
+            from .phone.importer import import_phone
+
+            result = import_phone(vault, args.paths, say=lambda m: print(m, file=sys.stderr), **options)
     elif args.command == "compact":
         before = args.before or datetime.now(ZoneInfo(settings.timezone)).date().isoformat()
         result = {d["date"]: vault.compact_day(d["date"]) for d in vault.list_days() if d["date"] < before}

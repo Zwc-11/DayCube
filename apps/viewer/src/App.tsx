@@ -26,6 +26,9 @@ const AskBarModal = lazy(() =>
 const MomentPortalModal = lazy(() =>
   import('./components/modals/MomentPortalModal').then((m) => ({ default: m.MomentPortalModal }))
 );
+const RecordedMomentModal = lazy(() =>
+  import('./components/modals/RecordedMomentModal').then((m) => ({ default: m.RecordedMomentModal }))
+);
 const MindGazeInspectorModal = lazy(() =>
   import('./components/modals/MindGazeInspectorModal').then((m) => ({
     default: m.MindGazeInspectorModal,
@@ -36,6 +39,8 @@ const SystemStudioModal = lazy(() =>
 );
 
 const SPEEDS = [1, 4, 12];
+// Moments a phone import recorded (services/ingest/ingest/phone): opened with their own media.
+const RECORDED_MOMENT = /^mo_(voice|scan)_/;
 const NO_TRANSITS: typeof SAMPLE_TRANSITS = [];
 
 function longDate(iso: string): string {
@@ -502,7 +507,16 @@ export const App: React.FC<AppProps> = ({ date, day, days, onOpenDate, onOpenNot
           />
         )}
 
-        {activeMomentId && (
+        {activeMomentId && RECORDED_MOMENT.test(activeMomentId) && (
+          <RecordedMomentModal
+            date={date}
+            momentId={activeMomentId}
+            placeName={layers.find((l) => l.moments.includes(activeMomentId))?.name}
+            onClose={() => setActiveMomentId(null)}
+          />
+        )}
+
+        {activeMomentId && !RECORDED_MOMENT.test(activeMomentId) && (
           <MomentPortalModal
             momentId={activeMomentId}
             onClose={() => setActiveMomentId(null)}

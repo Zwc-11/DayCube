@@ -60,6 +60,7 @@ ZSTD_LEVEL = 10
 # The viewer path: 10 cm, well under one voxel, and the fields the viewer's contract reads.
 PATH_TOLERANCE_M = 0.1
 PATH_FIELDS = ("t", "x", "y", "floor", "pos_conf", "fidelity")
+STAGE_HALF = (9.5, 6.5)  # metres from the stage's middle a drawn path may reach (the stage is 20 x 14)
 
 
 def atomic_bytes(path: Path, data: bytes) -> FileStamp:
@@ -694,6 +695,7 @@ class Vault:
         layers = []
         for place in sorted(data["places"], key=lambda p: p["layer_index"]):
             venue = self.venue(place["venue"]) if place.get("venue") else None
+            path, scale = viewer_path(fixes_by_place[place["id"]], zone)
             pins = [dict(e, tod=tod(e["t"], zone)) for e in events_by_place[place["id"]]]
             layers.append(
                 {
@@ -710,13 +712,14 @@ class Vault:
                         "lon": place["lon"],
                         "axisDeg": venue["axis_deg"] if venue else 0,
                         "size": [20, 14],
+                        "scale": scale,
                     },
                     "geometry": {
                         "fidelity": "illustrative",
                         "footprint": [[-10, -7], [10, -7], [10, 7], [-10, 7]],
                         "levels": venue["levels"] if venue else [],
                     },
-                    "path": viewer_path(fixes_by_place[place["id"]], zone),
+                    "path": path,
                     "events": pins,
                     "quotes": [e for e in pins if e["type"] == "said.quote"],
                     "moments": sorted({e["moment_id"] for e in pins if e.get("moment_id")}),
@@ -741,14 +744,25 @@ class Vault:
         return cached[1], cached[2]
 
 
-def viewer_path(fixes: list[Record], zone: str) -> list[Record]:
-    """A visit's fixes as the viewer draws them: its fields only, in time order, simplified so
-    the interpolated position at every fix time stays within PATH_TOLERANCE_M. Stationary
-    stretches collapse to their two ends. The full fixes stay available as the skeleton."""
+def viewer_path(fixes: list[Record], zone: str) -> tuple[list[Record], float]:
+    """A visit's fixes as the viewer draws them, and the scale they were drawn at: its fields only,
+    in time order, simplified so the interpolated position at every fix time stays within
+    PATH_TOLERANCE_M. Stationary stretches collapse to their two ends. Fixes with no position on
+    the stage (GPS inside a building) cannot be drawn and are left out; if none has one, the two
+    ends say so. A path wider than the stage (an outdoor walk) is shrunk to fit it, by ``scale``
+    metres per stage metre. The full fixes stay available as the skeleton."""
     points = sorted(
         ({**{k: f.get(k) for k in PATH_FIELDS}, "t": tod(f["t"], zone)} for f in fixes), key=lambda p: p["t"]
     )
-    return simplify(points, PATH_TOLERANCE_M)
+    known = [p for p in points if p["x"] is not None and p["y"] is not None]
+    if not known:
+        return points[:1] + points[-1:] if len(points) > 1 else points, 1.0
+    path = simplify(known, PATH_TOLERANCE_M)
+    half_w, half_h = STAGE_HALF
+    scale = max(1.0, max(abs(p["x"]) for p in path) / half_w, max(abs(p["y"]) for p in path) / half_h)
+    if scale > 1.0:
+        path = [{**p, "x": round(p["x"] / scale, 3), "y": round(p["y"] / scale, 3)} for p in path]
+    return path, round(scale, 3)
 
 
 def check_event(

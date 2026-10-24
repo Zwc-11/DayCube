@@ -36,8 +36,16 @@ from .vault import Record, Vault, read_json
 
 log = logging.getLogger("daycube.api")
 
-MEDIA_SUFFIXES = frozenset({".jpg", ".jpeg", ".png", ".svg", ".mp4", ".wav", ".glb", ".ply", ".spz"})
+MEDIA_SUFFIXES = frozenset({".jpg", ".jpeg", ".png", ".svg", ".mp4", ".wav", ".m4a", ".mp3", ".glb", ".ply", ".spz"})
+# Types the platform may not know (Windows has no .m4a in its registry by default).
+MEDIA_TYPES = {
+    ".m4a": "audio/mp4",
+    ".mp3": "audio/mpeg",
+    ".glb": "model/gltf-binary",
+    ".spz": "application/octet-stream",
+}
 SAFE_ID = re.compile(r"[A-Za-z0-9_-]+")
+SAFE_FILE = re.compile(r"[A-Za-z0-9_-]+\.json")
 MAX_JOBS = 100
 
 
@@ -302,11 +310,13 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
         if not SAFE_ID.fullmatch(moment_id):
             raise ValueError("Invalid moment id")
         path = vault.day_path(date) / "moments" / moment_id
-        return {
-            "meta": read_json(path / "meta.json"),
-            "scene": read_json(path / "scene.json"),
-            "transcript": read_json(path / "transcript.json"),
-        }
+        scene = read_json(path / "scene.json")
+        out = {"meta": read_json(path / "meta.json"), "scene": scene, "transcript": read_json(path / "transcript.json")}
+        # A capture's camera path (phone imports): small enough to send with the moment.
+        camera = scene.get("path") if isinstance(scene, dict) else None
+        if isinstance(camera, str) and SAFE_FILE.fullmatch(camera) and (path / camera).is_file():
+            out["camera"] = read_json(path / camera)
+        return out
 
     @app.get("/vault/{date}/{asset_path:path}")
     def asset(date: str, asset_path: str) -> FileResponse:
@@ -320,6 +330,7 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
             raise HTTPException(404, "Asset not found")
         return FileResponse(
             candidate,
+            media_type=MEDIA_TYPES.get(candidate.suffix.lower()),
             headers={"X-Content-Type-Options": "nosniff", "Content-Security-Policy": "default-src 'none'; sandbox"},
         )
 

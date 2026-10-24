@@ -72,6 +72,10 @@ def run(args: argparse.Namespace) -> None:
 
         librarian = Librarian(settings.vault_root, settings.timezone)
         librarian.start()
+    from .inbox import PhoneInbox
+
+    inbox = PhoneInbox(settings.vault_root)  # phone exports dropped into vault/inbox/phone
+    inbox.start()
     receiver = app.state.receiver
     if args.no_screen:
         receiver.screen_problem = "started with --no-screen"
@@ -88,9 +92,21 @@ def run(args: argparse.Namespace) -> None:
             supervisor.stop()
         if librarian is not None:
             librarian.stop()
+        inbox.stop()
         if receiver.screen is not None:
             receiver.screen.stop()
         log.info("receiver stopped")
+
+
+def import_phone(args: argparse.Namespace) -> None:
+    from ingest.phone.importer import import_phone as run_import
+    from ingest.vault import Vault
+
+    vault = Vault(Settings().vault_root)
+    vault.initialize()
+    result = run_import(vault, args.paths, transcribe=not args.no_transcribe)
+    for day, written in result.items():
+        print(f"{day}: {written['places']} visits, {written['transits']} trips, {len(written['moments'])} moments")
 
 
 def screen_file(vault_root: Path) -> Path:
@@ -354,6 +370,15 @@ def main(argv: list[str] | None = None) -> None:
     history.add_argument("--since", help="First day to import, YYYY-MM-DD (default: all that Opera kept)")
     history.add_argument("--exclude", action="append", help="Leave out a domain and its subdomains (repeatable)")
     history.set_defaults(handler=import_history)
+
+    phone = commands.add_parser(
+        "import-phone",
+        help="Import phone recordings (Sensor Logger, voice memos, Stray Scanner) into their day; "
+        "or drop them into vault/inbox/phone while the receiver runs",
+    )
+    phone.add_argument("paths", nargs="+", type=Path)
+    phone.add_argument("--no-transcribe", action="store_true", help="Keep voice memos without transcribing them")
+    phone.set_defaults(handler=import_phone)
 
     argv = sys.argv[1:] if argv is None else argv
     if not argv or argv[0].startswith("-") and argv[0] not in ("-h", "--help"):
