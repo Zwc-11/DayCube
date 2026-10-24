@@ -5,15 +5,15 @@
   "counts": {
     "configuration": 35,
     "documentation": 27,
-    "test": 51,
-    "source": 147,
+    "test": 52,
+    "source": 149,
     "asset": 16,
     "fixture": 13,
     "measurement_or_fixture": 44,
     "lockfile": 4,
     "generated": 11
   },
-  "manual_reviews": 215,
+  "manual_reviews": 220,
   "files": [
     {
       "path": ".env.example",
@@ -710,11 +710,15 @@
     },
     {
       "path": "docs/capture.md",
-      "sha256": "8d842340ce1571e38a9b4b6ee2783ca249754f5fd4eab3aabf7a51d7351ecbb9",
       "category": "documentation",
-      "bytes": 41832,
-      "lines": 569,
-      "structural_check": "UTF-8 text inventory; build/configuration review is separate"
+      "sha256": "4421566bf1c1fcaf4f0da119a8c889b73d7c851ccbdd0d4d9dda1a39d93a626e",
+      "bytes": 60209,
+      "lines": 797,
+      "structural_check": "UTF-8 text inventory; targeted documentation review recorded separately",
+      "manual_review": {
+        "scope": "Targeted screen/caching correctness review; d8f8391 baseline with a526d52 preserved",
+        "notes": "Screen lifetime, masking, failure retry/status and cross-app click learning descriptions checked against implementation. Preserved a526d52 dashboard additions; historical measurements and other sections are not re-certified."
+      }
     },
     {
       "path": "docs/consent.md",
@@ -750,14 +754,14 @@
     },
     {
       "path": "docs/efficiency-review.md",
-      "sha256": "6c8139a99445e4e1dc9d130d149b6e93fc1372910fb06247448c6d1e90f042af",
       "category": "documentation",
-      "bytes": 9223,
-      "lines": 123,
-      "structural_check": "UTF-8 documentation; targeted PR follow-up review",
+      "sha256": "defbd928ad256dd00dae2b8951ab961b9d7b8d97134ee7d189f250b354615f32",
+      "bytes": 11883,
+      "lines": 160,
+      "structural_check": "UTF-8 text inventory; targeted documentation review recorded separately",
       "manual_review": {
-        "scope": "Targeted PR correctness review against 07b07bcd13cc41c53baae7bf38deb9556c24cd33",
-        "notes": "PR correctness follow-up, validation totals, historical benchmark provenance and remaining WAL/inference limits."
+        "scope": "Targeted screen/caching correctness review; d8f8391 baseline with a526d52 preserved",
+        "notes": "Combined PR review scope, test counts, cache capacities and explicit native Windows/extension acceptance limits recorded; earlier performance claims not remeasured."
       }
     },
     {
@@ -2635,29 +2639,35 @@
     },
     {
       "path": "services/capture-win/capture/__main__.py",
-      "sha256": "6dff469f40b3213755f66af14530237c904fd4c43c90f7a3131e65830852540f",
       "category": "source",
-      "bytes": 9582,
-      "lines": 224,
+      "sha256": "f6c09ee729c1a8526cacaba097a349e0de041b0848183bdab13eb4d1d542b923",
+      "bytes": 15937,
+      "lines": 366,
       "functions": [
         "_logging:21 (loops including nested scopes: 1)",
         "_split:36 (loops including nested scopes: 1)",
         "run:45 (loops including nested scopes: 0)",
-        "install_autostart:85 (loops including nested scopes: 0)",
-        "uninstall_autostart:98 (loops including nested scopes: 0)",
-        "autostart_status:105 (loops including nested scopes: 0)",
-        "doctor:112 (loops including nested scopes: 0)",
-        "ring:119 (loops including nested scopes: 0)",
-        "import_history:153 (loops including nested scopes: 2)",
-        "main:175 (loops including nested scopes: 0)"
+        "screen_file:96 (loops including nested scopes: 0)",
+        "screen:100 (loops including nested scopes: 4)",
+        "check_screen:133 (loops including nested scopes: 1)",
+        "_status:169 (loops including nested scopes: 0)",
+        "_restart:179 (loops including nested scopes: 0)",
+        "restart_receiver:200 (loops including nested scopes: 0)",
+        "install_autostart:207 (loops including nested scopes: 0)",
+        "uninstall_autostart:224 (loops including nested scopes: 0)",
+        "autostart_status:231 (loops including nested scopes: 0)",
+        "doctor:238 (loops including nested scopes: 0)",
+        "ring:245 (loops including nested scopes: 0)",
+        "import_history:279 (loops including nested scopes: 2)",
+        "main:301 (loops including nested scopes: 0)"
       ],
       "review_signals": [
-        "139: check text/binary mode and default encoding at build_opener(ProxyHandler({})).open"
+        "265: check text/binary mode and default encoding at build_opener(ProxyHandler({})).open"
       ],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Explicit receiver startup, supervisor/librarian cleanup, bounded rotating logs, import-history dispatch and command compatibility; no autostart/camera changes made."
+      "manual_review": {
+        "scope": "Targeted screen/caching correctness review; d8f8391 baseline with a526d52 preserved",
+        "notes": "Targeted one-shot screen diagnostic call-site and native capture cleanup review. Other command paths were not re-audited in this pass."
       }
     },
     {
@@ -2921,6 +2931,87 @@
       "previous_review_needs_refresh": {
         "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
         "notes": "Discriminated external records, field/count/length/range bounds, units and exact geometry flags; receiver validation tests."
+      }
+    },
+    {
+      "path": "services/capture-win/capture/screen.py",
+      "category": "source",
+      "sha256": "34099c9c44eaf612a5330ba191acffa2fd64649a828dc4772b6348b9516a8ea8",
+      "bytes": 51047,
+      "lines": 1066,
+      "functions": [
+        "settings:136 (loops including nested scopes: 0)",
+        "why_not:144 (loops including nested scopes: 2)",
+        "blocks_of:169 (loops including nested scopes: 12)",
+        "_median_height:217 (loops including nested scopes: 1)",
+        "normal:234 (loops including nested scopes: 1)",
+        "trigrams:240 (loops including nested scopes: 1)",
+        "identify:248 (loops including nested scopes: 9)",
+        "thumbnail:291 (loops including nested scopes: 0)",
+        "changed:296 (loops including nested scopes: 0)",
+        "_entry:607 (loops including nested scopes: 0)",
+        "app_url:611 (loops including nested scopes: 0)",
+        "_clip:615 (loops including nested scopes: 0)",
+        "_geometry:623 (loops including nested scopes: 0)",
+        "cjk_share:641 (loops including nested scopes: 1)",
+        "join_words:647 (loops including nested scopes: 1)",
+        "tidy:658 (loops including nested scopes: 0)",
+        "_overlaps:663 (loops including nested scopes: 0)",
+        "engine:828 (loops including nested scopes: 1)",
+        "start:1057 (loops including nested scopes: 0)",
+        "read:119 (loops including nested scopes: 0)",
+        "monitor:126 (loops including nested scopes: 0)",
+        "window_at:127 (loops including nested scopes: 0)",
+        "foreground:128 (loops including nested scopes: 0)",
+        "capture:129 (loops including nested scopes: 0)",
+        "idle_s:130 (loops including nested scopes: 0)",
+        "__init__:327 (loops including nested scopes: 0)",
+        "run:354 (loops including nested scopes: 0)",
+        "_run:363 (loops including nested scopes: 1)",
+        "stop:382 (loops including nested scopes: 0)",
+        "options:385 (loops including nested scopes: 1)",
+        "state:398 (loops including nested scopes: 3)",
+        "step:418 (loops including nested scopes: 0)",
+        "submit:472 (loops including nested scopes: 7)",
+        "open:534 (loops including nested scopes: 0)",
+        "leave:546 (loops including nested scopes: 0)",
+        "record:552 (loops including nested scopes: 0)",
+        "send:560 (loops including nested scopes: 0)",
+        "log_front:570 (loops including nested scopes: 0)",
+        "__init__:676 (loops including nested scopes: 0)",
+        "read:684 (loops including nested scopes: 1)",
+        "_read:700 (loops including nested scopes: 3)",
+        "__init__:719 (loops including nested scopes: 2)",
+        "_buffer:748 (loops including nested scopes: 1)",
+        "read:775 (loops including nested scopes: 0)",
+        "_recognise:779 (loops including nested scopes: 8)",
+        "__init__:811 (loops including nested scopes: 0)",
+        "read:816 (loops including nested scopes: 3)",
+        "__init__:845 (loops including nested scopes: 0)",
+        "monitor:913 (loops including nested scopes: 0)",
+        "window_at:921 (loops including nested scopes: 1)",
+        "_shown:935 (loops including nested scopes: 0)",
+        "_cloaked:951 (loops including nested scopes: 0)",
+        "_frame:960 (loops including nested scopes: 0)",
+        "foreground:968 (loops including nested scopes: 0)",
+        "idle_s:971 (loops including nested scopes: 0)",
+        "describe:977 (loops including nested scopes: 0)",
+        "app:995 (loops including nested scopes: 0)",
+        "_covering:1013 (loops including nested scopes: 1)",
+        "capture:1035 (loops including nested scopes: 1)",
+        "close:1050 (loops including nested scopes: 0)",
+        "using:742 (loops including nested scopes: 0)",
+        "writer:754 (loops including nested scopes: 0)",
+        "recognise:787 (loops including nested scopes: 0)"
+      ],
+      "review_signals": [
+        "444: check text/binary mode and default encoding at self.open",
+        "485: check text/binary mode and default encoding at self.open"
+      ],
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Targeted screen/caching correctness review; d8f8391 baseline with a526d52 preserved",
+        "notes": "Targeted document lifetime, geometry invalidation, delivery retry/status, covering-window masks and native handle cleanup review. Scripted receiver/OCR/Win32/mss tests; native compositor transitions and sustained Windows capture remain unverified."
       }
     },
     {
@@ -4035,6 +4126,33 @@
       }
     },
     {
+      "path": "services/ingest/ingest/gaze_learning.py",
+      "category": "source",
+      "sha256": "f0181372c95da49cacf27072a660df242103c24d8495a9c33f7d3f87ee684e7c",
+      "bytes": 11828,
+      "lines": 263,
+      "functions": [
+        "_click:136 (loops including nested scopes: 0)",
+        "_event:149 (loops including nested scopes: 0)",
+        "_number:153 (loops including nested scopes: 0)",
+        "_epoch:161 (loops including nested scopes: 0)",
+        "_rounded:170 (loops including nested scopes: 1)",
+        "_median:174 (loops including nested scopes: 0)",
+        "report:179 (loops including nested scopes: 11)",
+        "tagged:253 (loops including nested scopes: 1)",
+        "__init__:72 (loops including nested scopes: 0)",
+        "read:79 (loops including nested scopes: 2)"
+      ],
+      "review_signals": [
+        "84: check text/binary mode and default encoding at path.open"
+      ],
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Targeted screen/caching correctness review; d8f8391 baseline with a526d52 preserved",
+        "notes": "Targeted learning log tail invalidation, bounded row/file/line retention, stable reader snapshots and bounded serialized responses. Initial parse work remains proportional to log size; no latency or RSS improvement claimed."
+      }
+    },
+    {
       "path": "services/ingest/ingest/generated/__init__.py",
       "sha256": "63b4841aaf698f31640d7e4b59cab69e70e6e996751fe658ec34edef4cc84f7e",
       "category": "generated",
@@ -5106,6 +5224,46 @@
       }
     },
     {
+      "path": "services/ingest/tests/test_gaze_learning.py",
+      "category": "test",
+      "sha256": "c0dafd99f554e2bbd041cd703e6f5c099e67e2816f45cf8b982c2d64a95fb54b",
+      "bytes": 6656,
+      "lines": 134,
+      "functions": [
+        "vector:18 (loops including nested scopes: 0)",
+        "write:22 (loops including nested scopes: 2)",
+        "click:32 (loops including nested scopes: 0)",
+        "test_the_report_gives_live_errors_by_click_and_the_loss_ratio:37 (loops including nested scopes: 3)",
+        "test_new_clicks_are_parsed_without_reading_the_log_again:60 (loops including nested scopes: 1)",
+        "test_no_calibration_reports_so:78 (loops including nested scopes: 0)",
+        "test_same_size_log_rewrite_replaces_cached_clicks:82 (loops including nested scopes: 0)",
+        "test_learning_tail_cache_keeps_only_recent_records_and_bounds_open_vaults:93 (loops including nested scopes: 4)",
+        "test_log_rewritten_and_regrown_between_polls_does_not_mix_old_rows:104 (loops including nested scopes: 0)",
+        "test_oversized_incomplete_log_record_is_bounded_and_does_not_hide_later_rows:113 (loops including nested scopes: 0)",
+        "test_the_endpoint_serves_it_and_answers_304_until_a_click_lands:124 (loops including nested scopes: 1)"
+      ],
+      "review_signals": [
+        "24: check text/binary mode and default encoding at (folder / 'gaze.json').write_text",
+        "26: check text/binary mode and default encoding at (folder / 'clicks.jsonl').write_text",
+        "27: check text/binary mode and default encoding at (folder / 'learning.jsonl').write_text",
+        "74: check text/binary mode and default encoding at (folder / 'clicks.jsonl').write_text",
+        "88: check text/binary mode and default encoding at path.write_text",
+        "107: check text/binary mode and default encoding at path.write_text",
+        "109: check text/binary mode and default encoding at path.write_text",
+        "29: check text/binary mode and default encoding at (folder / 'gaze-learned.json').write_text",
+        "66: check text/binary mode and default encoding at (folder / 'clicks.jsonl').open",
+        "70: check text/binary mode and default encoding at (folder / 'clicks.jsonl').open",
+        "97: check text/binary mode and default encoding at path.write_text",
+        "119: check text/binary mode and default encoding at path.open",
+        "131: check text/binary mode and default encoding at (folder / 'clicks.jsonl').open"
+      ],
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Targeted screen/caching correctness review; d8f8391 baseline with a526d52 preserved",
+        "notes": "Four additional regressions cover same-size rewrites, truncate/regrow, bounded history/file eviction and oversized partial records followed by valid data. Existing report, incremental append and ETag tests pass."
+      }
+    },
+    {
       "path": "services/ingest/tests/test_graph.py",
       "sha256": "7b10e4cba2e50ff981692d20d684b218411018725a878c014f08556e19220bc0",
       "category": "test",
@@ -5334,54 +5492,62 @@
     {
       "path": "services/ingest/tests/test_screen.py",
       "category": "test",
-      "sha256": "bf850e62e083f0b4189491524cfc1c36858cb6919285ba26e58527d79dac7ad3",
-      "bytes": 34270,
-      "lines": 661,
+      "sha256": "decb3ed2b2f28b3ddc8f706a599f11d22f129089679ec82d21ad847cd27defce",
+      "bytes": 40677,
+      "lines": 800,
       "functions": [
-        "page_lines:44 (loops including nested scopes: 1)",
-        "logged:105 (loops including nested scopes: 2)",
-        "reader_for:113 (loops including nested scopes: 0)",
-        "look:120 (loops including nested scopes: 0)",
-        "fixation:126 (loops including nested scopes: 0)",
-        "test_ocr_lines_become_paragraphs_with_ids_from_their_text:136 (loops including nested scopes: 5)",
-        "test_which_windows_are_never_read:173 (loops including nested scopes: 0)",
-        "test_a_blinking_cursor_is_no_change_but_a_scroll_is:185 (loops including nested scopes: 1)",
-        "test_reading_a_pdf_in_another_app_is_followed_line_by_line:200 (loops including nested scopes: 6)",
-        "test_a_scroll_keeps_paragraphs_and_their_place_and_sends_new_text_only:257 (loops including nested scopes: 8)",
-        "test_browsers_private_windows_and_pauses_are_never_read:296 (loops including nested scopes: 0)",
-        "test_away_and_back:340 (loops including nested scopes: 1)",
-        "test_the_window_read_wins_over_the_browser_page_beneath_it:359 (loops including nested scopes: 1)",
-        "test_dwells_in_apps_run_the_hook_but_are_not_sent_to_the_extension:391 (loops including nested scopes: 1)",
-        "write_app_day:404 (loops including nested scopes: 2)",
-        "test_time_in_apps_and_text_read_in_them_become_units_notes_and_graph:431 (loops including nested scopes: 7)",
-        "test_questions_about_apps_filter_to_them:476 (loops including nested scopes: 0)",
-        "test_the_doctor_says_whether_and_what_the_screen_reader_reads:485 (loops including nested scopes: 0)",
-        "test_screen_command_turns_reading_off_and_excludes_apps:511 (loops including nested scopes: 0)",
-        "test_a_retitled_window_stays_one_page_until_its_content_is_replaced:528 (loops including nested scopes: 1)",
-        "test_a_chinese_windows_reads_english_windows_with_the_english_recogniser:563 (loops including nested scopes: 2)",
-        "test_restart_stops_the_receiver_and_its_tracker_but_never_itself:615 (loops including nested scopes: 0)",
-        "test_the_code_stamp_follows_the_files:641 (loops including nested scopes: 0)",
-        "test_the_receiver_reports_its_code_and_doctor_compares_it:652 (loops including nested scopes: 1)",
-        "__init__:57 (loops including nested scopes: 0)",
-        "monitor:63 (loops including nested scopes: 0)",
-        "window_at:66 (loops including nested scopes: 1)",
-        "foreground:73 (loops including nested scopes: 0)",
-        "capture:76 (loops including nested scopes: 0)",
-        "idle_s:80 (loops including nested scopes: 0)",
-        "__init__:87 (loops including nested scopes: 0)",
-        "read:91 (loops including nested scopes: 0)",
-        "__init__:98 (loops including nested scopes: 0)",
-        "__call__:101 (loops including nested scopes: 0)",
-        "at:409 (loops including nested scopes: 0)",
-        "texts_of:467 (loops including nested scopes: 1)",
-        "cjk:576 (loops including nested scopes: 0)",
-        "latin:580 (loops including nested scopes: 0)"
+        "page_lines:47 (loops including nested scopes: 1)",
+        "logged:108 (loops including nested scopes: 2)",
+        "reader_for:116 (loops including nested scopes: 0)",
+        "look:123 (loops including nested scopes: 0)",
+        "fixation:129 (loops including nested scopes: 0)",
+        "test_ocr_lines_become_paragraphs_with_ids_from_their_text:139 (loops including nested scopes: 5)",
+        "test_which_windows_are_never_read:176 (loops including nested scopes: 0)",
+        "test_a_blinking_cursor_is_no_change_but_a_scroll_is:188 (loops including nested scopes: 1)",
+        "test_desktop_capture_masks_windows_above_the_selected_app:200 (loops including nested scopes: 0)",
+        "test_screen_reader_releases_native_capture_resources_even_when_ocr_cannot_start:240 (loops including nested scopes: 0)",
+        "test_reading_a_pdf_in_another_app_is_followed_line_by_line:265 (loops including nested scopes: 6)",
+        "test_a_scroll_keeps_paragraphs_and_their_place_and_sends_new_text_only:322 (loops including nested scopes: 8)",
+        "test_browsers_private_windows_and_pauses_are_never_read:361 (loops including nested scopes: 0)",
+        "test_away_and_back:405 (loops including nested scopes: 1)",
+        "test_the_window_read_wins_over_the_browser_page_beneath_it:424 (loops including nested scopes: 1)",
+        "test_dwells_in_apps_run_the_hook_but_are_not_sent_to_the_extension:456 (loops including nested scopes: 1)",
+        "write_app_day:469 (loops including nested scopes: 2)",
+        "test_time_in_apps_and_text_read_in_them_become_units_notes_and_graph:496 (loops including nested scopes: 7)",
+        "test_questions_about_apps_filter_to_them:541 (loops including nested scopes: 0)",
+        "test_the_doctor_says_whether_and_what_the_screen_reader_reads:550 (loops including nested scopes: 0)",
+        "test_screen_command_turns_reading_off_and_excludes_apps:576 (loops including nested scopes: 0)",
+        "test_a_retitled_window_stays_one_page_until_its_content_is_replaced:593 (loops including nested scopes: 1)",
+        "test_returning_to_a_window_starts_a_new_document_lifetime:625 (loops including nested scopes: 0)",
+        "test_a_retitled_and_moved_window_refreshes_its_geometry_immediately:649 (loops including nested scopes: 0)",
+        "test_failed_screen_delivery_retries_unchanged_pixels_without_acknowledging_text:668 (loops including nested scopes: 0)",
+        "test_a_chinese_windows_reads_english_windows_with_the_english_recogniser:702 (loops including nested scopes: 2)",
+        "test_restart_stops_the_receiver_and_its_tracker_but_never_itself:754 (loops including nested scopes: 0)",
+        "test_the_code_stamp_follows_the_files:780 (loops including nested scopes: 0)",
+        "test_the_receiver_reports_its_code_and_doctor_compares_it:791 (loops including nested scopes: 1)",
+        "__init__:60 (loops including nested scopes: 0)",
+        "monitor:66 (loops including nested scopes: 0)",
+        "window_at:69 (loops including nested scopes: 1)",
+        "foreground:76 (loops including nested scopes: 0)",
+        "capture:79 (loops including nested scopes: 0)",
+        "idle_s:83 (loops including nested scopes: 0)",
+        "__init__:90 (loops including nested scopes: 0)",
+        "read:94 (loops including nested scopes: 0)",
+        "__init__:101 (loops including nested scopes: 0)",
+        "__call__:104 (loops including nested scopes: 0)",
+        "screenshot:221 (loops including nested scopes: 0)",
+        "make_engine:248 (loops including nested scopes: 0)",
+        "at:474 (loops including nested scopes: 0)",
+        "texts_of:532 (loops including nested scopes: 1)",
+        "cjk:715 (loops including nested scopes: 0)",
+        "latin:719 (loops including nested scopes: 0)",
+        "unavailable:678 (loops including nested scopes: 0)"
       ],
       "review_signals": [],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
       "manual_review": {
-        "scope": "Targeted PR correctness review against 07b07bcd13cc41c53baae7bf38deb9556c24cd33",
-        "notes": "JSONL helper explicitly reads UTF-8 and closes streams; non-ASCII retitled-window regression exercises the Windows CI failure. Other screen tests are unchanged."
+        "scope": "Targeted screen/caching correctness review; d8f8391 baseline with a526d52 preserved",
+        "notes": "Six new deterministic cases exercise document reentry, simultaneous title/movement, failed delivery, screenshot occlusion/stale selections and cleanup on normal/failed OCR startup; existing screen suite passes."
       }
     },
     {

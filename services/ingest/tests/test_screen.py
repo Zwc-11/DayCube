@@ -7,6 +7,8 @@ import time
 import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from threading import get_ident
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -16,6 +18,7 @@ from capture.screen import (
     Known,
     OcrLine,
     ScreenReader,
+    Win32System,
     Window,
     app_url,
     blocks_of,
@@ -73,7 +76,7 @@ class FakeSystem:
     def foreground(self) -> Window | None:
         return self.front
 
-    def capture(self, rect: tuple[int, int, int, int]) -> np.ndarray:
+    def capture(self, rect: tuple[int, int, int, int], window: Window) -> np.ndarray:
         rng = np.random.default_rng(self.version)
         return rng.integers(0, 256, (rect[3], rect[2], 4), dtype=np.uint8)
 
@@ -192,6 +195,68 @@ def test_a_blinking_cursor_is_no_change_but_a_scroll_is() -> None:
     assert not changed(thumbnail(page), thumbnail(cursor))
     assert changed(thumbnail(page), thumbnail(scrolled_page))
     assert changed(None, thumbnail(page))
+
+
+def test_desktop_capture_masks_windows_above_the_selected_app() -> None:
+    # A browser/password window partially overlaps the PDF, while the eyes are still on the
+    # exposed PDF. Its pixels must never be OCR'd as PDF text. A moving cover is masked at
+    # both observations around the screenshot; windows behind the PDF are not masked.
+    system = Win32System.__new__(Win32System)
+    order = [7, PDF.hwnd, 8]
+    frames = {
+        7: SimpleNamespace(left=150, top=100, right=250, bottom=200),
+        8: SimpleNamespace(left=100, top=50, right=1300, bottom=1050),
+    }
+    system.user32 = SimpleNamespace(
+        GetTopWindow=lambda _: order[0],
+        GetWindow=lambda hwnd, _: order[order.index(hwnd) + 1] if hwnd != order[-1] else None,
+    )
+    system.describe = lambda hwnd: PDF if hwnd == PDF.hwnd else None
+    system._shown = lambda hwnd: True
+    system._frame = frames.__getitem__
+    occlusions = system._covering(PDF.rect, PDF)
+    assert occlusions == [(50, 50, 150, 150)]
+    pixels = np.zeros((1000, 1200, 4), dtype=np.uint8)
+
+    def screenshot(rect: dict) -> SimpleNamespace:
+        frames[7] = SimpleNamespace(left=200, top=150, right=300, bottom=250)
+        return SimpleNamespace(bgra=pixels.tobytes(), height=1000, width=1200)
+
+    system._mss = SimpleNamespace(grab=screenshot)
+    system._mss_thread = get_ident()
+    image = system.capture(PDF.rect, PDF)
+    assert image[50:150, 50:150].min() == 255
+    assert image[100:200, 100:200].min() == 255
+    assert image[0, 0].max() == 0 and image[300, 300].max() == 0
+    order.remove(PDF.hwnd)
+    with pytest.raises(OSError, match="window changed"):
+        system.capture(PDF.rect, PDF)
+    system.describe = lambda hwnd: None
+    with pytest.raises(OSError, match="window changed"):
+        system.capture(PDF.rect, PDF)
+
+
+@pytest.mark.parametrize("engine_fails", [False, True])
+def test_screen_reader_releases_native_capture_resources_even_when_ocr_cannot_start(
+    vault: Vault, engine_fails: bool
+) -> None:
+    closed = []
+    native = Win32System.__new__(Win32System)
+    native._mss = SimpleNamespace(close=lambda: closed.append(True))
+    native._mss_thread = 123
+
+    def make_engine() -> FakeOcr:
+        if engine_fails:
+            raise RuntimeError("no OCR installed")
+        return FakeOcr()
+
+    reader = ScreenReader(object(), native, make_engine, vault.root / "capture" / "screen.json")
+    reader.stop()
+    reader.run()
+    assert closed == [True] and native._mss is None and native._mss_thread is None
+    native.close()
+    assert closed == [True]  # cleanup is safe to repeat
+    assert reader.error == ("no OCR: no OCR installed" if engine_fails else None)
 
 
 # -- through the receiver ---------------------------------------------------------------------------
@@ -555,6 +620,80 @@ def test_a_retitled_window_stays_one_page_until_its_content_is_replaced(vault: V
         assert third["doc"] != first["doc"] and third["geometry"]["scroll_y"] == SCROLL_ORIGIN
         assert third["blocks"][0]["text"] == "A different document altogether"
         assert reader.current.doc == third["doc"] and reader.current.generation == 1
+
+
+def test_returning_to_a_window_starts_a_new_document_lifetime(vault: Vault, auth: dict[str, str]) -> None:
+    app = create_capture_app(Settings(vault_root=vault.root, _env_file=None), receive=True)
+    with TestClient(app) as client:
+        reader, system, ocr, clock = reader_for(vault, app.state.receiver)
+        look(client, auth, 500, 300)
+        reader.step()
+        first = logged(vault, "blocks.jsonl")[-1]
+        reader.leave(clock())
+        # The window can change its file while the eyes are elsewhere. Its HWND alone cannot
+        # identify the document, and reusing its old ID would combine both files' evidence.
+        ocr.lines = [OcrLine("A different document altogether", (60, 200, 600, 20), 4)]
+        system.version += 1
+        look(client, auth, 500, 300)
+        reader.step()
+        second = logged(vault, "blocks.jsonl")[-1]
+        assert second["doc"] != first["doc"]
+        assert second["blocks"][0]["text"] == "A different document altogether"
+        reader.leave(clock())
+        reader.step()
+        third = logged(vault, "blocks.jsonl")[-1]
+        assert third["doc"] not in (first["doc"], second["doc"])
+        assert third["blocks"][0]["text"] == second["blocks"][0]["text"]
+
+
+def test_a_retitled_and_moved_window_refreshes_its_geometry_immediately(vault: Vault, auth: dict[str, str]) -> None:
+    app = create_capture_app(Settings(vault_root=vault.root, _env_file=None), receive=True)
+    with TestClient(app) as client:
+        reader, system, ocr, clock = reader_for(vault, app.state.receiver)
+        look(client, auth, 500, 300)
+        reader.step()
+        first = logged(vault, "blocks.jsonl")[-1]
+        # Same pixels inside the window, but both the title and position changed within the
+        # OCR/heartbeat interval. Gaze must be placed using the new screen coordinates now.
+        moved = Window(PDF.hwnd, PDF.app, "Updated title", (200, 60, 1200, 1000), PDF.cls)
+        system.windows, system.front = [moved], moved
+        clock.offset = 0.2
+        reader.step()
+        second = logged(vault, "blocks.jsonl")[-1]
+        assert ocr.calls == 2
+        assert second["doc"] == first["doc"]
+        assert (second["geometry"]["vx"], second["geometry"]["vy"]) == (200, 60)
+
+
+def test_failed_screen_delivery_retries_unchanged_pixels_without_acknowledging_text(
+    vault: Vault, auth: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    app = create_capture_app(Settings(vault_root=vault.root, _env_file=None), receive=True)
+    with TestClient(app) as client:
+        receiver = app.state.receiver
+        reader, system, ocr, clock = reader_for(vault, receiver)
+        look(client, auth, 500, 300)
+        with monkeypatch.context() as patch:
+
+            def unavailable(records: list[dict]) -> int:
+                raise OSError("disk temporarily unavailable")
+
+            patch.setattr(receiver, "screen_records", unavailable)
+            reader.step()
+        assert logged(vault, "blocks.jsonl") == []
+        assert reader.current.known == {} and reader.current.reads == 0
+        assert reader.state()["error"] == "OSError: disk temporarily unavailable"
+        clock.offset = 0.2
+        reader.step()
+        assert ocr.calls == 1  # even failures respect the OCR rate limit
+        assert reader.state()["error"] == "OSError: disk temporarily unavailable"
+        clock.offset = 1.1
+        reader.step()
+        assert ocr.calls == 2
+        (delivered,) = logged(vault, "blocks.jsonl")
+        assert delivered["blocks"][1]["text"] == " ".join(TEXTS)
+        assert reader.current.reads == 1
+        assert reader.state()["error"] is None
 
 
 # -- the right recogniser for the script on screen ---------------------------------------------------

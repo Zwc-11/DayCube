@@ -21,6 +21,9 @@ The click log grows by a line per click and is read incrementally: only lines ap
 last read are parsed (the file is reparsed when it is rewritten, which the tracker does when it
 trims it). ``tagged`` serialises the report once per change of the four files and tags it, so a
 dashboard polling every few seconds gets an empty 304 until a click or a fit lands.
+Parsed history retains 5,000 records per file across at most eight files; records over 64 KiB
+are skipped. Serialized responses use an 8 MiB cache. These are retention limits, not process
+peak-memory or latency measurements.
 """
 
 from __future__ import annotations
@@ -28,7 +31,9 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import threading
+from collections import OrderedDict, deque
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -36,6 +41,7 @@ from typing import Any
 
 import numpy as np
 
+from .cache import SegmentedLRU
 from .vault import Record, file_stamp
 
 CALIBRATION_FILE = "gaze.json"
@@ -45,6 +51,8 @@ LEARNED_FILE = "gaze-learned.json"
 HEAD_T = slice(9, 12)  # the head's position (mm, camera coordinates) in a click's frame vector
 LIVE_CLICKS = 300  # the live numbers are over the newest clicks
 MAX_CLICKS = 5000  # sent to the dashboard: the newest
+MAX_TAIL_FILES = 8
+MAX_LINE_BYTES = 64 * 1024
 
 
 @dataclass
@@ -53,45 +61,73 @@ class _Tail:
 
     key: tuple[int, int] | None = None  # (device, inode) of the file read
     offset: int = 0
-    rows: list[Record] = field(default_factory=list)
+    rows: deque[Record] = field(default_factory=lambda: deque(maxlen=MAX_CLICKS))
     partial: bytes = b""
+    modified_ns: int | None = None
+    anchor: bytes = b""  # the last 128 consumed bytes: detect truncate-and-regrow between polls
+    discarding: bool = False  # an over-limit line, until its next newline
 
 
 class _Tails:
-    def __init__(self) -> None:
-        self._tails: dict[Path, _Tail] = {}
+    def __init__(self, *, max_files: int = MAX_TAIL_FILES, max_rows: int = MAX_CLICKS) -> None:
+        if max_files <= 0 or max_rows <= 0:
+            raise ValueError("tail cache limits must be positive")
+        self.max_files, self.max_rows = max_files, max_rows
+        self._tails: OrderedDict[Path, _Tail] = OrderedDict()
         self._lock = threading.Lock()
 
     def read(self, path: Path, shape: Any) -> list[Record]:
-        """Every row of ``path`` (each a JSON object passed through ``shape``; None drops it),
-        parsing only what was appended since the last call."""
+        """The newest bounded rows of ``path``, parsing only appended lines. Replacements,
+        same-size edits and a changed consumed suffix invalidate the old parse."""
         with self._lock:
-            tail = self._tails.setdefault(path, _Tail())
             try:
-                stat = path.stat()
+                stream = path.open("rb")
             except OSError:
-                self._tails[path] = _Tail()
+                self._tails.pop(path, None)
                 return []
-            key = (stat.st_dev, stat.st_ino)
-            if key != tail.key or stat.st_size < tail.offset:  # replaced or rewritten: start over
-                tail = self._tails[path] = _Tail(key=key)
-            if stat.st_size > tail.offset:
-                with path.open("rb") as stream:
-                    stream.seek(tail.offset)
-                    data = tail.partial + stream.read(stat.st_size - tail.offset)
-                tail.offset = stat.st_size
-                lines = data.split(b"\n")
-                tail.partial = lines.pop()  # an append in flight: parsed once it is complete
-                for line in lines:
-                    if not line.strip():
+            with stream:
+                stat = os.fstat(stream.fileno())
+                key = (stat.st_dev, stat.st_ino)
+                tail = self._tails.get(path)
+                invalid = tail is None or tail.key != key or stat.st_size < tail.offset
+                if tail is not None and not invalid:
+                    stream.seek(max(0, tail.offset - 128))
+                    invalid = stream.read(min(128, tail.offset)) != tail.anchor or (
+                        stat.st_size == tail.offset and stat.st_mtime_ns != tail.modified_ns
+                    )
+                if invalid:
+                    tail = _Tail(key=key, rows=deque(maxlen=self.max_rows))
+                self._tails[path] = tail
+                self._tails.move_to_end(path)
+                while len(self._tails) > self.max_files:
+                    self._tails.popitem(last=False)
+                stream.seek(tail.offset)
+                while tail.offset < stat.st_size:
+                    piece = stream.readline(min(MAX_LINE_BYTES + 1, stat.st_size - tail.offset))
+                    if not piece:  # a concurrent truncate: next read invalidates the offset
+                        break
+                    tail.offset += len(piece)
+                    if tail.discarding:
+                        tail.discarding = not piece.endswith(b"\n")
+                        continue
+                    line, tail.partial = tail.partial + piece, b""
+                    if len(line) > MAX_LINE_BYTES:
+                        tail.discarding = not line.endswith(b"\n")
+                        continue
+                    if not line.endswith(b"\n"):
+                        tail.partial = line  # an append in flight
                         continue
                     try:
-                        row = shape(json.loads(line))
-                    except (ValueError, TypeError, KeyError):
+                        data = json.loads(line)
+                        row = shape(data) if isinstance(data, dict) else None
+                    except (ValueError, TypeError, KeyError, OverflowError):
                         continue
                     if row is not None:
                         tail.rows.append(row)
-            return tail.rows
+                stream.seek(max(0, tail.offset - 128))
+                tail.anchor = stream.read(min(128, tail.offset))
+                tail.modified_ns = stat.st_mtime_ns
+            return list(tail.rows)  # callers never iterate a concurrently changing deque
 
 
 TAILS = _Tails()
@@ -211,20 +247,17 @@ def report(root: Path) -> Record:
     }
 
 
-_TAGGED: dict[Path, tuple[tuple, bytes, str]] = {}
-_TAGGED_LOCK = threading.Lock()
+_TAGGED: SegmentedLRU[Path, tuple[tuple, bytes, str]] = SegmentedLRU(8 * 1024 * 1024)
 
 
 def tagged(root: Path) -> tuple[bytes, str]:
     """The report as JSON bytes and its ETag, rebuilt only when one of its files changed."""
     folder = root / "calibration"
     stamps = tuple(file_stamp(folder / name) for name in (CALIBRATION_FILE, CLICKS_FILE, HISTORY_FILE, LEARNED_FILE))
-    with _TAGGED_LOCK:
-        cached = _TAGGED.get(root)
-        if cached is not None and cached[0] == stamps:
-            return cached[1], cached[2]
+    cached = _TAGGED.get(root)
+    if cached is not None and cached[0] == stamps:
+        return cached[1], cached[2]
     body = json.dumps(report(root), separators=(",", ":"), allow_nan=False).encode("utf-8")
     etag = f'"{hashlib.blake2b(body, digest_size=12).hexdigest()}"'
-    with _TAGGED_LOCK:
-        _TAGGED[root] = (stamps, body, etag)
+    _TAGGED.put(root, (stamps, body, etag), len(body) + 2048)
     return body, etag

@@ -150,7 +150,10 @@ def check_screen() -> None:
     if getattr(ocr, "languages", None):
         print(f"OCR languages installed in Windows: {', '.join(ocr.languages)}")
     started = time.perf_counter()
-    lines = ocr.read(system.capture(window.rect), "check")
+    try:
+        lines = ocr.read(system.capture(window.rect, window), "check")
+    finally:
+        system.close()
     took = (time.perf_counter() - started) * 1000
     blocks = blocks_of(lines)
     language = getattr(ocr, "language", "")

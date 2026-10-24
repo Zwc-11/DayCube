@@ -121,3 +121,40 @@ This is a correctness change. The earlier search timings above predate it; no ne
 claimed. Model inference may keep a read snapshot open, retaining WAL history until the request
 finishes. Long-running inference and multiwriter load still need latency and WAL-size profiling.
 The ledger refresh covers only the changed paths, not all files added by intervening capture work.
+
+## Screen reader correctness follow-up, 2026-10-24
+
+Review of PRs #1–#3 at `d8f8391` confirmed that #1 and #2 are merged, both retrieval findings
+are resolved, and PR #3's CI run `40121579013` passed on Windows and Linux. This pass fixes
+additional screen-reader cases in PR #3:
+
+- A new document lifetime gets its own ID after the eyes leave a window. Reopening an HWND
+  can no longer merge unrelated documents or reuse an earlier content generation's identity.
+- Moving and retitling together invalidates the old capture geometry immediately.
+- A failed text delivery is reported in screen status and retried even with unchanged pixels,
+  respecting the normal OCR interval. Unstored text does not become acknowledged by a heartbeat.
+- Desktop captures mask windows above the selected app, including browsers and excluded apps.
+  The target and occlusions are checked on both sides of the screenshot; changed or vanished
+  selections fail. Native capture handles close on the reader's thread, including OCR startup
+  failure, and after the one-shot diagnostic.
+
+The newer `a526d52` gaze/dashboard changes arrived during this review and were preserved when
+integrating these fixes. Its learning-log cache needed two further corrections: same-size
+rewrites must invalidate parsed rows, and retained history must stay bounded. The tail reader
+now also detects changed consumed suffixes after truncate/regrow, streams records with a 64 KiB
+line limit, retains the newest 5,000 records per file across eight files, and returns stable
+copies to readers. Serialized dashboard responses use an 8 MiB cache. These bounds describe
+retained entries, not process peak memory; initial parsing still takes work proportional to the
+log's size.
+
+Ten new deterministic cases cover screen lifecycle, receiver delivery, simulated window order
+and screenshots, same-size/regrown logs, cache eviction and oversized partial records.
+Local validation of the combined branch: `npm run check` (278 core tests, 119 gaze tests, 4
+contract tests, 9 transport tests and 10 extension library tests), 2 API browser tests, 24 viewer
+browser tests, 5 extension reporter browser tests, capture packaging and CLI startup checks.
+
+Live receiver/extension tests were not run because the user's receiver occupies port 7700.
+Native window enumeration and screenshot capture are separate OS calls, so these scripted tests
+do not prove atomic capture during arbitrary compositor changes. Manual Windows checks of
+overlapping windows, OCR accuracy and sustained capture remain necessary. No throughput or
+memory improvement is claimed. The ledger refresh is limited to this pass's changed files.

@@ -126,7 +126,7 @@ class System(Protocol):
     def monitor(self) -> tuple[int, int, int, int]: ...
     def window_at(self, x: int, y: int) -> Window | None: ...
     def foreground(self) -> Window | None: ...
-    def capture(self, rect: tuple[int, int, int, int]) -> np.ndarray: ...
+    def capture(self, rect: tuple[int, int, int, int], window: Window) -> np.ndarray: ...
     def idle_s(self) -> float: ...
 
 
@@ -345,11 +345,22 @@ class ScreenReader(threading.Thread):
         self.skipped: str | None = None  # why the window under the gaze is not read
         self.reads: deque[tuple[float, float, str]] = deque(maxlen=2000)  # (time, ms, app) of OCR runs
         self.error: str | None = None
+        self.delivery_error: str | None = None
         self._options: tuple[bool, frozenset[str]] | None = None
         self._options_stamp: tuple[int, int] | None = None
         self.session = uuid.uuid4().hex  # documents of this run are its own
+        self.document_serial = 0
 
     def run(self) -> None:
+        try:
+            self._run()
+        finally:
+            self.leave(self.clock())
+            close = getattr(self.system, "close", None)
+            if close is not None:
+                close()  # mss owns thread-local handles: release them on the creating thread
+
+    def _run(self) -> None:
         if self.engine is None:
             try:
                 self.engine = self.make_engine()
@@ -399,7 +410,7 @@ class ScreenReader(threading.Thread):
             "reads_10min": len(recent),
             "apps_10min": sorted({app for _, _, app in recent}),
             "ocr_ms": round(float(np.median([ms for _, ms, _ in recent]))) if recent else None,
-            "error": self.error,
+            "error": self.error or self.delivery_error,
         }
 
     # -- one round ---------------------------------------------------------------------------------
@@ -428,21 +439,21 @@ class ScreenReader(threading.Thread):
             self.leave(now)
             return
         current = self.current
-        if current is None or current.window.hwnd != window.hwnd:
+        if current is None or (current.window.hwnd, current.window.app) != (window.hwnd, window.app):
             self.leave(now)
             current = self.current = self.open(window)
-        elif current.window.title != window.title:
+        elif current.window != window:
             # The same window, retitled ("● unsaved", an unread count, another file): the same page
             # until its content turns out to be another (``submit``), under the new title.
+            if current.window.rect != window.rect:
+                current.thumb = None  # moved or resized: read it again now
+                current.read_at = -1e9
             current.window, current.url = window, app_url(window.app, window.title.strip() or window.app)
-        if current.window.rect != window.rect:
-            current.window, current.thumb = window, None  # moved or resized: read it again now
-            current.read_at = -1e9
         rect = _clip(window.rect, monitor)
         if rect is None:  # off the tracker's monitor
             self.leave(now)
             return
-        image = self.system.capture(rect)
+        image = self.system.capture(rect, window)
         thumb = thumbnail(image)
         due = now - current.read_at >= RECHECK_S or (
             changed(current.thumb, thumb) and now - current.read_at >= MIN_READ_S * current.backoff
@@ -453,7 +464,7 @@ class ScreenReader(threading.Thread):
             self.reads.append((now, (time.perf_counter() - started) * 1000, window.app))
             current.thumb, current.read_at = thumb, now
             self.submit(current, rect, monitor, blocks_of(lines), now)
-        elif now - current.announced_at >= VIEW_EVERY_S:
+        elif current.thumb is not None and now - current.announced_at >= VIEW_EVERY_S:
             current.geometry = _geometry(rect, monitor, current.scroll)
             if self.send(self.record(current, "view", now)):
                 current.announced_at = now
@@ -515,10 +526,17 @@ class ScreenReader(threading.Thread):
                     : len(current.known) - KNOWN_LIMIT
                 ]:
                     del current.known[key]
+        else:
+            # The pixels were read, but their text was not stored. Retry even if those pixels
+            # stay unchanged, at the normal OCR rate; a heartbeat cannot acknowledge this read.
+            current.thumb, current.backoff = None, 1.0
 
     def open(self, window: Window, generation: int = 0) -> Current:
         title = window.title.strip() or window.app
-        key = f"{self.session}|{window.hwnd}|{window.app}|{generation}"
+        # After leaving, the window may show another document, and HWNDs can be reused. Only
+        # the active lifetime has the text/scroll history needed to preserve document identity.
+        self.document_serial += 1
+        key = f"{self.session}|{self.document_serial}|{window.hwnd}|{window.app}|{generation}"
         doc = "scr-" + hashlib.blake2b(key.encode(), digest_size=10).hexdigest()
         current = Current(window, doc, app_url(window.app, title), generation=generation)
         if generation and self.current is not None:  # the same window, just read
@@ -541,8 +559,11 @@ class ScreenReader(threading.Thread):
 
     def send(self, record: dict) -> bool:
         try:
-            return self.receiver.screen_records([record]) > 0
+            accepted = self.receiver.screen_records([record]) > 0
+            self.delivery_error = None if accepted else "screen record not accepted"
+            return accepted
         except Exception as error:  # noqa: BLE001 - paused between the check and now
+            self.delivery_error = f"{type(error).__name__}: {error}"[:200]
             log.debug("screen record not taken: %s", error)
             return False
 
@@ -989,13 +1010,48 @@ class Win32System:
         self._apps[pid] = name
         return name
 
-    def capture(self, rect: tuple[int, int, int, int]) -> np.ndarray:
-        """The window's pixels as they are on screen, BGRA. mss keeps one context per thread."""
+    def _covering(self, rect: tuple[int, int, int, int], window: Window) -> list[tuple[int, int, int, int]]:
+        """Rectangles above this window, clipped to the image (left, top, right, bottom). Refuse
+        a stale selection rather than reading whatever now occupies its old rectangle."""
+        if self.describe(window.hwnd) != window:
+            raise OSError("selected window changed before capture completed")
+        covers = []
+        hwnd = self.user32.GetTopWindow(None)
+        for _ in range(5000):
+            if not hwnd:
+                break
+            if hwnd == window.hwnd:
+                return covers
+            if self._shown(hwnd):
+                frame = self._frame(hwnd)
+                left, top = max(rect[0], frame.left), max(rect[1], frame.top)
+                right = min(rect[0] + rect[2], frame.right)
+                bottom = min(rect[1] + rect[3], frame.bottom)
+                if left < right and top < bottom:
+                    covers.append((left - rect[0], top - rect[1], right - rect[0], bottom - rect[1]))
+            hwnd = self.user32.GetWindow(hwnd, 2)  # GW_HWNDNEXT
+        raise OSError("selected window changed before capture completed")
+
+    def capture(self, rect: tuple[int, int, int, int], window: Window) -> np.ndarray:
+        """Visible pixels belonging to the selected window, BGRA. Whiten covering windows before
+        OCR, including browsers and private apps; their text must not bypass their exclusions.
+        Check both sides of the screenshot to cover a window moving during the grab."""
+        covers = self._covering(rect, window)
         if self._mss is None or self._mss_thread != threading.get_ident():
             self._mss = self._mss_module.mss()
             self._mss_thread = threading.get_ident()
         shot = self._mss.grab({"left": rect[0], "top": rect[1], "width": rect[2], "height": rect[3]})
-        return np.frombuffer(shot.bgra, dtype=np.uint8).reshape(shot.height, shot.width, 4)
+        covers += self._covering(rect, window)
+        image = np.frombuffer(shot.bgra, dtype=np.uint8).reshape(shot.height, shot.width, 4).copy()
+        for left, top, right, bottom in covers:
+            image[top:bottom, left:right] = 255
+        return image
+
+    def close(self) -> None:
+        context, self._mss = self._mss, None
+        self._mss_thread = None
+        if context is not None:
+            context.close()
 
 
 def start(receiver: Any, settings_file: Path) -> tuple[ScreenReader | None, str | None]:
