@@ -425,3 +425,47 @@ def test_a_webcam_slow_to_start_stays_open() -> None:
     t.run(lambda: real_time.monotonic() > end)
     assert len(opened) == 1
     assert receiver.fixations and receiver.states[-2]["tracking"] is True
+
+
+def test_a_camera_that_works_only_on_the_tracker_thread_is_still_used(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Should a camera backend refuse another thread, the tracker falls back to reading it on its
+    own thread, as before, and stops trying the reader thread."""
+    import threading
+
+    from gaze import track
+
+    monkeypatch.setattr(track, "_threaded_camera", True)
+
+    class Picky:
+        def __init__(self) -> None:
+            if threading.current_thread() is not threading.main_thread():
+                raise RuntimeError("cannot open camera 0")
+            self.thread = threading.current_thread()
+
+        def read(self) -> tuple[bool, object]:
+            return True, (1.0, 2.0)
+
+        def release(self) -> None:
+            pass
+
+    camera = track.open_camera_thread(Picky)
+    assert isinstance(camera, Picky) and camera.read() == (True, (1.0, 2.0))
+    assert track._threaded_camera is False
+    assert isinstance(track.open_camera_thread(Picky), Picky)  # no second try on the thread
+
+    class Silent:  # opens on the thread but never delivers there
+        def __init__(self) -> None:
+            self.main = threading.current_thread() is threading.main_thread()
+
+        def read(self) -> tuple[bool, object]:
+            import time
+
+            time.sleep(0.01)
+            return (True, "frame") if self.main else (False, None)
+
+        def release(self) -> None:
+            pass
+
+    monkeypatch.setattr(track, "_threaded_camera", True)
+    camera = track.open_camera_thread(Silent, first_s=0.3)
+    assert isinstance(camera, Silent) and camera.main
