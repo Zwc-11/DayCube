@@ -287,28 +287,37 @@ def test_the_newest_camera_frame_is_read_and_none_twice() -> None:
 
     from gaze.track import LatestFrame
 
+    threads: set[str] = set()
+
     class Camera:
         def __init__(self) -> None:
+            threads.add(threading.current_thread().name)
             self.n, self.released = 0, False
 
         def read(self) -> tuple[bool, int]:
+            threads.add(threading.current_thread().name)
             real_time.sleep(0.005)
             self.n += 1
+            if self.n <= 5:  # a webcam that fails its first reads while it starts
+                return False, None
             return True, self.n
 
         def release(self) -> None:
+            threads.add(threading.current_thread().name)
             self.released = True
 
-    camera = Camera()
-    latest = LatestFrame(camera)
+    cameras: list[Camera] = []
+    latest = LatestFrame(lambda: cameras.append(Camera()) or cameras[-1])
     ok, first = latest.read()
+    assert ok and first > 5  # the failed start is not passed on
     real_time.sleep(0.05)  # frames keep coming while this one is "processed"
     ok, second = latest.read()
     assert ok and second > first + 3  # the newest, not the next in a queue
     ok, third = latest.read()
     assert ok and third > second  # never the same frame twice
     latest.release()
-    assert camera.released and not any(t.name == "camera" and t.is_alive() for t in threading.enumerate())
+    assert cameras[0].released and not any(t.name == "camera" and t.is_alive() for t in threading.enumerate())
+    assert threads == {"camera"}  # opened, read and released on its own thread (Windows COM)
 
 
 def test_a_camera_that_stops_delivering_fails_reads() -> None:
@@ -321,9 +330,19 @@ def test_a_camera_that_stops_delivering_fails_reads() -> None:
         def release(self) -> None:
             pass
 
-    latest = LatestFrame(Dead(), timeout=0.2)
+    latest = LatestFrame(Dead, timeout=0.2)
     assert latest.read() == (False, None)
     latest.release()
+
+
+def test_a_camera_that_cannot_open_says_so() -> None:
+    from gaze.track import LatestFrame
+
+    def broken() -> None:
+        raise RuntimeError("cannot open camera 0")
+
+    with pytest.raises(RuntimeError, match="cannot open camera 0"):
+        LatestFrame(broken)
 
 
 def test_a_completed_fixation_is_reported_within_a_quarter_second() -> None:
@@ -374,3 +393,35 @@ def test_a_gaze_ray_that_misses_the_screen_is_skipped() -> None:
     run_for(t, clock, 2)
     assert t.smoother.x.value == 960.0
     assert all(abs(f.x - 0.5) < 1e-6 for f in receiver.fixations)
+
+
+def test_a_webcam_slow_to_start_stays_open() -> None:
+    """The real loop, real time, with the threaded reader: a webcam whose first reads fail at once
+    (as many do while starting) is not reopened over and over; it is opened once and tracked."""
+    import time as real_time
+
+    from gaze.track import LatestFrame
+
+    opened: list[int] = []
+
+    class Webcam:
+        def __init__(self) -> None:
+            opened.append(1)
+            self.reads = 0
+
+        def read(self) -> tuple[bool, object]:
+            self.reads += 1
+            if self.reads <= 40:
+                return False, None  # fails instantly while starting
+            real_time.sleep(1 / 30)
+            return True, (960.0, 540.0)
+
+        def release(self) -> None:
+            pass
+
+    receiver = Receiver()
+    t = Tracker(Estimator(), lambda: LatestFrame(Webcam), receiver, CALIBRATION, system=Computer())
+    end = real_time.monotonic() + 3
+    t.run(lambda: real_time.monotonic() > end)
+    assert len(opened) == 1
+    assert receiver.fixations and receiver.states[-2]["tracking"] is True

@@ -125,7 +125,7 @@ def do_track(args: argparse.Namespace) -> None:
 
     tracker = Tracker(
         estimator,
-        lambda: LatestFrame(open_camera(camera)),
+        lambda: LatestFrame(lambda: open_camera(camera)),
         receiver,
         result,
         fps=args.fps,
