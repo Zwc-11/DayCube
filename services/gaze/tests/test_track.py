@@ -395,6 +395,44 @@ def test_a_gaze_ray_that_misses_the_screen_is_skipped() -> None:
     assert all(abs(f.x - 0.5) < 1e-6 for f in receiver.fixations)
 
 
+def test_reacquiring_a_face_starts_at_its_new_gaze_point() -> None:
+    t, scene, receiver, *_, clock, log = tracker()
+    receiver.live = True
+    run_for(t, clock, 2)
+    scene.point = None
+    run_for(t, clock, 0.6)
+    scene.point = (250.0, 200.0)
+    t.step()
+    _, x, y = receiver.points[-1]
+    assert x == pytest.approx(250 / 1920, abs=1e-12)
+    assert y == pytest.approx(200 / 1080, abs=1e-12)
+
+
+def test_a_short_blink_keeps_the_continuous_smoothing_response() -> None:
+    from gaze.fixations import Smoother
+
+    t, scene, receiver, *_, clock, log = tracker()
+    receiver.live = True
+    expected = Smoother()
+    start = clock.now
+    for elapsed, x, y in [(0.0, 960.0, 540.0), (0.03, 1000.0, 550.0), (0.13, 1400.0, 800.0)]:
+        now = start + elapsed
+        ex, ey = expected(now, x, y)
+        t._gaze(now, x, y)
+        assert receiver.points[-1][1:] == pytest.approx((ex / 1920, ey / 1080))
+
+
+def test_looking_off_screen_ends_the_open_fixation() -> None:
+    t, scene, receiver, *_, clock, log = tracker()
+    run_for(t, clock, 0.9)
+    assert t.detector.window and not receiver.fixations
+    last_sample = t.detector.window[-1][0]
+    t._gaze(clock.now, 1e6, 1e6)  # a finite ray that lands far beyond the monitor
+    assert t.detector.window == []
+    assert len(receiver.fixations) == 1 and receiver.fixations[0].end == last_sample
+    assert receiver.fixations[0].x == pytest.approx(0.5)
+
+
 def test_a_webcam_slow_to_start_stays_open() -> None:
     """The real loop, real time, with the threaded reader: a webcam whose first reads fail at once
     (as many do while starting) is not reopened over and over; it is opened once and tracked."""

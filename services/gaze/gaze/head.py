@@ -269,7 +269,8 @@ class GazeModel:
         (n, 3, 3) and eye measurements (n, 2, k)."""
         mean, sd, weights = self._stacked()
         Z = (F - mean) / sd
-        xy = np.stack([Z[:, e] @ weights[e, 1:] + weights[e, 0] for e in range(2)], 1)
+        # Both eyes are one matrix batch; keep the per-eye dot products and output ownership.
+        xy = (Z.transpose(1, 0, 2) @ weights[:, 1:] + weights[:, None, 0]).transpose(1, 0, 2)
         return np.matmul(directions(xy), R.transpose(0, 2, 1))
 
     def predict_arrays(self, R: np.ndarray, eyes: np.ndarray, F: np.ndarray) -> np.ndarray:

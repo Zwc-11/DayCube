@@ -1,0 +1,150 @@
+{
+  "kind": "read-only-live-gaze-status",
+  "sample_interval_s": 1,
+  "samples": [
+    {
+      "paused": false,
+      "tracking": true,
+      "reason": null,
+      "target_fps": 30.0,
+      "fps": 29.0,
+      "face": 1.0
+    },
+    {
+      "paused": false,
+      "tracking": true,
+      "reason": null,
+      "target_fps": 30.0,
+      "fps": 29.2,
+      "face": 1.0
+    },
+    {
+      "paused": false,
+      "tracking": true,
+      "reason": null,
+      "target_fps": 30.0,
+      "fps": 28.9,
+      "face": 1.0
+    },
+    {
+      "paused": false,
+      "tracking": true,
+      "reason": null,
+      "target_fps": 30.0,
+      "fps": 29.0,
+      "face": 1.0
+    },
+    {
+      "paused": false,
+      "tracking": true,
+      "reason": null,
+      "target_fps": 30.0,
+      "fps": 29.2,
+      "face": 1.0
+    },
+    {
+      "paused": false,
+      "tracking": true,
+      "reason": null,
+      "target_fps": 30.0,
+      "fps": 28.9,
+      "face": 1.0
+    },
+    {
+      "paused": false,
+      "tracking": true,
+      "reason": null,
+      "target_fps": 30.0,
+      "fps": 29.0,
+      "face": 1.0
+    },
+    {
+      "paused": false,
+      "tracking": true,
+      "reason": null,
+      "target_fps": 30.0,
+      "fps": 29.3,
+      "face": 1.0
+    },
+    {
+      "paused": false,
+      "tracking": true,
+      "reason": null,
+      "target_fps": 30.0,
+      "fps": 29.5,
+      "face": 1.0
+    },
+    {
+      "paused": false,
+      "tracking": true,
+      "reason": null,
+      "target_fps": 30.0,
+      "fps": 29.6,
+      "face": 1.0
+    },
+    {
+      "paused": false,
+      "tracking": true,
+      "reason": null,
+      "target_fps": 30.0,
+      "fps": 29.5,
+      "face": 1.0
+    },
+    {
+      "paused": false,
+      "tracking": true,
+      "reason": null,
+      "target_fps": 30.0,
+      "fps": 29.5,
+      "face": 1.0
+    },
+    {
+      "paused": false,
+      "tracking": true,
+      "reason": null,
+      "target_fps": 30.0,
+      "fps": 29.6,
+      "face": 1.0
+    },
+    {
+      "paused": false,
+      "tracking": true,
+      "reason": null,
+      "target_fps": 30.0,
+      "fps": 29.4,
+      "face": 1.0
+    },
+    {
+      "paused": false,
+      "tracking": true,
+      "reason": null,
+      "target_fps": 30.0,
+      "fps": 29.5,
+      "face": 1.0
+    }
+  ],
+  "active_samples": 15,
+  "median_fps": 29.3,
+  "source_sha256": {
+    "services/gaze/gaze/track.py": "e904a8495206fe769f52878311eec790cec95325efee22c03d899243080dc163",
+    "services/gaze/gaze/__main__.py": "7a74c9219a1ab4c775b7c6ddbd1d7d402782566536f3092cecab7a50d2270798",
+    "services/capture-win/capture/api.py": "cbd1449e85d6874f9317581f1b9289c09d9d4de1855fddd1b1def88a0a873164",
+    "services/capture-win/capture/records.py": "0709a56c6114cc56a2fa956e933ec0cce4ccceed635f6002b4d56b4e2c1b6818",
+    "eval/profile_gaze.py": "3a82d16a63ac53524ce28a1544f5f2cf35e27b1f0b60064c4b86aeeda0839a4d",
+    "services/gaze/gaze/face.py": "1a660762461cdc191978a3a1b543ea9d0faf44ffd0176e358bf08aaec782b379",
+    "services/gaze/gaze/head.py": "2c5a7b6af4afb271f1d79d5c54ca390249862eb7ce4f4e1180a7a2df35951dcf",
+    "services/gaze/gaze/calibrate.py": "2148435d7fd950fd8b97f3f2e0541fa01787a73a15f9a09d86df5fb07b7aa64d",
+    "services/gaze/gaze/receiver.py": "609af758bd8930151fdccdc0901bd22da775e606c186d582e8fd642faec97ab0"
+  },
+  "date": "2026-10-24",
+  "measurement_scope": "Existing supervised tracker after the user ran calibration. One read-only /status sample per second; FPS and face are correlated rolling 10-second statistics, not independent latency samples. No gaze coordinates, frames or recordings.",
+  "reported_calibration": {
+    "model": "head-video",
+    "still_error_px": 37.2,
+    "moved_error_px": 277.5,
+    "usable": true,
+    "monitor_width_px": 2560,
+    "gate_px": 160.0,
+    "scope": "Held-out scores printed during user calibration before the selected model was refitted on all dots. These are separate conditions from prior calibrations and not a causal speed/accuracy comparison."
+  }
+}

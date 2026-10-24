@@ -1,0 +1,117 @@
+{
+  "environment": {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.9",
+    "cpu": "AMD64 Family 26 Model 68 Stepping 0, AuthenticAMD",
+    "numpy": "1.26.4",
+    "opencv": "4.11.0",
+    "mediapipe": "1.1.1",
+    "opencv_threads": 16
+  },
+  "revision": "abb6f48d96af2ff981e94329bd46b432d98542bb",
+  "source_hashes": {
+    "services/gaze/gaze/face.py": "1a660762461cdc191978a3a1b543ea9d0faf44ffd0176e358bf08aaec782b379",
+    "services/gaze/gaze/head.py": "2c5a7b6af4afb271f1d79d5c54ca390249862eb7ce4f4e1180a7a2df35951dcf",
+    "services/gaze/tests/test_head.py": "984f8d5e71a389440693ebd42e7ecfd64a13e0892ea6f8127a38b6bdbf0a0d93",
+    "eval/benchmark_gaze_pipeline.py": "b28666f5ba1d07ae977a680ef3a0c8c76cfb6b93642d864d5f912e929cf63a6a"
+  },
+  "workload": {
+    "frames": 2000,
+    "repeats": 11,
+    "warmups": 1,
+    "seed": 7,
+    "synthetic_poses": 5,
+    "synthetic_targets": 5
+  },
+  "operations": {
+    "head_prediction": {
+      "wall_ms": [
+        64.38120000530034,
+        64.72319999011233,
+        63.723200000822544,
+        65.09559997357428,
+        64.18609997490421,
+        66.88900000881404,
+        66.20100000873208,
+        65.66810002550483,
+        63.926199974957854,
+        65.9808000200428,
+        64.11500001559034
+      ],
+      "median_ms": 64.72319999011233,
+      "p95_ms": 66.88900000881404,
+      "median_cpu_ms": 62.5,
+      "median_us_per_frame": 32.36159999505617,
+      "traced_peak_bytes": 381256,
+      "sha256": "cfdff84bd0d47975401ca9c5d37f34c07aa52c3a28f226ebdfdba2f90d535697",
+      "profile": "         144003 function calls in 0.098 seconds\n\n   Ordered by: cumulative time\n   List reduced from 45 to 15 due to restriction <15>\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n        1    0.000    0.000    0.098    0.098 benchmark_gaze_pipeline.py:118(predict)\n        1    0.001    0.001    0.098    0.098 benchmark_gaze_pipeline.py:119(<listcomp>)\n     2000    0.004    0.000    0.096    0.000 head.py:429(predict)\n     2000    0.029    0.000    0.090    0.000 head.py:276(predict_arrays)\n     2000    0.010    0.000    0.036    0.000 head.py:267(directions_of)\n     2000    0.014    0.000    0.024    0.000 head.py:215(directions)\n    10000    0.009    0.000    0.009    0.000 {method 'reduce' of 'numpy.ufunc' objects}\n     6000    0.001    0.000    0.008    0.000 {method 'sum' of 'numpy.ndarray' objects}\n     2000    0.004    0.000    0.007    0.000 shape_base.py:372(stack)\n     2000    0.004    0.000    0.006    0.000 linalg.py:2383(norm)\n     6000    0.001    0.000    0.006    0.000 _methods.py:47(_sum)\n     4000    0.003    0.000    0.006    0.000 _ufunc_config.py:33(seterr)\n     2000    0.001    0.000    0.004    0.000 _ufunc_config.py:430(__enter__)\n     2000    0.001    0.000    0.004    0.000 _ufunc_config.py:435(__exit__)\n     2000    0.001    0.000    0.003    0.000 {method 'all' of 'numpy.ndarray' objects}\n\n\n"
+    },
+    "head_extract_and_predict": {
+      "wall_ms": [
+        196.2010000133887,
+        189.5655000116676,
+        209.77509999647737,
+        255.63730002613738,
+        238.6683000368066,
+        263.9618000248447,
+        235.67830002866685,
+        237.6325999503024,
+        234.03489997144789,
+        237.56360000697896,
+        256.2997000059113
+      ],
+      "median_ms": 237.56360000697896,
+      "p95_ms": 263.9618000248447,
+      "median_cpu_ms": 234.375,
+      "median_us_per_frame": 118.78180000348948,
+      "traced_peak_bytes": 2321312,
+      "sha256": "d74c9690abdbf9ec562b5dd35ec3d4175d3758b4ae4667542249b9cc63502198",
+      "profile": "         309989 function calls in 0.341 seconds\n\n   Ordered by: cumulative time\n   List reduced from 69 to 15 due to restriction <15>\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n        1    0.003    0.003    0.341    0.341 benchmark_gaze_pipeline.py:132(track)\n     2000    0.005    0.000    0.200    0.000 head.py:402(extract_features)\n     2000    0.002    0.000    0.170    0.000 head.py:387(measure)\n     2000    0.008    0.000    0.168    0.000 head.py:183(measure)\n     2000    0.005    0.000    0.137    0.000 head.py:429(predict)\n     2000    0.040    0.000    0.127    0.000 head.py:276(predict_arrays)\n     2000    0.076    0.000    0.112    0.000 head.py:188(eye_features)\n     2000    0.015    0.000    0.052    0.000 head.py:267(directions_of)\n     2000    0.006    0.000    0.047    0.000 head.py:153(pose)\n     2000    0.036    0.000    0.036    0.000 {solvePnP}\n     2000    0.020    0.000    0.035    0.000 head.py:215(directions)\n     4000    0.013    0.000    0.022    0.000 shape_base.py:372(stack)\n     2000    0.004    0.000    0.018    0.000 head.py:341(__call__)\n    10000    0.013    0.000    0.013    0.000 {method 'reduce' of 'numpy.ufunc' objects}\n     4000    0.011    0.000    0.013    0.000 head.py:342(openness)\n\n\n"
+    },
+    "prepare_640x480": {
+      "wall_ms": [
+        150.13029996771365,
+        151.30530000897124,
+        150.75640002032742,
+        179.10199996549636,
+        152.21950004342943,
+        152.48910000082105,
+        151.01770003093407,
+        149.80809995904565,
+        152.40319998702034,
+        150.55660001235083,
+        152.81919995322824
+      ],
+      "median_ms": 151.30530000897124,
+      "p95_ms": 179.10199996549636,
+      "median_cpu_ms": 1765.625,
+      "median_us_per_frame": 75.65265000448562,
+      "traced_peak_bytes": 975162,
+      "sha256": "f33c06923705ba4fbada5dbd3caff4dcb98a1b261318f238315a8124c11dbd0b",
+      "profile": "         90024 function calls in 0.183 seconds\n\n   Ordered by: cumulative time\n   List reduced from 36 to 15 due to restriction <15>\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n        1    0.001    0.001    0.183    0.183 benchmark_gaze_pipeline.py:97(run)\n     2000    0.018    0.000    0.181    0.000 face.py:172(detect)\n     2000    0.045    0.000    0.084    0.000 image.py:234(__init__)\n     2000    0.029    0.000    0.033    0.000 mediapipe_c_bindings.py:30(load_raw_library)\n     2000    0.032    0.000    0.032    0.000 {cvtColor}\n     4000    0.019    0.000    0.019    0.000 {built-in method numpy.array}\n     2000    0.019    0.000    0.019    0.000 face.py:198(<listcomp>)\n     2000    0.004    0.000    0.005    0.000 numeric.py:274(full)\n    44000    0.004    0.000    0.004    0.000 {built-in method builtins.getattr}\n     2000    0.001    0.000    0.003    0.000 _internal.py:267(data_as)\n     2000    0.001    0.000    0.003    0.000 benchmark_gaze_pipeline.py:81(detect)\n     2002    0.002    0.000    0.002    0.000 __init__.py:511(cast)\n     2000    0.002    0.000    0.002    0.000 image.py:562(__del__)\n     2001    0.001    0.000    0.002    0.000 mediapipe_c_utils.py:217(handle_status)\n     2000    0.001    0.000    0.001    0.000 _internal.py:250(__init__)\n\n\n"
+    },
+    "prepare_1920x1080": {
+      "wall_ms": [
+        1619.414999964647,
+        1590.700900007505,
+        1591.7661999701522,
+        1593.1637000176124,
+        1599.6183999814093,
+        1618.5194999561645,
+        1589.5636000204831,
+        1604.1111000231467,
+        1592.387199983932,
+        1668.7323999940418,
+        1662.653900042642
+      ],
+      "median_ms": 1599.6183999814093,
+      "p95_ms": 1668.7323999940418,
+      "median_cpu_ms": 7546.875,
+      "median_us_per_frame": 799.8091999907047,
+      "traced_peak_bytes": 6343114,
+      "sha256": "95f700e2e9e283565d5ad48b92b1654dd7c5282c392c1f60295624658281bc48",
+      "profile": "         90024 function calls in 2.025 seconds\n\n   Ordered by: cumulative time\n   List reduced from 36 to 15 due to restriction <15>\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n        1    0.003    0.003    2.025    2.025 benchmark_gaze_pipeline.py:97(run)\n     2000    0.037    0.000    2.019    0.001 face.py:172(detect)\n     2000    1.501    0.001    1.554    0.001 image.py:234(__init__)\n     2000    0.002    0.000    0.284    0.000 benchmark_gaze_pipeline.py:81(detect)\n     2000    0.282    0.000    0.282    0.000 image.py:562(__del__)\n     2000    0.098    0.000    0.098    0.000 {cvtColor}\n     2000    0.036    0.000    0.040    0.000 mediapipe_c_bindings.py:30(load_raw_library)\n     2000    0.018    0.000    0.018    0.000 face.py:198(<listcomp>)\n     4000    0.017    0.000    0.017    0.000 {built-in method numpy.array}\n     2000    0.007    0.000    0.010    0.000 numeric.py:274(full)\n     2000    0.002    0.000    0.006    0.000 _internal.py:267(data_as)\n     2002    0.005    0.000    0.005    0.000 __init__.py:511(cast)\n    44000    0.004    0.000    0.004    0.000 {built-in method builtins.getattr}\n     2001    0.001    0.000    0.003    0.000 mediapipe_c_utils.py:217(handle_status)\n        1    0.002    0.002    0.002    0.002 {built-in method _hashlib.openssl_sha256}\n\n\n"
+    }
+  },
+  "limits": "Synthetic BGR images and projected faces. Preparation uses actual cvtColor/MediaPipe Image copies and selective conversion of landmarks but substitutes native face detection. Head extraction/prediction starts from known landmarks: no neural inference, camera/exposure/driver wait, smoothing, transport or rendering. Tracemalloc excludes some native allocations and is not RSS; profiles/memory run separately from timing. No webcam frames are opened, saved or transmitted. These are CPU-stage timings, not actual FPS, live accuracy or DeepInfer parity."
+}

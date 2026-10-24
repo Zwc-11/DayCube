@@ -231,3 +231,11 @@ reading geometry calculations. On named synthetic fixtures, history import media
 Single-column decoding was essentially unchanged. The report records CPU, sampled tails, memory,
 reference/source revisions and remaining limits; these are not camera-FPS or DeepInfer parity claims.
 
+## Camera and gaze follow-up
+
+The [camera/algorithm review](gaze-tracking-review-2026-10-24.md) records RGB-buffer reuse,
+batched binocular prediction, calibration frame freshness and recovery after gaze gaps. Synthetic
+head prediction was about 10% faster and 1080p frame preparation 30% faster with identical outputs.
+The current 640×480 preparation case showed a small median gain and a slightly worse sampled tail.
+Freshness and recovery checks are separate from the CPU measurements; live accuracy needs calibration.
+
