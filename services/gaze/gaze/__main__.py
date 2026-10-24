@@ -43,7 +43,7 @@ def do_calibrate(args: argparse.Namespace) -> None:
         print("Recording is paused while you calibrate.")
         time.sleep(2)
     print("A full-screen window opens. Keep your head still and follow each green dot with your eyes.")
-    print("Esc cancels. Takes about 30 seconds.")
+    print("Esc cancels. Takes about 30 seconds. Afterwards you can move your head as usual.")
     try:
         result = calibration.calibrate(args.vault, camera=args.camera, model=args.model)
     except calibration.Aborted:
@@ -56,6 +56,8 @@ def do_calibrate(args: argparse.Namespace) -> None:
         f"Held-out error: {result['error_px']:.0f} px median, {result['error_p90_px']:.0f} px at the 90th percentile "
         f"(usable up to {usable_limit(width):.0f} px on this {width}-px-wide monitor)."
     )
+    if result["model"] != "head":
+        print("This EyeTrax model is right only while your head stays where it was during calibration.")
     if not result["usable"]:
         print(
             "Too coarse to tell paragraphs apart. Try again with your face evenly lit, the camera at eye level, "
@@ -75,7 +77,6 @@ def do_track(args: argparse.Namespace) -> None:
     if result["error_px"] > usable_limit(result["monitor"][0]) and not args.force:
         log.error("calibration error %.0f px is too coarse; recalibrate (or pass --force)", result["error_px"])
         raise SystemExit(NOT_CALIBRATED)
-    from eyetrax import GazeEstimator
     from eyetrax.utils.video import open_camera
 
     from .receiver import Receiver
@@ -85,8 +86,10 @@ def do_track(args: argparse.Namespace) -> None:
     if list(primary_monitor()) != result["monitor"]:
         log.error("the primary monitor is now %s, calibrated on %s", primary_monitor(), result["monitor"])
         raise SystemExit(OTHER_MONITOR)
-    estimator = GazeEstimator(model_name=result["model"])
+    estimator = calibration.estimator_for(result["model"], tuple(result["monitor"]), result.get("mm_per_px"))
     estimator.load_model(args.vault / "calibration" / result["model_file"])
+    if result["model"] != "head":
+        log.warning("calibrated with EyeTrax %s, which does not follow head movement: recalibrate", result["model"])
     receiver = Receiver(args.receiver, args.vault / ".token")
     camera = args.camera if args.camera is not None else result["camera"]
     calibrated = (args.vault / "calibration" / calibration.CALIBRATION_FILE).stat().st_mtime_ns
@@ -149,7 +152,11 @@ def main(argv: list[str] | None = None) -> None:
 
     cal = commands.add_parser("calibrate", parents=[common], help="Learn where you look: 13 targets, about 30 s")
     cal.add_argument("--camera", type=int, default=0)
-    cal.add_argument("--model", default="ridge", help="EyeTrax model: ridge, elastic_net, svr or tiny_mlp")
+    cal.add_argument(
+        "--model",
+        default=calibration.DEFAULT_MODEL,
+        help="head (default: follows head movement) or an EyeTrax model: ridge, elastic_net, svr, tiny_mlp",
+    )
     cal.add_argument("--receiver", default="http://127.0.0.1:7700")
     cal.set_defaults(handler=do_calibrate)
 

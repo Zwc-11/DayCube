@@ -90,3 +90,29 @@ def primary_monitor() -> tuple[int, int]:
     monitors = get_monitors()
     main = next((m for m in monitors if getattr(m, "is_primary", False)), monitors[0])
     return main.width, main.height
+
+
+DEFAULT_MM_PER_PX = 0.25  # between a 24" 1920-px monitor (0.277) and a 27" 2560-px one (0.233)
+
+
+def monitor_mm_per_px() -> tuple[float, str]:
+    """The primary monitor's pixel pitch in millimetres and where it came from: Windows' raw DPI,
+    which it computes from the size the monitor reports (EDID), or an assumed typical pitch. The
+    head-aware gaze model needs it only roughly: 25% off costs 0-4 mm on screen (eval/head_bench.py)."""
+    if sys.platform == "win32":
+        with contextlib.suppress(AttributeError, OSError):
+            user32, shcore = ctypes.windll.user32, ctypes.windll.shcore
+
+            class Point(ctypes.Structure):
+                _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+
+            user32.MonitorFromPoint.restype = ctypes.c_void_p
+            user32.MonitorFromPoint.argtypes = [Point, ctypes.c_uint]
+            monitor = user32.MonitorFromPoint(Point(0, 0), 1)  # MONITOR_DEFAULTTOPRIMARY
+            x, y = ctypes.c_uint(), ctypes.c_uint()
+            if monitor and shcore.GetDpiForMonitor(ctypes.c_void_p(monitor), 2, ctypes.byref(x), ctypes.byref(y)) == 0:
+                pitch = 25.4 / x.value if x.value else 0.0
+                # A TV or projector may report no size (raw DPI 96, or nonsense): keep the default.
+                if 0.1 <= pitch <= 0.6 and x.value != 96:
+                    return pitch, "monitor"
+    return DEFAULT_MM_PER_PX, "assumed"

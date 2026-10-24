@@ -291,12 +291,20 @@ def test_the_doctor_judges_capture_from_what_it_recorded(vault: Vault, monkeypat
     status = {
         "paused": False, "browser": {"last": (now - timedelta(minutes=2)).isoformat()},
         "gaze": {"tracking": True, "fps": 29.4, "target_fps": 30.0, "face": 1.0, "coverage": 0.88, "noise_px": 24.0,
-                 "error_px": 69.1, "monitor": [2560, 1440]},
+                 "error_px": 69.1, "monitor": [2560, 1440], "model": "head", "head_moved_mm": 64.0,
+                 "head_turned_deg": 8.2},
         "accuracy": {"clicks": 7, "rejected": 0, "live_error_px": 120.0, "corrected_error_px": 58.0},
         "reading": None,
     }  # fmt: skip
     monkeypatch.setattr(doctor.sys, "platform", "linux")
     results = {name: (verdict, detail) for verdict, name, detail in doctor.checks(status, vault.root, zone, now, None)}
+    assert results["gaze model"] == (
+        doctor.PASS,
+        "head-aware: follows head movement; head now 6 cm and 8 degrees from where it was at calibration",
+    )
+    eyetrax = status | {"gaze": status["gaze"] | {"model": "ridge", "head_moved_mm": None}}
+    verdicts = {name: v for v, name, _ in doctor.checks(eyetrax, vault.root, zone, now, None)}
+    assert verdicts["gaze model"] == doctor.WARN
     assert results["receiver"][0] == doctor.PASS and results["fixations"] == (doctor.PASS, "88% of gaze, noise 24 px")
     assert results["calibration"][0] == doctor.PASS and results["live accuracy"][0] == doctor.PASS
     assert results["today's logs"][0] == doctor.FAIL and "1 malformed" in results["today's logs"][1]

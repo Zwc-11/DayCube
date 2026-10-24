@@ -83,6 +83,23 @@ def checks(status: dict | None, vault: Path, zone: ZoneInfo, now: datetime, auto
             noise = gaze.get("noise_px")
             out.append((verdict, "fixations", f"{coverage:.0%} of gaze" + (f", noise {noise:.0f} px" if noise else "")))
 
+    model = gaze.get("model")
+    if model == "head":
+        moved, turned = gaze.get("head_moved_mm"), gaze.get("head_turned_deg")
+        where = (
+            f"; head now {moved / 10:.0f} cm and {turned:.0f} degrees from where it was at calibration"
+            if moved is not None and turned is not None
+            else ""
+        )
+        out.append((PASS, "gaze model", "head-aware: follows head movement" + where))
+    elif model:
+        out.append((
+            WARN,
+            "gaze model",
+            f"EyeTrax {model}: off as soon as the head moves. Recalibrate "
+            "(uv run --project services/gaze python -m gaze calibrate) for the head-aware model",
+        ))  # fmt: skip
+
     monitor = gaze.get("monitor")
     limit = USABLE_PX_AT_1920 * (monitor[0] / 1920 if monitor else 1.0)
     error = gaze.get("error_px")
