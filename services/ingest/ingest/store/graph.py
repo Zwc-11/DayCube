@@ -31,10 +31,16 @@ def graph_view(
     if kinds:
         where += (" AND " if where else "WHERE ") + f"e.kind IN ({','.join('?' for _ in kinds)})"
         values += list(kinds)
+    # In a window, start from its units (index on ts) and keep that order with CROSS JOIN: left to
+    # the planner, a one-day graph at 90 days walked every entity's mentions (300 ms).
+    joins = (
+        "FROM units u CROSS JOIN mentions m ON m.unit_id = u.id CROSS JOIN entities e ON e.id = m.entity_id"
+        if since is not None or until is not None
+        else "FROM entities e JOIN mentions m ON m.entity_id = e.id JOIN units u ON u.id = m.unit_id"
+    )
     rows = db.execute(
         "SELECT e.id, e.kind, e.key, e.name, count(DISTINCT m.unit_id) AS mentions, min(u.ts) AS first, max(u.ts) AS last "
-        f"FROM entities e JOIN mentions m ON m.entity_id = e.id JOIN units u ON u.id = m.unit_id {where} "
-        "GROUP BY e.id ORDER BY mentions DESC, last DESC LIMIT ?",
+        f"{joins} {where} GROUP BY e.id ORDER BY mentions DESC, last DESC LIMIT ?",
         (*values, limit),
     ).fetchall()
     nodes = [dict(row) for row in rows]

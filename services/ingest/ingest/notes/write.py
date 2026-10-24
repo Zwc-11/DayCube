@@ -65,21 +65,31 @@ class Notes:
         self.store = store
         self.root = root or store.vault.root / "notes"
         self._paths: dict[str, Path] | None = None
+        self._taken: set[str] = set()
 
     # -- which file is which entity --------------------------------------------------------
 
     def paths(self) -> dict[str, Path]:
-        """``"<kind> <key>"`` -> note file, from the notes' own front matter."""
+        """``"<kind> <key>"`` -> note file, from the notes' own front matter. For the vault's own
+        notes folder the database already holds it (``store.sync_notes`` reads only changed notes);
+        another folder is read in full."""
         if self._paths is None:
             self._paths = {}
-            if self.root.is_dir():
-                for path in self.root.rglob("*.md"):
+            if self.root == self.store.notes_root:
+                self.store.sync_notes()
+                with self.store.connect() as db:
+                    rows = db.execute("SELECT identity, path FROM notes WHERE identity IS NOT NULL ORDER BY path")
+                    for identity, path in rows:
+                        self._paths.setdefault(identity, self.root / path)
+            elif self.root.is_dir():
+                for path in sorted(self.root.rglob("*.md")):
                     try:
                         identity = front_matter(path.read_text(encoding="utf-8")).get("daycube")
                     except (OSError, UnicodeDecodeError):
                         continue
                     if identity:
                         self._paths.setdefault(identity, path)
+            self._taken = {p.as_posix().casefold() for p in self._paths.values()}
         return self._paths
 
     def path_for(self, kind: str, key: str, folder: str, title: str) -> Path:
@@ -88,12 +98,13 @@ class Notes:
         if found is not None:
             return found
         path = self.root / folder / f"{file_name(title)}.md"
-        taken = {p.resolve() for p in self.paths().values()}
         counter = 2
-        while path.resolve() in taken:
+        # Case-folded: on Windows (and macOS) "Hash Table.md" and "Hash table.md" are one file.
+        while path.as_posix().casefold() in self._taken:
             path = self.root / folder / f"{file_name(title)} {counter}.md"
             counter += 1
         self.paths()[identity] = path
+        self._taken.add(path.as_posix().casefold())
         return path
 
     def link(self, path: Path, label: str | None = None) -> str:

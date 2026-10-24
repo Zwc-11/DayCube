@@ -63,7 +63,7 @@ def retrieve(
     since = q.since if since is None else since if q.since is None else max(since, q.since)
     until = q.until if until is None else until if q.until is None else min(until, q.until)
     query_terms = terms(q.text)
-    store.ensure(None if day is None else [day])
+    store.ensure(None if day is None else [day], quick=True)
     filters = {"day": day, "since": since, "until": until, "types": q.types, "site": q.site}
     if not query_terms and q.filtered:
         # Nothing to search for but the filters ("what did I search yesterday"): list them.
@@ -92,6 +92,7 @@ def retrieve(
         notes = [("note", c) for c in store.note_keyword(expression, k=CANDIDATES)] if query_terms and unscoped else []
         rows = store.rows(list(dict.fromkeys([*keyword, *meaning])))
         note_rows = store.note_rows([c for _, c in notes]) if notes else {}
+        notes = [n for n in notes if n[1] in note_rows]  # a note deleted since the folder was read
         # An OR query matches a record that shares one common word ("day") with the question. Scale
         # each keyword hit by the share of the question's words it contains, so such a hit cannot tie
         # a close meaning match; a record containing every word keeps full weight.

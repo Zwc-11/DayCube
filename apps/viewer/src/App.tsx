@@ -71,6 +71,8 @@ interface AppProps {
   days: DaySummary[] | null;
   /** Open another day, or the calendar with null. */
   onOpenDate: (date: string | null) => void;
+  /** Show this day as its notes (the knowledge page). */
+  onOpenNotes?: () => void;
 }
 
 function isTypingTarget(target: EventTarget | null): boolean {
@@ -79,7 +81,7 @@ function isTypingTarget(target: EventTarget | null): boolean {
   return el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName);
 }
 
-export const App: React.FC<AppProps> = ({ date, day, days, onOpenDate }) => {
+export const App: React.FC<AppProps> = ({ date, day, days, onOpenDate, onOpenNotes }) => {
   const pageVisible = usePageVisible();
   const [focus] = useState(() => initialFocus(date, day.layers));
   const [layers, setLayers] = useState<Layer[]>(day.layers);
@@ -380,6 +382,7 @@ export const App: React.FC<AppProps> = ({ date, day, days, onOpenDate }) => {
         viewMode={viewMode}
         onViewModeChange={changeViewMode}
         onOpenAsk={openAsk}
+        onOpenNotes={onOpenNotes}
         capture={captureAvailable ? (capturePaused ? 'paused' : 'on') : 'off'}
         onToggleCapture={toggleCapture}
         onOpenSettings={openSettings}

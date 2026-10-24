@@ -8,7 +8,7 @@ from .retrieve import retrieve, terms
 
 def ask(store: LifeStore, day: str | None, question: str, now: datetime | None = None) -> dict:
     """Answer from the best evidence in one day, or across the vault when ``day`` is None."""
-    if day is not None and day not in store.days():
+    if day is not None and not store.knows(day):
         raise FileNotFoundError(f"No vault day: {day}")
     query = parse(question, now or datetime.now(ZoneInfo(store.zone)))
     evidence = retrieve(store, question, day=day, query=query, limit=20 if not terms(query.text) else 10)

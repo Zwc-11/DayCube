@@ -16,26 +16,35 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import sqlite3
 from collections.abc import Iterable, Iterator, Sequence
 from contextlib import contextmanager, suppress
+from datetime import datetime, timedelta
 from pathlib import Path
+from time import monotonic
+from zoneinfo import ZoneInfo
 
 from ..capture import capture_days, capture_stamp, capture_units, read_capture
+from ..capture.synthesize import LOGS
 from ..graph import Graph, extract
 from ..index.build import UNIT_COLUMNS, collect_units, source_stamp
 from ..index.embed import Embedder
 from ..time import instant
-from ..vault import Record, Vault
+from ..vault import Record, Vault, stored
 from . import notes as note_index
 from .graph import entity_view, graph_view
 from .vectors import VectorIndex, sign_bits
 
 FILE_NAME = "daycube.sqlite"
+FULL_CHECK_S = 2.0  # how often a search across days re-checks every day's files
+
 # What is derived from the files (units, graph, note links), separately from the table layout:
 # when it changes, every day and note is read again on the next use, keeping the stored vectors
 # (they are found again by text). 2: readable deadline names, note links from the person's text only.
-DERIVED_VERSION = "2"
+# 3: every note link kept with its resolution (outgoing links and backlinks). 4: note links keep
+# the target's file name (the table is rebuilt).
+DERIVED_VERSION = "4"
 SCHEMA_VERSION = 4  # 1: sqlite-vec vectors and per-row triggers, never released; 2: no graph; 3: no notes
 # A query may embed this many new texts before it answers (a few seconds on CPU); a day with
 # more waits for `daycube index`, and is searched by keywords until then.
@@ -99,6 +108,15 @@ CREATE TABLE deletions (t0 TEXT, t1 TEXT, reason TEXT, applied_at TEXT);
 
 
 DDL = DDL.replace("{NOTES}", note_index.DDL.strip())
+# Tables and indexes added after schema 4: created in place, so no rebuild (and no re-embedding).
+ADDITIVE = (
+    note_index.LINKS_DDL
+    + """
+CREATE INDEX IF NOT EXISTS mentions_unit ON mentions(unit_id);
+CREATE INDEX IF NOT EXISTS notes_identity ON notes(identity);
+CREATE INDEX IF NOT EXISTS units_ts ON units(ts);
+"""
+)
 
 
 def digest(text: str) -> bytes:
@@ -130,6 +148,7 @@ class LifeStore:
         self._ready = False
         self.notes_root = vault.root / "notes"
         self._notes: dict[str, tuple[int, int]] | None = None  # the notes folder as last synced
+        self._everything_at = -FULL_CHECK_S  # when every day's files were last checked (monotonic)
 
     @property
     def vectors(self) -> bool:
@@ -173,9 +192,15 @@ class LifeStore:
             self.fresh.clear()
             self.index.clear()
             self._notes = None
+        columns = {row[1] for row in db.execute("PRAGMA table_info(note_links)")}
+        if columns and "name" not in columns:  # the first form of the table, from a development build
+            db.execute("DROP TABLE note_links")
+        _script(db, ADDITIVE)  # added in place to a database from before they existed
         meta = dict(db.execute("SELECT key, value FROM meta").fetchall())
         if meta.get("derived") != DERIVED_VERSION:
             with self._write(db):
+                db.execute("DROP TABLE IF EXISTS note_links")
+                _script(db, note_index.LINKS_DDL)
                 db.execute("UPDATE days SET stamp = ''")  # every day is extracted again
                 db.execute("INSERT INTO note_chunks_fts(note_chunks_fts) VALUES ('delete-all')")
                 db.execute("DELETE FROM note_chunks")
@@ -211,6 +236,13 @@ class LifeStore:
         """A vault day folder (day.json) for the date; otherwise only its capture logs count."""
         return (self.vault.day_path(day, must_exist=False) / "day.json").is_file()
 
+    def knows(self, day: str) -> bool:
+        """A vault day or a day of computer capture, without listing every day."""
+        if self.has_day(day):
+            return True
+        folder = self.vault.root / "capture" / day
+        return folder.is_dir() and any(stored(folder / name).exists() for name in LOGS)
+
     def days(self) -> list[str]:
         """Every date with something to search: vault days and capture days, newest first."""
         return sorted({d["date"] for d in self.vault.list_days()} | set(capture_days(self.vault)), reverse=True)
@@ -241,13 +273,21 @@ class LifeStore:
         self._notes = found
         return count
 
-    def ensure(self, days: Iterable[str] | None = None) -> None:
+    def ensure(self, days: Iterable[str] | None = None, *, quick: bool = False) -> None:
         """Bring the given days (default: every day in the vault, and the notes) up to date. A
-        repeat call with unchanged files costs a few stats per day."""
+        repeat call with unchanged files costs a few stats per day. ``quick`` (search as you type,
+        a request per pause in typing): across every day, older days and the notes are checked at
+        most every ``FULL_CHECK_S``; today and yesterday, where capture is arriving, every time."""
         everything = days is None
         if not self.path.exists():
             self._forget()  # deleted underneath us: every day must be written again
-        if everything:
+            self._everything_at = -FULL_CHECK_S
+        if everything and quick and monotonic() - self._everything_at < FULL_CHECK_S:
+            today = datetime.now(ZoneInfo(self.zone)).date()
+            recent = [(today - timedelta(days=n)).isoformat() for n in (1, 0)]
+            days, everything = [d for d in recent if self.knows(d)], False
+        elif everything:
+            self._everything_at = monotonic()
             self.sync_notes()
         wanted = self.days() if everything else list(days)
         stale = [day for day in wanted if self.fresh.get(day) != self._key(day)]
@@ -498,6 +538,20 @@ class LifeStore:
                     chunk,
                 ):
                     found[row["id"]] = dict(row)
+        # Searches across days re-read the notes folder at most every FULL_CHECK_S: never return a
+        # note deleted since, and bring the folder in now if a hit's file changed.
+        stale = False
+        for path in {row["path"] for row in found.values()}:
+            try:
+                current = os.stat(self.notes_root / path).st_mtime_ns
+            except OSError:
+                current = None
+            if current is None:
+                found = {k: v for k, v in found.items() if v["path"] != path}
+            stale |= current != next((r["mtime_ns"] for r in found.values() if r["path"] == path), current)
+            stale |= current is None
+        if stale:
+            self.sync_notes()
         return found
 
     def rows(self, ids: Sequence[int]) -> dict[int, Record]:
@@ -519,7 +573,7 @@ class LifeStore:
         limit: int = 200,
     ) -> Record:
         """The most mentioned entities in a time window, and the links among them."""
-        self.ensure()
+        self.ensure(quick=True)
         with self.connect() as db:
             view = graph_view(db, since=since, until=until, kinds=kinds, limit=limit)
         names = self.vault.place_names()  # a rename shows at once, before the day is indexed again

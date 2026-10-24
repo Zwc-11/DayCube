@@ -1,7 +1,8 @@
 import {
-  askResultSchema, dataCenterSchema, dayResponseSchema, entitySchema, eventSchema, graphSchema,
-  knowledgeGraphSchema, momentSchema, skeletonSchema, transcriptSchema,
-  type AskResult, type DataCenter, type Day, type DayResponse, type Entity, type Event, type KnowledgeGraph,
+  askResultSchema, dataCenterSchema, dayNotesSchema, dayResponseSchema, entitySchema, eventSchema, graphSchema,
+  knowledgeGraphSchema, momentSchema, noteSchema, searchResultSchema, skeletonSchema, transcriptSchema,
+  type AskResult, type DataCenter, type Day, type DayNotes, type DayResponse, type Entity, type Event,
+  type KnowledgeGraph, type Note, type SearchResult,
 } from '@daycube/schemas';
 import { consumeSse } from './sse.mjs';
 
@@ -14,7 +15,11 @@ export class ApiError extends Error {
   }
 }
 
-export interface DaySummary { date: string; stats: Day['stats']; kinds?: string[] }
+/** `capture`: the day has computer capture logs (a day with no places has only those);
+ *  `records`: its searchable record count, once indexed. */
+export interface DaySummary {
+  date: string; stats: Day['stats']; kinds?: string[]; capture?: boolean; records?: number | null;
+}
 
 export interface ClientOptions {
   baseUrl?: string;
@@ -89,6 +94,19 @@ export class DaycubeClient {
   /** Every source stream in the vault and the database built from them. */
   async dataCenter(signal?: AbortSignal): Promise<DataCenter> {
     return dataCenterSchema.parse(await this.request('/data', { signal }));
+  }
+  /** The day's knowledge base; its notes are written or refreshed on the server first. */
+  async dayNotes(date: string, signal?: AbortSignal): Promise<DayNotes> {
+    return dayNotesSchema.parse(await this.request(`/day/${encodeURIComponent(date)}/notes`, { signal }));
+  }
+  async note(path: string, signal?: AbortSignal): Promise<Note> {
+    return noteSchema.parse(await this.request(`/note?path=${encodeURIComponent(path)}`, { signal }));
+  }
+  /** Search as you type: no token needed; `date: null` searches every day. */
+  async search(q: string, date: string | null, signal?: AbortSignal): Promise<SearchResult> {
+    const query = new URLSearchParams({ q });
+    if (date) query.set('date', date);
+    return searchResultSchema.parse(await this.request(`/search?${query}`, { signal }));
   }
   notes() { return this.request('/notes') as Promise<{ path: string; title: string; identity: string | null }[]>; }
   writeNotes(date: string) {

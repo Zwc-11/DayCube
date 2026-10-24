@@ -1,6 +1,6 @@
 import { DaycubeClient, ApiError } from '@daycube/api-client';
 import type {
-  AskResult as SchemaAskResult, DataCenter, DayResponse, Entity, KnowledgeGraph,
+  AskResult as SchemaAskResult, DataCenter, DayNotes, DayResponse, Entity, KnowledgeGraph, Note, SearchResult,
 } from '@daycube/schemas';
 import {
   AskResult,
@@ -219,11 +219,20 @@ export class BackendBridge {
   }
 
   /** Recorded days, oldest first, or null when the API is unreachable. */
-  async listDays(): Promise<{ date: string; places: number; events: number; kinds: string[] }[] | null> {
+  async listDays(): Promise<
+    { date: string; places: number; events: number; kinds: string[]; capture: boolean; records: number | null }[] | null
+  > {
     try {
       const days = await this.client.days();
       return days
-        .map((d) => ({ date: d.date, places: d.stats.places, events: d.stats.events, kinds: d.kinds ?? [] }))
+        .map((d) => ({
+          date: d.date,
+          places: d.stats.places,
+          events: d.stats.events,
+          kinds: d.kinds ?? [],
+          capture: d.capture ?? false,
+          records: d.records ?? null,
+        }))
         .sort((a, b) => a.date.localeCompare(b.date));
     } catch {
       return null;
@@ -621,6 +630,20 @@ export class BackendBridge {
       () => this.client.dataCenter(),
       (d) => `${d.sources.length} sources, ${d.database.rows.units ?? 0} records indexed`
     );
+  }
+
+  /** The day's knowledge base (notes, links, local graph), or null when it cannot be loaded. */
+  dayNotes(date: string) {
+    return this.read<DayNotes>(`/api/day/${date}/notes`, () => this.client.dayNotes(date), (d) => `${d.notes.length} notes, ${d.records} records`);
+  }
+
+  note(path: string) {
+    return this.read<Note>(`/api/note?path=${path}`, () => this.client.note(path), (n) => `${n.links.length} links, ${n.backlinks.length} backlinks`);
+  }
+
+  /** Search as you type. Not logged: one request per keystroke would flood the request log. */
+  search(q: string, date: string | null, signal?: AbortSignal): Promise<SearchResult> {
+    return this.client.search(q, date, signal);
   }
 
   /** Write a day's linked notes into vault/notes (needs the vault token); returns the notes written. */
