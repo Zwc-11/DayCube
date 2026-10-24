@@ -135,3 +135,21 @@ def test_camera_release_clears_the_blink_recovery_state() -> None:
     before = len(receiver.points)
     t.step()
     assert len(receiver.points) == before + 1
+
+
+def test_desktop_overlay_is_guarded_before_it_receives_a_blink_point() -> None:
+    from test_track import FakeRing
+
+    ring = FakeRing()
+    t, scene, receiver, *_, clock, log = tracker(overlay=lambda: ring)
+    estimator = BlinkingEstimator()
+    t.estimator, receiver.ring = estimator, True
+    run_for(t, clock, 2)
+    before = len(ring.points)
+    for aperture, y in [(0.88, 950), (0.5, 1000), (0.03, 1000), (0.7, 950), (0.85, 950), (0.95, 850)]:
+        estimator.apertures, scene.point = (0.3 * aperture, 0.3 * aperture), (960.0, float(y))
+        t.step()
+    assert len(ring.points) == before
+    estimator.apertures, scene.point = (0.3, 0.3), (960.0, 540.0)
+    run_for(t, clock, 0.4)
+    assert len(ring.points) > before and all(y == pytest.approx(0.5) for _, y in ring.points)

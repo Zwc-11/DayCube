@@ -115,8 +115,16 @@ def main() -> None:
     if args.output is None:
         parser.error("--output is required")
     paths = [f"services/gaze/gaze/{name}.py" for name in MODULES]
+    current_paths = paths + [
+        f"services/gaze/gaze/{name}.py"
+        for name in ("camera", "overlay")
+        if (ROOT / f"services/gaze/gaze/{name}.py").exists()
+    ]
     revision = subprocess.check_output(["git", "rev-parse", args.compare], cwd=ROOT, text=True).strip()
     before_sources = {p: subprocess.check_output(["git", "show", f"{revision}:{p}"], cwd=ROOT) for p in paths}
+    common = ["eval/blink_replay.py", "services/gaze/tests/test_blinks.py", "services/gaze/tests/test_track.py"]
+    started_at = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
+    source_hashes = {p: hashlib.sha256((ROOT / p).read_bytes()).hexdigest() for p in current_paths + common}
     with tempfile.TemporaryDirectory(prefix="blink-replay-") as folder:
         package = Path(folder) / "gaze"
         package.mkdir()
@@ -127,7 +135,8 @@ def main() -> None:
         after = json.loads(subprocess.check_output(command, cwd=ROOT, text=True))
     if before["healthy_downward_saccade_sha256"] != after["healthy_downward_saccade_sha256"]:
         raise AssertionError("Unobscured eye movement changed")
-    common = ["eval/blink_replay.py", "services/gaze/tests/test_blinks.py", "services/gaze/tests/test_track.py"]
+    if any(hashlib.sha256((ROOT / p).read_bytes()).hexdigest() != digest for p, digest in source_hashes.items()):
+        raise AssertionError("Sources changed during the replay; repeat against a stable checkout")
     report = {
         "environment": {
             "platform": platform.platform(),
@@ -136,9 +145,9 @@ def main() -> None:
             "numpy": np.__version__,
         },
         "before_revision": revision,
-        "after_base_revision": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
+        "after_base_revision": started_at,
         "before_source_hashes": {p: hashlib.sha256(data).hexdigest() for p, data in before_sources.items()},
-        "after_source_hashes": {p: hashlib.sha256((ROOT / p).read_bytes()).hexdigest() for p in paths},
+        "after_source_hashes": {p: hashlib.sha256((ROOT / p).read_bytes()).hexdigest() for p in current_paths},
         "common_fixture_hashes": {p: hashlib.sha256((ROOT / p).read_bytes()).hexdigest() for p in common},
         "before": before,
         "after": after,
