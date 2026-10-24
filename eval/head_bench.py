@@ -36,42 +36,12 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "services/gaze"))
 
-from gaze.face import Face  # noqa: E402
+from gaze.face import Face, eyetrax_features  # noqa: E402
 from gaze.head import Camera, GazeModel, Head, Poser, Screen  # noqa: E402
 
 MONITOR_MM_PER_PX = 0.277  # 24", 1920 px
 MOVE_BINS_MM = (0, 20, 40, 80, 1e9)
 TURN_BINS_DEG = (0, 5, 10, 20, 1e9)
-
-
-def eyetrax_features(points: np.ndarray, size: tuple[int, int]) -> np.ndarray:
-    """EyeTrax 0.4's extract_features, from pixel landmarks (it works in MediaPipe's normalised
-    coordinates: x/width, y/height, z/width)."""
-    from eyetrax.constants import LEFT_EYE_INDICES, MUTUAL_INDICES, RIGHT_EYE_INDICES
-
-    w, h = size
-    all_points = (points / np.array([w, h, w])).astype(np.float32)
-    left_corner, right_corner, top = all_points[33], all_points[263], all_points[10]
-    eye_center = (left_corner + right_corner) / 2.0
-    shifted = all_points - eye_center
-    x_axis = right_corner - left_corner
-    x_axis /= np.linalg.norm(x_axis) + 1e-9
-    y_approx = top - eye_center
-    y_approx /= np.linalg.norm(y_approx) + 1e-9
-    y_axis = y_approx - np.dot(y_approx, x_axis) * x_axis
-    y_axis /= np.linalg.norm(y_axis) + 1e-9
-    z_axis = np.cross(x_axis, y_axis)
-    z_axis /= np.linalg.norm(z_axis) + 1e-9
-    R = np.column_stack((x_axis, y_axis, z_axis))
-    rotated = (R.T @ shifted.T).T
-    dist = np.linalg.norm(R.T @ (right_corner - eye_center) - R.T @ (left_corner - eye_center))
-    if dist > 1e-7:
-        rotated /= dist
-    features = rotated[LEFT_EYE_INDICES + RIGHT_EYE_INDICES + MUTUAL_INDICES].flatten()
-    yaw = np.arctan2(R[1, 0], R[0, 0])
-    pitch = np.arctan2(-R[2, 0], np.sqrt(R[2, 1] ** 2 + R[2, 2] ** 2))
-    roll = np.arctan2(R[2, 1], R[2, 2])
-    return np.concatenate([features, [yaw, pitch, roll]])
 
 
 def _rotation_deg(rvecs: np.ndarray, reference: np.ndarray) -> np.ndarray:

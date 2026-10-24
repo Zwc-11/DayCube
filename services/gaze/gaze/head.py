@@ -309,24 +309,41 @@ class HeadEstimator:
     geometry, and a screen width 25% off or a field of view of 55 or 78 degrees cost 0-4 mm."""
 
     def __init__(
-        self, monitor: tuple[int, int], mm_per_px: float, landmarker: object | None = None, mirror: bool = False
+        self,
+        monitor: tuple[int, int],
+        mm_per_px: float,
+        landmarker: object | None = None,
+        mirror: bool = False,
+        video: bool = False,
     ) -> None:
-        from .face import Landmarker
-
         self.monitor, self.mm_per_px = (int(monitor[0]), int(monitor[1])), float(mm_per_px)
         self.mirror = mirror  # flip frames back first: the webcam delivers a mirrored image
+        # Image mode finds the face afresh in every frame; video mode follows it from the previous
+        # frame. On MPIIFaceGaze image mode put the eye landmarks better (27-38 mm median error
+        # against 33-66 mm, each image held for three frames at 30 frames/s), but on live video
+        # video mode is steadier from frame to frame, so calibration tries both on the same frames
+        # and keeps the better (gaze.calibrate); the choice is saved with the model.
+        self.video = video
+        self._landmarker = landmarker
         self.model = GazeModel(Screen.below_camera(self.monitor, self.monitor[0] * self.mm_per_px))
-        # Image mode: the face is found afresh in every frame. Video mode, which follows the face
-        # from the previous frame, put the eyes' landmarks worse: on MPIIFaceGaze, with each image
-        # held for three frames at 30 frames/s, 33-66 mm median error against 27-38 mm (four
-        # people), for about 2.5 ms less per frame.
-        self._landmarker = landmarker if landmarker is not None else Landmarker(video=False)
         self._poser: Poser | None = None
         self._blinks = Blinks()
         self.calibrated_head: tuple[np.ndarray, np.ndarray] | None = None  # mean (R, t) while calibrating
         self.last: Head | None = None
 
+    def measure(self, face: Face) -> Head:
+        if self._poser is None or (self._poser.camera.cx, self._poser.camera.cy) != (
+            face.size[0] / 2,
+            face.size[1] / 2,
+        ):
+            self._poser = Poser(Camera.nominal(*face.size))
+        return self._poser.measure(face)
+
     def extract_features(self, frame: np.ndarray) -> tuple[np.ndarray | None, bool]:
+        if self._landmarker is None:
+            from .face import Landmarker
+
+            self._landmarker = Landmarker(video=self.video)
         if self.mirror and frame is not None:
             import cv2
 
@@ -334,12 +351,7 @@ class HeadEstimator:
         face = self._landmarker.detect(frame)
         if face is None:
             return None, False
-        if self._poser is None or (self._poser.camera.cx, self._poser.camera.cy) != (
-            face.size[0] / 2,
-            face.size[1] / 2,
-        ):
-            self._poser = Poser(Camera.nominal(*face.size))
-        self.last = self._poser.measure(face)
+        self.last = self.measure(face)
         return pack(self.last), self._blinks(face.points)
 
     def train(self, X: np.ndarray, y: np.ndarray, variable_scaling: object = None) -> None:
@@ -379,6 +391,7 @@ class HeadEstimator:
             "monitor": list(self.monitor),
             "mm_per_px": self.mm_per_px,
             "mirror": self.mirror,
+            "landmarks": "video" if self.video else "image",
             **self.model.to_json(),
         }
         if self.calibrated_head is not None:
@@ -391,6 +404,8 @@ class HeadEstimator:
             raise ValueError(f"{path} is not a head-aware gaze model")
         self.model = GazeModel.from_json(data)
         self.mirror = bool(data.get("mirror", False))
+        if self._landmarker is None:
+            self.video = data.get("landmarks") == "video"
         head = data.get("calibrated_head")
         self.calibrated_head = (np.array(head["R"]), np.array(head["t"])) if head else None
 
@@ -398,3 +413,4 @@ class HeadEstimator:
         close = getattr(self._landmarker, "close", None)
         if close is not None:
             close()
+        self._landmarker = None

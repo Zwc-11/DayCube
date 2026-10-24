@@ -43,7 +43,7 @@ def do_calibrate(args: argparse.Namespace) -> None:
         print("Recording is paused while you calibrate.")
         time.sleep(2)
     print("A full-screen window opens. Keep your head still and follow each green dot with your eyes.")
-    print("Esc cancels. Takes about 30 seconds. Afterwards you can move your head as usual.")
+    print("After 13 dots it asks you to move your head; then 4 more dots. Esc cancels. About 45 seconds.")
     try:
         result = calibration.calibrate(args.vault, camera=args.camera, model=args.model)
     except calibration.Aborted:
@@ -51,18 +51,41 @@ def do_calibrate(args: argparse.Namespace) -> None:
     finally:
         if pause:
             receiver.control("resume")
-    width = result["monitor"][0]
-    print(
-        f"Held-out error: {result['error_px']:.0f} px median, {result['error_p90_px']:.0f} px at the 90th percentile "
-        f"(usable up to {usable_limit(width):.0f} px on this {width}-px-wide monitor)."
-    )
-    if result["model"] != "head":
-        print("This EyeTrax model is right only while your head stays where it was during calibration.")
+    print(report(result))
     if not result["usable"]:
         print(
             "Too coarse to tell paragraphs apart. Try again with your face evenly lit, the camera at eye level, "
             "and about an arm's length from the screen."
         )
+
+
+def report(result: dict) -> str:
+    """The calibration's scores per candidate model, the chosen one marked."""
+    width = result["monitor"][0]
+    lines = [
+        "Median error at the held-out dots, monitor pixels, after the tracker's smoothing (raw per frame):",
+        f"  {'model':<30} {'head still':>14} {'head moved':>14}",
+    ]
+    for name, row in result.get("candidates", {}).items():
+
+        def cell(key: str, row: dict = row) -> str:
+            value, raw = row.get(f"{key}_px"), row.get(f"{key}_raw_px")
+            return "-" if value is None else f"{value:.0f} ({raw:.0f})"
+
+        mark = "  <- using" if name == result["model"] else ""
+        label = calibration.LABELS.get(name, f"EyeTrax {name}")
+        lines.append(f"  {label:<30} {cell('still'):>14} {cell('moved'):>14}{mark}")
+    moved = result.get("head_moved_mm")
+    if moved is not None:
+        note = "" if moved >= 30 else ": too little to test head movement; move more next time"
+        lines.append(f"Your head moved {moved / 10:.0f} cm for the moved-head dots{note}.")
+    if result.get("mirrored_camera"):
+        lines.append("The webcam image is mirrored; the tracker flips it back.")
+    lines.append(
+        f"Using {calibration.LABELS.get(result['model'], result['model'])}: {result['error_px']:.0f} px with the head "
+        f"still (usable up to {usable_limit(width):.0f} px on this {width}-px-wide monitor)."
+    )
+    return "\n".join(lines)
 
 
 def do_track(args: argparse.Namespace) -> None:
@@ -88,8 +111,8 @@ def do_track(args: argparse.Namespace) -> None:
         raise SystemExit(OTHER_MONITOR)
     estimator = calibration.estimator_for(result["model"], tuple(result["monitor"]), result.get("mm_per_px"))
     estimator.load_model(args.vault / "calibration" / result["model_file"])
-    if result["model"] != "head":
-        log.warning("calibrated with EyeTrax %s, which does not follow head movement: recalibrate", result["model"])
+    if not result["model"].startswith("head"):
+        log.warning("running EyeTrax %s, which does not follow head movement", result["model"])
     receiver = Receiver(args.receiver, args.vault / ".token")
     camera = args.camera if args.camera is not None else result["camera"]
     calibrated = (args.vault / "calibration" / calibration.CALIBRATION_FILE).stat().st_mtime_ns
@@ -154,8 +177,9 @@ def main(argv: list[str] | None = None) -> None:
     cal.add_argument("--camera", type=int, default=0)
     cal.add_argument(
         "--model",
-        default=calibration.DEFAULT_MODEL,
-        help="head (default: follows head movement) or an EyeTrax model: ridge, elastic_net, svr, tiny_mlp",
+        default=calibration.AUTO,
+        help="auto (default: the best of head, head-video and ridge on your own frames), one of those, "
+        "or another EyeTrax model: elastic_net, svr, tiny_mlp",
     )
     cal.add_argument("--receiver", default="http://127.0.0.1:7700")
     cal.set_defaults(handler=do_calibrate)

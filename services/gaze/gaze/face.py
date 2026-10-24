@@ -99,6 +99,54 @@ def canonical(path: str | None = None) -> tuple[np.ndarray, np.ndarray]:
     return mesh, weights
 
 
+@cache
+def mirror_index() -> np.ndarray:
+    """For each landmark, the landmark on the other side of the face (the canonical mesh is
+    symmetric about x = 0), irises swapped: how MediaPipe names the points of a mirrored image."""
+    mesh = canonical()[0]
+    flipped = mesh * np.array([-1.0, 1.0, 1.0])
+    face = np.array([int(np.argmin(np.linalg.norm(mesh - flipped[i], axis=1))) for i in range(468)])
+    return np.r_[face, [LEFT_IRIS + k for k in range(5)], [RIGHT_IRIS + k for k in range(5)]]
+
+
+def mirrored(points: np.ndarray, width: int) -> np.ndarray:
+    """Landmarks as MediaPipe would give them for the horizontally flipped image."""
+    out = np.asarray(points, dtype=float)[mirror_index()].copy()
+    out[:, 0] = width - out[:, 0]
+    return out
+
+
+def eyetrax_features(points: np.ndarray, size: tuple[int, int]) -> np.ndarray:
+    """EyeTrax 0.4's ``GazeEstimator.extract_features`` from pixel landmarks (it works in
+    MediaPipe's normalised coordinates: x / width, y / height, z / width), so an EyeTrax model can
+    be trained on landmarks recorded during calibration and then run by EyeTrax itself."""
+    from eyetrax.constants import LEFT_EYE_INDICES, MUTUAL_INDICES, RIGHT_EYE_INDICES
+
+    w, h = size
+    all_points = (np.asarray(points) / np.array([w, h, w])).astype(np.float32)
+    left_corner, right_corner, top = all_points[33], all_points[263], all_points[10]
+    eye_center = (left_corner + right_corner) / 2.0
+    shifted = all_points - eye_center
+    x_axis = right_corner - left_corner
+    x_axis /= np.linalg.norm(x_axis) + 1e-9
+    y_approx = top - eye_center
+    y_approx /= np.linalg.norm(y_approx) + 1e-9
+    y_axis = y_approx - np.dot(y_approx, x_axis) * x_axis
+    y_axis /= np.linalg.norm(y_axis) + 1e-9
+    z_axis = np.cross(x_axis, y_axis)
+    z_axis /= np.linalg.norm(z_axis) + 1e-9
+    R = np.column_stack((x_axis, y_axis, z_axis))
+    rotated = (R.T @ shifted.T).T
+    dist = np.linalg.norm(R.T @ (right_corner - eye_center) - R.T @ (left_corner - eye_center))
+    if dist > 1e-7:
+        rotated /= dist
+    features = rotated[LEFT_EYE_INDICES + RIGHT_EYE_INDICES + MUTUAL_INDICES].flatten()
+    yaw = np.arctan2(R[1, 0], R[0, 0])
+    pitch = np.arctan2(-R[2, 0], np.sqrt(R[2, 1] ** 2 + R[2, 2] ** 2))
+    roll = np.arctan2(R[2, 1], R[2, 2])
+    return np.concatenate([features, [yaw, pitch, roll]])
+
+
 class Landmarker:
     """MediaPipe FaceLandmarker: image mode finds the face in each image on its own (what the
     head-aware model uses, see gaze.head.HeadEstimator); video mode follows it from frame to frame."""

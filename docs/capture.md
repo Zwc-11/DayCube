@@ -37,8 +37,9 @@ uv sync --project services/gaze
 # 1. The webcam: frame rate and how often a face is found. Aim for 15+ frames/s and 90%+.
 uv run --project services/gaze python -m gaze check
 
-# 2. Calibrate: 13 dots, about 30 s. Sit as you normally do, about an arm's length away, and keep
-#    your head still while the dots show. Afterwards your head may move.
+# 2. Calibrate: 13 dots with your head still, then it asks you to move your head (lean back or
+#    move a hand's width to one side) for 4 more; about 45 s. Sit as you normally do, about an
+#    arm's length away. It prints how each gaze model did and keeps the best.
 uv run --project services/gaze python -m gaze calibrate
 
 # 3. Start everything now and at every sign-in (no administrator rights needed).
@@ -70,11 +71,10 @@ code; `python -m capture doctor` reports a receiver still running older code. A 
 extension still works with an older receiver: fields it does not know are ignored.
 
 Recalibrate when your lighting, webcam or monitor changes, or the glasses you wear
-(`python -m gaze calibrate`); moving your chair or head does not need it. It pauses recording for
+(`python -m gaze calibrate`); with the head-aware model, moving your chair or head does not need it. It pauses recording for
 the half minute it takes, which frees the webcam, and the receiver restarts the tracker with the
-new calibration. A calibration made before the head-aware model (an EyeTrax `ridge` model in
-`vault/calibration/gaze.json`) keeps working, but only while your head stays where it was; `doctor`
-reports it, and one recalibration switches to the head-aware model.
+new calibration. When EyeTrax's ridge is in use (an older calibration, or the one that scored
+best), it is right only while your head stays where it was; `doctor` says so.
 
 ### Processing rate and live checks
 
@@ -296,10 +296,22 @@ landmarks, so the tracker's old error was larger still. The model's camera and s
 assumed ones (webcam centred above the screen, 65 degree field of view); with each laptop's
 measured camera and screen it does no better (43 mm), so the assumptions cost nothing measurable.
 
-`/status` reports the gaze model (`gaze.model`: `head`) and how far the head is from where it was
-at calibration (`gaze.head_moved_mm`, `gaze.head_turned_deg`); `doctor` prints them. The webcam's
+The benchmark is not your webcam, so calibration decides on your own frames. After the 13 dots
+with the head still it asks you to move your head and shows the 4 held-out dots again. Every
+frame goes through MediaPipe in both image and video mode, and three models are fitted to the
+nine training dots and scored on the held-out ones, head still and head moved: the head-aware
+model on image-mode landmarks (`head`), the same on video-mode landmarks (`head-video`), and
+EyeTrax's ridge (`ridge`, the old tracker). Scores are the median distance to the dot after the
+tracker's One Euro smoother, which is what fixations are made of (raw per-frame errors are
+printed beside them). The model with the best mean of the two is kept; `gaze.json` lists every
+score, and `gaze-frames.npz` keeps every frame's landmarks (numbers, no images) so models can be
+compared again later without another session. `--model head` (or `head-video`, `ridge`) skips the
+choice.
+
+`/status` reports the gaze model (`gaze.model`) and how far the head is from where it was at
+calibration (`gaze.head_moved_mm`, `gaze.head_turned_deg`); `doctor` prints them. The webcam's
 image may come mirrored from some drivers and virtual cameras; the calibration notices (the eyes
-seem to turn the wrong way) and runs once more with the frames flipped back.
+seem to turn the wrong way) and the tracker flips the frames back.
 
 ## Which line you are reading
 
