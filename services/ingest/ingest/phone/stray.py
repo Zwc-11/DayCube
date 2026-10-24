@@ -39,6 +39,8 @@ ALIGN_S = 20
 SHIFTED = 0.8  # a shifted start must fit with under 80% of the stamped start's residual
 MAX_FIT_M = 15.0
 PATH_EVERY = 10  # frames between camera path points kept
+PREVIEW_PX = 540
+PREVIEW_FPS = 15
 
 
 @dataclass
@@ -55,6 +57,7 @@ class Scan:
     depth: Path | None = None
     stamped: str = "creation time, taken as the start"
     fit: dict | None = None  # georeferencing: offset_s, rmse_m, rotation_deg, origin
+    stamp: datetime | None = None  # the video's own time, before any refinement: the moment's id
     geo: np.ndarray | None = field(default=None, repr=False)  # (n, 2) lat, lon per odometry row
 
 
@@ -107,7 +110,8 @@ def read(files: dict[str, Path], *, start: datetime | None = None) -> Scan:
     fx = float(np.nanmedian(data[:, 8])) if np.isfinite(data[:, 8]).any() else _camera_fx(files.get("camera"))
     fov = math.degrees(2 * math.atan(width / 2 / fx)) if fx and fx > 0 else 60.0
     return Scan(files["video"], t0, duration, width, height, round(fov, 1), data[:, 0] - data[0, 0], data[:, 1:4],
-                data[:, 4:8], files.get("depth"), "given" if start else "creation time, taken as the start")  # fmt: skip
+                data[:, 4:8], files.get("depth"), "given" if start else "creation time, taken as the start",
+                stamp=t0)  # fmt: skip
 
 
 def _camera_fx(path: Path | None) -> float | None:
@@ -184,20 +188,50 @@ def heading(scan: Scan) -> np.ndarray:
     return (np.degrees(np.arctan2(east, north)) + 360) % 360
 
 
+def upright(scan: Scan) -> int:
+    """How far (degrees clockwise: 0, 90, 180 or 270) the frames must turn to stand upright. The
+    sensor is landscape; a phone held upright records sideways, with nothing in the file to say
+    so. ARKit's poses do: where the world's up falls in the camera's own axes (x right, y up)."""
+    x, y, z, w = scan.rotation.T
+    up_x = float(np.median(2 * (x * y + w * z)))
+    up_y = float(np.median(1 - 2 * (x * x + z * z)))
+    if abs(up_x) > abs(up_y):
+        return 90 if up_x < 0 else 270  # up to the left of the frame: turn it clockwise
+    return 0 if up_y >= 0 else 180
+
+
+TURN = {0: "", 90: "transpose=1,", 180: "transpose=1,transpose=1,", 270: "transpose=2,"}
+
+
 def keyframes(scan: Scan, folder: Path, every_s: float = KEYFRAME_S) -> list[dict]:
-    """JPEG keyframes in ``folder/keyframes``; returns [{file, t}]."""
+    """JPEG keyframes in ``folder/keyframes``, upright; returns [{file, t}]."""
     target = folder / "keyframes"
     target.mkdir(parents=True, exist_ok=True)
     for old in target.glob("kf_*.jpg"):
         old.unlink()
     subprocess.run(
         [executable("ffmpeg"), "-nostdin", "-v", "error", "-i", str(scan.video), "-vf",
-         f"fps=1/{every_s},scale=640:-2", "-q:v", "4", str(target / "kf_%03d.jpg")],
+         f"fps=1/{every_s},{TURN[upright(scan)]}scale=640:-2", "-q:v", "4", str(target / "kf_%03d.jpg")],
         check=True, capture_output=True, timeout=600,
     )  # fmt: skip
     # The fps filter takes the frame at the middle of each interval.
     return [{"file": f"keyframes/{p.name}", "t": round((k + 0.5) * every_s, 2)}
             for k, p in enumerate(sorted(target.glob("kf_*.jpg")))]  # fmt: skip
+
+
+def preview(scan: Scan, folder: Path, width: int = PREVIEW_PX) -> str:
+    """An upright, smaller copy of the video to watch (H.264, ``width`` px across before turning, 15
+    frames/s: 14 MB for two minutes of walking); the original stays beside it, untouched, for
+    reconstruction. Returns its file name."""
+    target = folder / "preview.mp4"
+    subprocess.run(
+        [executable("ffmpeg"), "-nostdin", "-y", "-v", "error", "-i", str(scan.video), "-vf",
+         f"scale={width}:-2,{TURN[upright(scan)]}format=yuv420p",
+         "-r", str(PREVIEW_FPS), "-c:v", "libx264", "-preset", "veryfast", "-crf", "32", "-an",
+         "-movflags", "+faststart", str(target)],
+        check=True, capture_output=True, timeout=1800,
+    )  # fmt: skip
+    return target.name
 
 
 def camera_path(scan: Scan) -> list[dict]:

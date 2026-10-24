@@ -1,10 +1,12 @@
 import { spawn, spawnSync } from 'node:child_process';
+import { rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const cwd = fileURLToPath(new URL('../', import.meta.url));
 const env = { ...process.env, DAYCUBE_VAULT_ROOT: '.daycube-e2e-vault' };
 // A fictional afternoon exported from a phone (scripts/build-phone-fixture.py), imported as 2026-10-21.
 const phone = ['12 Example Ave-2026-10-21_18-00-00.zip', 'Example Ave 2.m4a', 'Example Ave 2.json', 'scan'].map(name => `fixtures/phone-day/${name}`);
+rmSync(new URL('../.daycube-e2e-vault/2026-10-21', import.meta.url), { recursive: true, force: true }); // imported fresh each run
 for (const args of [
   ['run', 'daycube', 'init'], ['run', 'daycube', 'seed', '--capture'], ['run', 'daycube', 'index', '--date', '2026-10-20'],
   ['run', 'daycube', 'import-phone', ...phone, '--no-transcribe'], ['run', 'daycube', 'index', '--date', '2026-10-21'],

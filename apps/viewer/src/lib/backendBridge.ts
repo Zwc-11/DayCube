@@ -83,6 +83,9 @@ export interface ApiCallLog {
   summary: string;
 }
 
+/** The middle of a stage in diorama metres: where a visit's measured positions are centred. */
+const STAGE_MIDDLE: [number, number] = [13, 9];
+
 export class BackendBridge {
   private token = '';
   private client: DaycubeClient;
@@ -249,7 +252,15 @@ export class BackendBridge {
 
       // Stage geometry is illustrative: pick the preset that fits the kind of place.
       const stage: StageId =
-        bLayer.kind === 'venue' ? 'hall' : bLayer.kind === 'cafe' ? (idx === 1 ? 'morningCafe' : 'courtyardCafe') : 'home';
+        bLayer.kind === 'venue'
+          ? 'hall'
+          : bLayer.kind === 'cafe'
+          ? idx === 1
+            ? 'morningCafe'
+            : 'courtyardCafe'
+          : bLayer.kind === 'outdoor'
+          ? 'park'
+          : 'home';
       const boxes = buildStageBoxes(stage, idx >= 4);
       const spots = STAGE_SPOTS[stage];
       const wakesHere = idx === 0 && stage === 'home';
@@ -306,8 +317,9 @@ export class BackendBridge {
               conf: Math.min(...bLayer.path.map((p) => p.pos_conf), 0.4),
             })
           : drawn.map((p) => ({
-              x: (p.x as number) + 6,
-              y: (p.y as number) + 4,
+              // Metres from the visit's middle (shrunk to fit, `frame.scale`), around the stage's middle.
+              x: (p.x as number) + STAGE_MIDDLE[0],
+              y: (p.y as number) + STAGE_MIDDLE[1],
               floor: p.floor ?? 0,
               t: Number((p.t / 3600).toFixed(3)),
               conf: p.pos_conf,

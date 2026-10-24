@@ -16,6 +16,7 @@ import zipfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 from ingest.api import create_app
@@ -210,6 +211,8 @@ def test_an_afternoon_of_recordings_becomes_a_vault_day(tmp_path: Path) -> None:
     fit = scene["georeferenced"]
     assert abs(fit["rotation_deg"] - 30.0) < 2 and fit["rmse_m"] < 2 and abs(fit["offset_s"]) <= 1
     assert len(scene["keyframes"]) == 2 and all((folder / k["file"]).is_file() for k in scene["keyframes"])
+    assert scene["rotate_deg"] == 0  # the synthetic capture's camera is level: nothing to turn
+    assert (folder / scene["preview"]).stat().st_size > 0
     camera = read_json(folder / "camera.json")
     assert camera["points"][0]["lat"] == pytest.approx(offset(PARK, *walk_at(120))[0], abs=2e-5)
     assert "depth folder" in scene["reason"] and (folder / "video.mp4").is_file()
@@ -226,9 +229,18 @@ def test_an_afternoon_of_recordings_becomes_a_vault_day(tmp_path: Path) -> None:
     other = {**events[0], "id": "ev_note", "type": "screen.app", "label": "Notes", "app": "notes.exe",
              "window_title": "Plan", "t_end": events[0]["t"], "source": {"kind": "capture", "ref": "capture:1"}}  # fmt: skip
     vault.append_events("2026-10-24", [other])
+    # An earlier version of the import named the memo's moment otherwise: this one replaces it all
+    # the same (the scene names the file it came from).
+    moments = vault.root / "2026-10-24/moments"
+    (moments / memo["moment_id"]).rename(moments / "mo_voice_older")
+    log = vault.root / "2026-10-24/events.jsonl"
+    log.write_text(log.read_text().replace(memo["moment_id"], "mo_voice_older"))
     import_phone(vault, paths, transcribe=False, say=lambda _: None)
     again = read_lines(vault.root / "2026-10-24/events.jsonl")
     assert len(again) == len(events) + 1 and "ev_note" in {e["id"] for e in again}
+    assert sorted(p.name for p in (vault.root / "2026-10-24/moments").iterdir()) == sorted(
+        {memo["moment_id"], capture["moment_id"]}
+    )
     assert len(read_json(vault.root / "2026-10-24/skeleton.geojson")["features"]) == len(skeleton)
     assert vault.validate("2026-10-24")["valid"]
 
@@ -297,3 +309,20 @@ def test_without_ffmpeg_the_recording_is_imported_and_the_memo_waits(
     assert (
         sum(e["type"] == "moment.audio" for e in events) == 1 and sum(e["type"] == "place.visit" for e in events) == 3
     )
+
+
+def test_a_capture_held_upright_is_turned_to_stand_upright() -> None:
+    """ARKit's camera: x right, y up in the sensor's landscape frame. Rolled about the view axis so
+    that the world's up is the camera's -x (as the 2026-10-24 capture was: -0.99), up is the
+    frame's left side and it turns 90 degrees clockwise."""
+
+    def turned(quaternion: tuple[float, float, float, float]) -> int:
+        scan = stray.Scan(Path("rgb.mp4"), START, 1.0, 1920, 1440, 70.0, np.zeros(3), np.zeros((3, 3)),
+                          np.array([quaternion] * 3))  # fmt: skip
+        return stray.upright(scan)
+
+    half = math.sqrt(0.5)
+    assert turned((0, 0, 0, 1)) == 0  # level
+    assert turned((0, 0, -half, half)) == 90  # up is the camera's -x: the frame's left side
+    assert turned((0, 0, half, half)) == 270  # up is the camera's +x
+    assert turned((0, 0, 1, 0)) == 180
