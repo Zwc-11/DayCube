@@ -422,6 +422,20 @@ def test_a_short_blink_keeps_the_continuous_smoothing_response() -> None:
         assert receiver.points[-1][1:] == pytest.approx((ex / 1920, ey / 1080))
 
 
+def test_releasing_the_camera_also_releases_estimator_pixel_scratch() -> None:
+    t, scene, receiver, *_, clock, log = tracker()
+
+    class WithScratch(Estimator):
+        def release_frame_buffers(self) -> None:
+            assert t.camera is None
+            log.append("pixels released")
+
+    t.estimator = WithScratch()
+    run_for(t, clock, 1)
+    t._release()
+    assert log[-2:] == ["release", "pixels released"]
+
+
 def test_looking_off_screen_ends_the_open_fixation() -> None:
     t, scene, receiver, *_, clock, log = tracker()
     run_for(t, clock, 0.9)

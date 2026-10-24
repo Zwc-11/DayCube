@@ -198,8 +198,12 @@ class Landmarker:
             points[only] = np.array([(landmarks[i].x, landmarks[i].y, landmarks[i].z) for i in only]) * scale
         return Face(points, (width, height))
 
+    def release_image_buffer(self) -> None:
+        """Drop camera pixels when tracking stops, retaining the native landmark model."""
+        self._rgb = None
+
     def close(self) -> None:
         try:
             self._landmarker.close()
         finally:
-            self._rgb = None
+            self.release_image_buffer()

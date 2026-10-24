@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 from gaze import face as face_module
 from gaze.face import Landmarker
+from gaze.head import HeadEstimator
 
 
 class Detector:
@@ -76,3 +77,15 @@ def test_rgb_scratch_follows_resolution_and_selective_landmarks() -> None:
     native.result = SimpleNamespace(face_landmarks=[])
     assert tracker.detect(bgra) is None
     tracker.close()
+
+
+def test_pixel_scratch_can_be_dropped_without_reloading_the_detector() -> None:
+    tracker, native = landmarker()
+    estimator = HeadEstimator((1920, 1080), 0.277, landmarker=tracker)
+    tracker.detect(np.zeros((8, 12, 3), dtype=np.uint8))
+    previous = tracker._rgb
+    estimator.release_frame_buffers()
+    assert tracker._rgb is None and not native.closed
+    assert tracker.detect(np.ones((8, 12, 3), dtype=np.uint8)) is not None
+    assert tracker._rgb is not previous
+    estimator.close()

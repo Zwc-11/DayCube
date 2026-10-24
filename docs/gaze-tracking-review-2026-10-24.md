@@ -10,6 +10,9 @@ the preparation, batching and resource-ownership principles in the [DeepInfer re
 Baseline: `abb6f48d96af2ff981e94329bd46b432d98542bb`. Reports record that base revision and
 SHA-256 hashes of the actual sources tested:
 [before](../eval/results/gaze-pipeline-before.json), [after](../eval/results/gaze-pipeline-after.json).
+The measured implementation is committed as `bf2d483`. A subsequent cleanup adds release hooks
+for RGB scratch when the camera is released; it changes no per-frame prediction/conversion math
+and was checked with the complete 74-test gaze suite. These timings were not rerun for that cleanup.
 The harness and its synthetic fixture source are identical in both reports. Windows, Ryzen 7
 9800X3D, Python 3.11.9, NumPy 1.26.4, OpenCV 4.11.0 (16 threads), MediaPipe 1.1.1; 2,000 frames
 per call, one warmup and eleven samples, seed 7. cProfile and tracemalloc run separately.
@@ -40,7 +43,9 @@ ownership, and exercise one or both eye rays missing the screen.
 
 `Landmarker` now owns one reusable RGB conversion array, replaced on shape/dtype change and
 released on close. Its pixel storage is 921,600 bytes at 640×480 or 6,220,800 at 1080p per
-landmarker, plus array overhead. It remains allocated between frames. Each native MediaPipe
+landmarker, plus array overhead. It remains allocated between frames and is released when the
+camera stops or the landmarker closes. The release hook retains the neural detector, so resume
+can allocate fresh scratch without reloading it. Each native MediaPipe
 image still owns its copy: image/video tests verify a later conversion cannot mutate an earlier
 image or returned landmarks. The benchmark's warm tracemalloc peak **does not charge this
 already-allocated RGB scratch**, and misses some native allocations; it cannot establish total
@@ -83,10 +88,10 @@ numbers did not produce a usable fit, so regression training was left unchanged.
 
 ## Validation and live limits
 
-`npm run check` passed: Ruff, canonical schema consistency, 4 contract tests, 9 transport tests,
-229 core tests, 71 gaze tests, 10 extension unit tests, TypeScript and the production build.
-An additional short-blink regression was then added; the complete gaze suite passed all 72 tests.
-Both isolated API browser tests also passed.
+The final `npm run check` passed: Ruff, canonical schema consistency, 4 contract tests, 9 transport
+tests, 229 core tests, 74 gaze tests, 10 extension unit tests, TypeScript and the production build.
+Both isolated API browser tests also passed. The live process was not interrupted to apply the
+final camera-release cleanup; it takes effect on its next normal restart.
 No webcam was opened by these benchmarks/tests, and no images, calibration landmarks, tokens
 or recordings are included in the committed fixtures or reports. All simulated pixels stay in RAM.
 

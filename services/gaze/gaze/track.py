@@ -310,6 +310,9 @@ class Tracker:
         self.heads.clear()
         self.timing.clear()
         self._prediction_input = None
+        release_buffers = getattr(self.estimator, "release_frame_buffers", None)
+        if release_buffers is not None:
+            release_buffers()
 
     def _report(self, now: float) -> None:
         since = now - self.reported_at
