@@ -27,6 +27,7 @@ import json
 import math
 import time
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
@@ -333,48 +334,166 @@ def unpack(X: np.ndarray) -> list[Head]:
 
 
 class Blinks:
-    """Per-eye aperture against recent open eyes, also rejecting rapid closing transitions.
+    """Per-eye aperture against what it should be for where the eye points, also rejecting rapid
+    closing transitions.
 
-    Closed frames never lower an established baseline, and one eye cannot hide the other's
-    closure. The tracker separately waits for reopening landmarks to settle before prediction.
+    The upper lid follows the eye: looking down lowers it, so an open eye looking at the bottom of
+    the screen is narrower than one looking at the top. On MPIIFaceGaze (15 people, 37,000 webcam
+    images) the lid gap was 0.99 of its top-of-screen size in the screen's top quarter and 0.83 in
+    the bottom quarter, and a fixed 80% reference called 35% of bottom-quarter frames closed: the
+    gaze stopped there and stayed where it was, about the middle of the screen. So the open
+    reference follows the iris: each eye's aperture is compared with the aperture expected at its
+    iris's height in the eye (a line through the open-eye frames of the last half minute or so,
+    re-levelled by the last 50), which brings the bottom quarter's false closures to 7% on the same
+    images; a narrowing that lasts ``shallow_s`` without the lids ever closing is a look downward or
+    a squint, not a blink, and is accepted and learned from, so the reference catches up.
+
+    A blink still is: a fall of more than 10% since the previous frame beyond what the iris's own
+    move explains (the lids start closing before the iris landmarks fail; a downward saccade
+    lowers them with the eye), or an aperture under ``ratio`` of the expected one, or under
+    ``deep`` of the open average whatever the eye's direction. Closed frames never lower an
+    established reference, and one eye cannot hide the other's closure. The tracker separately
+    waits for reopening landmarks to settle before prediction.
     """
 
-    def __init__(self, history: int = 50, ratio: float = 0.8, minimum: int = 15) -> None:
-        self.history: deque[tuple[float, float]] = deque(maxlen=history)
-        self.total = [0.0, 0.0]
+    def __init__(
+        self,
+        history: int = 50,
+        ratio: float = 0.8,
+        minimum: int = 15,
+        deep: float = 0.5,
+        shallow_s: float = 0.3,
+        slope_history: int = 900,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self.history: deque[tuple[float, float, float, float]] = deque(maxlen=history)  # (a_r, a_l, v_r, v_l)
+        self.total = [0.0, 0.0, 0.0, 0.0]
+        self.slopes = (_Slope(slope_history), _Slope(slope_history))
         self.previous: tuple[float, float] | None = None
-        self.ratio, self.minimum = ratio, minimum
+        self.previous_height: tuple[float, float] = (0.0, 0.0)
+        self.ratio, self.minimum, self.deep, self.shallow_s, self.clock = ratio, minimum, deep, shallow_s, clock
+        self.narrow_since: float | None = None  # when the eyes last became narrower than expected
+        self.deep_at = -math.inf  # the last frame with the lids (nearly) shut
 
-    def __call__(self, points: np.ndarray) -> bool:
-        def openness(outer: int, inner: int, upper: int, lower: int) -> float:
-            (ox, oy), (ix, iy), (ux, uy), (lx, ly) = points[[outer, inner, upper, lower], :2].tolist()
-            width = math.hypot(ox - ix, oy - iy)
-            return math.hypot(ux - lx, uy - ly) / (width + 1e-9) if width > 1e-6 else math.nan
+    @staticmethod
+    def measure(points: np.ndarray, eye: tuple[int, int, int, int], iris: int) -> tuple[float, float]:
+        """An eye's aperture (lid gap over eye width) and its iris's height in the eye (distance
+        below the line between the corners, over the eye width; looking down raises it)."""
+        outer, inner, upper, lower = eye
+        (ox, oy), (ix, iy), (ux, uy), (lx, ly), (cx, cy) = points[[outer, inner, upper, lower, iris], :2].tolist()
+        width = math.hypot(ix - ox, iy - oy)
+        if not width > 1e-6:
+            return math.nan, math.nan
+        nx, ny = -(iy - oy) / width, (ix - ox) / width
+        if ny < 0:
+            nx, ny = -nx, -ny  # down the image
+        below = ((cx - (ox + ix) / 2) * nx + (cy - (oy + iy) / 2) * ny) / width
+        return math.hypot(ux - lx, uy - ly) / width, below
 
-        ear = (openness(*RIGHT_EYE), openness(*LEFT_EYE))
+    def expected(self, eye: int, v: float) -> float:
+        """The open aperture expected for this eye at iris height ``v``."""
+        n = len(self.history)
+        mean_a, mean_v = self.total[eye] / n, self.total[2 + eye] / n
+        value = mean_a + self.slopes[eye].slope() * (v - mean_v)
+        return min(max(value, 0.6 * mean_a), 1.3 * mean_a)
+
+    def __call__(self, points: np.ndarray, now: float | None = None) -> bool:
+        now = self.clock() if now is None else now
+        (a_r, v_r), (a_l, v_l) = self.measure(points, RIGHT_EYE, RIGHT_IRIS), self.measure(points, LEFT_EYE, LEFT_IRIS)
+        ear, height = (a_r, a_l), (v_r, v_l)
         if not all(math.isfinite(value) for value in ear):
-            self.previous = None
+            self.previous, self.narrow_since = None, None
             return True
+        if not all(math.isfinite(value) for value in height):
+            height = (0.0, 0.0)  # no iris landmarks: the reference does not follow the eye
         ready = len(self.history) >= self.minimum
-        closed = any(
-            value < (self.total[e] / len(self.history) * self.ratio if ready else 0.2) for e, value in enumerate(ear)
+        if ready:
+            n = len(self.history)
+            narrow = any(ear[e] < self.ratio * self.expected(e, height[e]) for e in range(2))
+            shut = any(ear[e] < self.deep * self.total[e] / n for e in range(2))
+        else:
+            narrow, shut = any(value < 0.2 for value in ear), any(value < 0.1 for value in ear)
+        # Closing: the gap fell 10% more since the last frame than the iris's own move explains
+        # (a downward saccade lowers the lids with it; a blink lowers them past where the eye goes).
+        explained = (
+            [self.expected(e, height[e]) / self.expected(e, self.previous_height[e]) for e in range(2)]
+            if ready and self.previous is not None
+            else [1.0, 1.0]
         )
         closing = self.previous is not None and any(
-            value < before * 0.9 for value, before in zip(ear, self.previous, strict=True)
+            value < before * 0.9 * min(1.0, expect)
+            for value, before, expect in zip(ear, self.previous, explained, strict=True)
         )
-        self.previous = ear
+        self.previous, self.previous_height = ear, height
+        if shut:
+            self.deep_at = now
+        if narrow or closing:
+            self.narrow_since = self.narrow_since if self.narrow_since is not None else now
+        else:
+            self.narrow_since = None
+        # Narrow for a while since the lids were last shut, without shutting: looking down, or a
+        # squint. Not a blink: the frame is used, and learned from.
+        held = (
+            ready and narrow and not shut and self.narrow_since is not None
+            and now - max(self.narrow_since, self.deep_at) >= self.shallow_s
+        )  # fmt: skip
+        closed = shut or (narrow and not held)
+        blink = closed or (closing and not held)
         # The short bootstrap also learns naturally narrow eyes, but not unmistakably closed
         # ones. Once established, only accepted open-eye observations update the reference.
-        learn = not closing and (not closed if ready else min(ear) >= 0.1)
+        learn = not blink if ready else (not closing and min(ear) >= 0.1)
         if learn:
             if len(self.history) == self.history.maxlen:
                 old = self.history[0]
-                self.total[0] -= old[0]
-                self.total[1] -= old[1]
-            self.history.append(ear)
-            self.total[0] += ear[0]
-            self.total[1] += ear[1]
-        return closed or closing
+                for i in range(4):
+                    self.total[i] -= old[i]
+            entry = (ear[0], ear[1], height[0], height[1])
+            self.history.append(entry)
+            for i in range(4):
+                self.total[i] += entry[i]
+        if ready and not shut and not closing:
+            # The slope learns from narrow frames too: learning only from accepted ones would leave
+            # out the very frames that show how far the lids drop looking down, and flatten it.
+            for e in range(2):
+                self.slopes[e].add(height[e], ear[e])
+        elif learn:
+            for e in range(2):
+                self.slopes[e].add(height[e], ear[e])
+        return blink
+
+
+class _Slope:
+    """How an eye's aperture changes with its iris's height, from the last ``size`` open frames
+    (least squares over running sums). Zero until the eye has looked up and down enough to tell;
+    never positive (looking down never opens the lids), and at most as steep as the steepest
+    person on MPIIFaceGaze, about twice."""
+
+    def __init__(self, size: int) -> None:
+        self.points: deque[tuple[float, float]] = deque(maxlen=size)
+        self.sums = [0.0, 0.0, 0.0, 0.0]  # v, a, v*v, v*a
+
+    def add(self, v: float, a: float) -> None:
+        if len(self.points) == self.points.maxlen:
+            ov, oa = self.points[0]
+            self.sums[0] -= ov
+            self.sums[1] -= oa
+            self.sums[2] -= ov * ov
+            self.sums[3] -= ov * oa
+        self.points.append((v, a))
+        self.sums[0] += v
+        self.sums[1] += a
+        self.sums[2] += v * v
+        self.sums[3] += v * a
+
+    def slope(self) -> float:
+        n = len(self.points)
+        if n < 60:
+            return 0.0
+        sv, sa, svv, sva = self.sums
+        variance = svv / n - (sv / n) ** 2
+        if variance < 0.015**2:
+            return 0.0
+        return min(max((sva / n - sv / n * sa / n) / variance, -3.5), 0.0)
 
 
 class HeadEstimator:

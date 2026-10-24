@@ -58,6 +58,9 @@ Blink gating checks each eye, excludes closing/closed observations from its lear
 and waits 100 ms after the last rejected blink frame for reopening landmarks to settle. Brief
 blinks preserve filter position without emitting held gaze samples; long closures reacquire
 afresh. The [blink review](../../docs/blink-guard-2026-10-24.md) records replay results and tradeoffs.
+The open-eye reference follows the iris's height in the eye, because the upper lid follows the
+eye down: with one fixed reference, looking at the bottom of the screen read as a blink and the
+gaze stopped around the middle ([below](../../docs/blink-guard-2026-10-24.md#looking-down-is-not-blinking)).
 
 Tests: `cd services/gaze; uv run pytest` (the head-aware model on synthetic faces posed in front
 of a camera, fixations, smoothing, calibration fitting, the tracking loop with a scripted camera,

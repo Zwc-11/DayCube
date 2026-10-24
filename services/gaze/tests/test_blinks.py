@@ -153,3 +153,94 @@ def test_desktop_overlay_is_guarded_before_it_receives_a_blink_point() -> None:
     estimator.apertures, scene.point = (0.3, 0.3), (960.0, 540.0)
     run_for(t, clock, 0.4)
     assert len(ring.points) > before and all(y == pytest.approx(0.5) for _, y in ring.points)
+
+
+# -- looking down is not blinking --------------------------------------------------------------------
+
+
+def looking(v: float, aperture: float | None = None) -> np.ndarray:
+    """Open eyes with the iris ``v`` (share of the eye's width) below the corners' line. The lid
+    follows the eye down: the gap narrows by about a third of the iris's drop (MPIIFaceGaze's
+    median slope), so the bottom of a large monitor (v near 0.12) is 25% narrower than the top."""
+    from gaze.face import LEFT_IRIS, RIGHT_IRIS
+
+    gap = 0.3 - 0.6 * (v - (-0.02)) if aperture is None else aperture
+    points = eyes(gap, gap)
+    for iris in (RIGHT_IRIS, LEFT_IRIS):  # both eyes' corners are at (0, 0) and (100, 0)
+        points[iris, :2] = [50.0, 100.0 * v]
+    return points
+
+
+class Ticks:
+    def __init__(self) -> None:
+        self.now = 0.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+def test_an_open_eye_looking_at_the_bottom_of_the_screen_is_not_a_blink() -> None:
+    clock = Ticks()
+    detector = Blinks(clock=clock)
+    for k in range(300):  # ten seconds of reading the top two thirds, the eyes drifting up and down
+        clock.now += 1 / 30
+        assert not detector(looking(0.02 + 0.04 * np.sin(2 * np.pi * k / 120)))
+    # Down to the bottom in one saccade: the gap is 0.22 against a 0.27 average, under 80%, and it
+    # fell 18% in one frame. The reference follows the iris, and the fall is the iris's own move,
+    # so no frame is held.
+    assert detector.expected(0, 0.12) < 0.25
+    decisions = []
+    for _ in range(30):
+        clock.now += 1 / 30
+        decisions.append(detector(looking(0.12)))
+    assert not any(decisions)
+    # A blink while looking down still is one.
+    clock.now += 1 / 30
+    assert detector(looking(0.12, aperture=0.02))
+
+
+def test_a_long_narrowing_without_closing_is_used_before_the_reference_knows_it() -> None:
+    """Never having looked down (the reference cannot follow yet), a sustained look at the bottom
+    is held as a possible blink for at most 0.3 s (less once the narrow frames have taught the
+    reference how far the lids drop), then used and learned from."""
+    clock = Ticks()
+    detector = Blinks(clock=clock)
+    for _ in range(100):
+        clock.now += 1 / 30
+        assert not detector(looking(0.0))
+    decisions = []
+    for _ in range(30):
+        clock.now += 1 / 30
+        decisions.append(detector(looking(0.12)))
+    first_used = decisions.index(False)
+    assert 0 < first_used / 30 <= 0.34 and not any(decisions[first_used:])
+    # Eyes that are actually shut stay rejected however long they are shut.
+    assert all(
+        detector(looking(0.12, aperture=0.01)) for _ in range(100) if not setattr(clock, "now", clock.now + 1 / 30)
+    )
+
+
+def test_the_live_point_follows_the_eyes_to_the_bottom_of_the_screen() -> None:
+    """End to end through the tracker: reading the upper screen, then a look at the bottom. The
+    point must get there, not stop where it was (the middle) as it did with a fixed reference."""
+
+    class LookingEstimator(Estimator):
+        def __init__(self) -> None:
+            self.v = 0.0
+            self.blinks = Blinks()
+
+        def extract_features(self, frame: object) -> tuple[object, bool]:
+            return list(frame), self.blinks(looking(self.v))
+
+    t, scene, receiver, *_, clock, log = tracker()
+    estimator = LookingEstimator()
+    t.estimator, receiver.live = estimator, True
+    for k in range(300):  # the upper two thirds, drifting up and down
+        estimator.v = 0.02 + 0.04 * np.sin(2 * np.pi * k / 120)
+        scene.point = (960.0, 540.0 + 300 * np.sin(2 * np.pi * k / 120) - 200)
+        t.step()
+    estimator.v, scene.point = 0.15, (960.0, 1000.0)  # a large monitor's bottom: the gap 72% of the average
+    before = len(receiver.points)
+    run_for(t, clock, 0.5)
+    ys = [y * 1080 for _, _, y in receiver.points[before:]]
+    assert len(ys) >= 10 and ys[-1] > 950
