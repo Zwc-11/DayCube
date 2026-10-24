@@ -41,14 +41,14 @@
     },
     {
       "path": ".github/workflows/ci.yml",
-      "sha256": "914f33318ab51c413f6bb2c976844e177a27818281d2ae9381d03878d7c076e4",
+      "sha256": "8ed7aea046232048de2df646bf78a806cc148f99b1397f2eeb0390ec401ea503",
       "category": "configuration",
-      "bytes": 1150,
-      "lines": 33,
+      "bytes": 1376,
+      "lines": 39,
       "structural_check": "UTF-8 text inventory; build/configuration review is separate",
       "manual_review": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Build/runtime/test configuration, environment boundaries, dependency declarations and generated/ignored output treatment reviewed; relevant gate/build/package results in the report. Dependency internals are not audited."
+        "scope": "CI runtime dependency and platform isolation review",
+        "notes": "Linux MediaPipe Image tests require libEGL.so.1; install libegl1 and libgles2 before the checks. Disable matrix fail-fast so a Linux failure does not cancel Windows evidence. Keep native Image ownership assertions enabled."
       }
     },
     {
