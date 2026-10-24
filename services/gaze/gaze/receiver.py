@@ -9,6 +9,7 @@ a point not yet sent when the next arrives is replaced by it."""
 from __future__ import annotations
 
 import json
+import math
 import threading
 import time
 import uuid
@@ -48,6 +49,7 @@ class Receiver:
         self._sender: threading.Thread | None = None
         self.live_ms: deque[float] = deque(maxlen=300)  # round trips of recent live posts, for the state
         self.lines: deque[dict] = deque(maxlen=2000)  # reading-line labels from the receiver (``take_lines``)
+        self.reading: dict | None = None  # the line the receiver's decoder has the eyes on now (``_reading``)
 
     def add(self, fixation: Fixation) -> str:
         """Queue a fixation; returns its id (the receiver names it again in a line label)."""
@@ -84,6 +86,7 @@ class Receiver:
                 body = response.read()
         except HTTPError as error:
             self.live = self.ring = False
+            self.reading = None
             if error.code == 409:
                 self.queue.clear()
                 return "paused"
@@ -95,6 +98,7 @@ class Receiver:
             return "refused"
         except (URLError, OSError):
             self.live = self.ring = False
+            self.reading = None
             return "offline"
         for _ in batch:
             self.queue.popleft()
@@ -104,9 +108,10 @@ class Receiver:
             self.live, self.ring = bool(answer.get("live")), bool(answer.get("ring"))
             self.offset_grid = _grid(answer.get("offset_grid"))
             self.lines.extend(_lines(answer.get("lines")))
+            self.reading = _reading(answer.get("reading"))
         except (ValueError, AttributeError):
             self.live = self.ring = False
-            self.offset_grid = None
+            self.offset_grid = self.reading = None
         return "ok"
 
     def send_live(self, t: float, x: float, y: float) -> None:
@@ -225,3 +230,17 @@ def _lines(value: object) -> list[dict]:
         if all(-0.5 <= label[k] <= 1.5 for k in ("y", "x0", "x1")):
             out.append(label)
     return out
+
+
+def _reading(value: object) -> dict | None:
+    """The line being read, from a /gaze answer: when (epoch s, the fixation's end), its middle
+    height and extent (monitor fractions) and the decoder's probability; None if absent or bad."""
+    if not isinstance(value, dict):
+        return None
+    try:
+        line = {k: float(value[k]) for k in ("t", "y", "x0", "x1", "p")}
+    except (KeyError, TypeError, ValueError):
+        return None
+    if not all(math.isfinite(v) for v in line.values()) or not all(-0.5 <= line[k] <= 1.5 for k in ("y", "x0", "x1")):
+        return None
+    return line

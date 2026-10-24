@@ -163,6 +163,34 @@ def _learning(gaze: dict) -> list[tuple[str, str, str]]:
     )]  # fmt: skip
 
 
+def _drift(gaze: dict) -> list[tuple[str, str, str]]:
+    """Whether the gaze slides while the eyes rest, and what slides with it (services/gaze/gaze/drift.py)."""
+    drift = gaze.get("drift") if gaze.get("tracking") else None
+    if not drift or drift.get("gaze_px_s") is None:
+        return []
+    rate = drift["gaze_px_s"]
+    detail = (
+        f"over the last {drift['stares']} stares ({drift['seconds']:.0f} s), the gaze slid {abs(rate):.1f} px/s "
+        + ("down" if rate > 0 else "up")
+    )
+    if abs(rate) < 3:
+        return [(PASS, "stare drift", detail + ": steady")]
+    # What moved with it, in the units each is measured in, largest share of the slide first.
+    lids, iris = drift.get("lids_mm_s"), drift.get("iris_per_s")
+    pitch, distance = drift.get("pitch_deg_s"), drift.get("distance_mm_s")
+    causes = []
+    if lids is not None and abs(lids) >= 0.01:
+        causes.append(f"the lids {'closed' if lids < 0 else 'opened'} {abs(lids) * 60:.1f} mm a minute")
+    if iris is not None and abs(iris) >= 0.0005:
+        causes.append(f"the irises read {'lower' if iris > 0 else 'higher'} in the eye")
+    if pitch is not None and abs(pitch) >= 0.02:
+        causes.append(f"the head's tilt changed {abs(pitch) * 60:.1f} degrees a minute")
+    if distance is not None and abs(distance) >= 0.5:
+        causes.append(f"the head moved {'away' if distance > 0 else 'closer'} {abs(distance) * 60:.0f} mm a minute")
+    why = "; meanwhile " + ", ".join(causes) if causes else "; nothing measured moved with it"
+    return [(INFO, "stare drift", detail + why)]
+
+
 def _screen(status: dict) -> list[tuple[str, str, str]]:
     """Reading the window under the gaze in other apps (screen.py)."""
     screen = status.get("screen")
@@ -383,6 +411,7 @@ def checks(status: dict | None, vault: Path, zone: ZoneInfo, now: datetime, auto
             out.append((WARN, "calibration", "the tracker still uses the calibration from before: " + RESTART))
 
     out += _learning(gaze)
+    out += _drift(gaze)
     if gaze.get("tracking") and gaze.get("learning"):
         out += _tuning(vault)
 

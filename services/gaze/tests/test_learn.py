@@ -354,3 +354,56 @@ def test_settings_are_held_to_their_bounds_and_tuned_ones_are_read_before_a_fit(
     fixed = Learner(estimator(), MONITOR, tmp_path, CALIBRATED, settings=Settings(refit_every=10))
     fixed.refit()
     assert fixed.settings.refit_every == 10  # settings given are kept
+
+
+def drooped(vector: np.ndarray, mm: float) -> np.ndarray:
+    out = np.array(vector, dtype=float)
+    out[[20, 24]] += mm  # each eye's upper lid (head frame y points down)
+    return out
+
+
+def droop_px(model_estimator: HeadEstimator, sample: list, mm: float = 1.0) -> float:
+    X = np.array([v for *_, v, _ in sample])
+    moved = model_estimator.predict(np.array([drooped(v, mm) for v in X])) - model_estimator.predict(X)
+    return float(np.median(moved[:, 1]))
+
+
+def test_stares_teach_that_a_drooping_lid_is_not_a_look_down(tmp_path: Path) -> None:
+    """The calibrated model reads the vertical partly from the lids, so a lid drooping over a long
+    stare moves the gaze down. Stares (the eyes did not move; the lids came down 0.3-0.9 mm) teach
+    the fit to stop that, and the clicks' error does not suffer."""
+    test = clicks(60, seed=99)
+    results = {}
+    for weight in (0.0, 1.0):
+        est = estimator(offset=(40.0, -30.0))
+        learner = Learner(est, MONITOR, tmp_path if weight else None, CALIBRATED,
+                          settings=Settings(stare_weight=weight))  # fmt: skip
+        before = droop_px(est, test)
+        rng = np.random.default_rng(3)
+        for k, (x, y, vector, _) in enumerate(clicks(200, seed=1)):
+            t = 1_800_000_000.0 + 2 * k
+            if k % 4 == 0:
+                assert learner.add_stare(t - 1, vector, drooped(vector, rng.uniform(0.3, 0.9)), 4.0) == "used"
+            learner.add(t, x, y, vector)
+        results[weight] = (droop_px(est, test), error(est, test), learner.version)
+    assert before > 10  # the calibration: 1 mm of droop moves the gaze down
+    (droop_plain, error_plain, v_plain), (droop_stares, error_stares, v_stares) = results[0.0], results[1.0]
+    assert v_plain >= 1 and v_stares >= 1
+    assert abs(droop_stares) < 0.5 * abs(droop_plain), results
+    assert error_stares < 1.1 * error_plain, results
+    state = learner.state()
+    assert state["stares"]["used"] == 50 and state["fit"]["stares"] > 0
+    assert len((tmp_path / "stares.jsonl").read_text().splitlines()) == 50
+    again = Learner(estimator(offset=(40.0, -30.0)), MONITOR, tmp_path, CALIBRATED)
+    assert len(again.stares) == 50  # kept for this calibration
+
+
+def test_a_stare_whose_ends_the_model_puts_far_apart_is_not_used() -> None:
+    est = estimator(offset=(0.0, 0.0))
+    learner = Learner(est, MONITOR, None, CALIBRATED)
+    rng = np.random.default_rng(8)
+    poser = Poser(CAMERA)
+    a, b = (pack(poser.measure(face(point, *HOME, rng))) for point in ((300.0, 300.0), (1500.0, 800.0)))
+    learner.add_stare(1_800_000_000.0, a, a)
+    assert learner.add_stare(1_800_000_010.0, a, b) == "moved"  # the eyes moved: not a stare
+    assert len(learner.stares) == 1 and learner.state()["stares"] == {"used": 1, "moved": 1, "kept": 1}

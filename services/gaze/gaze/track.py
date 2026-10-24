@@ -29,6 +29,7 @@ from typing import Any, Protocol
 
 import numpy as np
 
+from .drift import DriftProbe
 from .fixations import FixationDetector, Smoother
 from .receiver import Receiver, corrected
 from .stabilize import Stabilizer
@@ -189,6 +190,11 @@ def open_camera_thread(opener: Callable[[], Camera], first_s: float = 8.0) -> Ca
     return opener()
 
 
+# The ring snaps to the line being read while the decoder's line is this fresh and this sure, and
+# the gaze within this far of it (monitor px).
+SNAP_S, SNAP_P, SNAP_PX = 1.2, 0.6, 120.0
+
+
 class Tracker:
     def __init__(
         self,
@@ -226,6 +232,8 @@ class Tracker:
         self.detector = FixationDetector(self.width, self.height)
         self.smoother = Smoother()  # the gaze fixations are made of
         self.stabilizer = Stabilizer(self.width)  # the gaze the ring and live points show
+        self.drift = DriftProbe(self.width, on_stare=self._stare)  # what slides with the gaze during long stares
+        self.snapped: tuple[float, float] | None = None  # (line time, ring fixation) the ring last sat on a line in
         self.camera: Camera | None = None
         self.hold: str | None = None  # why the camera is off on purpose
         self.problem: str | None = None  # why it is off against our wishes
@@ -280,6 +288,7 @@ class Tracker:
             "camera_fps": self.camera.rate() if hasattr(self.camera, "rate") else None,
             "camera_mode": _describe(self.calibration.get("camera_mode")),
             "learning": self._learning(),
+            "drift": self.drift.state(),
         }
 
     def _learning(self) -> dict | None:
@@ -315,6 +324,36 @@ class Tracker:
                 self.learner.started(version, now)
             except Exception:  # noqa: BLE001 - learning must never stop tracking
                 log.exception("recording a learned update failed")
+
+    def _stare(self, t: float, A: np.ndarray, B: np.ndarray, seconds: float) -> None:
+        """A long stare (``gaze.drift``): a label for the learner that the gaze must not move."""
+        if self.learner is not None:
+            try:
+                self.learner.add_stare(t, A, B, seconds)
+            except Exception:  # noqa: BLE001 - learning must never stop tracking
+                log.exception("adding a stare failed")
+
+    def _snap(self, now: float, x: float, y: float) -> tuple[float, float]:
+        """While the receiver's line decoder has the eyes on a line of text, the ring sits on that
+        line: its height from the page (exact), across it the gaze held to the line's extent. One
+        fixation alone cannot resolve a line at webcam error; reading as a sequence can.
+
+        The decoder hears of a fixation when it ends, so during a long look at one spot its line
+        grows old while the eyes are still on it: the ring stays on the line for as long as the
+        ring filter holds the fixation it was on when the line was fresh (no jump since), unless
+        the gaze drifts farther than ``SNAP_PX`` from it."""
+        line = getattr(self.receiver, "reading", None)
+        if not line or line["p"] < SNAP_P:
+            return x, y
+        fixation = self.stabilizer.since
+        if now - line["t"] <= SNAP_S:
+            self.snapped = (line["t"], fixation)
+        elif self.snapped != (line["t"], fixation):
+            return x, y  # the line is old and the eyes have moved since
+        held = min(max(x, line["x0"]), line["x1"])
+        if abs(y - line["y"]) * self.height > SNAP_PX or abs(x - held) * self.width > SNAP_PX:
+            return x, y  # the gaze has left the line
+        return held, line["y"]
 
     def _lines(self) -> None:
         """Lines the receiver decoded the eyes reading: labels for the learner."""
@@ -546,6 +585,8 @@ class Tracker:
                 if self.learner is not None:
                     self.learner.frame(now, values, x, y)
                 self._gaze(now, x, y)
+                if values.ndim == 1:
+                    self.drift.add(now, self.stabilizer.since, x, y, values)
             tracked = self.timer()
         self._click(now)
         self._report(now)
@@ -585,7 +626,9 @@ class Tracker:
         fx, fy = x / self.width, y / self.height
         ring = self._ring()
         if ring is not None:  # in memory, every frame; off the monitor it waits at the edge
-            ring.push(*corrected(getattr(self.receiver, "offset_grid", None), sx, sy))
+            # Click-corrected as fixations are placed, then on the line being read, if any (the
+            # line's place is exact: no correction on top of it).
+            ring.push(*self._snap(now, *corrected(getattr(self.receiver, "offset_grid", None), sx, sy)))
         if -0.05 <= fx <= 1.05 and -0.05 <= fy <= 1.05:  # off-screen samples end the fixation
             if getattr(self.receiver, "live", False) and now - self.live_at >= LIVE_EVERY_S:
                 self.live_at = now

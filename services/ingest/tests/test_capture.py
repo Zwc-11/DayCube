@@ -125,7 +125,16 @@ def test_a_stare_at_a_paragraph_becomes_a_dwell_signal_and_hook(
         snapshot = record("blocks", -12, doc="doc-1", geometry=GEOMETRY, blocks=blocks, **TAB)
         assert client.post("/events", json=[snapshot], headers=auth).json()["accepted"] == 1
         body = client.post("/gaze", json={"state": state, "fixations": fixations}, headers=auth).json()
-        assert body == {"accepted": 18, "duplicates": 0, "stale": 0, "live": False, "ring": False, "offset_grid": None, "lines": []}
+        assert body == {
+            "accepted": 18,
+            "duplicates": 0,
+            "stale": 0,
+            "live": False,
+            "ring": False,
+            "offset_grid": None,
+            "lines": [],
+            "reading": None,
+        }
         status = client.get("/status").json()["gaze"]
         assert status["tracking"] is True and status["error_px"] == 120.0
         signals = client.post("/events", json=[], headers=auth).json()["signals"]
@@ -249,8 +258,16 @@ def test_the_line_being_read_is_logged_shown_and_recorded(vault: Vault, auth: di
             truth.append(i)
             t += timedelta(seconds=0.3)
     with TestClient(create_capture_app(settings(vault), receive=True)) as client:
+        client.app.state.receiver.set_ring(True)  # the tracker's ring is on: the reply names the line for it
         assert client.post("/events", json=[blocks], headers=auth).json()["accepted"] == 1
-        assert client.post("/gaze", json={"state": state, "fixations": fixations}, headers=auth).status_code == 200
+        answer = client.post("/gaze", json={"state": state, "fixations": fixations}, headers=auth)
+        assert answer.status_code == 200
+        line = answer.json()["reading"]  # the last line, where it is on the monitor, for the ring to sit on
+        assert line["y"] == pytest.approx((200 + 2 * 28.8 + 10 + 100) / 1080, abs=1e-4)
+        assert (line["x0"], line["x1"]) == pytest.approx((100 / 1920, 400 / 1920), abs=1e-4)
+        assert line["p"] >= 0.6 and line["t"] == pytest.approx(
+            datetime.fromisoformat(fixations[-1]["t_end"]).timestamp()
+        )
         status = client.get("/status").json()
         reading, decoding = status["reading"], status["line_decoding"]
         assert reading["block"] == "p1" and reading["line"] == 2 and reading["text"] == texts[2]
@@ -642,8 +659,13 @@ def test_doctor_shows_when_an_update_reached_the_gaze_and_the_live_loss_ratio() 
         "applied": {"version": 4, "t": "2026-10-24T18:02:00.040000+00:00", "after_ms": 38.2},
         "live": {"clicks": 300, "error_px": 121.0, "calibration_px": 158.0, "ratio": 0.766, "by_version": []},
     }  # fmt: skip
-    rows = {name: (verdict, detail) for verdict, name, detail in doctor._learning({"tracking": True, "learning": learning})}
-    assert rows["learning applied"] == (doctor.PASS, "update 4 reached the gaze 38 ms after it was fitted (every frame since uses it)")
+    rows = {
+        name: (verdict, detail) for verdict, name, detail in doctor._learning({"tracking": True, "learning": learning})
+    }
+    assert rows["learning applied"] == (
+        doctor.PASS,
+        "update 4 reached the gaze 38 ms after it was fitted (every frame since uses it)",
+    )
     assert rows["loss ratio"] == (doctor.PASS, (
         "last 300 clicks, each measured before learning from it: 121.0 px against 158.0 px for the calibration "
         "alone (ratio 0.77, 23% less error)"
@@ -670,3 +692,16 @@ def test_doctor_reports_the_last_tuning_and_lines_read(tmp_path: Path) -> None:
     learning = {"version": 0, "clicks": 12, "skipped": {}, "fit": None, "lines": {"used": 340}}
     ((_, _, detail),) = doctor._learning({"tracking": True, "learning": learning})
     assert "12 clicks since calibration; 340 lines read as labels" in detail
+
+
+def test_doctor_says_whether_the_gaze_slides_during_stares_and_what_moved_with_it() -> None:
+    from capture import doctor
+
+    drift = {"stares": 12, "seconds": 61.0, "gaze_px_s": 14.2, "iris_per_s": 0.0001, "lids_mm_s": -0.02,
+             "pitch_deg_s": 0.001, "distance_mm_s": 0.1}  # fmt: skip
+    assert doctor._drift({"tracking": True, "drift": drift}) == [(doctor.INFO, "stare drift", (
+        "over the last 12 stares (61 s), the gaze slid 14.2 px/s down; meanwhile the lids closed 1.2 mm a minute"
+    ))]  # fmt: skip
+    assert doctor._drift({"tracking": True, "drift": drift | {"gaze_px_s": -1.0}})[0][0] == doctor.PASS
+    assert doctor._drift({"tracking": True, "drift": None}) == []
+    assert doctor._drift({"tracking": False, "drift": drift}) == []

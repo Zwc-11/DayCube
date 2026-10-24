@@ -132,6 +132,8 @@ way. `services/gaze/gaze/stabilize.py`:
 
 - **Resting:** each sample pulls the estimate by `max(1/n, 1 - exp(-dt/0.2 s))`: the plain mean of
   a fixation's first samples, then an exponential average, so reading along a line glides.
+  Vertically, once a look is 0.3 s old, the average is over 0.5 s instead: text runs across, so up
+  and down within a look is mostly noise.
 - **A far jump:** a sample more than 4.5 times the noise away (within 1-12% of the screen width) is
   held back; a single one is a bad frame and ignored; two in a row that agree are a saccade, and
   the ring jumps to them.
@@ -142,22 +144,65 @@ way. `services/gaze/gaze/stabilize.py`:
   long blink starts over.
 
 On simulated webcam gaze with the PC's error model (`eval/ring_filter.py`, 10 two-minute sessions
-of reading, looking around and nearby targets; `eval/results/ring-filter.json`), measured at
-240 Hz the way the overlay draws it:
+of prose, code (short indented lines, long fixations), looking around, nearby targets and stares;
+`eval/results/ring-filter.json`), measured at 240 Hz the way the overlay draws it, at 30 frames/s:
 
-| | One Euro (before), 30 fps | ring filter, 30 fps | One Euro, 60 fps | ring filter, 60 fps |
-| --- | --- | --- | --- | --- |
-| shake while resting (RMS per display frame) | 6.0 px | **3.3 px** | 8.3 px | **3.6 px** |
-| wander within a fixation (RMS) | 38 px | **20 px** | 38 px | **19 px** |
-| to 70% of a jump of 300+ px (median) | 104 ms | 123 ms | 79 ms | 85 ms |
-| to 70% of a jump of 120-300 px | 119 ms | 182 ms | 80 ms | 94 ms |
-| median distance from the eyes | 103 px | 116 px | 96 px | 113 px |
-| cost per sample | 2 us | 7 us | 2 us | 7 us |
+| | One Euro (first) | ring filter before | ring filter now |
+| --- | --- | --- | --- |
+| shake while resting (RMS per display frame) | 5.9 px | 3.6 px | **3.5 px** |
+| wander within a fixation (RMS) | 44 px | 25 px | **23 px** |
+| on the line being read (within half a line of the eyes), prose | 32% | 46% | **55%** |
+| ... code | 34% | 46% | **50%** |
+| to 70% of a jump of 300+ px (median) | 86 ms | 104 ms | 102 ms |
+| to 70% of a jump of 120-300 px | 127 ms | 193 ms | 210 ms |
+| behind a smooth vertical pursuit (a touchpad scroll, 150 px/s) | 11 px | 28 px | 51 px |
+| median distance from the eyes | 97 px | 106 px | 107 px |
+| cost per sample | 2 us | 7 us | 7 us |
 
-The ring is half as jittery; the price is one more frame before a far jump (the second sample
-that confirms it is not a bad frame) and about 60 ms on near ones at 30 fps, both a third of
-that at 60 fps (`python -m gaze calibrate --fps 60` where the webcam offers it). Fixations are
-still found in the One Euro output, whose thresholds the detector was measured on.
+The ring is half as jittery as One Euro's; the price is one more frame before a far jump (the
+second sample that confirms it is not a bad frame) and 80 ms on near ones, and following a smooth
+scroll more loosely. At 60 frames/s (`python -m gaze calibrate --fps 60` where the webcam offers
+it) jumps take a third less. Fixations are still found in the One Euro output, whose thresholds
+the detector was measured on. "On the line" takes each block's mean offset out (the calibration's
+bias, which learning from clicks and the line snapping below deal with): it is the ring's own
+steadiness at line scale, and at webcam noise half the time is about what a filter can do.
+
+**On the line being read.** While the receiver's line decoder follows reading (`capture/reading.py`,
+on web pages and, by OCR, in other apps such as a code editor), it sends the line the eyes are on
+with each `/gaze` reply: its middle and extent on the monitor (exact page geometry) and how sure it
+is. When it is sure (p 0.6 or more) and the gaze within 120 px of the line, the ring sits on the
+line, held to its extent across. One fixation cannot resolve a line at webcam error; reading as a
+sequence can. The decoder hears of a fixation when it ends, so through a long look at one spot its
+line grows old while the eyes are still on it: the ring stays on the line as long as the ring filter
+holds the look it was in when the line was fresh, and lets go after a jump or when the gaze drifts
+120 px away (`Tracker._snap`, tested in `test_track.py`). The live point a page draws is not
+snapped.
+
+### When the ring slides down
+
+A ring that slides slowly down while the eyes rest on one spot is the gaze estimate drifting, not
+the eyes (between saccades they hold still to a fraction of a degree). The head-aware model reads
+the vertical largely from the lids, since a webcam resolves the iris's vertical position poorly and
+the upper lid follows the eye down; so a lid that relaxes over a long look moves the gaze down. On
+MPIIFaceGaze the calibrated model puts the gaze 20 mm lower on the screen for every 0.5 mm the upper
+lid comes down (15 people, median; learning from clicks makes it 23.5 mm): about 86 px on the PC's
+monitor. A filter cannot tell such a slide from a slow look down; holding the height harder stopped
+half of a 20 px/s slide in simulation but cut the time on the line in code from 50% to 33%, so the
+filter follows it and the rest is done elsewhere:
+
+- **On text** the ring sits on the line being read, through long looks too (above).
+- **Measured in ordinary use.** `gaze/drift.py` takes every look of 2 s or more that does not move
+  across (not reading) and fits a slope through time to the gaze's height, the lid gap, the
+  irises' vertical direction, the head's tilt and its distance. `doctor` reports the median slide
+  and what moved with it ("the gaze slid 14 px/s down; meanwhile the lids closed 1.2 mm a minute"),
+  and the tracker's state carries the numbers. No test session is needed.
+- **Learned, if it helps you.** Each such stare is also a label: the gaze at its end must be where
+  it was at its start (`gaze.learn.Stare`, kept in `vault/calibration/stares.jsonl`). On
+  MPIIFaceGaze with lids drooped 0.2-1.0 mm in synthetic stares (`eval/stare_learning.py`), stares
+  in the fit cut the droop's effect from 23.5 to 15.2 mm, but cost 4% median accuracy (32.4 to
+  33.8 mm), since a stare's droop moves the lids the way a look down does. They are off by default
+  and offered to tuning (below), which takes them only if they are 3% better on your own newest
+  clicks.
 
 ### Processing rate and live checks
 
@@ -649,9 +694,10 @@ Measured (`eval/reading_labels.py`):
 
 The settings of learning (the click gate, the half-life of old labels, how hard the head terms and
 the eye's resting direction are held, how many clicks before the head terms, how often to fit,
-how much a line counts) were chosen on MPIIFaceGaze. `gaze/tune.py` chooses them on your own
-data: `clicks.jsonl` keeps every click's frame vector and pixel and `lines.jsonl` every line with
-its extent, so learning can be run again from the calibration exactly as it ran live, each click
+how much a line and a stare count) were chosen on MPIIFaceGaze. `gaze/tune.py` chooses them on your
+own data: `clicks.jsonl` keeps every click's frame vector and pixel, `lines.jsonl` every line with
+its extent and `stares.jsonl` every stare's start and end, so learning can be run again from the
+calibration exactly as it ran live, each click
 predicted by the model of that moment before anything learned from it. Settings are searched by
 coordinate descent from those in use (two passes over a small grid) on the older 70% of clicks,
 and the best is compared with the settings in use on the newest 30%, which the search never saw;

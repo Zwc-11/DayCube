@@ -27,6 +27,13 @@ only when the gaze fell off the line's ends. Lines count ``line_weight`` of a cl
 only clicks judge a fit: a decoder that went a line astray can move a candidate, never get it
 taken unless clicks, which it cannot influence, say it is better.
 
+**Stares, if they help.** Through a long look at one spot the eyes do not move, so whatever moves
+the gaze then is error: a lid drooping, which the model reads as a look down. ``gaze.drift`` hands
+each stare over as its start and its end (``Stare``), and a fit can ask that the two give the same
+point (``stare_weight``). That costs accuracy, since a droop moves the lids as a look down does
+(``eval/stare_learning.py``: the droop's effect 35% smaller for 4% more median error on
+MPIIFaceGaze), so it is off unless tuning finds it helps your clicks.
+
 How it learns: for each label the head pose gives the direction each eye must have had in the head
 to look at the labelled point (``GazeModel.required``). The loss is the squared difference between
 that direction and the model's, so it is the label's error on screen seen through the geometry. The
@@ -59,7 +66,8 @@ the tracker first predicts a frame with it (``applied``), normally one frame lat
 
 Stored in ``vault/calibration``: ``clicks.jsonl`` (time, clicked pixel, the frame's head pose and
 eye measurements as numbers, the errors at that moment, the model version), ``lines.jsonl`` (the
-same for reading-line labels, with the line's extent), ``learning.jsonl`` (each fit: the held-out
+same for reading-line labels, with the line's extent), ``stares.jsonl`` (each stare's two mean
+frame vectors), ``learning.jsonl`` (each fit: the held-out
 errors, whether it was taken; each update's first frame; each tuning) and ``gaze-learned.json``
 (the learned weights, for this calibration only). No images, no text, nothing about what was
 clicked or read. A new calibration starts over: labels from before it are not used.
@@ -107,6 +115,9 @@ LINES_FILE = "lines.jsonl"
 LEARNED_FILE = "gaze-learned.json"
 HISTORY_FILE = "learning.jsonl"
 TUNED_FILE = "gaze-tuned.json"
+STARES_FILE = "stares.jsonl"
+MAX_STARES = 1000
+STARE_WEIGHT = 0.0  # off unless tuning finds it helps your clicks: eval/results/stare-learning.json
 LIVE_CLICKS = 300  # clicks the live accuracy by model version is measured on
 TUNE_CHECK_S = 600.0
 
@@ -122,11 +133,12 @@ class Settings:
     pose_min_clicks: int = 60  # clicks a fit needs before it also learns what the head's place and turn do
     refit_every: int = 20  # usable clicks between fits
     line_weight: float = 0.25  # a reading-line label counts this much of a click in a fit (0: unused)
+    stare_weight: float = STARE_WEIGHT  # a stare (the gaze must not move) counts this much of a click (0: unused)
 
     BOUNDS = {  # noqa: RUF012 - the range each setting may take, also the tuner's
         "gate_k": (1.5, 6.0), "half_life_days": (0.5, 60.0), "intercept_penalty": (0.01, 3.0),
         "pose_penalty": (0.1, 10.0), "pose_min_clicks": (30, 400), "refit_every": (5, 100),
-        "line_weight": (0.0, 1.0),
+        "line_weight": (0.0, 1.0), "stare_weight": (0.0, 10.0),
     }  # fmt: skip
 
     def to_json(self) -> dict:
@@ -175,6 +187,26 @@ class Click:
         return cls(float(data["t"]), float(data["x"]), float(data["y"]), np.asarray(data["X"], dtype=float),
                    _number(data.get("error_px")), _number(data.get("base_px")), int(data.get("v") or 0),
                    data.get("used"), kind, (float(span[0]), float(span[1])) if span else None)  # fmt: skip
+
+
+@dataclass
+class Stare:
+    """A long look at one point (``gaze.drift``): the mean frame vector early in it and at its end.
+    The eyes did not move, so the gaze a model gives for the two must not differ."""
+
+    t: float  # epoch seconds, when it began
+    A: np.ndarray  # mean frame vector early in the stare
+    B: np.ndarray  # ... and over its last half second
+    seconds: float = 0.0
+
+    def to_json(self) -> dict:
+        return {"t": round(self.t, 3), "s": round(self.seconds, 2), "A": [round(float(v), 6) for v in self.A],
+                "B": [round(float(v), 6) for v in self.B]}  # fmt: skip
+
+    @classmethod
+    def from_json(cls, data: dict) -> Stare:
+        return cls(float(data["t"]), np.asarray(data["A"], dtype=float), np.asarray(data["B"], dtype=float),
+                   float(data.get("s") or 0.0))  # fmt: skip
 
 
 def steady(frames: list[tuple[float, np.ndarray, float, float]], width: float) -> list[int] | None:
@@ -232,6 +264,8 @@ class Learner:
         self.looks: OrderedDict[str, tuple[float, float, np.ndarray]] = OrderedDict()  # fixation id -> look
         self.clicks: list[Click] = []
         self.lines: list[Click] = []
+        self.stares: list[Stare] = []
+        self.stare_counts = {"used": 0, "moved": 0}
         self.skipped = {"no steady look": 0, "not looking": 0, "off the monitor": 0}
         self.line_counts = {"used": 0, "off the line": 0, "fixation not found": 0}
         self.since_fit = self.since_lines = 0
@@ -334,6 +368,28 @@ class Learner:
         if self.since_lines >= REFIT_LINES and self.settings.line_weight > 0:
             self._start_refit()
         return "used"
+
+    def add_stare(self, t: float, A: np.ndarray, B: np.ndarray, seconds: float = 0.0) -> str:
+        """A long look at one point (``gaze.drift``): "used", or "moved" (the model in use puts the
+        two ends farther apart than a click may be from the gaze: the eyes likely moved after all)."""
+        stare = Stare(t, np.asarray(A, dtype=float), np.asarray(B, dtype=float), seconds)
+        p = self.estimator.predict(np.stack([stare.A, stare.B]))
+        if not np.isfinite(p).all() or float(np.hypot(*(p[1] - p[0]))) > self.radius:
+            self.stare_counts["moved"] += 1
+            return "moved"
+        with self._lock:
+            self.stares.append(stare)
+            if len(self.stares) > MAX_STARES:
+                del self.stares[: len(self.stares) - MAX_STARES]
+        if self.folder is not None:
+            with contextlib.suppress(OSError), (self.folder / STARES_FILE).open("a", encoding="utf-8") as out:
+                out.write(json.dumps(stare.to_json()) + "\n")
+        self.stare_counts["used"] += 1
+        return "used"
+
+    def stare_snapshot(self) -> list[Stare]:
+        with self._lock:
+            return list(self.stares)
 
     def _label(
         self, t: float, x: float, y: float, vector: np.ndarray, kind: str, predicted: np.ndarray | None = None
@@ -453,9 +509,9 @@ class Learner:
         e = np.hypot(p[:, 0] - [c.x for c in clicks], p[:, 1] - [c.y for c in clicks])
         return np.where(np.isfinite(e), e, np.inf)
 
-    def solve(self, labels: list[Click], penalty: float, now: float) -> list:
-        """Eye weights fitted to ``labels`` (clicks, and lines at ``line_weight``), pulled toward
-        the calibration's by ``penalty``.
+    def solve(self, labels: list[Click], penalty: float, now: float, stares: list[Stare] | None = None) -> list:
+        """Eye weights fitted to ``labels`` (clicks, and lines at ``line_weight``) and ``stares``
+        (at ``stare_weight``), pulled toward the calibration's by ``penalty``.
 
         A line says how high the eyes were, not where along it: its horizontal target is where the
         model being fitted puts the gaze, held to the line's extent, recomputed at every round from
@@ -498,7 +554,8 @@ class Learner:
         wanted = (
             aim(predict(self.estimator.model.eyes)) if along.any() else self.estimator.model.required(heads, targets)
         )
-        eyes = self._weighted(F, pose, wanted, weight, penalty, across)
+        still = self._stares(stares or [], pose is not None, now)
+        eyes = self._weighted(F, pose, wanted, weight, penalty, across, still)
         for _ in range(2):  # Huber: labels still far off after a fit count less in the next
             predicted = predict(eyes)
             wanted = aim(predicted)
@@ -508,8 +565,35 @@ class Learner:
                 break
             c = 1.5 * max(float(np.median(finite)), 1.0)
             robust = np.where(np.isfinite(e), np.minimum(1.0, c / np.maximum(e, 1e-9)), 0.0)
-            eyes = self._weighted(F, pose, wanted, weight * robust, penalty, across)
+            eyes = self._weighted(F, pose, wanted, weight * robust, penalty, across, still)
         return eyes
+
+    def _stares(self, stares: list[Stare], pose: bool, now: float) -> tuple | None:
+        """The rows stares add to each eye's fit: the change of the eye measurements (and head
+        terms) from a stare's start to its end, which must give the change of direction that keeps
+        the gaze on the point the model in use put it at the start (none, if the head held still).
+        So whatever moved during stares while the eyes did not (a lid drooping, the iris landmarks
+        under it) stops moving the gaze."""
+        s = self.settings
+        if s.stare_weight <= 0 or not stares:
+            return None
+        A, B = np.array([v.A for v in stares]), np.array([v.B for v in stares])
+
+        def split(X: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+            return X[:, :9].reshape(-1, 3, 3), X[:, 12:18].reshape(-1, 2, 3), X[:, 18:].reshape(len(X), 2, -1)
+
+        model = self.estimator.model
+        point = model.predict_arrays(*split(A))
+        keep = np.isfinite(point).all(1)
+        if not keep.any():
+            return None
+        A, B, point = A[keep], B[keep], point[keep]
+        (RA, cA, FA), (RB, cB, FB) = split(A), split(B)
+        dreq = model.required(unpack(B), point) - model.required(unpack(A), point)  # (n, 2 eyes, 2)
+        dpose = pose_terms(RB, cB, self.pose_ref) - pose_terms(RA, cA, self.pose_ref) if pose else None
+        age = now - np.array([v.t for v in stares])[keep]
+        weight = s.stare_weight * 0.5 ** (np.maximum(age, 0.0) / (s.half_life_days * 86400.0))
+        return FB - FA, dpose, dreq, weight
 
     def _weighted(
         self,
@@ -519,6 +603,7 @@ class Learner:
         weight: np.ndarray,
         penalty: float,
         across: np.ndarray | None = None,
+        stares: tuple | None = None,
     ) -> list:
         """Each eye's weights: the eye terms pulled toward the calibration's, the head terms (when
         ``pose`` is given) toward zero, since the calibration, made with the head still, has none.
@@ -536,12 +621,19 @@ class Learner:
                 prior = np.vstack([W0, np.zeros((POSE_TERMS, W0.shape[1]))])
             Z = np.hstack(columns)
             P = penalty * np.diag(shrink)
-            A = Z.T @ (weight[:, None] * Z) + P
-            B = Z.T @ (weight[:, None] * wanted[:, e]) + P @ prior
+            S, T = np.zeros_like(P), np.zeros((len(P), 2))  # what stares add to both systems
+            if stares is not None:
+                dF, dpose, dreq, ws = stares
+                D = np.hstack([np.zeros((len(dF), 1)), dF[:, e] / sd] + ([dpose] if pose is not None else []))
+                S, T = D.T @ (ws[:, None] * D), D.T @ (ws[:, None] * dreq[:, e])
+            A = Z.T @ (weight[:, None] * Z) + P + S
+            B = Z.T @ (weight[:, None] * wanted[:, e]) + P @ prior + T
             W = np.linalg.solve(A, B)
             if across is not None and not np.all(across == 1.0):
                 w = weight * across
-                W[:, 0] = np.linalg.solve(Z.T @ (w[:, None] * Z) + P, Z.T @ (w * wanted[:, e, 0]) + P @ prior[:, 0])
+                W[:, 0] = np.linalg.solve(
+                    Z.T @ (w[:, None] * Z) + P + S, Z.T @ (w * wanted[:, e, 0]) + P @ prior[:, 0] + T[:, 0]
+                )
             eyes.append((mean, sd, W))
         return eyes
 
@@ -559,6 +651,7 @@ class Learner:
         lines = (
             sorted(self.usable(labels=self.line_snapshot()), key=lambda c: c.t) if self.settings.line_weight > 0 else []
         )
+        stares = sorted(self.stare_snapshot(), key=lambda v: v.t) if self.settings.stare_weight > 0 else []
         now = now if now is not None else max(clicks[-1].t, lines[-1].t if lines else -math.inf)
         test = unseen[-max(MIN_HELD_OUT, int(HOLDOUT * len(clicks))) :]
         train = clicks[: len(clicks) - len(test)]
@@ -566,11 +659,12 @@ class Learner:
             return None
         # Candidates learn only from what came before the held-out clicks, as they would in use.
         train += [line for line in lines if line.t < test[0].t]
+        before = [v for v in stares if v.t < test[0].t]
         current = float(np.median(self.errors(test, self.estimator.model.eyes)))
         calibration = float(np.median(self.errors(test, self.prior)))
         best, best_error = None, math.inf
         for penalty in PENALTIES:
-            error = float(np.median(self.errors(test, self.solve(train, penalty, test[0].t))))
+            error = float(np.median(self.errors(test, self.solve(train, penalty, test[0].t, before))))
             if error < best_error:
                 best, best_error = penalty, error
         labels = np.array([[c.x, c.y] for c in test])
@@ -579,12 +673,12 @@ class Learner:
             best is not None and best_error < MARGIN * min(current, calibration) and best_error < GUESS_SHARE * guess
         )
         self.fit = {
-            "clicks": len(clicks), "lines": len(lines), "penalty": best, "accepted": accepted,
+            "clicks": len(clicks), "lines": len(lines), "stares": len(stares), "penalty": best, "accepted": accepted,
             "error_px": {"calibration": round(calibration, 1), "in_use": round(current, 1),
                          "learned": round(best_error, 1), "fixed_guess": round(guess, 1)},
         }  # fmt: skip
         if accepted:
-            eyes = self.solve(clicks + lines, best, now)
+            eyes = self.solve(clicks + lines, best, now, stares)
             model = self.estimator.model
             model.pose_ref = self.pose_ref  # set once, before any weights that use it
             model.eyes = eyes  # one reference: the next frame predicts with all of the new weights
@@ -622,6 +716,7 @@ class Learner:
             "clicks": len(clicks),
             "skipped": dict(self.skipped),
             "lines": dict(self.line_counts) | {"kept": len(self.lines)},
+            "stares": dict(self.stare_counts) | {"kept": len(self.stares)},
             "recent_error_px": round(float(np.median(recent)), 1) if recent else None,
             "live": live(clicks[-LIVE_CLICKS:]),
             "fit": self.fit,
@@ -666,6 +761,7 @@ class Learner:
             return
         self.clicks = load_labels(self.folder / CLICKS_FILE, since, self.clicks_shape(), "click", MAX_CLICKS)
         self.lines = load_labels(self.folder / LINES_FILE, since, self.clicks_shape(), "line", MAX_LINES)
+        self.stares = load_stares(self.folder / STARES_FILE, since, self.clicks_shape(), MAX_STARES)
         learned = self.folder / LEARNED_FILE
         try:
             data = json.loads(learned.read_text(encoding="utf-8"))
@@ -712,6 +808,26 @@ def load_labels(path: Path, since: float | None, shape: tuple[int], kind: str, k
         with contextlib.suppress(OSError):
             path.write_text("".join(json.dumps(c.to_json()) + "\n" for c in labels), encoding="utf-8")
     return labels
+
+
+def load_stares(path: Path, since: float | None, shape: tuple[int], keep: int) -> list[Stare]:
+    """The newest ``keep`` stares of ``stares.jsonl`` since ``since``, as ``load_labels``."""
+    if not path.is_file():
+        return []
+    rows = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    stares = []
+    for row in rows:
+        try:
+            stare = Stare.from_json(json.loads(row))
+        except (ValueError, KeyError, TypeError, IndexError):
+            continue
+        if (since is None or stare.t >= since) and stare.A.shape == shape and stare.B.shape == shape:
+            stares.append(stare)
+    stares = stares[-keep:]
+    if len(rows) > 2 * keep:
+        with contextlib.suppress(OSError):
+            path.write_text("".join(json.dumps(v.to_json()) + "\n" for v in stares), encoding="utf-8")
+    return stares
 
 
 def history(folder: Path | None, event: dict) -> None:
