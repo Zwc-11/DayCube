@@ -193,6 +193,8 @@ class PageReader:
         noise = self.sigma * SQRT2
         broad = dt > GAP_S
         spread = [0.0] * G  # mass that may land anywhere (jumps), per offset
+        stays: dict[float, float] = {}
+        returns: dict[tuple[float, float], float] = {}
 
         def add(key: Key | None, row: list[float], p: float) -> None:
             target = new.get(key)
@@ -218,15 +220,22 @@ class PageReader:
                     spread[k] += row[k] * 0.45
                 continue
             w = line.column
-            stay = (1 - BACK_SHARE) * _inside(dx, -0.05 * w, (FORWARD + 0.05) * w, noise) / ((FORWARD + 0.05) * w)
-            stay += BACK_SHARE * _inside(dx, -BACK * w, BACK * w, noise) / (BACK * w)
+            stay = stays.get(w)
+            if stay is None:
+                stay = (1 - BACK_SHARE) * _inside(dx, -0.05 * w, (FORWARD + 0.05) * w, noise) / ((FORWARD + 0.05) * w)
+                stay += BACK_SHARE * _inside(dx, -BACK * w, BACK * w, noise) / (BACK * w)
+                stays[w] = stay
             add(key, row, STAY * stay)
             add(OFF, row, TO_OFF * anywhere)
             if line.next is not None:
                 below = self.lines[line.next]
                 lo = below.box.x - (line.box.x + line.box.w)
                 size = LAND * min(below.box.w, w) + LAND * min(line.box.w, w)
-                add(below.key, row, NEXT * _inside(dx, lo, size, noise) / max(size, 1.0))
+                density = returns.get((lo, size))
+                if density is None:
+                    density = NEXT * _inside(dx, lo, size, noise) / max(size, 1.0)
+                    returns[lo, size] = density
+                add(below.key, row, density)
                 if below.next is not None:
                     add(self.lines[below.next].key, row, NEXT2 * anywhere)
             if line.prev is not None:
@@ -257,6 +266,10 @@ class PageReader:
         top, bottom, width = view
         uniform = 1.0 / max(width * (bottom - top), 1.0)  # off the text: anywhere on the screen
         total = 0.0
+        # These densities depend on this fixation, not the line's posterior. Share identical
+        # geometry across lines/columns, then release it; a later gaze or layout must recompute.
+        horizontal: dict[tuple[float, float, float], float] = {}
+        vertical: dict[tuple[float, float], list[float]] = {}
         for key, row in self.alpha.items():
             if key is OFF:
                 for k in range(G):
@@ -266,11 +279,18 @@ class PageReader:
             line = self.lines[self.index[key]]
             # Horizontally: inside the line's extent, at the density of anywhere in its column, so
             # a short line is not favoured for the fixations it can hold.
-            across = _inside(x, line.box.x, line.box.w, self.sigma_x) / line.column
+            extent = (line.box.x, line.box.w, line.column)
+            across = horizontal.get(extent)
+            if across is None:
+                across = _inside(x, line.box.x, line.box.w, self.sigma_x) / line.column
+                horizontal[extent] = across
             band_top, band_h = line.band
+            down = vertical.get(line.band)
+            if down is None:
+                down = [_inside(y - offset, band_top, band_h, self.sigma) / band_h for offset in self.offsets]
+                vertical[line.band] = down
             for k in range(G):
-                down = _inside(y - self.offsets[k], band_top, band_h, self.sigma) / band_h
-                row[k] *= (1 - OUTLIER) * down * across + OUTLIER * uniform
+                row[k] *= (1 - OUTLIER) * down[k] * across + OUTLIER * uniform
             total += sum(row)
         if total <= 0 or not math.isfinite(total):  # nothing fits: start over from the prior
             self.alpha = {}

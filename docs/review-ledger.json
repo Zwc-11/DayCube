@@ -1,19 +1,19 @@
 {
-  "baseline_revision": "1af2039e597e5c736d81abbcfba82b18c711d216",
+  "baseline_revision": "33c97030ba8fac88b916746ee934add73259ebe5",
   "scope": "Every tracked file and new non-ignored file, except this generated ledger itself. No vendored source is tracked; dependencies live in ignored environments and lockfiles.",
   "limits": "Structural checks cover every listed file; manual_review only identifies implementations actually examined. Neither is a proof of maximum efficiency, a dependency audit or DeepInfer throughput parity. Missing manual_review is explicitly unreviewed at the semantic level.",
   "counts": {
     "configuration": 35,
-    "documentation": 24,
+    "documentation": 25,
     "test": 44,
-    "source": 141,
+    "source": 142,
     "asset": 16,
     "fixture": 13,
-    "measurement_or_fixture": 33,
+    "measurement_or_fixture": 35,
     "lockfile": 4,
     "generated": 11
   },
-  "manual_reviews": 221,
+  "manual_reviews": 222,
   "files": [
     {
       "path": ".env.example",
@@ -669,6 +669,14 @@
       }
     },
     {
+      "path": "docs/algorithm-review-2026-10-24.md",
+      "sha256": "a6abc92503d5fe8d18c24606865189cdeb01f12932021a6056cbc7ef80f292e3",
+      "category": "documentation",
+      "bytes": 6280,
+      "lines": 89,
+      "structural_check": "UTF-8 text inventory; build/configuration review is separate"
+    },
+    {
       "path": "docs/api.md",
       "sha256": "fa73c3d95fcc7cb8b094a2552998bef9523921cc43f4df059f000f3bcfd1b886",
       "category": "documentation",
@@ -718,10 +726,10 @@
     },
     {
       "path": "docs/deepinfer-review.md",
-      "sha256": "6e8fd1aaf1141c38944fd49892acbbf8e3d383129ea3fe63cba6bfd99480a9d5",
+      "sha256": "379866d3b55dfad6ac946b3d6ed7660f5ed204345beffa8f0182f24405ff8576",
       "category": "documentation",
-      "bytes": 12799,
-      "lines": 123,
+      "bytes": 12995,
+      "lines": 126,
       "structural_check": "UTF-8 text inventory; build/configuration review is separate"
     },
     {
@@ -816,10 +824,10 @@
     },
     {
       "path": "docs/performance.md",
-      "sha256": "3380c9e141044432545a07c80be23b10a03918031a536bd7b679cc47678f99a8",
+      "sha256": "40f84e77ba1a2b6f2d28ce97bf228d284e27a059ccb971526fde973e6741da07",
       "category": "documentation",
-      "bytes": 11962,
-      "lines": 225,
+      "bytes": 12482,
+      "lines": 233,
       "structural_check": "UTF-8 text inventory; build/configuration review is separate"
     },
     {
@@ -853,6 +861,29 @@
       "bytes": 9400,
       "lines": 150,
       "structural_check": "UTF-8 text inventory; build/configuration review is separate"
+    },
+    {
+      "path": "eval/benchmark_capture_algorithms.py",
+      "sha256": "9970d767c9cfb144301ffff34affddf4ba3907b8e214701a5249c7d2296061b1",
+      "category": "source",
+      "bytes": 7248,
+      "lines": 179,
+      "functions": [
+        "history_workload:36 (loops including nested scopes: 3)",
+        "reading_workload:78 (loops including nested scopes: 8)",
+        "main:118 (loops including nested scopes: 4)",
+        "run:64 (loops including nested scopes: 1)",
+        "prepare:88 (loops including nested scopes: 1)",
+        "run:104 (loops including nested scopes: 1)"
+      ],
+      "review_signals": [
+        "142: check subprocess timeout or explicit process ownership at subprocess.check_output"
+      ],
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Focused final algorithm/resource/correctness review, 2026-10-24; see docs/algorithm-review-2026-10-24.md",
+        "notes": "Reviewed seeded in-memory history fixture with actual scratch-vault atomic writes, cold/warm reader setup, output hashing, eleven timing samples and separate CPU/profile/tracemalloc calls through benchmark_notes.measure. Same environment/workload and full output hashes are checked for comparisons. Source hashes bind both reports. Browser SQLite copying, camera accuracy/FPS, RSS and GPU are explicitly outside scope."
+      }
     },
     {
       "path": "eval/benchmark_core.py",
@@ -1278,6 +1309,22 @@
       "category": "measurement_or_fixture",
       "bytes": 2367,
       "lines": 21,
+      "structural_check": "JSON parsed"
+    },
+    {
+      "path": "eval/results/capture-algorithms-after.json",
+      "sha256": "f74e03e6211ecc72e81414dd54cd23a1ae2271d95f6b5ca12f12b500d9f91f30",
+      "category": "measurement_or_fixture",
+      "bytes": 8323,
+      "lines": 113,
+      "structural_check": "JSON parsed"
+    },
+    {
+      "path": "eval/results/capture-algorithms-before.json",
+      "sha256": "bf99998c230d186d7b5de0df8ef0082716e81895063a63315dd0c0164145384e",
+      "category": "measurement_or_fixture",
+      "bytes": 8332,
+      "lines": 113,
       "structural_check": "JSON parsed"
     },
     {
@@ -2611,24 +2658,26 @@
     },
     {
       "path": "services/capture-win/capture/history.py",
-      "sha256": "9485d86d3639d8d67c9b9666f8419d6e0b49303e783b167161bfd0c35ae60e99",
+      "sha256": "dcecda02dbc52195d148dacfc3cef821e20c05b805bd71d0dc9e0eb085599ec5",
       "category": "source",
-      "bytes": 8725,
-      "lines": 181,
+      "bytes": 9511,
+      "lines": 202,
       "functions": [
-        "paused_spans:74 (loops including nested scopes: 1)",
-        "opera_histories:90 (loops including nested scopes: 2)",
-        "read_visits:103 (loops including nested scopes: 3)",
-        "import_history:144 (loops including nested scopes: 5)",
-        "load:53 (loops including nested scopes: 1)",
-        "for_vault:59 (loops including nested scopes: 0)",
-        "excluded:65 (loops including nested scopes: 3)"
+        "paused_spans:75 (loops including nested scopes: 1)",
+        "opera_histories:111 (loops including nested scopes: 2)",
+        "read_visits:124 (loops including nested scopes: 3)",
+        "import_history:165 (loops including nested scopes: 4)",
+        "load:54 (loops including nested scopes: 1)",
+        "for_vault:60 (loops including nested scopes: 0)",
+        "excluded:66 (loops including nested scopes: 3)",
+        "__init__:94 (loops including nested scopes: 3)",
+        "contains:106 (loops including nested scopes: 0)"
       ],
       "review_signals": [],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
       "manual_review": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Scratch SQLite copy, Chromium microseconds/transition bits, exclusions/pauses, stable IDs and rewritten day mirroring. Source-copy consistency during a browser checkpoint and large pause/visit joins remain unmeasured."
+        "scope": "Focused final algorithm/resource/correctness review, 2026-10-24; see docs/algorithm-review-2026-10-24.md",
+        "notes": "Chromium time/transition decoding, stable IDs, exclusions and mirrored day rewrites reviewed. Pause filtering now merges half-open spans once per import and uses bisection; sparse/dense union, boundary, offset, open-pause and clock-correction regressions pass. The named 90-day fixture preserves exact file bytes. Browser-checkpoint source-copy consistency remains unmeasured."
       }
     },
     {
@@ -2652,10 +2701,10 @@
     },
     {
       "path": "services/capture-win/capture/reading.py",
-      "sha256": "bc3cb4a12ade2a4305febea630839e546701260bf22deb8f522f1364a92af5b5",
+      "sha256": "3e5d6876d7e9fb3c3b5a687aa7013f8acd9c9b75fe939683e1ec96561433cafc",
       "category": "source",
-      "bytes": 17258,
-      "lines": 355,
+      "bytes": 18262,
+      "lines": 375,
       "functions": [
         "_between:39 (loops including nested scopes: 0)",
         "_inside:47 (loops including nested scopes: 0)",
@@ -2666,19 +2715,19 @@
         "_visible:159 (loops including nested scopes: 1)",
         "update:167 (loops including nested scopes: 5)",
         "_step:186 (loops including nested scopes: 11)",
-        "_emit:255 (loops including nested scopes: 9)",
-        "best:289 (loops including nested scopes: 1)",
-        "offset:297 (loops including nested scopes: 2)",
-        "text:301 (loops including nested scopes: 0)",
-        "add:325 (loops including nested scopes: 0)",
-        "summary:332 (loops including nested scopes: 3)",
-        "add:197 (loops including nested scopes: 1)"
+        "_emit:264 (loops including nested scopes: 10)",
+        "best:309 (loops including nested scopes: 1)",
+        "offset:317 (loops including nested scopes: 2)",
+        "text:321 (loops including nested scopes: 0)",
+        "add:345 (loops including nested scopes: 0)",
+        "summary:352 (loops including nested scopes: 3)",
+        "add:199 (loops including nested scopes: 1)"
       ],
       "review_signals": [],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
       "manual_review": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Page line/column construction, visible-line bisection, line/offset HMM, emissions/transitions and visit aggregation. Evicted layouts also remove their posterior. Variable pitch band ordering and extreme multiline inputs need more adversarial fixtures."
+        "scope": "Focused final algorithm/resource/correctness review, 2026-10-24; see docs/algorithm-review-2026-10-24.md",
+        "notes": "Line/column construction, visible-line lookup, HMM transitions/emissions and visit aggregation reviewed. Fixation-local densities share identical geometry without changing probability arithmetic; output hashes match for cold/warm single-column and aligned two-column fixtures. Tests verify sharing, new-fixation recomputation and layout mutation. Scratch grows with active geometry and the 31-point grid, then is released. Variable-pitch band ordering and extreme layouts remain open."
       }
     },
     {
@@ -4562,42 +4611,46 @@
     },
     {
       "path": "services/ingest/tests/test_capture_tools.py",
-      "sha256": "0a8dcd0f6093cd2060560fb3b1c0de97dcbd6ce990064cd4effd92a9fe916f66",
+      "sha256": "42cc147b1d19319a63f6b05b2c282617d56742e5927e619b5cce3b2afb10548a",
       "category": "test",
-      "bytes": 9742,
-      "lines": 197,
+      "bytes": 12870,
+      "lines": 257,
       "functions": [
-        "chromium_time:22 (loops including nested scopes: 0)",
-        "history_file:26 (loops including nested scopes: 1)",
-        "test_history_import_keeps_top_level_visits_by_local_day:45 (loops including nested scopes: 1)",
-        "test_history_import_leaves_out_paused_and_excluded_visits_and_follows_deletions:72 (loops including nested scopes: 0)",
-        "test_two_browsers_on_one_day_are_merged_not_overwritten:93 (loops including nested scopes: 3)",
-        "test_the_sign_in_entry_runs_the_windowless_interpreter:138 (loops including nested scopes: 0)",
-        "test_the_supervisor_waits_for_calibration_then_runs_and_stops_the_tracker:152 (loops including nested scopes: 1)",
-        "test_a_hook_path_with_spaces_survives_on_windows:182 (loops including nested scopes: 0)",
-        "test_old_capture_command_line_still_starts_the_receiver:191 (loops including nested scopes: 0)",
-        "__init__:111 (loops including nested scopes: 0)",
-        "CreateKeyEx:114 (loops including nested scopes: 0)",
-        "__enter__:119 (loops including nested scopes: 0)",
-        "__exit__:122 (loops including nested scopes: 0)",
-        "SetValueEx:125 (loops including nested scopes: 0)",
-        "QueryValueEx:128 (loops including nested scopes: 0)",
-        "DeleteValue:133 (loops including nested scopes: 0)"
+        "chromium_time:24 (loops including nested scopes: 0)",
+        "history_file:28 (loops including nested scopes: 1)",
+        "test_history_import_keeps_top_level_visits_by_local_day:47 (loops including nested scopes: 1)",
+        "test_history_import_leaves_out_paused_and_excluded_visits_and_follows_deletions:74 (loops including nested scopes: 0)",
+        "test_two_browsers_on_one_day_are_merged_not_overwritten:95 (loops including nested scopes: 3)",
+        "test_pause_index_matches_interval_union_in_any_order:109 (loops including nested scopes: 6)",
+        "test_history_pause_boundaries_overlap_and_backwards_clock:129 (loops including nested scopes: 3)",
+        "test_open_pause_is_indexed_until_the_import_snapshot:151 (loops including nested scopes: 0)",
+        "test_the_sign_in_entry_runs_the_windowless_interpreter:198 (loops including nested scopes: 0)",
+        "test_the_supervisor_waits_for_calibration_then_runs_and_stops_the_tracker:212 (loops including nested scopes: 1)",
+        "test_a_hook_path_with_spaces_survives_on_windows:242 (loops including nested scopes: 0)",
+        "test_old_capture_command_line_still_starts_the_receiver:251 (loops including nested scopes: 0)",
+        "__init__:171 (loops including nested scopes: 0)",
+        "CreateKeyEx:174 (loops including nested scopes: 0)",
+        "__enter__:179 (loops including nested scopes: 0)",
+        "__exit__:182 (loops including nested scopes: 0)",
+        "SetValueEx:185 (loops including nested scopes: 0)",
+        "QueryValueEx:188 (loops including nested scopes: 0)",
+        "DeleteValue:193 (loops including nested scopes: 0)"
       ],
       "review_signals": [
-        "159: check text/binary mode and default encoding at (fake / '__main__.py').write_text",
-        "172: check text/binary mode and default encoding at (vault_root / 'calibration' / 'gaze.json').write_text",
-        "64: check text/binary mode and default encoding at (vault.root / 'capture/2026-10-21/history.jsonl').read_text",
-        "85: check text/binary mode and default encoding at (vault.root / 'capture/2026-10-21/history.jsonl').read_text",
-        "57: check text/binary mode and default encoding at (vault.root / 'capture/2026-10-20/history.jsonl').open",
-        "101: check text/binary mode and default encoding at (vault.root / 'capture/2026-10-21/history.jsonl').open",
-        "176: check text/binary mode and default encoding at out.read_text",
-        "69: check text/binary mode and default encoding at (vault.root / 'capture/2026-10-20/history.jsonl').read_text"
+        "219: check text/binary mode and default encoding at (fake / '__main__.py').write_text",
+        "232: check text/binary mode and default encoding at (vault_root / 'calibration' / 'gaze.json').write_text",
+        "66: check text/binary mode and default encoding at (vault.root / 'capture/2026-10-21/history.jsonl').read_text",
+        "87: check text/binary mode and default encoding at (vault.root / 'capture/2026-10-21/history.jsonl').read_text",
+        "59: check text/binary mode and default encoding at (vault.root / 'capture/2026-10-20/history.jsonl').open",
+        "103: check text/binary mode and default encoding at (vault.root / 'capture/2026-10-21/history.jsonl').open",
+        "236: check text/binary mode and default encoding at out.read_text",
+        "71: check text/binary mode and default encoding at (vault.root / 'capture/2026-10-20/history.jsonl').read_text",
+        "146: check text/binary mode and default encoding at (vault.root / 'capture/2026-10-21/history.jsonl').read_text"
       ],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
       "manual_review": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Fixture/setup, assertions, loops, mocks and resource cleanup inspected. Tests use synthetic inputs; suite execution and remaining device/port restrictions are recorded in docs/review-2026-10-24.md."
+        "scope": "Focused final algorithm/resource/correctness review, 2026-10-24; see docs/algorithm-review-2026-10-24.md",
+        "notes": "Reviewed synthetic history, pause-union and clock-offset fixtures, half-open microsecond boundaries, open-pause snapshot, empty/inverted spans and sparse/dense randomized oracle comparisons; existing supervisor/autostart mocks and cleanup retained. Focused and full core suites pass; no real camera or personal history is used."
       }
     },
     {
@@ -4793,29 +4846,31 @@
     },
     {
       "path": "services/ingest/tests/test_reading.py",
-      "sha256": "59071a73a950aeccd90fe5e878e08e458153b9b137bda063c140cfbd292eefc5",
+      "sha256": "46635456fd0a54a31235bb29a9d8149055aabe052b763bc2178dd58e752827b0",
       "category": "test",
-      "bytes": 6125,
-      "lines": 153,
+      "bytes": 7765,
+      "lines": 185,
       "functions": [
-        "test_line_reader_follows_layout_eviction_and_releases_on_pause:15 (loops including nested scopes: 4)",
-        "paragraph:36 (loops including nested scopes: 1)",
-        "reader:52 (loops including nested scopes: 1)",
-        "read:62 (loops including nested scopes: 3)",
-        "accuracy:76 (loops including nested scopes: 1)",
-        "test_reading_is_followed_line_by_line_through_an_offset_of_one_and_a_half_lines:86 (loops including nested scopes: 1)",
-        "test_an_offset_upward_is_learned_too:97 (loops including nested scopes: 1)",
-        "test_re_reading_a_paragraph_goes_back_to_its_first_line:105 (loops including nested scopes: 1)",
-        "test_a_look_at_a_picture_beside_the_text_is_off_the_text:118 (loops including nested scopes: 2)",
-        "test_a_re_measured_block_forgets_what_was_decoded_on_it:127 (loops including nested scopes: 3)",
-        "test_only_lines_in_view_are_candidates:138 (loops including nested scopes: 1)",
-        "test_a_visit_counts_time_and_passes_per_line:144 (loops including nested scopes: 3)"
+        "test_geometry_densities_are_shared_only_within_one_fixation:16 (loops including nested scopes: 6)",
+        "test_line_reader_follows_layout_eviction_and_releases_on_pause:47 (loops including nested scopes: 4)",
+        "paragraph:68 (loops including nested scopes: 1)",
+        "reader:84 (loops including nested scopes: 1)",
+        "read:94 (loops including nested scopes: 3)",
+        "accuracy:108 (loops including nested scopes: 1)",
+        "test_reading_is_followed_line_by_line_through_an_offset_of_one_and_a_half_lines:118 (loops including nested scopes: 1)",
+        "test_an_offset_upward_is_learned_too:129 (loops including nested scopes: 1)",
+        "test_re_reading_a_paragraph_goes_back_to_its_first_line:137 (loops including nested scopes: 1)",
+        "test_a_look_at_a_picture_beside_the_text_is_off_the_text:150 (loops including nested scopes: 2)",
+        "test_a_re_measured_block_forgets_what_was_decoded_on_it:159 (loops including nested scopes: 3)",
+        "test_only_lines_in_view_are_candidates:170 (loops including nested scopes: 1)",
+        "test_a_visit_counts_time_and_passes_per_line:176 (loops including nested scopes: 3)",
+        "counted:20 (loops including nested scopes: 0)"
       ],
       "review_signals": [],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
       "manual_review": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Fixture/setup, assertions, loops, mocks and resource cleanup inspected. Tests use synthetic inputs; suite execution and remaining device/port restrictions are recorded in docs/review-2026-10-24.md."
+        "scope": "Focused final algorithm/resource/correctness review, 2026-10-24; see docs/algorithm-review-2026-10-24.md",
+        "notes": "Reviewed reading-accuracy, off-text, remeasurement, eviction and visit aggregation fixtures. New density-call checks exercise sharing and invalidation for changed gaze and layout. Full decoder output equivalence is also checked by the separate named benchmark; no wall-time threshold is added to correctness tests."
       }
     },
     {

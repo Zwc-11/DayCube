@@ -1,18 +1,20 @@
 """Opera history import, the sign-in entry and the eye-tracker supervisor."""
 
 import json
+import random
 import sqlite3
 import sys
 import time
 from contextlib import closing
-from datetime import date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
 import pytest
 from capture import autostart
-from capture.history import EPOCH, Exclusions, import_history
+from capture import history as history_module
+from capture.history import EPOCH, Exclusions, _PauseIndex, import_history, paused_spans
 from capture.supervise import GazeSupervisor
 from ingest.vault import Vault
 
@@ -101,6 +103,64 @@ def test_two_browsers_on_one_day_are_merged_not_overwritten(vault: Vault, tmp_pa
     visits = [json.loads(line) for line in (vault.root / "capture/2026-10-21/history.jsonl").open()]
     assert [v["source"] for v in visits] == ["Opera Stable", "Opera GX Stable"]
     assert len({v["id"] for v in visits}) == 2  # the same visit number in two files is two visits
+
+
+@pytest.mark.parametrize("dense", [False, True])
+def test_pause_index_matches_interval_union_in_any_order(dense: bool) -> None:
+    rng = random.Random(7)
+    origin = datetime(2026, 10, 24, tzinfo=UTC)
+    spans = []
+    for _ in range(80):
+        start = rng.randrange(200)
+        end = rng.randrange(200) if dense else start + rng.randrange(-2, 3)
+        spans.append((origin + timedelta(seconds=start), origin + timedelta(seconds=end)))
+    spans.extend([(origin, origin), (origin, origin + timedelta(seconds=10))] * 2)
+    rng.shuffle(spans)
+    index = _PauseIndex(spans)
+    for i in range(-1, 402):
+        t = (origin + timedelta(seconds=i / 2)).astimezone(TORONTO)
+        assert index.contains(t) == any(start <= t < end for start, end in spans)
+    for start, end in spans:
+        assert index.contains(start) == any(a <= start < b for a, b in spans)
+        assert index.contains(end) == any(a <= end < b for a, b in spans)
+    assert _PauseIndex([]).contains(origin) is False
+
+
+def test_history_pause_boundaries_overlap_and_backwards_clock(vault: Vault, tmp_path: Path) -> None:
+    times = ["12:59:59.999999", "13:00:00", "14:30:00", "14:59:59.999999", "15:00:00", "16:00:00"]
+    history = history_file(tmp_path / "History", [
+        (i, "https://synthetic.example/", "Synthetic", f"2026-10-21T{t}+00:00", 0, 0, 0)
+        for i, t in enumerate(times, 1)
+    ])  # fmt: skip
+    # A clock correction can put later log entries before earlier ones. Pauses overlap;
+    # the backwards/empty intervals still exclude nothing, as in the original union test.
+    vault.append_lines(vault.root / "capture/pauses.jsonl", [
+        {"t": "2026-10-21T14:00:00+00:00", "paused": True},
+        {"t": "2026-10-21T15:00:00+00:00", "paused": False},
+        {"t": "2026-10-21T09:00:00-04:00", "paused": True},
+        {"t": "2026-10-21T10:30:00-04:00", "paused": False},
+        {"t": "2026-10-21T16:00:00+00:00", "paused": True},
+        {"t": "2026-10-21T15:30:00+00:00", "paused": False},
+    ])  # fmt: skip
+    assert import_history(vault, TORONTO, [history]) == {"2026-10-21": 3}
+    records = [json.loads(line) for line in (vault.root / "capture/2026-10-21/history.jsonl").read_text().splitlines()]
+    assert [int(row["id"].rsplit("-", 1)[1]) for row in records] == [1, 5, 6]
+    assert records[1]["t"] == "2026-10-21T11:00:00-04:00"
+
+
+def test_open_pause_is_indexed_until_the_import_snapshot(vault: Vault, monkeypatch: pytest.MonkeyPatch) -> None:
+    now = datetime(2026, 10, 24, 14, tzinfo=UTC)
+    vault.append_lines(vault.root / "capture/pauses.jsonl", [
+        {"t": "2026-10-24T09:00:00-04:00", "paused": True},
+    ])  # fmt: skip
+    monkeypatch.setattr(
+        history_module, "datetime", SimpleNamespace(fromisoformat=datetime.fromisoformat, now=lambda zone: now)
+    )
+    spans = paused_spans(vault)
+    assert spans == [(datetime(2026, 10, 24, 13, tzinfo=UTC), now)]
+    index = _PauseIndex(spans)
+    assert index.contains(now - timedelta(microseconds=1))
+    assert not index.contains(now)
 
 
 class FakeRegistry(SimpleNamespace):

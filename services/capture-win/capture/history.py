@@ -20,6 +20,7 @@ import re
 import shutil
 import sqlite3
 import tempfile
+from bisect import bisect_right
 from collections.abc import Iterable
 from contextlib import closing
 from dataclasses import dataclass, field
@@ -87,6 +88,26 @@ def paused_spans(vault: Vault) -> list[tuple[datetime, datetime]]:
     return spans
 
 
+class _PauseIndex:
+    """An import's union of half-open pause intervals, searched in O(log pauses) per visit."""
+
+    def __init__(self, spans: Iterable[tuple[datetime, datetime]]) -> None:
+        merged: list[tuple[datetime, datetime]] = []
+        for start, end in sorted(spans):
+            if end <= start:
+                continue
+            if merged and start <= merged[-1][1]:
+                merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+            else:
+                merged.append((start, end))
+        self.starts = [start for start, _ in merged]
+        self.ends = [end for _, end in merged]
+
+    def contains(self, t: datetime) -> bool:
+        i = bisect_right(self.starts, t) - 1
+        return i >= 0 and t < self.ends[i]
+
+
 def opera_histories() -> list[Path]:
     """Opera's History files on this computer, one per installation. Newer versions keep the
     profile in ``Default``; a ``History`` left beside it by an older version is ignored."""
@@ -152,7 +173,7 @@ def import_history(
     """Write one ``history.jsonl`` per day; returns visits written per day (0: file removed)."""
     exclusions = exclusions or Exclusions()
     start = None if since is None else datetime.combine(since, time(), zone)
-    paused = paused_spans(vault)
+    paused = _PauseIndex(paused_spans(vault))
     days: dict[str, list[dict]] = {}
     oldest: date | None = None
     for history in histories:
@@ -161,7 +182,7 @@ def import_history(
             oldest = first if oldest is None else min(oldest, first)
         for visit in visits:
             t = datetime.fromisoformat(visit["t"])
-            if exclusions.excluded(visit["url"], visit["title"]) or any(a <= t < b for a, b in paused):
+            if exclusions.excluded(visit["url"], visit["title"]) or paused.contains(t):
                 continue
             days.setdefault(visit["t"][:10], []).append(visit)
     # Days the browser still covers: from the oldest visit it keeps (or ``since``) to today.

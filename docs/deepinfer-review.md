@@ -1,5 +1,8 @@
 # DeepInfer reference review
 
+The [final algorithm pass](algorithm-review-2026-10-24.md) rechecks the current reference and
+applies scoped work sharing to reading geometry, with a sorted interval index for history filtering.
+
 The [2026-10-24 follow-up](review-2026-10-24.md#current-deepinfer-reference) records the newer
 upstream revision and additional implementations examined. The pinned reference below remains
 the provenance of the original review.

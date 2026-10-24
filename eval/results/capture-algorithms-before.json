@@ -1,0 +1,113 @@
+{
+  "environment": {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.9",
+    "cpu": "AMD64 Family 26 Model 68 Stepping 0, AuthenticAMD"
+  },
+  "revision": "33c97030ba8fac88b916746ee934add73259ebe5",
+  "source_hashes": {
+    "services/capture-win/capture/history.py": "9485d86d3639d8d67c9b9666f8419d6e0b49303e783b167161bfd0c35ae60e99",
+    "services/capture-win/capture/reading.py": "bc3cb4a12ade2a4305febea630839e546701260bf22deb8f522f1364a92af5b5",
+    "eval/benchmark_capture_algorithms.py": "9970d767c9cfb144301ffff34affddf4ba3907b8e214701a5249c7d2296061b1",
+    "eval/benchmark_notes.py": "5359aa9de867c64fc08f294f95f323e1b4c2103dba8739c3e0982280e77a3aab",
+    "services/ingest/ingest/vault.py": "611b6604cdefca9882e4a10959ff2881aaa8c9a847225040e2fa506ddae7dc8a"
+  },
+  "workload": {
+    "visits": 20000,
+    "pauses": 360,
+    "days": 90,
+    "fixations": 200,
+    "reading_lines_per_column": 30,
+    "offset_grid": 31,
+    "repeats": 11,
+    "warmups": 1,
+    "seed": 7
+  },
+  "operations": {
+    "history_90_days": {
+      "wall_ms": [
+        433.58910002280027,
+        427.3370000300929,
+        469.57979997387156,
+        436.75950000761077,
+        585.7469999464229,
+        458.4255000227131,
+        470.3880000161007,
+        521.4923999737948,
+        501.9466000376269,
+        543.5039000003599,
+        472.49399998690933
+      ],
+      "median_ms": 470.3880000161007,
+      "p95_ms": 585.7469999464229,
+      "median_cpu_ms": 359.375,
+      "traced_peak_bytes": 316752,
+      "sha256": "f2ae15b9a6d54b65f52db20810ad0c9b61bbbd52636eb425cc1f0c81eb46240e",
+      "profile": "         6889057 function calls (6874057 primitive calls) in 1.707 seconds\n\n   Ordered by: cumulative time\n   List reduced from 160 to 12 due to restriction <12>\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n        1    0.000    0.000    1.707    1.707 benchmark_capture_algorithms.py:64(run)\n        1    0.025    0.025    1.701    1.701 history.py:144(import_history)\n    80000    0.368    0.000    1.053    0.000 {built-in method builtins.any}\n  6322580    0.682    0.000    0.682    0.000 history.py:164(<genexpr>)\n       90    0.000    0.000    0.541    0.006 vault.py:381(write_lines)\n       90    0.000    0.000    0.485    0.005 vault.py:391(_replace)\n       90    0.000    0.000    0.480    0.005 vault.py:81(atomic_text)\n       90    0.001    0.000    0.480    0.005 vault.py:65(atomic_bytes)\n       90    0.395    0.004    0.395    0.004 {built-in method nt.fsync}\n    20000    0.024    0.000    0.077    0.000 history.py:65(excluded)\n15812/812    0.003    0.000    0.057    0.000 {method 'join' of 'str' objects}\n    15090    0.005    0.000    0.055    0.000 vault.py:382(<genexpr>)\n\n\n"
+    },
+    "reading_single_column_warm": {
+      "wall_ms": [
+        169.25040003843606,
+        174.08500000601634,
+        172.38470003940165,
+        195.39660000009462,
+        196.8376999720931,
+        169.88739999942482,
+        171.7252999660559,
+        170.01379997236654,
+        169.0752999857068,
+        170.36250000819564,
+        210.2675999631174
+      ],
+      "median_ms": 171.7252999660559,
+      "p95_ms": 210.2675999631174,
+      "median_cpu_ms": 171.875,
+      "traced_peak_bytes": 552688,
+      "sha256": "84ffbf2cee4160556960359281ccb26135efb465b14bf072f64c3b8bca8f8e7c",
+      "profile": "         1381636 function calls in 0.525 seconds\n\n   Ordered by: cumulative time\n   List reduced from 35 to 12 due to restriction <12>\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n        1    0.001    0.001    0.525    0.525 benchmark_capture_algorithms.py:104(run)\n      200    0.002    0.000    0.490    0.002 reading.py:167(update)\n      200    0.088    0.000    0.251    0.001 reading.py:255(_emit)\n      199    0.093    0.000    0.232    0.001 reading.py:186(_step)\n   209711    0.067    0.000    0.178    0.000 reading.py:47(_inside)\n    39601    0.102    0.000    0.105    0.000 reading.py:197(add)\n   209711    0.059    0.000    0.092    0.000 reading.py:39(_between)\n    19200    0.015    0.000    0.036    0.000 {built-in method builtins.sum}\n      200    0.000    0.000    0.031    0.000 reading.py:297(offset)\n   388660    0.030    0.000    0.030    0.000 {built-in method math.erfc}\n   216280    0.020    0.000    0.020    0.000 {built-in method builtins.max}\n   192400    0.020    0.000    0.020    0.000 reading.py:299(<genexpr>)\n\n\n"
+    },
+    "reading_two_columns_warm": {
+      "wall_ms": [
+        342.55439997650683,
+        336.5269000059925,
+        382.32490001246333,
+        336.62770001683384,
+        334.24470003228635,
+        380.3996000206098,
+        348.8126000156626,
+        346.0853999713436,
+        377.40100000519305,
+        337.41390000795946,
+        339.3575000227429
+      ],
+      "median_ms": 342.55439997650683,
+      "p95_ms": 382.32490001246333,
+      "median_cpu_ms": 343.75,
+      "traced_peak_bytes": 1146592,
+      "sha256": "ddc78415b0d12ebc5c91be1b6425998eb18d48ede28ec406e451d12eeb30d19f",
+      "profile": "         2748278 function calls in 1.055 seconds\n\n   Ordered by: cumulative time\n   List reduced from 35 to 12 due to restriction <12>\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n        1    0.001    0.001    1.055    1.055 benchmark_capture_algorithms.py:104(run)\n      200    0.003    0.000    0.988    0.005 reading.py:167(update)\n      200    0.179    0.001    0.508    0.003 reading.py:255(_emit)\n      199    0.186    0.001    0.468    0.002 reading.py:186(_step)\n   419422    0.135    0.000    0.359    0.000 reading.py:47(_inside)\n    79003    0.209    0.000    0.213    0.000 reading.py:197(add)\n   419422    0.119    0.000    0.186    0.000 reading.py:39(_between)\n    37200    0.030    0.000    0.070    0.000 {built-in method builtins.sum}\n   788296    0.062    0.000    0.062    0.000 {built-in method math.erfc}\n      200    0.000    0.000    0.061    0.000 reading.py:297(offset)\n   431762    0.040    0.000    0.040    0.000 {built-in method builtins.max}\n   378400    0.039    0.000    0.039    0.000 reading.py:299(<genexpr>)\n\n\n"
+    },
+    "reading_single_column_cold": {
+      "wall_ms": [
+        176.4786000130698,
+        169.9462000397034,
+        170.76980002457276,
+        170.4219999955967,
+        176.5791000216268,
+        206.2531000119634,
+        171.30519996862859,
+        172.84789995756,
+        171.16369999712333,
+        169.09479995956644,
+        178.0877999844961
+      ],
+      "median_ms": 171.30519996862859,
+      "p95_ms": 206.2531000119634,
+      "median_cpu_ms": 171.875,
+      "traced_peak_bytes": 564880,
+      "sha256": "84ffbf2cee4160556960359281ccb26135efb465b14bf072f64c3b8bca8f8e7c",
+      "profile": "         1385671 function calls in 0.556 seconds\n\n   Ordered by: cumulative time\n   List reduced from 54 to 12 due to restriction <12>\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n        1    0.001    0.001    0.556    0.556 benchmark_capture_algorithms.py:104(run)\n      200    0.002    0.000    0.520    0.003 reading.py:167(update)\n      200    0.094    0.000    0.266    0.001 reading.py:255(_emit)\n      199    0.098    0.000    0.246    0.001 reading.py:186(_step)\n   209711    0.070    0.000    0.187    0.000 reading.py:47(_inside)\n    39601    0.109    0.000    0.111    0.000 reading.py:197(add)\n   209711    0.062    0.000    0.097    0.000 reading.py:39(_between)\n    19231    0.016    0.000    0.038    0.000 {built-in method builtins.sum}\n      200    0.000    0.000    0.032    0.000 reading.py:297(offset)\n   388660    0.031    0.000    0.031    0.000 {built-in method math.erfc}\n   218200    0.021    0.000    0.021    0.000 {built-in method builtins.max}\n   192400    0.021    0.000    0.021    0.000 reading.py:299(<genexpr>)\n\n\n"
+    }
+  },
+  "limits": "Synthetic CPU and local file writes; no browser SQLite copy, webcam, HTTP or GPU. Cold reading includes layout construction, not interpreter startup. History repeats rewrite the same files. Tracemalloc and cProfile run separately from wall/CPU samples; traced peak is not RSS. Output hashing/retention is included in history timing. Eleven samples do not establish production tail latency or DeepInfer parity."
+}
