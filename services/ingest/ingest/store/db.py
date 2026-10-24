@@ -21,6 +21,7 @@ from collections.abc import Iterable, Iterator, Sequence
 from contextlib import contextmanager, suppress
 from pathlib import Path
 
+from ..capture import capture_days, capture_stamp, capture_units
 from ..index.build import UNIT_COLUMNS, collect_units, source_stamp
 from ..index.embed import Embedder
 from ..time import instant
@@ -85,8 +86,11 @@ class LifeStore:
     """The vault's units across days. Writes hold ``vault.lock``; reads open their own connection
     (WAL lets them run beside a writer)."""
 
-    def __init__(self, vault: Vault, embedder: Embedder | None = None, path: Path | None = None) -> None:
+    def __init__(
+        self, vault: Vault, embedder: Embedder | None = None, path: Path | None = None, zone: str = "America/Toronto"
+    ) -> None:
         self.vault = vault
+        self.zone = zone  # for days that have only computer capture (no day.json to say)
         self.path = path or vault.root / FILE_NAME
         self.embedder = embedder
         # Shared with the vault, so `Vault.invalidate_index` makes the next query re-check a day.
@@ -158,11 +162,26 @@ class LifeStore:
 
     # -- keeping days current --------------------------------------------------------------
 
+    def has_day(self, day: str) -> bool:
+        """A vault day folder (day.json) for the date; otherwise only its capture logs count."""
+        return (self.vault.day_path(day, must_exist=False) / "day.json").is_file()
+
+    def days(self) -> list[str]:
+        """Every date with something to search: vault days and capture days, newest first."""
+        return sorted({d["date"] for d in self.vault.list_days()} | set(capture_days(self.vault)), reverse=True)
+
     def _key(self, day: str) -> tuple:
         # The model is part of the key: a store with another (or no) embedder on the same vault
         # must look at the database again rather than trust this one's word.
         model = self.embedder.name if self.embedder else None
-        return self.vault.snapshot_key(day), self.vault.stamp(self.vault.root / "places.json"), model
+        snapshot = self.vault.snapshot_key(day) if self.has_day(day) else None
+        capture = tuple(sorted((k, tuple(v)) for k, v in capture_stamp(self.vault, day).items()))
+        return snapshot, self.vault.stamp(self.vault.root / "places.json"), model, capture
+
+    def _stamp(self, day: str) -> str:
+        """The source stamp of everything a day's units come from, as stored in ``days``."""
+        stamp = source_stamp(self.vault.day_path(day)) if self.has_day(day) else {}
+        return json.dumps({**stamp, **capture_stamp(self.vault, day)}, sort_keys=True)
 
     def ensure(self, days: Iterable[str] | None = None) -> None:
         """Bring the given days (default: every day in the vault) up to date. A repeat call with
@@ -170,7 +189,7 @@ class LifeStore:
         everything = days is None
         if not self.path.exists():
             self._forget()  # deleted underneath us: every day must be written again
-        wanted = [d["date"] for d in self.vault.list_days()] if everything else list(days)
+        wanted = self.days() if everything else list(days)
         stale = [day for day in wanted if self.fresh.get(day) != self._key(day)]
         if not stale and not everything:
             return
@@ -183,7 +202,7 @@ class LifeStore:
         for day in stale:
             with self.vault.lock:
                 key = self._key(day)
-                stamp = json.dumps(source_stamp(self.vault.day_path(day)), sort_keys=True)
+                stamp = self._stamp(day)
             row = known.get(day)
             changed = row is None or row["stamp"] != stamp
             # Vectors missing after an append, or after search was switched on: fill them now
@@ -199,16 +218,21 @@ class LifeStore:
         call embeds (None: all); over the cap, the day is stored without the missing vectors."""
         for _ in range(3):
             with self.vault.lock:
-                self.vault.validate(day)
-                path = self.vault.day_path(day)
+                if self.has_day(day):
+                    self.vault.validate(day)
+                    units = collect_units(self.vault, day)
+                    zone = self.vault.snapshot(day).day["tz"]
+                elif day in capture_days(self.vault):
+                    units, zone = [], self.zone
+                else:
+                    raise FileNotFoundError(f"No vault day or capture for {day}")
+                units += capture_units(self.vault, day)
                 key = self._key(day)
-                stamp = json.dumps(source_stamp(path), sort_keys=True)
-                units = collect_units(self.vault, day)
-                zone = self.vault.snapshot(day).day["tz"]
+                stamp = self._stamp(day)
             hashes = [digest(unit["text"]) for unit in units]
             vectors = self._vectors(day, units, hashes, embed_limit) if self.vectors else {}
             with self.vault.lock:
-                if json.dumps(source_stamp(path), sort_keys=True) != stamp:
+                if self._stamp(day) != stamp:
                     continue  # the day changed while its text was embedded: collect it again
                 with self.connect() as db, self._write(db):
                     embedded = self._replace(db, day, zone, stamp, units, hashes, vectors)

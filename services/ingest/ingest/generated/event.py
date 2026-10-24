@@ -9,28 +9,28 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, confloat, cons
 
 
 class Type(Enum):
-    place_visit = 'place.visit'
-    place_floor = 'place.floor'
-    place_transit = 'place.transit'
-    screen_app = 'screen.app'
-    screen_page = 'screen.page'
-    screen_read = 'screen.read'
-    moment_video = 'moment.video'
-    moment_audio = 'moment.audio'
-    said_quote = 'said.quote'
-    git_push = 'git.push'
-    calendar_event = 'calendar.event'
+    place_visit = "place.visit"
+    place_floor = "place.floor"
+    place_transit = "place.transit"
+    screen_app = "screen.app"
+    screen_page = "screen.page"
+    screen_read = "screen.read"
+    moment_video = "moment.video"
+    moment_audio = "moment.audio"
+    said_quote = "said.quote"
+    git_push = "git.push"
+    calendar_event = "calendar.event"
 
 
 class PositionFidelity(Enum):
-    known = 'known'
-    estimated = 'estimated'
-    illustrative = 'illustrative'
+    known = "known"
+    estimated = "estimated"
+    illustrative = "illustrative"
 
 
 class Source(BaseModel):
     model_config = ConfigDict(
-        extra='forbid',
+        extra="forbid",
     )
     kind: str
     ref: str
@@ -39,16 +39,16 @@ class Source(BaseModel):
 
 
 class Fidelity(Enum):
-    known = 'known'
-    estimated = 'estimated'
-    illustrative = 'illustrative'
+    known = "known"
+    estimated = "estimated"
+    illustrative = "illustrative"
 
 
 class Event(BaseModel):
     model_config = ConfigDict(
-        extra='forbid',
+        extra="forbid",
     )
-    id: constr(pattern=r'^[A-Za-z0-9_-]+$')
+    id: constr(pattern=r"^[A-Za-z0-9_-]+$")
     t: AwareDatetime
     t_end: AwareDatetime | None = None
     type: Type
@@ -74,7 +74,7 @@ class Event(BaseModel):
     scroll_depth: confloat(ge=0.0, le=1.0) | None = None
     blocks: list[str] | None = None
     conf: confloat(ge=0.0, le=1.0) | None = None
-    from_: str | None = Field(None, alias='from')
+    from_: str | None = Field(None, alias="from")
     to: str | None = None
     mode: str | None = None
     repo: str | None = None

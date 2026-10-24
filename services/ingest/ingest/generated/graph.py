@@ -9,16 +9,16 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class Kind(Enum):
-    person = 'person'
-    place = 'place'
-    topic = 'topic'
-    moment = 'moment'
-    event = 'event'
+    person = "person"
+    place = "place"
+    topic = "topic"
+    moment = "moment"
+    event = "event"
 
 
 class Node(BaseModel):
     model_config = ConfigDict(
-        extra='forbid',
+        extra="forbid",
     )
     id: str
     kind: Kind
@@ -27,9 +27,9 @@ class Node(BaseModel):
 
 class Edge(BaseModel):
     model_config = ConfigDict(
-        extra='forbid',
+        extra="forbid",
     )
-    from_: str = Field(..., alias='from')
+    from_: str = Field(..., alias="from")
     to: str
     rel: str
     evidence: list[str]
@@ -37,7 +37,7 @@ class Edge(BaseModel):
 
 class Graph(BaseModel):
     model_config = ConfigDict(
-        extra='forbid',
+        extra="forbid",
     )
     nodes: list[Node]
     edges: list[Edge]

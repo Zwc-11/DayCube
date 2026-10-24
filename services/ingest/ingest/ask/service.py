@@ -4,8 +4,8 @@ from .retrieve import retrieve
 
 def ask(store: LifeStore, day: str | None, question: str) -> dict:
     """Answer from the best evidence in one day, or across the vault when ``day`` is None."""
-    if day is not None:
-        store.vault.day_path(day)
+    if day is not None and day not in store.days():
+        raise FileNotFoundError(f"No vault day: {day}")
     evidence = retrieve(store, question, day=day)
     best = evidence[0] if evidence else None
     # Verbatim extraction is supported by construction. No generative claims or fake model labels.

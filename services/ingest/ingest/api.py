@@ -67,7 +67,9 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
     """``embedder`` replaces the configured model (tests pass a deterministic one)."""
     settings = settings or Settings()
     vault = Vault(settings.vault_root)
-    store = LifeStore(vault, embedder or default_embedder(settings.vector_search, settings.embedding_model))
+    store = LifeStore(
+        vault, embedder or default_embedder(settings.vector_search, settings.embedding_model), zone=settings.timezone
+    )
     jobs: dict[str, Record] = {}
     bearer = HTTPBearer(auto_error=False)
 
