@@ -33,8 +33,13 @@ MIN_SIMILARITY = 0.55  # cosine, with the bge query instruction; see the module 
 
 
 def terms(question: str) -> list[str]:
-    words = re.findall(r"[^\W_]+", question.casefold(), flags=re.UNICODE)
-    return list(dict.fromkeys(w for w in words if len(w) > 1 and w not in STOP_WORDS))[:16]
+    """The question's words worth searching for: at most 16, in order."""
+    return list(dict.fromkeys(_words(question)))[:16]
+
+
+def _words(text: str) -> list[str]:
+    words = re.findall(r"[^\W_]+", text.casefold(), flags=re.UNICODE)
+    return [w for w in words if len(w) > 1 and w not in STOP_WORDS]
 
 
 def retrieve(
@@ -61,7 +66,9 @@ def retrieve(
     # each keyword hit by the share of the question's words it contains, so such a hit cannot tie
     # a close meaning match; a record containing every word keeps full weight.
     wanted = set(query_terms)
-    coverage = {unit: len(wanted.intersection(terms(rows[unit]["text"]))) / len(wanted) for unit in keyword}
+    # All of a record's words, not the question's 16: a long record (a paragraph read, an OCR
+    # block) has the question's words past its sixteenth.
+    coverage = {unit: len(wanted.intersection(_words(rows[unit]["text"]))) / len(wanted) for unit in keyword}
     fused = [unit for unit, _ in reciprocal_rank_fusion([keyword, meaning], weights=[coverage, None])[:limit]]
     found = {"keyword": set(keyword), "meaning": set(meaning)}
     units = [rows[unit] for unit in fused if unit in rows]
@@ -69,19 +76,25 @@ def retrieve(
         return []
     # A result set commonly contains several records from one day. Prepare its
     # snapshot/context once instead of repeating filesystem stamps for each hit.
-    snapshots = {date: store.vault.snapshot(date) for date in dict.fromkeys(unit["day"] for unit in units)}
+    # Days with only computer capture have no day.json: no places, and the store's time zone.
+    snapshots = {
+        date: store.vault.snapshot(date) if store.has_day(date) else None
+        for date in dict.fromkeys(unit["day"] for unit in units)
+    }
     names = store.vault.place_names()
-    return [_record(unit, found, snapshots[unit["day"]], names) for unit in units]
+    return [_record(unit, found, snapshots[unit["day"]], names, store.zone) for unit in units]
 
 
-def _record(unit: Record, found: dict[str, set[int]], snapshot: DaySnapshot, names: dict[str, str]) -> Record:
-    place = snapshot.places.get(unit["place"])
+def _record(
+    unit: Record, found: dict[str, set[int]], snapshot: DaySnapshot | None, names: dict[str, str], zone: str
+) -> Record:
+    place = snapshot.places.get(unit["place"]) if snapshot is not None else None
     return {
         "id": unit["evidence_id"],
         "unit_id": unit["id"],
         "day": unit["day"],
         "type": unit["type"],
-        "t": tod(unit["t"], snapshot.day["tz"]),
+        "t": tod(unit["t"], snapshot.day["tz"] if snapshot is not None else zone),
         "iso_time": unit["t"],
         "place": unit["place"],
         "place_name": names.get(place["id"], place["name"]) if place else None,

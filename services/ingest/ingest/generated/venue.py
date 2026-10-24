@@ -18,7 +18,7 @@ from pydantic import (
 
 class Entrance(BaseModel):
     model_config = ConfigDict(
-        extra='forbid',
+        extra="forbid",
     )
     lat: confloat(ge=-90.0, le=90.0)
     lon: confloat(ge=-180.0, le=180.0)
@@ -30,7 +30,7 @@ class Edge(RootModel[conint(ge=0)]):
 
 class WifiItem(BaseModel):
     model_config = ConfigDict(
-        extra='forbid',
+        extra="forbid",
     )
     bssid: str
     x: float
@@ -49,7 +49,7 @@ class Segment(RootModel[list[Point]]):
 
 class Room(BaseModel):
     model_config = ConfigDict(
-        extra='forbid',
+        extra="forbid",
     )
     id: str
     poly: list[Point] = Field(..., min_length=3)
@@ -58,7 +58,7 @@ class Room(BaseModel):
 
 class Graph(BaseModel):
     model_config = ConfigDict(
-        extra='forbid',
+        extra="forbid",
     )
     nodes: list[Point]
     edges: list[list[Edge]]
@@ -66,7 +66,7 @@ class Graph(BaseModel):
 
 class Level(BaseModel):
     model_config = ConfigDict(
-        extra='forbid',
+        extra="forbid",
     )
     index: int
     walls: list[Segment]
@@ -78,9 +78,9 @@ class Level(BaseModel):
 
 class Venue(BaseModel):
     model_config = ConfigDict(
-        extra='forbid',
+        extra="forbid",
     )
-    schema_: Literal['daycube.venue/1'] = Field(..., alias='schema')
+    schema_: Literal["daycube.venue/1"] = Field(..., alias="schema")
     id: str
     name: str
     entrance: Entrance

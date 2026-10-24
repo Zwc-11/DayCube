@@ -58,6 +58,25 @@ The database rewrites a day in place, in a shared file with an embedding column,
 index wrote a fresh file per day. The extra 50 ms is mostly the insert into a table with a
 uniqueness index (46 ms for 5,053 rows).
 
+## What the computer capture adds
+
+Days are searched whether they have a vault day folder, computer capture
+(`vault/capture/<date>/`, [capture.md](capture.md)), or both. `ingest/capture/synthesize.py` reads
+a day's capture logs once and turns them into units:
+
+| Unit type | From | Text |
+| --- | --- | --- |
+| `web.visit` | navigation, focus and idle records: the page in front, idle and locked time left out, the same page back within a minute merged, spans under 3 s dropped | "Opened *title* (*site*) for 5 min" |
+| `web.read` | the line decoder's reads (`reading.jsonl`) | "Read in *title* (*site*): *the lines read*"; attention = line coverage, confidence = the decoder's |
+| `web.dwell` | dwells (`attention.jsonl`), one per dwell | "Stayed 16 s on this in *title*: *the block*" |
+| `web.look` | fixations placed on a block, 3 s or more in all, for blocks not read line by line (headings, figures, tables) | "Looked at in *title*: *the block*" |
+| `web.search`, `web.click`, `web.selection`, `web.media` | the browser records of those kinds | "Searched google: *query*", "Clicked “*link*” to *site*", "Copied in *title*: “*text*”", "Played media for 5 min in *title*" |
+
+Block texts are sent once per page load, so the previous day's text snapshots are read too. A
+line that does not parse is skipped. The day's source stamp covers its capture logs (compacted or
+not), so new capture lines re-index the day at the next search. A capture-only day takes the
+receiver's time zone (`DAYCUBE_TIMEZONE`, default America/Toronto) and has no places.
+
 ## Retrieval
 
 1. **Keywords.** FTS5 with every question word quoted, so punctuation can never become an

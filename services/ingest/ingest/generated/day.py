@@ -19,17 +19,17 @@ from pydantic import (
 
 
 class Mode(Enum):
-    walk = 'walk'
-    vehicle = 'vehicle'
-    bike = 'bike'
-    unknown = 'unknown'
+    walk = "walk"
+    vehicle = "vehicle"
+    bike = "bike"
+    unknown = "unknown"
 
 
 class Transit(BaseModel):
     model_config = ConfigDict(
-        extra='forbid',
+        extra="forbid",
     )
-    from_: str = Field(..., alias='from')
+    from_: str = Field(..., alias="from")
     to: str
     t0: AwareDatetime
     t1: AwareDatetime
@@ -39,7 +39,7 @@ class Transit(BaseModel):
 
 class Stats(BaseModel):
     model_config = ConfigDict(
-        extra='forbid',
+        extra="forbid",
     )
     events: conint(ge=0)
     moments: conint(ge=0)
@@ -48,17 +48,17 @@ class Stats(BaseModel):
 
 
 class Kind(Enum):
-    house = 'house'
-    cafe = 'cafe'
-    venue = 'venue'
-    outdoor = 'outdoor'
+    house = "house"
+    cafe = "cafe"
+    venue = "venue"
+    outdoor = "outdoor"
 
 
 class Place(BaseModel):
     model_config = ConfigDict(
-        extra='forbid',
+        extra="forbid",
     )
-    id: constr(pattern=r'^[A-Za-z0-9_-]+$')
+    id: constr(pattern=r"^[A-Za-z0-9_-]+$")
     name: constr(min_length=1)
     kind: Kind
     t0: AwareDatetime
@@ -74,9 +74,9 @@ class Place(BaseModel):
 
 class Day(BaseModel):
     model_config = ConfigDict(
-        extra='forbid',
+        extra="forbid",
     )
-    schema_: Literal['daycube.day/1'] = Field(..., alias='schema')
+    schema_: Literal["daycube.day/1"] = Field(..., alias="schema")
     date: date_aliased
     tz: constr(min_length=1)
     places: list[Place]

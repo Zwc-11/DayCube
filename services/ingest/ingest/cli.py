@@ -39,11 +39,13 @@ def main() -> None:
     elif args.command == "validate":
         result = vault.validate(args.date)
     elif args.command in {"index", "stats"}:
-        store = LifeStore(vault, default_embedder(settings.vector_search, settings.embedding_model))
+        store = LifeStore(
+            vault, default_embedder(settings.vector_search, settings.embedding_model), zone=settings.timezone
+        )
         if args.command == "stats":
             result = store.stats()
         else:
-            result = [store.update(d["date"]) for d in vault.list_days()] if args.all else store.update(args.date)
+            result = [store.update(day) for day in store.days()] if args.all else store.update(args.date)
     elif args.command == "compact":
         before = args.before or datetime.now(ZoneInfo(settings.timezone)).date().isoformat()
         result = {d["date"]: vault.compact_day(d["date"]) for d in vault.list_days() if d["date"] < before}

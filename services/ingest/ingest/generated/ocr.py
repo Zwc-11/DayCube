@@ -20,7 +20,7 @@ class BboxItem(RootModel[confloat(ge=0.0)]):
 
 class Block(BaseModel):
     model_config = ConfigDict(
-        extra='forbid',
+        extra="forbid",
     )
     id: str
     bbox: list[BboxItem] = Field(..., max_length=4, min_length=4)
@@ -32,7 +32,7 @@ class Block(BaseModel):
 
 class Ocr(BaseModel):
     model_config = ConfigDict(
-        extra='forbid',
+        extra="forbid",
     )
     shot: str
     t: AwareDatetime

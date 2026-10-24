@@ -13,8 +13,14 @@ def parse_gpx(path: Path) -> list[Fix]:
         time = element.findtext("{*}time")
         elevation = element.findtext("{*}ele")
         if time:
-            fixes.append(Fix(t=instant(time), lat=float(element.attrib["lat"]),
-                             lon=float(element.attrib["lon"]),
-                             alt_abs=float(elevation) if elevation else None, source="arc_gpx"))
+            fixes.append(
+                Fix(
+                    t=instant(time),
+                    lat=float(element.attrib["lat"]),
+                    lon=float(element.attrib["lon"]),
+                    alt_abs=float(elevation) if elevation else None,
+                    source="arc_gpx",
+                )
+            )
         element.clear()
     return sorted(fixes, key=lambda fix: fix.t)
