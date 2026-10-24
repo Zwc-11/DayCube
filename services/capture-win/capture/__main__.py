@@ -72,6 +72,15 @@ def run(args: argparse.Namespace) -> None:
 
         librarian = Librarian(settings.vault_root, settings.timezone)
         librarian.start()
+    receiver = app.state.receiver
+    if args.no_screen:
+        receiver.screen_problem = "started with --no-screen"
+    else:
+        from .screen import start as read_screen
+
+        receiver.screen, receiver.screen_problem = read_screen(receiver, screen_file(settings.vault_root))
+        if receiver.screen is None:
+            log.warning("not reading the screen: %s", receiver.screen_problem)
     try:
         uvicorn.run(app, host="127.0.0.1", port=args.port, log_config=None, access_log=False)
     finally:
@@ -79,7 +88,73 @@ def run(args: argparse.Namespace) -> None:
             supervisor.stop()
         if librarian is not None:
             librarian.stop()
+        if receiver.screen is not None:
+            receiver.screen.stop()
         log.info("receiver stopped")
+
+
+def screen_file(vault_root: Path) -> Path:
+    return vault_root / "capture" / "screen.json"
+
+
+def screen(args: argparse.Namespace) -> None:
+    """Turn reading the window under the gaze (any app) on or off, or exclude an app from it. A
+    running receiver picks the change up within a second."""
+    import json
+
+    settings = Settings()
+    if args.state == "check":
+        check_screen()
+        return
+    path = screen_file(settings.vault_root)
+    try:
+        current = json.loads(path.read_text(encoding="utf-8"))
+        current = current if isinstance(current, dict) else {}
+    except (OSError, ValueError):
+        current = {}
+    excluded = [str(app).casefold() for app in current.get("exclude_apps", []) if isinstance(app, str)]
+    if args.state in ("on", "off"):
+        current["enabled"] = args.state == "on"
+    for app in args.exclude or []:
+        app = app.casefold() if app.casefold().endswith(".exe") else app.casefold() + ".exe"
+        excluded = sorted({*excluded, app})
+    for app in args.include or []:
+        app = app.casefold() if app.casefold().endswith(".exe") else app.casefold() + ".exe"
+        excluded = [a for a in excluded if a != app]
+    current["exclude_apps"] = excluded
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(current, indent=1) + "\n", encoding="utf-8")
+    state = "on" if current.get("enabled", True) else "off"
+    print(
+        f"Reading the window under your gaze: {state}." + (f" Never read: {', '.join(excluded)}." if excluded else "")
+    )
+
+
+def check_screen() -> None:
+    """Read the window in front once, as the receiver would, and print what was found."""
+    import time
+
+    from .screen import Win32System, blocks_of, engine, why_not
+
+    system = Win32System()
+    print("Reading the window in front in 3 seconds: bring the one to read to the front.")
+    time.sleep(3)
+    window = system.foreground()
+    if window is None:
+        raise SystemExit("No window in front.")
+    print(f"{window.app}: {window.title!r}, {window.rect[2]}x{window.rect[3]} at {window.rect[0]},{window.rect[1]}")
+    reason = why_not(window)
+    if reason is not None:
+        print(f"The receiver never reads this window ({reason}); reading it anyway for this check.")
+    ocr = engine()
+    started = time.perf_counter()
+    lines = ocr.read(system.capture(window.rect))
+    took = (time.perf_counter() - started) * 1000
+    blocks = blocks_of(lines)
+    language = getattr(ocr, "language", "")
+    print(f"{ocr.name} OCR {language}: {len(lines)} lines in {len(blocks)} paragraphs, {took:.0f} ms")
+    for block in blocks[:12]:
+        print(f"  [{block['tag']}] {block['text'][:110]}")
 
 
 def install_autostart(args: argparse.Namespace) -> None:
@@ -187,6 +262,9 @@ def main(argv: list[str] | None = None) -> None:
         "--dwell-factor", type=float, default=2.0, help="A dwell also needs this many times the text's reading time"
     )
     start.add_argument("--on-dwell", help="Command run on each dwell, with the dwell record as JSON on stdin")
+    start.add_argument(
+        "--no-screen", action="store_true", help="Do not read the window under the gaze in apps other than the browser"
+    )
     start.add_argument("--port", type=int, default=PORT, help=argparse.SUPPRESS)
     start.set_defaults(handler=run)
 
@@ -206,6 +284,16 @@ def main(argv: list[str] | None = None) -> None:
     show = commands.add_parser("ring", help="Show or hide the gaze ring drawn over every window")
     show.add_argument("state", choices=["on", "off"])
     show.set_defaults(handler=ring)
+
+    read = commands.add_parser(
+        "screen", help="Turn reading the window under your gaze (any app) on or off, or never read an app"
+    )
+    read.add_argument(
+        "state", nargs="?", choices=["on", "off", "check"], help="check: read the window in front once and print it"
+    )
+    read.add_argument("--exclude", action="append", metavar="APP", help="Never read this program (slack.exe)")
+    read.add_argument("--include", action="append", metavar="APP", help="Read this program again")
+    read.set_defaults(handler=screen)
 
     history = commands.add_parser("import-history", help="Copy Opera's history into vault/capture/<date>/history.jsonl")
     history.add_argument("--profile", type=Path, help="A Chromium History file (default: Opera's)")

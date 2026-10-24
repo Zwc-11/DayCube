@@ -8,7 +8,7 @@ and time in 3D, little text), and your notes stay files you own.
 
 | Note | One per | Holds |
 | --- | --- | --- |
-| `Daily/<date>.md` | day | what was on screen (with time), read (with line coverage), stared at, looked at, copied, searched (and the page each search led to), what is due, places visited |
+| `Daily/<date>.md` | day | what was on screen (with time), apps used (time per app and its main windows), read (with line coverage, in pages and in app windows), stared at, looked at, copied, searched (and the page each search led to), what is due, places visited |
 | `Sources/<page title>.md` | page that held attention: read, stared at, looked at, copied from, reached from a search, or 2 minutes or more on screen | everything done on it across days, the searches that found it, the courses it names |
 | `Courses/<code>.md` | course code seen (`CS 136`) | deadlines, the pages that name it |
 

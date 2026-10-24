@@ -71,6 +71,7 @@ TEXT_CACHE = 20_000
 LAYOUT_CACHE = 5_000
 VISIT_GAP_S = 10.0  # a block visit ends after this long without a fixation decoded on the page
 NOTHING = ""  # the "on no text block" state; block ids are never empty
+SCREEN = "scr-"  # docs of windows read from the screen (screen.py), not browser pages
 DEFAULT_ERROR_PX = 90.0  # a typical webcam calibration, when the tracker has not said
 SQRT2 = math.sqrt(2)
 
@@ -101,6 +102,13 @@ class Front:
     blocks_scroll: float  # scroll position when the blocks were measured
     seen: datetime
     window: int | None = None  # the browser window showing it
+    # A window read from the screen (screen.py) that the eyes left at this time. Fixations arrive
+    # about a second after they end, so it still takes the ones from before, until ``advance``.
+    gone: datetime | None = None
+
+    @property
+    def screen(self) -> bool:
+        return self.doc.startswith(SCREEN)
 
 
 # Why a fixation was or was not placed on a page, for /status and the doctor.
@@ -207,6 +215,9 @@ class Attention:
         kind = getattr(record, "kind", None)
         if isinstance(record, View) and record.hidden:
             old = self.fronts.get(record.window)
+            if old is not None and old.doc == record.doc and old.screen:
+                old.gone = record.t  # left by ``advance`` once the fixations from before it arrived
+                return []
             return self._leave(old) if old is not None and old.doc == record.doc else []
         if isinstance(record, Blocks | View):
             old = self.fronts.get(record.window)
@@ -355,7 +366,10 @@ class Attention:
         monitor = self.monitor
         if not self.fronts or monitor is None:
             return None, NO_PAGE
-        fresh = [f for f in self.fronts.values() if abs((fixation.t - f.seen).total_seconds()) <= self.view_ttl_s]
+        fresh = [
+            f for f in self.fronts.values()
+            if abs((fixation.t - f.seen).total_seconds()) <= self.view_ttl_s and (f.gone is None or fixation.t < f.gone)
+        ]  # fmt: skip
         if not fresh:
             return None, STALE
         dx, dy = self.anchors.offset(fixation.x, fixation.y, fixation.t.timestamp())
@@ -367,7 +381,9 @@ class Attention:
             x = ((fixation.x - dx) * g.screen_w - g.vx) / g.scale
             y = ((fixation.y - dy) * g.screen_h - g.vy) / g.scale
             inside = 0 <= x <= g.inner_w and 0 <= y <= g.inner_h
-            key = (inside, front.window == self.focused, front is self.front, front.seen)
+            # A window read from the screen is there only while it was under the eyes, so it was in
+            # front of any browser page beneath; otherwise the focused window's page wins.
+            key = (inside, inside and front.screen, front.window == self.focused, front is self.front, front.seen)
             if rank is None or key > rank:
                 best, rank = (front, x, y), key
         if best is None:
@@ -634,6 +650,8 @@ class Attention:
         the screen, face lost). Gaze elsewhere on the screen is ``excursion_s``'s business."""
         last = self.last_end if self.last_end is not None else (self.run.t1 if self.run else None)
         out = []
+        for front in [f for f in self.fronts.values() if f.gone is not None and f.gone <= now]:
+            out += self._leave(front)
         if self.run is not None and last is not None and (now - last).total_seconds() > self.max_gap_s:
             out += self.end()
         if self.visit is not None and now.timestamp() - self.visit.t1 > VISIT_GAP_S:

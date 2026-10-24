@@ -3,7 +3,18 @@ name = "daycube-capture-win"
 version = "0.1.0"
 description = "DayCube capture receiver: browser records and gaze into the local vault, dwell detection, autostart"
 requires-python = ">=3.11,<3.14"
-dependencies = ["daycube-ingest", "pyyaml>=6,<7"]
+dependencies = [
+  "daycube-ingest", "pyyaml>=6,<7",
+  # Reading the window under the gaze in any app (capture/screen.py): its pixels, and Windows' own OCR.
+  "mss>=10,<11; sys_platform == 'win32'",
+  "winrt-runtime>=3,<5; sys_platform == 'win32'",
+  "winrt-Windows.Foundation>=3; sys_platform == 'win32'",
+  "winrt-Windows.Foundation.Collections>=3; sys_platform == 'win32'",
+  "winrt-Windows.Globalization>=3; sys_platform == 'win32'",
+  "winrt-Windows.Graphics.Imaging>=3; sys_platform == 'win32'",
+  "winrt-Windows.Media.Ocr>=3; sys_platform == 'win32'",
+  "winrt-Windows.Storage.Streams>=3; sys_platform == 'win32'",
+]
 
 [project.optional-dependencies]
 windows = [
