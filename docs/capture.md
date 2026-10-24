@@ -596,7 +596,10 @@ All 15 people were more accurate, the largest gains where the calibration was wo
 looking elsewhere: 45 to 35 mm, 14 of 15 better, none worse by 2%. With every click made at a
 random point (nothing to learn): no update was taken for anyone, and the error stayed 45 mm. With
 exact labels: 45 to 30 mm. The calibration alone grows worse over the days (40 to 47 mm) and as
-the head moves from where it was (37 to 53 mm); the learned model gets better. These are single laptop-webcam images, noisier than fixations at a desk; the
+the head moves from where it was (37 to 53 mm); the learned model gets better. Tried on the same replay
+and not taken: weighting the two eyes by how reliable each is on the clicks (30.9 to 30.9 mm), and
+second-order eye terms (squares and products of each eye's measurements, from 100 clicks: 30.9 to
+30.5 mm, p90 68.6 to 67.5 mm), too small a gain for another model format. These are single laptop-webcam images, noisier than fixations at a desk; the
 comparison is what carries over.
 
 ## Which line you are reading
