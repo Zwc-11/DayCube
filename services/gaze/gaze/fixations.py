@@ -85,6 +85,16 @@ class Smoother:
         self.x.reset()
         self.y.reset()
 
+    def resume(self, t: float, interval: float) -> None:
+        """Resume a brief blink from the last valid value with one frame's filter time step.
+
+        No gaze sample is generated: this only excludes unobserved time from the filter's
+        derivative and gain. A real eye movement still raises the adaptive cutoff normally.
+        """
+        for axis in (self.x, self.y):
+            if axis.t is not None:
+                axis.t, axis.speed = t - interval, 0.0
+
 
 class FixationDetector:
     def __init__(

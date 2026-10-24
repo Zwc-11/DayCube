@@ -330,26 +330,48 @@ def unpack(X: np.ndarray) -> list[Head]:
 
 
 class Blinks:
-    """EyeTrax's blink test: the eyes' height-to-width ratio below 80% of its recent mean (a
-    running sum over the last ``history`` frames, plain floats: this runs every frame)."""
+    """Per-eye aperture against recent open eyes, also rejecting rapid closing transitions.
+
+    Closed frames never lower an established baseline, and one eye cannot hide the other's
+    closure. The tracker separately waits for reopening landmarks to settle before prediction.
+    """
 
     def __init__(self, history: int = 50, ratio: float = 0.8, minimum: int = 15) -> None:
-        self.history: deque[float] = deque(maxlen=history)
-        self.total = 0.0
+        self.history: deque[tuple[float, float]] = deque(maxlen=history)
+        self.total = [0.0, 0.0]
+        self.previous: tuple[float, float] | None = None
         self.ratio, self.minimum = ratio, minimum
 
     def __call__(self, points: np.ndarray) -> bool:
         def openness(outer: int, inner: int, upper: int, lower: int) -> float:
             (ox, oy), (ix, iy), (ux, uy), (lx, ly) = points[[outer, inner, upper, lower], :2].tolist()
-            return math.hypot(ux - lx, uy - ly) / (math.hypot(ox - ix, oy - iy) + 1e-9)
+            width = math.hypot(ox - ix, oy - iy)
+            return math.hypot(ux - lx, uy - ly) / (width + 1e-9) if width > 1e-6 else math.nan
 
-        ear = (openness(*RIGHT_EYE) + openness(*LEFT_EYE)) / 2
-        if len(self.history) == self.history.maxlen:
-            self.total -= self.history[0]
-        self.history.append(ear)
-        self.total += ear
-        threshold = self.total / len(self.history) * self.ratio if len(self.history) >= self.minimum else 0.2
-        return ear < threshold
+        ear = (openness(*RIGHT_EYE), openness(*LEFT_EYE))
+        if not all(math.isfinite(value) for value in ear):
+            self.previous = None
+            return True
+        ready = len(self.history) >= self.minimum
+        closed = any(
+            value < (self.total[e] / len(self.history) * self.ratio if ready else 0.2) for e, value in enumerate(ear)
+        )
+        closing = self.previous is not None and any(
+            value < before * 0.9 for value, before in zip(ear, self.previous, strict=True)
+        )
+        self.previous = ear
+        # The short bootstrap also learns naturally narrow eyes, but not unmistakably closed
+        # ones. Once established, only accepted open-eye observations update the reference.
+        learn = not closing and (not closed if ready else min(ear) >= 0.1)
+        if learn:
+            if len(self.history) == self.history.maxlen:
+                old = self.history[0]
+                self.total[0] -= old[0]
+                self.total[1] -= old[1]
+            self.history.append(ear)
+            self.total[0] += ear[0]
+            self.total[1] += ear[1]
+        return closed or closing
 
 
 class HeadEstimator:

@@ -1,19 +1,19 @@
 {
-  "baseline_revision": "bf2d48305689897d879df14975bd9e48b6bf28b4",
+  "baseline_revision": "2cd4811963f2bb855765a407ebc112859455ea45",
   "scope": "Every tracked file and new non-ignored file, except this generated ledger itself. No vendored source is tracked; dependencies live in ignored environments and lockfiles.",
   "limits": "Structural checks cover every listed file; manual_review only identifies implementations actually examined. Neither is a proof of maximum efficiency, a dependency audit or DeepInfer throughput parity. Missing manual_review is explicitly unreviewed at the semantic level.",
   "counts": {
     "configuration": 35,
-    "documentation": 26,
-    "test": 47,
-    "source": 144,
+    "documentation": 27,
+    "test": 48,
+    "source": 145,
     "asset": 16,
     "fixture": 13,
-    "measurement_or_fixture": 40,
+    "measurement_or_fixture": 42,
     "lockfile": 4,
     "generated": 11
   },
-  "manual_reviews": 227,
+  "manual_reviews": 229,
   "files": [
     {
       "path": ".env.example",
@@ -693,6 +693,14 @@
       "structural_check": "UTF-8 text inventory; build/configuration review is separate"
     },
     {
+      "path": "docs/blink-guard-2026-10-24.md",
+      "sha256": "0c476d59bafa8635fea8232289949d1dca7a1713723c52aab287f3c2c23effd8",
+      "category": "documentation",
+      "bytes": 5876,
+      "lines": 87,
+      "structural_check": "UTF-8 text inventory; build/configuration review is separate"
+    },
+    {
       "path": "docs/capture-windows-check.md",
       "sha256": "193afdb751887e4b920aee18c8b65a7646b4942c9095ce4b259369095da18049",
       "category": "documentation",
@@ -766,10 +774,10 @@
     },
     {
       "path": "docs/gaze-tracking-review-2026-10-24.md",
-      "sha256": "6a617ccfcd45116d59e2f9f645474f72a5701c15d53bcfb6233493d37aea9f55",
+      "sha256": "83dee9ee5895c0b477689ea104bf5886881fb1bf6b9612dd460a511d8a3a7bfe",
       "category": "documentation",
-      "bytes": 8899,
-      "lines": 121,
+      "bytes": 9038,
+      "lines": 124,
       "structural_check": "UTF-8 text inventory; build/configuration review is separate"
     },
     {
@@ -1066,6 +1074,31 @@
       "manual_review": {
         "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
         "notes": "Owned loopback static server/browser/context/CDP sessions, synthetic API failures, cold/warm asset timings and short 3D/2D playback heap. SwiftShader is not real-GPU latency evidence."
+      }
+    },
+    {
+      "path": "eval/blink_replay.py",
+      "sha256": "778fef98da417db85894317e9908f4ac91355441b227f37ecd9b4649aeeb73ab",
+      "category": "source",
+      "bytes": 6946,
+      "lines": 162,
+      "functions": [
+        "replay:26 (loops including nested scopes: 6)",
+        "main:104 (loops including nested scopes: 8)",
+        "prepared:31 (loops including nested scopes: 0)",
+        "work:66 (loops including nested scopes: 1)"
+      ],
+      "review_signals": [
+        "119: check subprocess timeout or explicit process ownership at subprocess.check_output",
+        "118: check subprocess timeout or explicit process ownership at subprocess.check_output",
+        "126: check subprocess timeout or explicit process ownership at subprocess.check_output",
+        "127: check subprocess timeout or explicit process ownership at subprocess.check_output",
+        "139: check subprocess timeout or explicit process ownership at subprocess.check_output"
+      ],
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Blink guard implementation and correctness review, 2026-10-24; see docs/blink-guard-2026-10-24.md",
+        "notes": "Reviewed subprocess isolation and temporary baseline-module extraction, shared fixture hashes, trusted-update/artifact metrics, exact healthy-trajectory comparison, unpaced classifier timing, separate cProfile/tracemalloc and bounded history. Synthetic 30 FPS artifacts only. Source/fixture hashes verified; explicit latency/data-coverage tradeoffs and absence of optical blink validation."
       }
     },
     {
@@ -1368,6 +1401,22 @@
       "category": "measurement_or_fixture",
       "bytes": 2367,
       "lines": 21,
+      "structural_check": "JSON parsed"
+    },
+    {
+      "path": "eval/results/blink-regression.json",
+      "sha256": "4a2c580a8d94b9e96f8286c784398d50428145a5843a0969a01a1bde954f4144",
+      "category": "measurement_or_fixture",
+      "bytes": 65245,
+      "lines": 2137,
+      "structural_check": "JSON parsed"
+    },
+    {
+      "path": "eval/results/blink-replay.json",
+      "sha256": "3ff8a3c812f3c557fe93559d6e829e195643e6f0c04b3d30193eaec7cfd694aa",
+      "category": "measurement_or_fixture",
+      "bytes": 6182,
+      "lines": 86,
       "structural_check": "JSON parsed"
     },
     {
@@ -2899,10 +2948,10 @@
     },
     {
       "path": "services/gaze/README.md",
-      "sha256": "0ad5719d1d19d6a245df5c218bfe09a523f2d8660619bc04e82f5c9def7e0087",
+      "sha256": "4e147b1eb0305b0c9c71b9c5497b656ea72efd2b3bd699dd17916d6d23a5e45c",
       "category": "documentation",
-      "bytes": 2887,
-      "lines": 45,
+      "bytes": 3272,
+      "lines": 50,
       "structural_check": "UTF-8 text inventory; build/configuration review is separate"
     },
     {
@@ -3016,10 +3065,10 @@
     },
     {
       "path": "services/gaze/gaze/fixations.py",
-      "sha256": "600d52cd72927212438cbf134d65a0135028791c91d8355491925b8ce9ec7f07",
+      "sha256": "6f06b46faa394aff0c89f9507db58f6c8a0204079ed8cc895b4da1d8c7945e7c",
       "category": "source",
-      "bytes": 8618,
-      "lines": 188,
+      "bytes": 9092,
+      "lines": 198,
       "functions": [
         "__init__:48 (loops including nested scopes: 0)",
         "reset:52 (loops including nested scopes: 0)",
@@ -3028,27 +3077,28 @@
         "__init__:78 (loops including nested scopes: 0)",
         "__call__:81 (loops including nested scopes: 0)",
         "reset:84 (loops including nested scopes: 0)",
-        "__init__:90 (loops including nested scopes: 0)",
-        "noise_px:116 (loops including nested scopes: 0)",
-        "_spread:119 (loops including nested scopes: 2)",
-        "_emit:124 (loops including nested scopes: 2)",
-        "_learn:130 (loops including nested scopes: 5)",
-        "add:165 (loops including nested scopes: 1)",
-        "flush:186 (loops including nested scopes: 0)"
+        "resume:88 (loops including nested scopes: 1)",
+        "__init__:100 (loops including nested scopes: 0)",
+        "noise_px:126 (loops including nested scopes: 0)",
+        "_spread:129 (loops including nested scopes: 2)",
+        "_emit:134 (loops including nested scopes: 2)",
+        "_learn:140 (loops including nested scopes: 5)",
+        "add:175 (loops including nested scopes: 1)",
+        "flush:196 (loops including nested scopes: 0)"
       ],
       "review_signals": [],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
       "manual_review": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "One-Euro smoothing, bounded noise windows, adaptive dispersion, running sums/extrema, gaps and maximum fixation duration; scripted precision/rate tests."
+        "scope": "Blink guard implementation and correctness review, 2026-10-24; see docs/blink-guard-2026-10-24.md",
+        "notes": "Existing One Euro and adaptive I-DT behavior retained. New Smoother.resume changes internal filter time/derivative while retaining its last trusted value after a brief blink; it emits no gaze and does not alter actual evidence timestamps. Tests cover steady reopening, 15/30 FPS and genuine motion; long closures reset. Existing bounded-window dispersion/noise algorithms and their prior limits remain."
       }
     },
     {
       "path": "services/gaze/gaze/head.py",
-      "sha256": "309b11545458b560e0f6b7d5fa1af7bb9dfa379c6341d93047ca33c5aa249c09",
+      "sha256": "09bf700727a08642d44f3b2f74bcc0441cff04a7a0ed3fb7d0e5df99c501e311",
       "category": "source",
-      "bytes": 24038,
-      "lines": 490,
+      "bytes": 25068,
+      "lines": 512,
       "functions": [
         "_head_frame:46 (loops including nested scopes: 0)",
         "directions:215 (loops including nested scopes: 0)",
@@ -3076,27 +3126,27 @@
         "predict:296 (loops including nested scopes: 3)",
         "to_json:301 (loops including nested scopes: 1)",
         "from_json:310 (loops including nested scopes: 1)",
-        "__init__:336 (loops including nested scopes: 0)",
-        "__call__:341 (loops including nested scopes: 0)",
-        "__init__:363 (loops including nested scopes: 0)",
-        "measure:387 (loops including nested scopes: 0)",
-        "_detect:395 (loops including nested scopes: 0)",
-        "extract_features:402 (loops including nested scopes: 0)",
-        "train:422 (loops including nested scopes: 2)",
-        "predict:429 (loops including nested scopes: 0)",
-        "mirrored:436 (loops including nested scopes: 1)",
-        "moved:446 (loops including nested scopes: 0)",
-        "save_model:455 (loops including nested scopes: 0)",
-        "load_model:469 (loops including nested scopes: 0)",
-        "release_frame_buffers:480 (loops including nested scopes: 0)",
-        "close:486 (loops including nested scopes: 0)",
-        "openness:342 (loops including nested scopes: 0)"
+        "__init__:339 (loops including nested scopes: 0)",
+        "__call__:345 (loops including nested scopes: 3)",
+        "__init__:385 (loops including nested scopes: 0)",
+        "measure:409 (loops including nested scopes: 0)",
+        "_detect:417 (loops including nested scopes: 0)",
+        "extract_features:424 (loops including nested scopes: 0)",
+        "train:444 (loops including nested scopes: 2)",
+        "predict:451 (loops including nested scopes: 0)",
+        "mirrored:458 (loops including nested scopes: 1)",
+        "moved:468 (loops including nested scopes: 0)",
+        "save_model:477 (loops including nested scopes: 0)",
+        "load_model:491 (loops including nested scopes: 0)",
+        "release_frame_buffers:502 (loops including nested scopes: 0)",
+        "close:508 (loops including nested scopes: 0)",
+        "openness:346 (loops including nested scopes: 0)"
       ],
       "review_signals": [],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
       "manual_review": {
-        "scope": "Camera/gaze algorithm and resource follow-up, 2026-10-24; see docs/gaze-tracking-review-2026-10-24.md",
-        "notes": "Pose/eye geometry, direction regression and screen intersections reviewed. Batched binocular matrix multiplication preserves independent per-eye outputs, handles zero/single/multiple frames and retains missing-ray semantics without modifying inputs. Synthetic prediction outputs match before/after hashes. Calibration fitting and model format are unchanged; real head-motion accuracy requires held-out device validation. Subsequent camera-release buffer hooks and their two regressions reviewed: pixel scratch is released with the camera without closing/reloading the native detector. Final complete gaze suite: 74 passing tests. Performance provenance remains pinned to bf2d483; per-frame math is unchanged."
+        "scope": "Blink guard implementation and correctness review, 2026-10-24; see docs/blink-guard-2026-10-24.md",
+        "notes": "Blink-specific update reviewed: per-eye rather than averaged aperture, compare before updating the reference, rapid-closing detection, bounded open-frame history, invalid/closed startup handling and narrow-eye bootstrap. Earlier pose/regression/batch/serialization review remains applicable to unchanged code. Partial-blink and long-closure failures reproduced before; new replay reports intended output changes and classifier overhead. Real blink sensitivity/specificity is not established."
       }
     },
     {
@@ -3151,41 +3201,41 @@
     },
     {
       "path": "services/gaze/gaze/track.py",
-      "sha256": "07bcecaeef808e418954255d80c52703483b0e6661657c27efa7f73f03853612",
+      "sha256": "240f7b4218fa304389978fbe396dd8e75b7bc04d55a20eded40301718c3343d8",
       "category": "source",
-      "bytes": 20399,
-      "lines": 463,
+      "bytes": 21209,
+      "lines": 478,
       "functions": [
-        "_com_start:134 (loops including nested scopes: 0)",
-        "_com_end:146 (loops including nested scopes: 0)",
-        "open_camera_thread:156 (loops including nested scopes: 0)",
-        "read:53 (loops including nested scopes: 0)",
-        "release:54 (loops including nested scopes: 0)",
-        "extract_features:58 (loops including nested scopes: 0)",
-        "predict:59 (loops including nested scopes: 0)",
-        "__init__:74 (loops including nested scopes: 0)",
-        "_read_forever:91 (loops including nested scopes: 1)",
-        "first:114 (loops including nested scopes: 0)",
-        "read:119 (loops including nested scopes: 0)",
-        "release:127 (loops including nested scopes: 0)",
-        "__init__:174 (loops including nested scopes: 0)",
-        "state:227 (loops including nested scopes: 4)",
-        "_timing:251 (loops including nested scopes: 2)",
-        "_open:264 (loops including nested scopes: 0)",
-        "_fixations:269 (loops including nested scopes: 2)",
-        "_reason:277 (loops including nested scopes: 0)",
-        "_release:300 (loops including nested scopes: 1)",
-        "_report:317 (loops including nested scopes: 0)",
-        "step:341 (loops including nested scopes: 3)",
-        "_time:419 (loops including nested scopes: 1)",
-        "_gaze:437 (loops including nested scopes: 1)",
-        "run:454 (loops including nested scopes: 1)"
+        "_com_start:136 (loops including nested scopes: 0)",
+        "_com_end:148 (loops including nested scopes: 0)",
+        "open_camera_thread:158 (loops including nested scopes: 0)",
+        "read:55 (loops including nested scopes: 0)",
+        "release:56 (loops including nested scopes: 0)",
+        "extract_features:60 (loops including nested scopes: 0)",
+        "predict:61 (loops including nested scopes: 0)",
+        "__init__:76 (loops including nested scopes: 0)",
+        "_read_forever:93 (loops including nested scopes: 1)",
+        "first:116 (loops including nested scopes: 0)",
+        "read:121 (loops including nested scopes: 0)",
+        "release:129 (loops including nested scopes: 0)",
+        "__init__:176 (loops including nested scopes: 0)",
+        "state:231 (loops including nested scopes: 4)",
+        "_timing:255 (loops including nested scopes: 2)",
+        "_open:268 (loops including nested scopes: 0)",
+        "_fixations:273 (loops including nested scopes: 2)",
+        "_reason:281 (loops including nested scopes: 0)",
+        "_release:304 (loops including nested scopes: 1)",
+        "_report:322 (loops including nested scopes: 0)",
+        "step:346 (loops including nested scopes: 3)",
+        "_time:434 (loops including nested scopes: 1)",
+        "_gaze:452 (loops including nested scopes: 1)",
+        "run:469 (loops including nested scopes: 1)"
       ],
       "review_signals": [],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
       "manual_review": {
-        "scope": "Camera/gaze algorithm and resource follow-up, 2026-10-24; see docs/gaze-tracking-review-2026-10-24.md",
-        "notes": "Existing paced loop/latest-frame ownership and state machine reviewed with gap recovery changes. Smoothing resets after the detector continuity gap, short blinks keep the old response, and off-screen points flush the open fixation at its last accepted sample. Deterministic failures reproduced before and pass after. Six hundred paired synthetic sessions per revision have mixed outcome shifts with 300/300 no-dwell cases passing; not a general accuracy gain. Native read/join and manual device-acceptance limits remain. Subsequent camera-release buffer hooks and their two regressions reviewed: pixel scratch is released with the camera without closing/reloading the native detector. Final complete gaze suite: 74 passing tests. Performance provenance remains pinned to bf2d483; per-frame math is unchanged."
+        "scope": "Blink guard implementation and correctness review, 2026-10-24; see docs/blink-guard-2026-10-24.md",
+        "notes": "Monotonic blink-settle deadline and bounded short-blink state reviewed. Predictions/live/fixation samples are withheld through reopening; brief blinks resume the filter, long closures reset, and camera release clears blink state. Synthetic healthy-motion trajectory is identical. Six hundred paired sessions show unchanged no-dwell passes but lower coverage and some lost dwell detections, recorded explicitly. Source reload applied only to the verified receiver-owned supervised worker; no pause/resume state or calibration contents changed."
       }
     },
     {
@@ -3198,6 +3248,35 @@
       "manual_review": {
         "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
         "notes": "Build/runtime/test configuration, environment boundaries, dependency declarations and generated/ignored output treatment reviewed; relevant gate/build/package results in the report. Dependency internals are not audited."
+      }
+    },
+    {
+      "path": "services/gaze/tests/test_blinks.py",
+      "sha256": "75892d682d52d01cc6c2179947e96d7e84104115305de49a6e13459ea9fd6f84",
+      "category": "test",
+      "bytes": 5111,
+      "lines": 137,
+      "functions": [
+        "eyes:10 (loops including nested scopes: 1)",
+        "warmed:17 (loops including nested scopes: 1)",
+        "test_closing_lids_are_rejected_before_the_iris_disappears:24 (loops including nested scopes: 0)",
+        "test_one_closed_eye_is_not_hidden_by_the_other:30 (loops including nested scopes: 0)",
+        "test_closed_frames_never_become_the_new_open_eye_baseline:34 (loops including nested scopes: 1)",
+        "test_gentle_aperture_changes_and_narrow_open_eyes_are_allowed:40 (loops including nested scopes: 2)",
+        "test_starting_closed_or_with_missing_landmarks_stays_suppressed:48 (loops including nested scopes: 1)",
+        "test_partial_blink_and_reopening_do_not_move_the_live_circle:70 (loops including nested scopes: 2)",
+        "test_long_eye_closure_does_not_emit_held_positions_and_can_reacquire_elsewhere:89 (loops including nested scopes: 0)",
+        "test_reopening_waits_by_time_and_retains_filter_stability:105 (loops including nested scopes: 1)",
+        "test_camera_release_clears_the_blink_recovery_state:126 (loops including nested scopes: 0)",
+        "__init__:57 (loops including nested scopes: 0)",
+        "extract_features:62 (loops including nested scopes: 0)",
+        "predict:65 (loops including nested scopes: 0)"
+      ],
+      "review_signals": [],
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Blink guard implementation and correctness review, 2026-10-24; see docs/blink-guard-2026-10-24.md",
+        "notes": "Reviewed synthetic per-eye apertures, partial closing/reopening with deliberately corrupted gaze, sustained closure, invalid/narrow/gently changing eyes, real-motion controls, 15/30 FPS time-based recovery and release cleanup. Eleven deterministic regressions; seven original failures reproduced. No webcam or real-person blink labels are used."
       }
     },
     {

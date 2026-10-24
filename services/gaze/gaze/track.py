@@ -47,6 +47,8 @@ PROMPT_REPORT_S = 0.25  # a completed fixation goes out this soon after the last
 LIVE_EVERY_S = 0.025  # live gaze points while the receiver asks for them: every frame at 30 fps
 STAGES = ("camera_wait", "landmarks", "model", "tracking", "network")
 DEFAULT_FPS = 30.0
+BLINK_SETTLE_S = 0.1  # reject the first reopening frames: iris landmarks still follow the lid
+BLINK_HOLD_S = 0.75  # a brief blink preserves filter position; a longer closure starts afresh
 
 
 class Camera(Protocol):
@@ -196,6 +198,8 @@ class Tracker:
         self.target_fps = fps
         self.timer = timer
         self._prediction_input: np.ndarray | None = None
+        self._blink_started: float | None = None
+        self._blink_until = -1e9
         self.supervised = supervised
         self.recalibrated = recalibrated
         self.told_recalibrated = False
@@ -310,6 +314,7 @@ class Tracker:
         self.heads.clear()
         self.timing.clear()
         self._prediction_input = None
+        self._blink_started, self._blink_until = None, -1e9
         release_buffers = getattr(self.estimator, "release_frame_buffers", None)
         if release_buffers is not None:
             release_buffers()
@@ -393,7 +398,17 @@ class Tracker:
                 while started - self.heads[0][0] > 10:
                     self.heads.popleft()
         predicted = tracked = extracted
-        if face and not blink:
+        if blink:
+            if self._blink_started is None:
+                self._blink_started = started
+            self._blink_until = started + BLINK_SETTLE_S
+        if face and not blink and started >= self._blink_until:
+            if self._blink_started is not None:
+                if started - self._blink_started <= BLINK_HOLD_S:
+                    self.smoother.resume(now, self.period)
+                else:
+                    self.smoother.reset()
+                self._blink_started = None
             # EyeTrax already returns an ndarray: asarray is a view, and the caller-owned
             # prediction row is reused until shape/dtype changes or tracking releases it.
             values = np.asarray(features)

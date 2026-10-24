@@ -40,6 +40,11 @@ open fixation. RGB conversion scratch is reused and released with the camera, wh
 image owns its pixels.
 The [tracking review](../../docs/gaze-tracking-review-2026-10-24.md) records measurements and limits.
 
+Blink gating checks each eye, excludes closing/closed observations from its learned reference,
+and waits 100 ms after the last rejected blink frame for reopening landmarks to settle. Brief
+blinks preserve filter position without emitting held gaze samples; long closures reacquire
+afresh. The [blink review](../../docs/blink-guard-2026-10-24.md) records replay results and tradeoffs.
+
 Tests: `cd services/gaze; uv run pytest` (the head-aware model on synthetic faces posed in front
 of a camera, fixations, smoothing, calibration fitting, the tracking loop with a scripted camera,
 the receiver client).
