@@ -1,7 +1,7 @@
 import {
-  askResultSchema, dayResponseSchema, eventSchema, graphSchema, momentSchema,
-  skeletonSchema, transcriptSchema,
-  type AskResult, type Day, type DayResponse, type Event,
+  askResultSchema, dataCenterSchema, dayResponseSchema, entitySchema, eventSchema, graphSchema,
+  knowledgeGraphSchema, momentSchema, skeletonSchema, transcriptSchema,
+  type AskResult, type DataCenter, type Day, type DayResponse, type Entity, type Event, type KnowledgeGraph,
 } from '@daycube/schemas';
 import { consumeSse } from './sse.mjs';
 
@@ -70,6 +70,30 @@ export class DaycubeClient {
   }
   async skeleton(date: string) { return skeletonSchema.parse(await this.request(`/day/${encodeURIComponent(date)}/skeleton`)); }
   async graph(date: string) { return graphSchema.parse(await this.request(`/day/${encodeURIComponent(date)}/graph`)); }
+  /** The knowledge graph across the vault: the most mentioned entities between `since` and `until`
+   *  (dates or ISO times) and the links among them. */
+  async knowledgeGraph(
+    options: { since?: string; until?: string; kinds?: string[]; limit?: number } = {}, signal?: AbortSignal,
+  ): Promise<KnowledgeGraph> {
+    const query = new URLSearchParams();
+    if (options.since) query.set('since', options.since);
+    if (options.until) query.set('until', options.until);
+    if (options.kinds?.length) query.set('kinds', options.kinds.join(','));
+    if (options.limit) query.set('limit', String(options.limit));
+    const suffix = query.size ? `?${query}` : '';
+    return knowledgeGraphSchema.parse(await this.request(`/graph${suffix}`, { signal }));
+  }
+  async entity(id: number, signal?: AbortSignal): Promise<Entity> {
+    return entitySchema.parse(await this.request(`/entity/${id}`, { signal }));
+  }
+  /** Every source stream in the vault and the database built from them. */
+  async dataCenter(signal?: AbortSignal): Promise<DataCenter> {
+    return dataCenterSchema.parse(await this.request('/data', { signal }));
+  }
+  notes() { return this.request('/notes') as Promise<{ path: string; title: string; identity: string | null }[]>; }
+  writeNotes(date: string) {
+    return this.request(`/notes/${encodeURIComponent(date)}`, { method: 'POST' }) as Promise<{ notes: string[] }>;
+  }
   async moment(date: string, id: string) {
     const data = await this.request(`/moment/${encodeURIComponent(id)}?date=${encodeURIComponent(date)}`) as Record<string, unknown>;
     return { meta: momentSchema.parse(data.meta), transcript: transcriptSchema.parse(data.transcript), scene: data.scene };

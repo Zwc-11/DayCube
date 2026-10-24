@@ -16,7 +16,7 @@ import sqlite3
 from collections.abc import Callable
 from pathlib import Path
 
-from ..notes.markdown import chunks, front_matter, links
+from ..notes.markdown import chunks, front_matter, links, user_text
 
 DDL = """
 CREATE TABLE notes (path TEXT PRIMARY KEY, title TEXT NOT NULL, identity TEXT, mtime_ns INTEGER NOT NULL, size INTEGER NOT NULL);
@@ -106,7 +106,8 @@ def sync(
                 continue
             db.execute("DELETE FROM links WHERE day = '' AND evidence_id = ?", (path,))
             source = node(path)
-            rows = {(source, target(name)) for name, _ in links(text)}
+            # Only the person's links: a generated region's links restate what the graph already holds.
+            rows = {(source, target(name)) for name, _ in links(user_text(text))}
             db.executemany(
                 "INSERT OR IGNORE INTO links VALUES ('', ?, ?, 'links', ?)",
                 [(a, b, path) for a, b in rows if a != b],

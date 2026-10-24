@@ -189,6 +189,14 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
             raise FileNotFoundError(entity_id)
         return found
 
+    @app.get("/data")
+    def data_center() -> Record:
+        """Everything the vault holds: its source files by stream (days, capture logs, notes,
+        calibration) and the database derived from them (rows per table, kinds, sizes)."""
+        from .datacenter import report
+
+        return report(store)
+
     @app.post("/notes/{date}", dependencies=[Depends(authorize)])
     def write_notes(date: str) -> Record:
         """Write (or refresh) the linked notes of a day in vault/notes; the person's edits stay."""

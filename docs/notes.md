@@ -33,7 +33,8 @@ The folder is read back into the vault database whenever a note changes:
 - Only your own writing is indexed (generated regions repeat records the database already
   holds), in pieces split at headings and blank lines. Ask finds it like any record, as
   `note.text`, when a question is not limited to a day or time.
-- Your `[[links]]` join the knowledge graph. They resolve as Obsidian resolves them: a path names
+- Your `[[links]]` join the knowledge graph (only those in your own writing: the generated
+  regions' links restate what the graph already holds). They resolve as Obsidian resolves them: a path names
   that file, a bare name the note with that file name (the shortest path wins). A link to a
   generated note connects to the page, course or day it stands for; a link to a note not written
   yet still makes a node, as in Obsidian. `.obsidian/` and other hidden folders are skipped.

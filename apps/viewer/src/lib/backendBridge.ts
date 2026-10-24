@@ -1,5 +1,7 @@
 import { DaycubeClient, ApiError } from '@daycube/api-client';
-import type { AskResult as SchemaAskResult, DayResponse } from '@daycube/schemas';
+import type {
+  AskResult as SchemaAskResult, DataCenter, DayResponse, Entity, KnowledgeGraph,
+} from '@daycube/schemas';
 import {
   AskResult,
   EventPin,
@@ -468,8 +470,8 @@ export class BackendBridge {
               id: ev.id,
               unitId: ev.unit_id,
               type: ev.type as any,
-              t: Number((ev.t / 3600).toFixed(3)),
-              isoTime: ev.iso_time,
+              t: ev.t !== null ? Number((ev.t / 3600).toFixed(3)) : todHours,
+              isoTime: ev.iso_time ?? '',
               placeId: ev.place ?? '',
               placeName: ev.place_name ?? 'Unknown place',
               layerIndex: ev.layer_index ?? layerIndex,
@@ -581,6 +583,57 @@ export class BackendBridge {
       throw error;
     }
     throw new ApiError(401, 'Bind the vault token before rebuilding the index.');
+  }
+
+  /** A read the views can live without: logged, and null when the API cannot be reached. */
+  private async read<T>(endpoint: string, run: () => Promise<T>, summary: (value: T) => string): Promise<T | null> {
+    const t0 = performance.now();
+    try {
+      const value = await run();
+      const latencyMs = Number((performance.now() - t0).toFixed(2));
+      this.emitLog({ method: 'GET', endpoint, status: 200, latencyMs, mode: 'live-backend', summary: summary(value) });
+      return value;
+    } catch (error) {
+      const latencyMs = Number((performance.now() - t0).toFixed(2));
+      const status = error instanceof ApiError ? error.status : 503;
+      this.emitLog({ method: 'GET', endpoint, status, latencyMs, mode: 'live-backend', summary: 'Request failed' });
+      return null;
+    }
+  }
+
+  /** The knowledge graph across the vault, or null offline. */
+  knowledgeGraph(options: { since?: string; until?: string; kinds?: string[]; limit?: number } = {}) {
+    return this.read<KnowledgeGraph>(
+      '/api/graph',
+      () => this.client.knowledgeGraph(options),
+      (g) => `${g.nodes.length} entities, ${g.edges.length} links`
+    );
+  }
+
+  entity(id: number) {
+    return this.read<Entity>(`/api/entity/${id}`, () => this.client.entity(id), (e) => `${e.name}: ${e.mention_count} records`);
+  }
+
+  /** Every source stream in the vault and the database built from them, or null offline. */
+  dataCenter() {
+    return this.read<DataCenter>(
+      '/api/data',
+      () => this.client.dataCenter(),
+      (d) => `${d.sources.length} sources, ${d.database.rows.units ?? 0} records indexed`
+    );
+  }
+
+  /** Write a day's linked notes into vault/notes (needs the vault token); returns the notes written. */
+  async writeNotes(date: string): Promise<string[]> {
+    if (!this.token) throw new ApiError(401, 'Connect your vault token to write notes.');
+    const t0 = performance.now();
+    const { notes } = await this.client.writeNotes(date);
+    const latencyMs = Number((performance.now() - t0).toFixed(2));
+    this.emitLog({
+      method: 'POST', endpoint: `/api/notes/${date}`, status: 200, latencyMs, mode: 'live-backend',
+      summary: `${notes.length} notes written`,
+    });
+    return notes;
   }
 }
 

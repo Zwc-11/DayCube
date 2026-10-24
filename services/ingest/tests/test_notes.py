@@ -80,6 +80,8 @@ def test_own_notes_are_searched_and_linked(vault: Vault) -> None:
     idea = ("note", "Cuckoo hashing")
     assert (idea, ("page", "Hash table - Wikipedia"), "links") in edges  # the generated note is the page
     assert (idea, ("note", "A note not written yet"), "links") in edges  # unresolved, as in Obsidian
+    # Only the person's own links: generated regions restate what the graph already holds.
+    assert {source for source, _, kind in edges if kind == "links"} == {idea}
     # Generated regions are not indexed twice: the daily note's text is not a note hit.
     assert all(r["type"] != "note.text" for r in retrieve(store, "linear probing vs chaining"))
     own.unlink()
