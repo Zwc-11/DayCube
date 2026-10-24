@@ -125,7 +125,7 @@ def test_a_stare_at_a_paragraph_becomes_a_dwell_signal_and_hook(
         snapshot = record("blocks", -12, doc="doc-1", geometry=GEOMETRY, blocks=blocks, **TAB)
         assert client.post("/events", json=[snapshot], headers=auth).json()["accepted"] == 1
         body = client.post("/gaze", json={"state": state, "fixations": fixations}, headers=auth).json()
-        assert body == {"accepted": 18, "duplicates": 0, "stale": 0, "live": False, "ring": False, "offset_grid": None}
+        assert body == {"accepted": 18, "duplicates": 0, "stale": 0, "live": False, "ring": False, "offset_grid": None, "lines": []}
         status = client.get("/status").json()["gaze"]
         assert status["tracking"] is True and status["error_px"] == 120.0
         signals = client.post("/events", json=[], headers=auth).json()["signals"]
@@ -651,3 +651,22 @@ def test_doctor_shows_when_an_update_reached_the_gaze_and_the_live_loss_ratio() 
     pending = dict(learning, applied={"version": 3, "t": "2026-10-24T17:40:00+00:00", "after_ms": 30.0})
     rows = {name: verdict for verdict, name, _ in doctor._learning({"tracking": True, "learning": pending})}
     assert rows["learning applied"] == doctor.WARN
+
+
+def test_doctor_reports_the_last_tuning_and_lines_read(tmp_path: Path) -> None:
+    from capture import doctor
+
+    (tmp_path / "calibration").mkdir()
+    tuned = {"t": "2026-10-25T03:12:00+00:00", "clicks": 640, "accepted": True, "changed": {"refit_every": [20, 10]},
+             "replay": {"held_out_px": {"in_use": 141.2, "best": 128.9}, "held_out_clicks": 192}}  # fmt: skip
+    (tmp_path / "calibration" / "gaze-tuned.json").write_text(json.dumps(tuned))
+    assert doctor._tuning(tmp_path) == [(doctor.PASS, "tuning", (
+        "2026-10-25: 640 clicks replayed; on the newest 192, 141.2 px with the settings in use, 128.9 px with the "
+        "best found: taken (refit_every 20 -> 10)"
+    ))]  # fmt: skip
+    (tmp_path / "calibration" / "gaze-tuned.json").write_text(json.dumps(tuned | {"accepted": False}))
+    assert doctor._tuning(tmp_path)[0][0] == doctor.INFO
+    assert doctor._tuning(tmp_path / "nowhere") == []
+    learning = {"version": 0, "clicks": 12, "skipped": {}, "fit": None, "lines": {"used": 340}}
+    ((_, _, detail),) = doctor._learning({"tracking": True, "learning": learning})
+    assert "12 clicks since calibration; 340 lines read as labels" in detail

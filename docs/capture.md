@@ -560,8 +560,10 @@ update marked, and every fit with its held-out errors and why it was or was not 
 
 Clicks are kept in `vault/calibration/clicks.jsonl` (time, the pixel, the look's head pose and eye
 measurements as numbers, both errors, the model version in use, whether it passed the gate),
-each fit and each update's first frame in `learning.jsonl`, and what was learned in
-`gaze-learned.json`, all for the current calibration only: a new calibration starts over. The receiver's click correction (the offsets of
+lines read in `lines.jsonl` (the same, with the line's extent; no text), each fit, each update's
+first frame and each tuning in `learning.jsonl`, what was learned in `gaze-learned.json` and the
+tuned settings in `gaze-tuned.json`, all for the current calibration only: a new calibration
+starts over. The receiver's click correction (the offsets of
 [How gaze is placed on a page](#how-gaze-is-placed-on-a-page)) starts over at each update, since
 it was measured on the old model. `doctor` reports it: `learning: from clicks: update 3 at 17:40
 UTC; on clicks it had not seen, 168 px with the calibration alone, 121 px now; 260 clicks since
@@ -599,7 +601,74 @@ exact labels: 45 to 30 mm. The calibration alone grows worse over the days (40 t
 the head moves from where it was (37 to 53 mm); the learned model gets better. Tried on the same replay
 and not taken: weighting the two eyes by how reliable each is on the clicks (30.9 to 30.9 mm), and
 second-order eye terms (squares and products of each eye's measurements, from 100 clicks: 30.9 to
-30.5 mm, p90 68.6 to 67.5 mm), too small a gain for another model format. These are single laptop-webcam images, noisier than fixations at a desk; the
+30.5 mm, p90 68.6 to 67.5 mm), too small a gain for another model format.
+
+### Reading as labels
+
+Clicks give a few hundred labels a day; reading gives thousands an hour. While the line decoder
+([Which line you are reading](#which-line-you-are-reading)) follows reading, the eyes are on the
+line being read, whose height on the monitor is known exactly. Screen content as a weak label is
+how EVE (Park et al., ECCV 2020) cut webcam error from 3.48 to 2.49 degrees. The danger is
+circularity: the decoder picks the line partly from the gaze, so a model a line off could be told
+it is right. So a line becomes a label only when reading's own structure confirms it
+(`capture/labels.py`):
+
+- it was read between the line above and the line below, in that order, in the same block (each
+  move on is a return sweep, which a vertical offset cannot fake);
+- the decoder was sure of it (mean probability 0.8 or more over at least 2 fixations);
+- the page's position on the monitor was measured from mouse events, not estimated from the
+  window's size.
+
+The receiver returns each confirmed line's fixations with the line's middle height and extent (in
+the `/gaze` reply); the tracker kept each fixation's frames, so it pairs them
+(`gaze/learn.py: line`). A line labels the vertical fully; across it, the target is where the
+model being fitted puts the gaze, held to the line's extent, recomputed at each round of the fit,
+so a line moves the horizontal only when the gaze falls off its ends. A line counts a quarter of a
+click, and only clicks judge a fit: a decoder astray can move a candidate, never get it taken.
+
+Measured (`eval/reading_labels.py`):
+
+- **Are the labels right?** In the end-to-end simulation (the eyes reading measured page layouts,
+  the PC's error model, the real tracker and receiver; 10 seeds per scenario;
+  `eval/results/reading-labels-sim.json`): at the recalibrated error, 66 labels a minute of
+  reading an article (85 at 200% zoom, 68 re-reading a paragraph, 14 reading slowly under a
+  heading), **all 2,795 on the right line**. At the first, coarse calibration (183 px), the decoder
+  is rarely sure: 1.4 labels a minute at 100% zoom, 29 at 200%, again all on the right line. The
+  simulation reads line by line more regularly than people do; the structure test is what guards
+  real reading.
+- **Do they help?** MPIIFaceGaze replayed with 15% of the images as clicks and the rest as
+  reading lines (about six lines a click; `eval/results/reading-labels.json`): 32.7 mm with the
+  clicks alone, **32.1 mm** with the lines (8 of 15 people better, 3 worse by more than 2%); with
+  10% of the lines a line off either way, 32.0 mm; with every line a line too low (a decoder
+  consistently astray), 32.6 mm, no worse than the clicks alone. The gain is small on this
+  dataset, whose remaining error is mostly not a vertical offset, and which way it goes differs by
+  person: that is what tuning (below) settles for you, since the lines' weight is one of the
+  settings it chooses, including 0.
+
+### Tuned to you
+
+The settings of learning (the click gate, the half-life of old labels, how hard the head terms and
+the eye's resting direction are held, how many clicks before the head terms, how often to fit,
+how much a line counts) were chosen on MPIIFaceGaze. `gaze/tune.py` chooses them on your own
+data: `clicks.jsonl` keeps every click's frame vector and pixel and `lines.jsonl` every line with
+its extent, so learning can be run again from the calibration exactly as it ran live, each click
+predicted by the model of that moment before anything learned from it. Settings are searched by
+coordinate descent from those in use (two passes over a small grid) on the older 70% of clicks,
+and the best is compared with the settings in use on the newest 30%, which the search never saw;
+it is taken only if 3% better there. The tracker starts it on its own once there are 300 clicks,
+at most once a day and after 200 new clicks, in a process of its own at idle priority; the
+learner reads `gaze-tuned.json` before its next fit. `python -m gaze tune` runs it by hand and
+prints what it tried.
+
+Measured on MPIIFaceGaze (`eval/tune_replay.py`, `eval/results/tune-replay.json`): each person's
+first 1,000 clicks after calibration (20 mm label noise, 15% made without looking), tuned as on
+the PC from the clicks' labels alone, then judged on the newest 30% against where the eyes really
+were, which tuning never saw. Tuning changed the settings for 2 of 15 people and both got better:
+23.0 to 22.0 mm, and the person tracked worst, 66.6 to 55.7 mm (shorter half-life, fits twice as
+often, the head terms held less). For the other 13 the defaults stayed; no one got worse. On a
+dataset the defaults were chosen on, little else was to be expected; on your desk the defaults
+are someone else's, so this is where it can matter, and the 3% rule keeps it from doing harm.
+Each replay of 1,000 clicks takes a few seconds; a tuning runs 15-30 of them. These are single laptop-webcam images, noisier than fixations at a desk; the
 comparison is what carries over.
 
 ## Which line you are reading

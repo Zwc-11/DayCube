@@ -121,7 +121,11 @@ def _learning(gaze: dict) -> list[tuple[str, str, str]]:
     clicks, skipped = learning.get("clicks", 0), learning.get("skipped") or {}
     fit, version = learning.get("fit"), learning.get("version", 0)
     away = skipped.get("not looking", 0)
-    counted = f"{clicks} clicks since calibration" + (f", {away} made without looking at the spot" if away else "")
+    read = (learning.get("lines") or {}).get("used", 0)
+    counted = (
+        f"{clicks} clicks since calibration" + (f", {away} made without looking at the spot" if away else "")
+        + (f"; {read} lines read as labels" if read else "")
+    )  # fmt: skip
     if fit is None:
         return [(INFO, "learning", f"from clicks: {counted}; the first check needs 30 usable clicks")]
     errors = fit.get("error_px") or {}
@@ -189,6 +193,26 @@ def _screen(status: dict) -> list[tuple[str, str, str]]:
     elif screen.get("skipped") and screen["skipped"] != "no gaze":
         detail += f"; not reading now: {screen['skipped']}"
     return [(PASS, "screen reading", detail)]
+
+
+def _tuning(vault: Path) -> list[tuple[str, str, str]]:
+    """The last tuning of learning to your clicks (services/gaze/gaze/tune.py), from its file."""
+    try:
+        tuned = json.loads((vault / "calibration" / "gaze-tuned.json").read_text(encoding="utf-8"))
+        held = tuned["replay"]["held_out_px"]
+        detail = (
+            f"{tuned['t'][:10]}: {tuned['clicks']} clicks replayed; on the newest "
+            f"{tuned['replay']['held_out_clicks']}, {held['in_use']} px with the settings in use, {held['best']} px "
+            "with the best found: "
+        )
+    except (OSError, ValueError, KeyError, TypeError):
+        return []
+    changed = tuned.get("changed") or {}
+    if tuned.get("accepted"):
+        return [
+            (PASS, "tuning", detail + "taken (" + ", ".join(f"{k} {a} -> {b}" for k, (a, b) in changed.items()) + ")")
+        ]
+    return [(INFO, "tuning", detail + "kept the settings in use (not 3% better)")]
 
 
 def checks(status: dict | None, vault: Path, zone: ZoneInfo, now: datetime, autostart: str | None) -> list[tuple]:
@@ -359,6 +383,8 @@ def checks(status: dict | None, vault: Path, zone: ZoneInfo, now: datetime, auto
             out.append((WARN, "calibration", "the tracker still uses the calibration from before: " + RESTART))
 
     out += _learning(gaze)
+    if gaze.get("tracking") and gaze.get("learning"):
+        out += _tuning(vault)
 
     decoding = status.get("line_decoding") or {}
     seen = decoding.get("fixations", 0)

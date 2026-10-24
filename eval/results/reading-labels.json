@@ -1,0 +1,413 @@
+{
+ "click_share": 0.15,
+ "pitch_mm": 8.4,
+ "runs": {
+  "clicks alone": {
+   "median_mm": 32.7,
+   "p90_mm": 70.7,
+   "people": [
+    {
+     "person": "p00",
+     "error_mm": 26.1,
+     "updates": 11,
+     "lines_used": 0
+    },
+    {
+     "person": "p01",
+     "error_mm": 26.5,
+     "updates": 10,
+     "lines_used": 0
+    },
+    {
+     "person": "p02",
+     "error_mm": 25.9,
+     "updates": 7,
+     "lines_used": 0
+    },
+    {
+     "person": "p03",
+     "error_mm": 34.7,
+     "updates": 9,
+     "lines_used": 0
+    },
+    {
+     "person": "p04",
+     "error_mm": 23.0,
+     "updates": 11,
+     "lines_used": 0
+    },
+    {
+     "person": "p05",
+     "error_mm": 31.5,
+     "updates": 11,
+     "lines_used": 0
+    },
+    {
+     "person": "p06",
+     "error_mm": 37.6,
+     "updates": 11,
+     "lines_used": 0
+    },
+    {
+     "person": "p07",
+     "error_mm": 44.8,
+     "updates": 5,
+     "lines_used": 0
+    },
+    {
+     "person": "p08",
+     "error_mm": 41.2,
+     "updates": 5,
+     "lines_used": 0
+    },
+    {
+     "person": "p09",
+     "error_mm": 40.7,
+     "updates": 4,
+     "lines_used": 0
+    },
+    {
+     "person": "p10",
+     "error_mm": 34.7,
+     "updates": 8,
+     "lines_used": 0
+    },
+    {
+     "person": "p11",
+     "error_mm": 37.9,
+     "updates": 6,
+     "lines_used": 0
+    },
+    {
+     "person": "p12",
+     "error_mm": 50.4,
+     "updates": 2,
+     "lines_used": 0
+    },
+    {
+     "person": "p13",
+     "error_mm": 37.2,
+     "updates": 4,
+     "lines_used": 0
+    },
+    {
+     "person": "p14",
+     "error_mm": 24.5,
+     "updates": 3,
+     "lines_used": 0
+    }
+   ],
+   "people_better": 0,
+   "people_worse_by_2pct": []
+  },
+  "clicks and lines": {
+   "median_mm": 32.1,
+   "p90_mm": 70.4,
+   "people": [
+    {
+     "person": "p00",
+     "error_mm": 24.4,
+     "updates": 10,
+     "lines_used": 2334
+    },
+    {
+     "person": "p01",
+     "error_mm": 24.8,
+     "updates": 12,
+     "lines_used": 2333
+    },
+    {
+     "person": "p02",
+     "error_mm": 24.7,
+     "updates": 8,
+     "lines_used": 2407
+    },
+    {
+     "person": "p03",
+     "error_mm": 32.2,
+     "updates": 6,
+     "lines_used": 2324
+    },
+    {
+     "person": "p04",
+     "error_mm": 22.7,
+     "updates": 10,
+     "lines_used": 2231
+    },
+    {
+     "person": "p05",
+     "error_mm": 31.0,
+     "updates": 11,
+     "lines_used": 2262
+    },
+    {
+     "person": "p06",
+     "error_mm": 36.1,
+     "updates": 9,
+     "lines_used": 2285
+    },
+    {
+     "person": "p07",
+     "error_mm": 45.5,
+     "updates": 10,
+     "lines_used": 2174
+    },
+    {
+     "person": "p08",
+     "error_mm": 39.3,
+     "updates": 7,
+     "lines_used": 2186
+    },
+    {
+     "person": "p09",
+     "error_mm": 41.3,
+     "updates": 3,
+     "lines_used": 2058
+    },
+    {
+     "person": "p10",
+     "error_mm": 35.6,
+     "updates": 8,
+     "lines_used": 1737
+    },
+    {
+     "person": "p11",
+     "error_mm": 40.4,
+     "updates": 6,
+     "lines_used": 1664
+    },
+    {
+     "person": "p12",
+     "error_mm": 51.3,
+     "updates": 3,
+     "lines_used": 860
+    },
+    {
+     "person": "p13",
+     "error_mm": 46.8,
+     "updates": 5,
+     "lines_used": 997
+    },
+    {
+     "person": "p14",
+     "error_mm": 24.7,
+     "updates": 2,
+     "lines_used": 1027
+    }
+   ],
+   "people_better": 8,
+   "people_worse_by_2pct": [
+    "p10",
+    "p11",
+    "p13"
+   ]
+  },
+  "clicks and lines, 10% one line off": {
+   "median_mm": 32.0,
+   "p90_mm": 70.2,
+   "people": [
+    {
+     "person": "p00",
+     "error_mm": 24.4,
+     "updates": 10,
+     "lines_used": 2335
+    },
+    {
+     "person": "p01",
+     "error_mm": 24.8,
+     "updates": 12,
+     "lines_used": 2334
+    },
+    {
+     "person": "p02",
+     "error_mm": 24.7,
+     "updates": 6,
+     "lines_used": 2405
+    },
+    {
+     "person": "p03",
+     "error_mm": 32.2,
+     "updates": 6,
+     "lines_used": 2322
+    },
+    {
+     "person": "p04",
+     "error_mm": 22.7,
+     "updates": 10,
+     "lines_used": 2231
+    },
+    {
+     "person": "p05",
+     "error_mm": 30.5,
+     "updates": 8,
+     "lines_used": 2263
+    },
+    {
+     "person": "p06",
+     "error_mm": 36.2,
+     "updates": 9,
+     "lines_used": 2286
+    },
+    {
+     "person": "p07",
+     "error_mm": 45.7,
+     "updates": 12,
+     "lines_used": 2182
+    },
+    {
+     "person": "p08",
+     "error_mm": 38.5,
+     "updates": 7,
+     "lines_used": 2198
+    },
+    {
+     "person": "p09",
+     "error_mm": 41.3,
+     "updates": 3,
+     "lines_used": 2059
+    },
+    {
+     "person": "p10",
+     "error_mm": 35.6,
+     "updates": 8,
+     "lines_used": 1736
+    },
+    {
+     "person": "p11",
+     "error_mm": 40.5,
+     "updates": 6,
+     "lines_used": 1663
+    },
+    {
+     "person": "p12",
+     "error_mm": 51.2,
+     "updates": 3,
+     "lines_used": 863
+    },
+    {
+     "person": "p13",
+     "error_mm": 47.0,
+     "updates": 5,
+     "lines_used": 998
+    },
+    {
+     "person": "p14",
+     "error_mm": 24.4,
+     "updates": 2,
+     "lines_used": 1025
+    }
+   ],
+   "people_better": 9,
+   "people_worse_by_2pct": [
+    "p07",
+    "p10",
+    "p11",
+    "p13"
+   ]
+  },
+  "clicks and lines, every line one line lower": {
+   "median_mm": 32.6,
+   "p90_mm": 71.3,
+   "people": [
+    {
+     "person": "p00",
+     "error_mm": 25.5,
+     "updates": 11,
+     "lines_used": 2332
+    },
+    {
+     "person": "p01",
+     "error_mm": 25.0,
+     "updates": 13,
+     "lines_used": 2376
+    },
+    {
+     "person": "p02",
+     "error_mm": 24.7,
+     "updates": 8,
+     "lines_used": 2409
+    },
+    {
+     "person": "p03",
+     "error_mm": 34.4,
+     "updates": 10,
+     "lines_used": 2340
+    },
+    {
+     "person": "p04",
+     "error_mm": 22.9,
+     "updates": 11,
+     "lines_used": 2217
+    },
+    {
+     "person": "p05",
+     "error_mm": 32.6,
+     "updates": 9,
+     "lines_used": 2303
+    },
+    {
+     "person": "p06",
+     "error_mm": 37.1,
+     "updates": 10,
+     "lines_used": 2305
+    },
+    {
+     "person": "p07",
+     "error_mm": 41.9,
+     "updates": 7,
+     "lines_used": 2222
+    },
+    {
+     "person": "p08",
+     "error_mm": 39.7,
+     "updates": 9,
+     "lines_used": 2223
+    },
+    {
+     "person": "p09",
+     "error_mm": 44.1,
+     "updates": 4,
+     "lines_used": 2049
+    },
+    {
+     "person": "p10",
+     "error_mm": 34.1,
+     "updates": 8,
+     "lines_used": 1719
+    },
+    {
+     "person": "p11",
+     "error_mm": 40.6,
+     "updates": 6,
+     "lines_used": 1663
+    },
+    {
+     "person": "p12",
+     "error_mm": 70.4,
+     "updates": 1,
+     "lines_used": 818
+    },
+    {
+     "person": "p13",
+     "error_mm": 48.9,
+     "updates": 3,
+     "lines_used": 980
+    },
+    {
+     "person": "p14",
+     "error_mm": 22.9,
+     "updates": 6,
+     "lines_used": 1007
+    }
+   ],
+   "people_better": 10,
+   "people_worse_by_2pct": [
+    "p05",
+    "p09",
+    "p11",
+    "p12",
+    "p13"
+   ]
+  }
+ }
+}

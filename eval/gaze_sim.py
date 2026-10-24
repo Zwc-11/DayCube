@@ -555,6 +555,10 @@ class Outcome:
     near_s: float = 0.0  # ... on the right block, within one line
     read: set[str] = field(default_factory=set)  # blocks really read for at least 1.5 s
     recorded: set[str] = field(default_factory=set)  # blocks with a record in reading.jsonl
+    # Reading-line labels for the tracker (capture/labels.py): each one's vertical distance from
+    # where the eyes really were (monitor px), and the reading time they came from.
+    label_errors: list[float] = field(default_factory=list)
+    label_line_px: float = 0.0  # the body text's line pitch on the monitor, to judge them by
 
 
 def run(scenario: Scenario, model: ErrorModel, seed: int, screen: Screen) -> Outcome:
@@ -634,6 +638,8 @@ def run(scenario: Scenario, model: ErrorModel, seed: int, screen: Screen) -> Out
     attention = attention_module.Attention(**{k: v for k, v in options.items() if k in accepted})
     fired: list[tuple[float, str, float]] = []
     recorded: set[str] = set()
+    label_errors: list[float] = []
+    eyes_at: dict[str, float] = {}  # fixation id -> where the eyes really were (monitor px, y), while reading
     fixation_s = on_target = reading_s = line_s = near_s = 0.0
     starts = [a for a, _, _, _ in script.looks]
     count = 0
@@ -660,6 +666,8 @@ def run(scenario: Scenario, model: ErrorModel, seed: int, screen: Screen) -> Out
                     on_target += f.end - f.start
                 i = bisect_right(starts, (f.start + f.end) / 2) - 1  # the look in the middle of the fixation
                 truth = script.truth[i] if 0 <= i < len(script.truth) else None
+                if truth is not None and script.looks[i][3] is not None:
+                    eyes_at[fix.id] = layout.screen.to_monitor(script.looks[i][2], script.looks[i][3])[1]
                 if truth is not None:
                     reading_s += f.end - f.start
                     on = hit is not None and getattr(hit, "line_block", getattr(hit, "block", None)) == truth[0]
@@ -668,6 +676,11 @@ def run(scenario: Scenario, model: ErrorModel, seed: int, screen: Screen) -> Out
                         line_s += (f.end - f.start) * (line == truth[1])
                         near_s += (f.end - f.start) * (abs(line - truth[1]) <= 1)
             out += attention.advance(_at(when) - timedelta(seconds=3))
+            for label in attention.labels.drain() if hasattr(attention, "labels") else []:
+                if label["id"] in eyes_at:  # a label from a look that was not reading is wrong by construction
+                    label_errors.append(abs(label["y"] * MONITOR[1] - eyes_at[label["id"]]))
+                else:
+                    label_errors.append(math.inf)
         for e in out:
             if e.get("kind") == "read":
                 recorded.add(e["block"])
@@ -684,7 +697,10 @@ def run(scenario: Scenario, model: ErrorModel, seed: int, screen: Screen) -> Out
         if truth is not None:
             per_block[truth[0]] = per_block.get(truth[0], 0.0) + b - a
     read = {block for block, seconds in per_block.items() if seconds >= 1.5}
-    return Outcome(fired, fixation_s, tracked, on_target, reading_s, line_s, near_s, read, recorded)
+    pitch = LINE_PX.get(layout.name, 20.0) * layout.screen.zoom * layout.screen.dip_scale
+    return Outcome(
+        fired, fixation_s, tracked, on_target, reading_s, line_s, near_s, read, recorded, label_errors, pitch
+    )
 
 
 def _range(start: float, stop: float, step: float) -> Iterator[float]:

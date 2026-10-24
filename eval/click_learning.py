@@ -37,14 +37,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "services/gaze"))
 
 from gaze.face import Face  # noqa: E402
 from gaze.head import Camera, GazeModel, HeadEstimator, Poser, Screen, pack  # noqa: E402
-from gaze.learn import Learner  # noqa: E402
+from gaze.learn import Learner, Settings  # noqa: E402
 
 CALIBRATION = 13
 LABEL_MM = 20.0  # mean distance of a click from where the eyes were (PACE, after filtering)
 USER_MM_PER_PX = 0.233  # 27", 2560 px
 BANDS = ((0, 100), (100, 300), (300, 1000), (1000, 10**9))
 WARMUP = 100
-GATE: float | None = None  # --gate-k: override gaze.learn.GATE_K
+GATE: float | None = None  # --gate-k: override gaze.learn.Settings.gate_k
 HEAD_TERMS = True  # --no-head-terms: learn the eye terms only
 
 
@@ -73,9 +73,8 @@ def person(path: Path, outliers: float, label_mm: float, seed: int) -> dict:
     heads = {int(i): poser.measure(Face(d["points"][i].astype(float), size)) for i in np.flatnonzero(found)}
     model = GazeModel(Screen.below_camera(monitor, float(d["screen_mm"][0]))).fit([heads[i] for i in cal], target[cal])
     static = GazeModel(model.screen, eyes=list(model.eyes))
-    learner = Learner(Estimator(model, monitor), monitor, None, None, head_terms=HEAD_TERMS)
-    if GATE is not None:
-        learner.gate_k = GATE
+    settings = Settings() if GATE is None else Settings(gate_k=GATE)
+    learner = Learner(Estimator(model, monitor), monitor, None, None, head_terms=HEAD_TERMS, settings=settings)
 
     rng = np.random.default_rng(seed)
     sigma = label_mm / mm_per_px / np.sqrt(np.pi / 2)  # a 2-D Gaussian with this mean distance

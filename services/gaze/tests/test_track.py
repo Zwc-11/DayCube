@@ -633,3 +633,55 @@ def test_clicks_and_the_frames_before_them_go_to_the_learner() -> None:
     computer.presses.append((10, 10))
     run_for(t, clock, 0.5)
     assert receiver.states[-1]["tracking"] is True
+
+
+def test_fixations_keep_their_look_and_read_lines_reach_the_learner() -> None:
+    """Each fixation sent is named to the learner (so its frames are kept), and the line labels the
+    receiver returns go to the learner in monitor pixels."""
+
+    class Learner:
+        def __init__(self) -> None:
+            self.looks: list = []
+            self.labels: list = []
+
+        def frame(self, *args: object) -> None:
+            pass
+
+        def click(self, *args: object) -> str:
+            return "used"
+
+        def fixation(self, fixation_id: str, t0: float, t1: float) -> None:
+            self.looks.append((fixation_id, t0, t1))
+
+        def line(self, fixation_id: str, y: float, x0: float, x1: float) -> str:
+            self.labels.append((fixation_id, y, x0, x1))
+            return "used"
+
+        def maybe_tune(self, now: float) -> bool:
+            return False
+
+        def state(self) -> dict:
+            return {}
+
+    @dataclass
+    class Named(Receiver):
+        lines: list = field(default_factory=list)
+
+        def add(self, fixation: object) -> str:
+            super().add(fixation)
+            return f"f{len(self.fixations)}"
+
+        def take_lines(self) -> list:
+            out, self.lines = self.lines, []
+            return out
+
+    learner = Learner()
+    scene, receiver, computer, clock, log = Scene(), Named(), Computer(), Clock(), []
+    t = Tracker(Estimator(), lambda: Camera(scene, log), receiver, CALIBRATION, system=computer, clock=clock,
+                sleep=clock.sleep, timer=clock, learner=learner)  # fmt: skip
+    run_for(t, clock, 2.0)
+    assert learner.looks and learner.looks[0][0] == "f1" and learner.looks[0][1] < learner.looks[0][2]
+    receiver.lines = [{"id": "f1", "y": 0.5, "x0": 0.25, "x1": 0.75}]
+    t.reported_at = -1e9
+    t._report(clock.now)
+    assert learner.labels == [("f1", 540.0, 480.0, 1440.0)]

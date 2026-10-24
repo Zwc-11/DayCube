@@ -110,3 +110,18 @@ def test_the_receiver_says_whether_to_draw_the_ring_and_how_to_correct_it(server
     assert receiver.send({"tracking": True}) == "ok" and receiver.ring and receiver.offset_grid is None
     answer["code"] = 409  # paused: hide it
     assert receiver.send({"tracking": True}) == "paused" and receiver.ring is False
+
+
+def test_line_labels_in_a_reply_are_kept_for_the_learner_and_bad_ones_dropped(server: tuple, tmp_path: Path) -> None:
+    url, calls, answer = server
+    (tmp_path / ".token").write_text("secret")
+    receiver = Receiver(url, tmp_path / ".token")
+    answer["body"] = {"lines": [
+        {"id": "a", "y": 0.4, "x0": 0.1, "x1": 0.6},
+        {"id": "b", "y": "x", "x0": 0.1, "x1": 0.6},  # malformed
+        {"id": "c", "y": 9.0, "x0": 0.1, "x1": 0.6},  # off any monitor
+        {"y": 0.4, "x0": 0.1, "x1": 0.6},  # no fixation named
+    ]}  # fmt: skip
+    assert receiver.send({"tracking": True}) == "ok"
+    assert receiver.take_lines() == [{"id": "a", "y": 0.4, "x0": 0.1, "x1": 0.6}]
+    assert receiver.take_lines() == []

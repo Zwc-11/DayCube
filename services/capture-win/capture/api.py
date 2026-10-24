@@ -430,9 +430,11 @@ class Receiver:
         live = time.time() - self.watched_at < LIVE_WATCH_S and not native
         with self.lock:
             grid = self.offset_grid(now.timestamp()) if self.ring else None
+            # Lines confirmed by reading order: labels for the tracker's learning (capture/labels.py).
+            read = self.attention.labels.drain()
         return {
             "accepted": accepted, "duplicates": duplicates, "stale": stale, "live": live,
-            "ring": self.ring and not self.paused, "offset_grid": grid,
+            "ring": self.ring and not self.paused, "offset_grid": grid, "lines": read,
         }  # fmt: skip
 
     def live_point(self, point: LivePoint) -> None:
