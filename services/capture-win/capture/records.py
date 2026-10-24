@@ -189,6 +189,9 @@ class GazeState(Strict):
     model: str | None = Field(default=None, max_length=40)  # "head" (follows head movement) or an EyeTrax model
     head_moved_mm: float | None = Field(default=None, ge=0)  # head position against calibration, last 10 s
     head_turned_deg: float | None = Field(default=None, ge=0, le=180)
+    # Median ms per frame by stage over the last 10 s: camera_wait, landmarks, model, tracking,
+    # network, frame (all processing), live_post (a live point's round trip, on its own thread).
+    timing_ms: dict[str, Annotated[float, Field(ge=0)]] | None = Field(default=None, max_length=12)
 
 
 class LivePoint(Strict):

@@ -20,6 +20,7 @@ from __future__ import annotations
 import contextlib
 import logging
 import math
+import threading
 import time
 from collections import deque
 from collections.abc import Callable
@@ -41,7 +42,8 @@ CONFIRM_S = 5.0  # the camera stays on only this long after the receiver last sa
 CHECK_EVERY_S = 2.0
 REPORT_EVERY_S = 1.0
 PROMPT_REPORT_S = 0.25  # a completed fixation goes out this soon after the last report, not a second later
-LIVE_EVERY_S = 0.09  # live gaze points while the receiver asks for them: every third frame at 30 fps
+LIVE_EVERY_S = 0.025  # live gaze points while the receiver asks for them: every frame at 30 fps
+STAGES = ("camera_wait", "landmarks", "model", "tracking", "network")
 DEFAULT_FPS = 30.0
 
 
@@ -53,6 +55,49 @@ class Camera(Protocol):
 class Estimator(Protocol):
     def extract_features(self, frame: Any) -> tuple[Any, bool]: ...
     def predict(self, features: Any) -> Any: ...
+
+
+class LatestFrame:
+    """The camera read on its own thread, keeping only the newest frame.
+
+    ``read`` returns the newest frame not yet returned, waiting for one if needed, so frames do
+    not queue up in the driver's buffer while a frame is processed (each queued frame is another
+    33 ms between the eyes moving and the gaze following), and the next frame is captured while
+    this one is processed. A camera that stops delivering makes ``read`` fail as it did before."""
+
+    def __init__(self, camera: Camera, timeout: float = 1.0) -> None:
+        self.camera, self.timeout = camera, timeout
+        self._ready = threading.Condition()
+        self._frame: Any = None
+        self._ok = True
+        self._made = self._taken = 0
+        self._stop = False
+        self._thread = threading.Thread(target=self._read_forever, name="camera", daemon=True)
+        self._thread.start()
+
+    def _read_forever(self) -> None:
+        while not self._stop:
+            ok, frame = self.camera.read()
+            with self._ready:
+                self._ok = ok
+                if ok:
+                    self._frame, self._made = frame, self._made + 1
+                self._ready.notify_all()
+            if not ok:
+                time.sleep(0.02)
+
+    def read(self) -> tuple[bool, Any]:
+        with self._ready:
+            self._ready.wait_for(lambda: self._made > self._taken or not self._ok or self._stop, self.timeout)
+            if self._made > self._taken:
+                self._taken = self._made
+                return True, self._frame
+            return False, None
+
+    def release(self) -> None:
+        self._stop = True
+        self._thread.join(timeout=2.0)
+        self.camera.release()
 
 
 class Tracker:
@@ -104,6 +149,7 @@ class Tracker:
         self.samples: deque[float] = deque()  # gaze samples given to the detector over the last 30 s
         self.fixated: deque[tuple[float, int]] = deque()  # (time, samples) of fixations over the last 30 s
         self.heads: deque[tuple[float, float, float]] = deque()  # (time, mm, degrees) from calibration, 10 s
+        self.timing: deque[tuple[float, ...]] = deque()  # (time, ms per stage...) of frames with a face, 10 s
 
     # -- state -------------------------------------------------------------------------------------
 
@@ -128,7 +174,21 @@ class Tracker:
             # Where the head is against where it was while calibrating (head-aware model only).
             "head_moved_mm": round(float(np.median([m for _, m, _ in self.heads])), 0) if self.heads else None,
             "head_turned_deg": round(float(np.median([d for _, _, d in self.heads])), 1) if self.heads else None,
+            "timing_ms": self._timing(),
         }
+
+    def _timing(self) -> dict | None:
+        """Median milliseconds per frame in each stage over the last 10 s, the frame's processing
+        in all (camera wait excluded), and a live point's round trip on its own thread."""
+        if not self.timing:
+            return None
+        rows = np.array([row[1:] for row in self.timing])
+        out = {name: round(float(np.median(rows[:, i])), 2) for i, name in enumerate(STAGES)}
+        out["frame"] = round(float(np.median(rows[:, 1:].sum(1))), 2)
+        live = getattr(self.receiver, "live_ms", None)
+        if live:
+            out["live_post"] = round(float(np.median(list(live))), 2)
+        return out
 
     def _open(self) -> int:
         """Samples in the fixation still under way, once it is long enough to count."""
@@ -177,6 +237,7 @@ class Tracker:
         self.samples.clear()
         self.fixated.clear()
         self.heads.clear()
+        self.timing.clear()
         self._prediction_input = None
 
     def _report(self, now: float) -> None:
@@ -231,7 +292,9 @@ class Tracker:
                 log.warning("camera unavailable: %s", error)
                 self.problem, self.retry_at = "camera unavailable", now + 10
                 return
+        waited = self.timer()
         ok, frame = self.camera.read()
+        read = self.timer()
         if not ok:
             self.failures += 1
             if self.failures >= 30:  # unplugged, or lost across sleep: reopen
@@ -242,6 +305,7 @@ class Tracker:
             return
         self.failures = 0
         features, blink = self.estimator.extract_features(frame)
+        extracted = self.timer()
         face = features is not None
         self.frames.append((started, face))
         while self.frames and started - self.frames[0][0] > 10:
@@ -254,6 +318,7 @@ class Tracker:
                 self.heads.append((started, *where))
                 while started - self.heads[0][0] > 10:
                     self.heads.popleft()
+        predicted = tracked = extracted
         if face and not blink:
             # EyeTrax already returns an ndarray: asarray is a view, and the caller-owned
             # prediction row is reused until shape/dtype changes or tracking releases it.
@@ -266,12 +331,34 @@ class Tracker:
                 self._prediction_input = np.empty((1, values.size), dtype=values.dtype)
             self._prediction_input[0] = values
             x, y = (float(v) for v in self.estimator.predict(self._prediction_input)[0])
+            predicted = self.timer()
             # A gaze ray that never meets the screen's plane (a bad frame's landmarks) is nan,
             # which must not reach the smoother: its state would stay nan.
             if math.isfinite(x) and math.isfinite(y):
                 self._gaze(now, x, y)
+            tracked = self.timer()
         self._report(now)
+        if face:
+            self._time(started, waited, read, extracted, predicted, tracked, self.timer())
         self.sleep(max(0.0, self.period - (self.timer() - started)))
+
+    def _time(self, started: float, *marks: float) -> None:
+        waited, read, extracted, predicted, tracked, reported = marks
+        split = getattr(self.estimator, "timing", None)  # (landmarks, model) ms, when the estimator measures it
+        landmarks, model = split if split else ((extracted - read) * 1000, 0.0)
+        model += (predicted - extracted) * 1000
+        self.timing.append(
+            (
+                started,
+                (read - waited) * 1000,
+                landmarks,
+                model,
+                (tracked - predicted) * 1000,
+                (reported - tracked) * 1000,
+            )
+        )
+        while started - self.timing[0][0] > 10:
+            self.timing.popleft()
 
     def _gaze(self, now: float, x: float, y: float) -> None:
         x, y = self.smoother(now, x, y)

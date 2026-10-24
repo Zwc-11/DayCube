@@ -292,12 +292,19 @@ def test_the_doctor_judges_capture_from_what_it_recorded(vault: Vault, monkeypat
         "paused": False, "browser": {"last": (now - timedelta(minutes=2)).isoformat()},
         "gaze": {"tracking": True, "fps": 29.4, "target_fps": 30.0, "face": 1.0, "coverage": 0.88, "noise_px": 24.0,
                  "error_px": 69.1, "monitor": [2560, 1440], "model": "head", "head_moved_mm": 64.0,
-                 "head_turned_deg": 8.2},
+                 "head_turned_deg": 8.2,
+                 "timing_ms": {"camera_wait": 15.0, "landmarks": 12.4, "model": 0.3, "tracking": 0.05,
+                               "network": 0.1, "frame": 12.9, "live_post": 0.6}},
         "accuracy": {"clicks": 7, "rejected": 0, "live_error_px": 120.0, "corrected_error_px": 58.0},
         "reading": None,
     }  # fmt: skip
     monkeypatch.setattr(doctor.sys, "platform", "linux")
     results = {name: (verdict, detail) for verdict, name, detail in doctor.checks(status, vault.root, zone, now, None)}
+    assert results["frame time"] == (
+        doctor.PASS,
+        "12.9 ms of 33: face landmarks 12.4, gaze model 0.3, fixations 0.1, network 0.1, "
+        "live point 0.6 on its own thread",
+    )
     assert results["gaze model"] == (
         doctor.PASS,
         "head-aware: follows head movement; head now 6 cm and 8 degrees from where it was at calibration",

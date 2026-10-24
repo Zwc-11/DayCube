@@ -69,8 +69,30 @@ def test_the_live_point_streams_only_when_the_receiver_asks(server: tuple, tmp_p
     answer["body"] = {"accepted": 0, "live": True}
     assert receiver.send({"tracking": True}) == "ok" and receiver.live is True
     receiver.send_live(1_800_000_000.0, 0.25, 0.75)
+    assert receiver.flush()
     assert calls[-1] == {"path": "/gaze/live", "auth": "Bearer secret",
                          "body": {"t": "2027-01-15T08:00:00+00:00", "x": 0.25, "y": 0.75}}  # fmt: skip
     answer["code"] = 404  # an older receiver without the endpoint
     receiver.send_live(1_800_000_000.1, 0.25, 0.75)
+    assert receiver.flush()
     assert receiver.live is False
+
+
+def test_live_points_never_wait_and_the_newest_wins(server: tuple, tmp_path: Path) -> None:
+    """A burst of points while one is in flight: send_live returns at once, and the point that
+    goes out next is the newest, not a backlog."""
+    import time
+
+    url, calls, answer = server
+    (tmp_path / ".token").write_text("secret")
+    receiver = Receiver(url, tmp_path / ".token")
+    answer["body"] = {"live": True}
+    assert receiver.send({"tracking": True}) == "ok"
+    started = time.perf_counter()
+    for i in range(200):
+        receiver.send_live(1_800_000_000.0 + i / 30, i / 1000, 0.5)
+    assert time.perf_counter() - started < 0.05  # 200 calls, no network wait
+    assert receiver.flush()
+    live = [c for c in calls if c["path"] == "/gaze/live"]
+    assert live[-1]["body"]["x"] == 0.199 and len(live) < 200
+    assert len(receiver.live_ms) == len(live)
