@@ -371,7 +371,15 @@ def checks(status: dict | None, vault: Path, zone: ZoneInfo, now: datetime, auto
     accuracy = status.get("accuracy") or {}
     clicks, corrected = accuracy.get("clicks", 0), accuracy.get("corrected_error_px")
     if clicks < 5 or corrected is None:
-        out.append((INFO, "live accuracy", f"{clicks} of 5 clicks needed: browse and click links as usual"))
+        learned = (gaze.get("learning") or {}).get("version")
+        if learned:  # the page-click offsets start over at each model learned from clicks
+            out.append((
+                INFO,
+                "live accuracy",
+                f"{clicks} of 5 page clicks since the last learned update; the learning line has the accuracy",
+            ))  # fmt: skip
+        else:
+            out.append((INFO, "live accuracy", f"{clicks} of 5 clicks needed: browse and click links as usual"))
     else:
         raw = accuracy.get("live_error_px")
         verdict = PASS if corrected <= limit else WARN if corrected <= 1.5 * limit else FAIL

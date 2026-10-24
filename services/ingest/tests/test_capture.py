@@ -622,6 +622,12 @@ def test_a_model_learned_from_clicks_restarts_the_click_offsets_and_doctor_repor
         "from clicks: update 3 at 17:40 UTC; on clicks it had not seen, 168.0 px with the calibration alone, "
         "121.0 px now; 260 clicks since calibration, 46 made without looking at the spot"
     )
+    checks = doctor.checks(
+        {"paused": False, "code": doctor.code_stamp(), "gaze": {"tracking": True, "learning": learning}},
+        Path("/nonexistent"), __import__("zoneinfo").ZoneInfo("UTC"), datetime.now(UTC), None,
+    )  # fmt: skip
+    live = next(detail for _, name, detail in checks if name == "live accuracy")
+    assert live == "0 of 5 page clicks since the last learned update; the learning line has the accuracy"
     first = {"version": 0, "clicks": 12, "skipped": {}, "fit": None}
     assert doctor._learning({"tracking": True, "learning": first})[0][0] == doctor.INFO
     assert doctor._learning({"tracking": False, "learning": first}) == []
