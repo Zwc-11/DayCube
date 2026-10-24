@@ -12,15 +12,17 @@ the older ridge models) pins numpy<2.
 ```powershell
 uv sync --project services/gaze
 uv run --project services/gaze python -m gaze check       # frame rate and face detection
-uv run --project services/gaze python -m gaze calibrate   # 9 + 4 held-out targets, ~30 s
+uv run --project services/gaze python -m gaze calibrate   # 9 + 4 held-out dots, 4 more after moving the head, ~45 s
 uv run --project services/gaze python -m gaze track       # normally started by the receiver
 ```
 
-Calibration writes `vault/calibration/gaze.json` and `gaze-head.json`; tracking refuses a median
-held-out error above 120 px at 1920 px wide (scaled to the screen width; 160 px at 2560). Keep the
-head still while calibrating; afterwards it may move. `--model ridge` (or another EyeTrax model)
-calibrates the old way, which is right only while the head stays where it was; a calibration made
-before the head-aware model keeps working until you recalibrate, and `capture doctor` says so.
+Calibration writes `vault/calibration/gaze.json`, the model (`gaze-head.json`, or EyeTrax's
+`gaze-model.pkl`) and `gaze-frames.npz` (every frame's landmarks, no images). It fits three
+models on the nine training dots, scores them on the held-out dots with the head still and moved
+(after the tracker's smoother), prints the scores, and keeps the best: the head-aware model on
+image-mode or video-mode MediaPipe landmarks, or EyeTrax's ridge (`--model` forces one). Tracking
+refuses a median still-head error above 120 px at 1920 px wide (scaled to the screen width; 160
+px at 2560).
 
 Why and how well: on MPIIFaceGaze (15 people, their own laptops, over weeks), calibrated on one
 sitting and tested on the other days, median error is 43 mm on screen against EyeTrax's 78 mm,

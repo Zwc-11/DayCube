@@ -96,8 +96,8 @@ def checks(status: dict | None, vault: Path, zone: ZoneInfo, now: datetime, auto
         out.append((
             WARN,
             "gaze model",
-            f"EyeTrax {model}: off as soon as the head moves. Recalibrate "
-            "(uv run --project services/gaze python -m gaze calibrate) for the head-aware model",
+            f"EyeTrax {model}: does not follow head movement. Calibrating "
+            "(uv run --project services/gaze python -m gaze calibrate) compares it with the head-aware model",
         ))  # fmt: skip
 
     monitor = gaze.get("monitor")
