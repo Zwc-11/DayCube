@@ -13,7 +13,7 @@ import pytest
 pytest.importorskip("cv2")
 
 from gaze.head import GazeModel, HeadEstimator, Poser, pack  # noqa: E402
-from gaze.learn import CLICKS_FILE, LEARNED_FILE, Learner, steady  # noqa: E402
+from gaze.learn import CLICKS_FILE, HISTORY_FILE, LEARNED_FILE, Learner, steady  # noqa: E402
 from test_head import CAMERA, GRID, HOME, MOVED, SCREEN, face  # noqa: E402
 
 MONITOR = (1920, 1080)
@@ -185,3 +185,66 @@ def test_head_terms_learn_an_error_that_follows_where_the_head_is() -> None:
         results[head_terms] = error(est, test)
     before = error(calibrated(), test)
     assert results[False] < before and results[True] < 0.8 * results[False], (before, results)
+
+
+def test_live_accuracy_is_measured_on_clicks_no_model_had_seen(tmp_path: Path) -> None:
+    """Each click is predicted before anything learns from it, by the model in use and by the
+    calibration alone: after an update, the clicks that follow show the learned model beating the
+    calibration on the same clicks, which neither had learned from."""
+    est = estimator()
+    learner = Learner(est, MONITOR, tmp_path, CALIBRATED)
+    for k, (x, y, vector, _) in enumerate(clicks(200, seed=5)):
+        learner.add(1_800_000_000.0 + 2 * k, x, y, vector)
+    assert learner.version >= 1
+    live = learner.state()["live"]
+    assert live["clicks"] == 200
+    first, last = live["by_version"][0], live["by_version"][-1]
+    assert first["version"] == 0 and first["error_px"] == first["calibration_px"]  # the same model
+    assert 1 <= last["version"] <= learner.version and last["error_px"] < 0.6 * last["calibration_px"], live
+    assert live["ratio"] < 0.6
+    rows = [json.loads(line) for line in (tmp_path / CLICKS_FILE).read_text().splitlines()]
+    assert {r["v"] for r in rows} == {v["version"] for v in live["by_version"]}
+    assert all(r["used"] in (True, False) and r["base_px"] is not None for r in rows)
+    history = [json.loads(line) for line in (tmp_path / HISTORY_FILE).read_text().splitlines()]
+    fits = [h for h in history if h["event"] == "fit"]
+    assert sum(h["accepted"] for h in fits) == learner.version
+    assert all({"held_out", "error_px", "version", "head_terms", "t"} <= set(h) for h in fits)
+
+
+def test_the_tracker_records_the_first_frame_an_update_reaches(tmp_path: Path) -> None:
+    """An update is swapped into the model the tracker predicts with: the very next frame uses
+    the new weights, and the tracker logs that frame as the update applied."""
+    from gaze.track import Tracker
+    from test_track import CALIBRATION, Camera, Clock, Computer, Receiver, Scene
+
+    est = estimator()
+    learner = Learner(est, MONITOR, tmp_path, CALIBRATED)
+    vector = pack(Poser(CAMERA).measure(face((700, 400), *HOME)))
+    seen: list[np.ndarray] = []
+
+    class Head:
+        model = est.model
+
+        def extract_features(self, frame: object) -> tuple[np.ndarray, bool]:
+            return vector, False
+
+        def predict(self, X: np.ndarray) -> np.ndarray:
+            seen.append(out := est.predict(X))
+            return out
+
+    clock, scene, log = Clock(), Scene(), []
+    tracker = Tracker(Head(), lambda: Camera(scene, log), Receiver(), CALIBRATION | {"monitor": list(MONITOR)},
+                      system=Computer(), clock=clock, sleep=clock.sleep, timer=clock, learner=learner)  # fmt: skip
+    while not seen:
+        tracker.step()
+    for k, (x, y, v, _) in enumerate(clicks(120, seed=3)):
+        learner.add(1_800_000_000.0 + 2 * k, x, y, v)
+    assert learner.version >= 1 and learner.applied is None
+    frames = len(seen)
+    tracker.step()
+    assert len(seen) == frames + 1 and not np.allclose(seen[-1], seen[-2])  # the next frame: new weights
+    assert learner.applied is not None and learner.applied["version"] == learner.version
+    assert learner.applied["after_ms"] is not None
+    assert tracker.state()["learning"]["applied"]["version"] == learner.version
+    events = [json.loads(line)["event"] for line in (tmp_path / HISTORY_FILE).read_text().splitlines()]
+    assert events[-1] == "applied" and "fit" in events

@@ -267,6 +267,20 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
 
         return report(store)
 
+    @app.get("/gaze/learning")
+    def gaze_learning(request: Request) -> Response:
+        """The eye tracker's learning from clicks for the current calibration: every click's live
+        error (the model in use and the calibration alone, on clicks neither had learned from), each
+        fit with its held-out errors, and when each update reached the tracker's frames. Tagged: a
+        client holding the current copy gets an empty 304."""
+        from .gaze_learning import tagged
+
+        body, etag = tagged(store.vault.root)
+        headers = {"ETag": etag, "Cache-Control": "no-cache"}
+        if etag in (tag.strip().removeprefix("W/") for tag in request.headers.get("if-none-match", "").split(",")):
+            return Response(status_code=304, headers=headers)
+        return Response(body, media_type="application/json", headers=headers)
+
     @app.post("/notes/{date}", dependencies=[Depends(authorize)])
     def write_notes(date: str) -> Record:
         """Write (or refresh) the linked notes of a day in vault/notes; the person's edits stay."""

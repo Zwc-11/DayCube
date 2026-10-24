@@ -631,3 +631,23 @@ def test_a_model_learned_from_clicks_restarts_the_click_offsets_and_doctor_repor
     first = {"version": 0, "clicks": 12, "skipped": {}, "fit": None}
     assert doctor._learning({"tracking": True, "learning": first})[0][0] == doctor.INFO
     assert doctor._learning({"tracking": False, "learning": first}) == []
+
+
+def test_doctor_shows_when_an_update_reached_the_gaze_and_the_live_loss_ratio() -> None:
+    from capture import doctor
+
+    learning = {
+        "version": 4, "clicks": 320, "skipped": {}, "updated": "2026-10-24T18:02:00+00:00", "head_terms": True,
+        "fit": {"accepted": True, "error_px": {"calibration": 160.0, "in_use": 131.0, "learned": 118.0}},
+        "applied": {"version": 4, "t": "2026-10-24T18:02:00.040000+00:00", "after_ms": 38.2},
+        "live": {"clicks": 300, "error_px": 121.0, "calibration_px": 158.0, "ratio": 0.766, "by_version": []},
+    }  # fmt: skip
+    rows = {name: (verdict, detail) for verdict, name, detail in doctor._learning({"tracking": True, "learning": learning})}
+    assert rows["learning applied"] == (doctor.PASS, "update 4 reached the gaze 38 ms after it was fitted (every frame since uses it)")
+    assert rows["loss ratio"] == (doctor.PASS, (
+        "last 300 clicks, each measured before learning from it: 121.0 px against 158.0 px for the calibration "
+        "alone (ratio 0.77, 23% less error)"
+    ))  # fmt: skip
+    pending = dict(learning, applied={"version": 3, "t": "2026-10-24T17:40:00+00:00", "after_ms": 30.0})
+    rows = {name: verdict for verdict, name, _ in doctor._learning({"tracking": True, "learning": pending})}
+    assert rows["learning applied"] == doctor.WARN

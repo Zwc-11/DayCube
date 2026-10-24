@@ -31,6 +31,7 @@ import numpy as np
 
 from .fixations import FixationDetector, Smoother
 from .receiver import Receiver, corrected
+from .stabilize import Stabilizer
 from .system import System
 
 log = logging.getLogger("gaze")
@@ -223,7 +224,8 @@ class Tracker:
         self.told_recalibrated = False
         self.clock, self.sleep = clock, sleep
         self.detector = FixationDetector(self.width, self.height)
-        self.smoother = Smoother()
+        self.smoother = Smoother()  # the gaze fixations are made of
+        self.stabilizer = Stabilizer(self.width)  # the gaze the ring and live points show
         self.camera: Camera | None = None
         self.hold: str | None = None  # why the camera is off on purpose
         self.problem: str | None = None  # why it is off against our wishes
@@ -248,6 +250,7 @@ class Tracker:
         self.overlay: Any = None
         # Learning from clicks (gaze.learn): the frames before each click, and the click.
         self.learner = learner
+        self._model_version = getattr(getattr(estimator, "model", None), "version", None)
 
     # -- state -------------------------------------------------------------------------------------
 
@@ -299,6 +302,19 @@ class Tracker:
             log.exception("learning from a click failed")
             return
         log.debug("click at %s: %s", point, outcome)
+
+    def _applied(self, now: float) -> None:
+        """Tell the learner when a frame first predicts with an update it made (on another thread):
+        the record that the update reached the gaze, and how long after it was fitted."""
+        version = getattr(getattr(self.estimator, "model", None), "version", None)
+        if version == self._model_version:
+            return
+        self._model_version = version
+        if self.learner is not None and version:
+            try:
+                self.learner.started(version, now)
+            except Exception:  # noqa: BLE001 - learning must never stop tracking
+                log.exception("recording a learned update failed")
 
     def _timing(self) -> dict | None:
         """Median milliseconds per frame in each stage over the last 10 s, the frame's processing
@@ -383,6 +399,7 @@ class Tracker:
         for fixation in self.detector.flush():
             self.receiver.add(fixation)
         self.smoother.reset()
+        self.stabilizer.reset()
         self.frames.clear()
         self.samples.clear()
         self.fixated.clear()
@@ -482,8 +499,10 @@ class Tracker:
             if self._blink_started is not None:
                 if started - self._blink_started <= BLINK_HOLD_S:
                     self.smoother.resume(now, self.period)
+                    self.stabilizer.resume(now, self.period)
                 else:
                     self.smoother.reset()
+                    self.stabilizer.reset()
                 self._blink_started = None
             # EyeTrax already returns an ndarray: asarray is a view, and the caller-owned
             # prediction row is reused until shape/dtype changes or tracking releases it.
@@ -497,6 +516,7 @@ class Tracker:
             self._prediction_input[0] = values
             x, y = (float(v) for v in self.estimator.predict(self._prediction_input)[0])
             predicted = self.timer()
+            self._applied(now)
             # A gaze ray that never meets the screen's plane (a bad frame's landmarks) is nan,
             # which must not reach the smoother: its state would stay nan.
             if math.isfinite(x) and math.isfinite(y):
@@ -532,15 +552,21 @@ class Tracker:
         previous = self.smoother.x.t
         if previous is not None and now - previous > self.detector.max_gap:
             self.smoother.reset()  # a lost face/ray breaks continuity just as it does for fixations
+            self.stabilizer.reset()
+        # Two filters of the same gaze: the ring (and the live point) must be still while the eyes
+        # rest and jump with them (gaze.stabilize); fixations are found in the One Euro output,
+        # which the detector's thresholds were measured on.
+        sx, sy = self.stabilizer(now, x, y)
+        sx, sy = sx / self.width, sy / self.height
         x, y = self.smoother(now, x, y)
         fx, fy = x / self.width, y / self.height
         ring = self._ring()
         if ring is not None:  # in memory, every frame; off the monitor it waits at the edge
-            ring.push(*corrected(getattr(self.receiver, "offset_grid", None), fx, fy))
+            ring.push(*corrected(getattr(self.receiver, "offset_grid", None), sx, sy))
         if -0.05 <= fx <= 1.05 and -0.05 <= fy <= 1.05:  # off-screen samples end the fixation
             if getattr(self.receiver, "live", False) and now - self.live_at >= LIVE_EVERY_S:
                 self.live_at = now
-                self.receiver.send_live(now, fx, fy)
+                self.receiver.send_live(now, sx, sy)
             self.samples.append(now)
             while now - self.samples[0] > 30:
                 self.samples.popleft()

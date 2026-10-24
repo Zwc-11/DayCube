@@ -34,10 +34,18 @@ the eyes, a model learns to point at the middle of the screen, which can beat a 
 labels but never beats the fixed guess. A run of bad clicks therefore cannot make tracking worse;
 at worst nothing changes.
 
+Proof that it works, live: every click is predicted before anything learns from it, so its error
+at that moment is an honest test of the model in use. Each click is stored with that error, the
+error the calibration alone would have made on it (``base_px``), and the model version in use, so
+the eye-tracking dashboard shows, on clicks no model had seen, whether learning beats the
+calibration and by how much (their ratio). Each update is logged when it is fitted and again when
+the tracker first predicts a frame with it (``applied``), normally one frame later.
+
 Stored: ``vault/calibration/clicks.jsonl`` (time, clicked pixel, the frame's head pose and eye
-measurements as numbers, the error at that moment) and ``gaze-learned.json`` (the learned
-weights, for this calibration only). No images, nothing about what was clicked. A new calibration
-starts over: clicks from before it are not used.
+measurements as numbers, the errors at that moment, the model version), ``learning.jsonl`` (each
+fit: the held-out errors, whether it was taken; each update's first frame) and
+``gaze-learned.json`` (the learned weights, for this calibration only). No images, nothing about
+what was clicked. A new calibration starts over: clicks from before it are not used.
 """
 
 from __future__ import annotations
@@ -46,6 +54,7 @@ import json
 import logging
 import math
 import threading
+import time
 from collections import deque
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -79,6 +88,8 @@ POSE_PENALTY = 1.0  # the head terms' ridge penalty, relative to the eye terms' 
 BUFFER_S = 1.0
 CLICKS_FILE = "clicks.jsonl"
 LEARNED_FILE = "gaze-learned.json"
+HISTORY_FILE = "learning.jsonl"
+LIVE_CLICKS = 300  # clicks the live accuracy by model version is measured on
 
 
 @dataclass
@@ -87,16 +98,21 @@ class Click:
     x: float  # monitor pixels
     y: float
     X: np.ndarray  # the steady look's mean frame vector (gaze.head.pack)
-    error_px: float  # the model's error on it when it was clicked
+    error_px: float  # the model in use's error on it when it was clicked, before learning from it
+    base_px: float = math.nan  # the calibration alone's error on it
+    version: int = 0  # the model version in use (0: the calibration)
+    used: bool | None = None  # whether it was within the gate when clicked (None: not recorded)
 
     def to_json(self) -> dict:
         return {"t": round(self.t, 3), "x": self.x, "y": self.y, "X": [round(float(v), 6) for v in self.X],
-                "error_px": round(self.error_px, 1)}  # fmt: skip
+                "error_px": _round(self.error_px), "base_px": _round(self.base_px), "v": self.version,
+                "used": self.used}  # fmt: skip
 
     @classmethod
     def from_json(cls, data: dict) -> Click:
         return cls(float(data["t"]), float(data["x"]), float(data["y"]), np.asarray(data["X"], dtype=float),
-                   float(data.get("error_px", math.nan)))  # fmt: skip
+                   _number(data.get("error_px")), _number(data.get("base_px")), int(data.get("v") or 0),
+                   data.get("used"))  # fmt: skip
 
 
 def steady(frames: list[tuple[float, np.ndarray, float, float]], width: float) -> list[int] | None:
@@ -153,6 +169,8 @@ class Learner:
         self.version = 0
         self.fit: dict | None = None  # the last fit's numbers, for state()
         self.updated: str | None = None
+        self.updated_at: float | None = None  # wall clock of the last update (epoch seconds)
+        self.applied: dict | None = None  # the update the tracker's frames last started using
         self.learned_until = -math.inf  # the newest click the model in use learned from
         # In the tracker a fit runs on its own thread (tenths of a second with thousands of clicks),
         # so frames never wait for it; ``_lock`` guards the clicks it reads.
@@ -184,19 +202,22 @@ class Learner:
 
     def add(self, t: float, x: float, y: float, vector: np.ndarray) -> str:
         """A click at (x, y) with the look that preceded it: "used", or "not looking"."""
-        predicted = self.estimator.predict(np.asarray(vector, dtype=float)[None, :])[0]
+        vector = np.asarray(vector, dtype=float)
+        version = self.version  # an update landing on the worker thread just now counts from the next click
+        predicted = self.estimator.predict(vector[None, :])[0]
         error = float(np.hypot(predicted[0] - x, predicted[1] - y))
-        click = Click(
-            t, float(x), float(y), np.asarray(vector, dtype=float), error if math.isfinite(error) else math.inf
-        )
+        click = Click(t, float(x), float(y), vector, error if math.isfinite(error) else math.inf, version=version)
+        # What the calibration alone would have made of it: the baseline learning is judged against.
+        click.base_px = click.error_px if version == 0 else float(self.errors([click], self.prior)[0])
         with self._lock:
             self.clicks.append(click)
             if len(self.clicks) > MAX_CLICKS:
                 del self.clicks[: len(self.clicks) - MAX_CLICKS]
-        self._save_click(click)
         if len(self.clicks) % 20 == 0 and not self.busy():
             self._gate()
-        if not click.error_px <= self.radius:
+        click.used = click.error_px <= self.radius
+        self._save_click(click)
+        if not click.used:
             self.skipped["not looking"] += 1
             return "not looking"
         self.since_fit += 1
@@ -336,13 +357,29 @@ class Learner:
         }  # fmt: skip
         if accepted:
             eyes = self.solve(clicks, best, now)
-            self.estimator.model.pose_ref = self.pose_ref  # set once, before any weights that use it
-            self.estimator.model.eyes = eyes
+            model = self.estimator.model
+            model.pose_ref = self.pose_ref  # set once, before any weights that use it
+            model.eyes = eyes  # one reference: the next frame predicts with all of the new weights
             self.learned_until = clicks[-1].t
             self.version += 1
+            model.version = self.version
             self.updated = datetime.fromtimestamp(now, UTC).isoformat()
+            self.updated_at = time.time()
             self._save_model()
+        self.fit["version"] = self.version
+        self.fit["head_terms"] = self.head_terms and len(clicks) >= POSE_MIN_CLICKS
+        self._history({"event": "fit", "t": datetime.fromtimestamp(now, UTC).isoformat(), "held_out": len(test),
+                       **self.fit})  # fmt: skip
         return self.fit
+
+    def started(self, version: int, t: float) -> None:
+        """The tracker's first frame predicted with model ``version`` at ``t`` (epoch seconds)."""
+        after = None if self.updated_at is None or version != self.version else (t - self.updated_at) * 1000
+        self.applied = {
+            "version": version, "t": datetime.fromtimestamp(t, UTC).isoformat(),
+            "after_ms": None if after is None else round(max(after, 0.0), 1),
+        }  # fmt: skip
+        self._history({"event": "applied", **self.applied})
 
     # -- reporting and files ---------------------------------------------------------------------------
 
@@ -357,8 +394,10 @@ class Learner:
             "clicks": len(clicks),
             "skipped": dict(self.skipped),
             "recent_error_px": round(float(np.median(recent)), 1) if recent else None,
+            "live": live(clicks[-LIVE_CLICKS:]),
             "fit": self.fit,
             "updated": self.updated,
+            "applied": self.applied,
         }
 
     def _save_click(self, click: Click) -> None:
@@ -367,6 +406,15 @@ class Learner:
         try:
             with (self.folder / CLICKS_FILE).open("a", encoding="utf-8") as out:
                 out.write(json.dumps(click.to_json()) + "\n")
+        except OSError:
+            pass
+
+    def _history(self, event: dict) -> None:
+        if self.folder is None:
+            return
+        try:
+            with (self.folder / HISTORY_FILE).open("a", encoding="utf-8") as out:
+                out.write(json.dumps(event) + "\n")
         except OSError:
             pass
 
@@ -423,11 +471,42 @@ class Learner:
             self.estimator.model.pose_ref = self.pose_ref
         self.estimator.model.eyes = eyes
         self.version, self.updated, self.fit = int(data.get("version", 1)), data.get("t"), data.get("fit")
+        self.estimator.model.version = self.version
         self.learned_until = float(data.get("learned_until", -math.inf))
 
     def clicks_shape(self) -> tuple[int]:
         mean = self.prior[0][0]
         return (18 + 2 * len(mean),)
+
+
+def live(clicks: list[Click]) -> dict | None:
+    """Live accuracy on clicks the model in use had not learned from: the median error of the
+    model in use and of the calibration alone on the same clicks, their ratio (under 1: learning
+    helps), and the median error by model version."""
+    rows = [
+        (c.error_px, c.base_px, c.version) for c in clicks if math.isfinite(c.error_px) and math.isfinite(c.base_px)
+    ]
+    if not rows:
+        return None
+    errors = np.array([r[:2] for r in rows])
+    model, base = (float(v) for v in np.median(errors, axis=0))
+    versions = np.array([r[2] for r in rows])
+    return {
+        "clicks": len(rows), "error_px": round(model, 1), "calibration_px": round(base, 1),
+        "ratio": round(model / base, 3) if base > 0 else None,
+        "by_version": [{"version": int(v), "clicks": int((versions == v).sum()),
+                        "error_px": round(float(np.median(errors[versions == v, 0])), 1),
+                        "calibration_px": round(float(np.median(errors[versions == v, 1])), 1)}
+                       for v in np.unique(versions)],
+    }  # fmt: skip
+
+
+def _round(value: float) -> float | None:
+    return round(value, 1) if math.isfinite(value) else None
+
+
+def _number(value: Any) -> float:
+    return math.nan if value is None else float(value)
 
 
 def _epoch(iso: str | None) -> float | None:
