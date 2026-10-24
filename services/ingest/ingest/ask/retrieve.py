@@ -15,10 +15,13 @@ from __future__ import annotations
 
 import re
 from collections.abc import Hashable, Mapping, Sequence
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from ..store import LifeStore
 from ..time import tod
 from ..vault import DaySnapshot, Record
+from .query import Query, parse
 
 # fmt: off
 STOP_WORDS = frozenset((
@@ -50,36 +53,67 @@ def retrieve(
     since: float | None = None,
     until: float | None = None,
     limit: int = 10,
+    now: datetime | None = None,
+    query: Query | None = None,
 ) -> list[Record]:
     """Evidence for ``question`` across the vault, or one ``day``, optionally between ``since``
-    and ``until`` (seconds since the epoch). Each record says which method found it."""
-    query_terms = terms(question)
-    if not query_terms and not store.vectors:
-        return []
+    and ``until`` (seconds since the epoch). The question's own time, kind and site words narrow
+    it further (``ask.query``; ``now`` anchors "yesterday"). Each record says which method found it."""
+    q = query or parse(question, now or datetime.now(ZoneInfo(store.zone)))
+    since = q.since if since is None else since if q.since is None else max(since, q.since)
+    until = q.until if until is None else until if q.until is None else min(until, q.until)
+    query_terms = terms(q.text)
     store.ensure(None if day is None else [day])
-    scope = {"day": day, "since": since, "until": until, "k": CANDIDATES}
-    # Quote every token: user punctuation can never become an FTS operator.
-    expression = " OR ".join(f'"{w}"' for w in query_terms)
-    keyword = store.keyword(expression, **scope) if query_terms else []
-    meaning = [unit for unit, similarity in store.nearest(question, **scope) if similarity >= MIN_SIMILARITY]
-    # The person's own notes have no time: searched only when the question is not scoped to one.
-    unscoped = day is None and since is None and until is None
-    notes = [("note", c) for c in store.note_keyword(expression, k=CANDIDATES)] if query_terms and unscoped else []
-    rows = store.rows(list(dict.fromkeys([*keyword, *meaning])))
-    note_rows = store.note_rows([c for _, c in notes]) if notes else {}
-    # An OR query matches a record that shares one common word ("day") with the question. Scale
-    # each keyword hit by the share of the question's words it contains, so such a hit cannot tie
-    # a close meaning match; a record containing every word keeps full weight.
-    wanted = set(query_terms)
-    # All of a record's words, not the question's 16: a long record (a paragraph read, an OCR
-    # block) has the question's words past its sixteenth.
-    coverage = {unit: len(wanted.intersection(_words(rows[unit]["text"]))) / len(wanted) for unit in keyword}
-    coverage |= {n: len(wanted.intersection(_words(note_rows[n[1]]["text"]))) / len(wanted) for n in notes}
-    fused = [
-        item for item, _ in reciprocal_rank_fusion([[*keyword, *notes], meaning], weights=[coverage, None])[:limit]
-    ]
-    found = {"keyword": {*keyword, *notes}, "meaning": set(meaning)}
-    units = [rows[item] for item in fused if not isinstance(item, tuple) and item in rows]
+    filters = {"day": day, "since": since, "until": until, "types": q.types, "site": q.site}
+    if not query_terms and q.filtered:
+        # Nothing to search for but the filters ("what did I search yesterday"): list them.
+        listed = store.listing(**filters, k=limit)
+        rows = store.rows(listed)
+        found = {"listing": set(listed)}
+        fused: list = listed
+        units = [rows[unit] for unit in listed if unit in rows]
+        note_rows: dict[int, Record] = {}
+    else:
+        if not query_terms and not store.vectors:
+            return []
+        # Quote every token: user punctuation can never become an FTS operator.
+        expression = " OR ".join(f'"{w}"' for w in query_terms)
+        keyword = store.keyword(expression, **filters, k=CANDIDATES) if query_terms else []
+        scope = {"day": day, "since": since, "until": until, "k": CANDIDATES}
+        # Meaning search reads the question without its filter words, and filters kinds and sites after.
+        meaning = [
+            unit for unit, similarity in store.nearest(q.text or question, **scope) if similarity >= MIN_SIMILARITY
+        ]
+        if q.types or q.site:
+            allowed = store.allowed(meaning, types=q.types, site=q.site)
+            meaning = [unit for unit in meaning if unit in allowed]
+        # The person's own notes have no time, kind or site: searched only for unfiltered questions.
+        unscoped = day is None and since is None and until is None and not q.types and not q.site
+        notes = [("note", c) for c in store.note_keyword(expression, k=CANDIDATES)] if query_terms and unscoped else []
+        rows = store.rows(list(dict.fromkeys([*keyword, *meaning])))
+        note_rows = store.note_rows([c for _, c in notes]) if notes else {}
+        # An OR query matches a record that shares one common word ("day") with the question. Scale
+        # each keyword hit by the share of the question's words it contains, so such a hit cannot tie
+        # a close meaning match; a record containing every word keeps full weight.
+        wanted = set(query_terms)
+        # All of a record's words, not the question's 16: a long record (a paragraph read, an OCR
+        # block) has the question's words past its sixteenth.
+        coverage = {unit: len(wanted.intersection(_words(rows[unit]["text"]))) / len(wanted) for unit in keyword}
+        coverage |= {n: len(wanted.intersection(_words(note_rows[n[1]]["text"]))) / len(wanted) for n in notes}
+        fused = [
+            item for item, _ in reciprocal_rank_fusion([[*keyword, *notes], meaning], weights=[coverage, None])[:limit]
+        ]
+        found = {"keyword": {*keyword, *notes}, "meaning": set(meaning)}
+        units = [rows[item] for item in fused if not isinstance(item, tuple) and item in rows]
+        if not fused and q.filtered:
+            # Nothing matched the words within the filters: show what the filters hold instead
+            # ("what did I read about the data store yesterday" -> yesterday's reading), marked
+            # as a listing so the answer can say the words were not found.
+            listed = store.listing(**filters, k=limit)
+            rows = store.rows(listed)
+            found = {"listing": set(listed)}
+            fused = listed
+            units = [rows[unit] for unit in listed if unit in rows]
     if not units and not any(isinstance(item, tuple) for item in fused):
         return []
     # A result set commonly contains several records from one day. Prepare its
