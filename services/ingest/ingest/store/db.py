@@ -21,15 +21,17 @@ from collections.abc import Iterable, Iterator, Sequence
 from contextlib import contextmanager, suppress
 from pathlib import Path
 
-from ..capture import capture_days, capture_stamp, capture_units
+from ..capture import capture_days, capture_stamp, capture_units, read_capture
+from ..graph import Graph, extract
 from ..index.build import UNIT_COLUMNS, collect_units, source_stamp
 from ..index.embed import Embedder
 from ..time import instant
 from ..vault import Record, Vault
+from .graph import entity_view, graph_view
 from .vectors import VectorIndex, sign_bits
 
 FILE_NAME = "daycube.sqlite"
-SCHEMA_VERSION = 2  # 1: sqlite-vec vectors and per-row triggers, never released
+SCHEMA_VERSION = 3  # 1: sqlite-vec vectors and per-row triggers, never released; 2: no graph tables
 # A query may embed this many new texts before it answers (a few seconds on CPU); a day with
 # more waits for `daycube index`, and is searched by keywords until then.
 INLINE_EMBED_LIMIT = 256
@@ -65,6 +67,25 @@ CREATE TABLE vectors (id INTEGER PRIMARY KEY, bits BLOB NOT NULL, embedding BLOB
 -- External-content FTS5, kept in step by set statements per day in `_replace` and `_delete_day`
 -- rather than row triggers: a trigger costs a statement per unit, ten times the whole write.
 CREATE VIRTUAL TABLE units_fts USING fts5(text, content='units', content_rowid='id');
+-- The knowledge graph (ingest/graph): entities the records name, which units mention them, and
+-- how two entities met. Entities are shared by every day; mentions and links belong to the day
+-- of the record that shows them and are replaced with it. An entity nothing points at any more
+-- is dropped when a day is written.
+CREATE TABLE entities (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, key TEXT NOT NULL, name TEXT NOT NULL,
+  UNIQUE (kind, key)
+);
+CREATE TABLE mentions (
+  unit_id INTEGER NOT NULL, entity_id INTEGER NOT NULL, role TEXT NOT NULL,
+  PRIMARY KEY (unit_id, entity_id, role)
+) WITHOUT ROWID;
+CREATE INDEX mentions_entity ON mentions(entity_id, unit_id);
+CREATE TABLE links (
+  day TEXT NOT NULL, src INTEGER NOT NULL, dst INTEGER NOT NULL, kind TEXT NOT NULL, evidence_id TEXT NOT NULL,
+  PRIMARY KEY (day, src, dst, kind, evidence_id)
+) WITHOUT ROWID;
+CREATE INDEX links_src ON links(src);
+CREATE INDEX links_dst ON links(dst);
 CREATE TABLE speakers (moment_id TEXT, diar_label TEXT, person_id TEXT, confirmed INTEGER);
 CREATE TABLE deletions (t0 TEXT, t1 TEXT, reason TEXT, applied_at TEXT);
 """
@@ -199,6 +220,7 @@ class LifeStore:
                 with self.vault.lock, self._write(db):
                     for day in gone:
                         self._delete_day(db, day)
+                    _drop_orphans(db)
         for day in stale:
             with self.vault.lock:
                 key = self._key(day)
@@ -218,15 +240,20 @@ class LifeStore:
         call embeds (None: all); over the cap, the day is stored without the missing vectors."""
         for _ in range(3):
             with self.vault.lock:
+                events: list[Record] = []
                 if self.has_day(day):
                     self.vault.validate(day)
                     units = collect_units(self.vault, day)
-                    zone = self.vault.snapshot(day).day["tz"]
+                    snapshot = self.vault.snapshot(day)
+                    zone = snapshot.day["tz"]
+                    events = snapshot.events.records
                 elif day in capture_days(self.vault):
                     units, zone = [], self.zone
                 else:
                     raise FileNotFoundError(f"No vault day or capture for {day}")
-                units += capture_units(self.vault, day)
+                capture = read_capture(self.vault, day)
+                units += capture_units(self.vault, day, capture)
+                graph = extract(day, units, capture, events)
                 key = self._key(day)
                 stamp = self._stamp(day)
             hashes = [digest(unit["text"]) for unit in units]
@@ -236,6 +263,7 @@ class LifeStore:
                     continue  # the day changed while its text was embedded: collect it again
                 with self.connect() as db, self._write(db):
                     embedded = self._replace(db, day, zone, stamp, units, hashes, vectors)
+                    self._graph(db, day, graph)
                 self.fresh[day] = key
             engine = "sqlite-fts5+int8-vectors" if self.vectors else "sqlite-fts5"
             return {"date": day, "units": len(units), "engine": engine, "unembedded": len(units) - embedded}
@@ -294,7 +322,36 @@ class LifeStore:
         return embedded
 
     @staticmethod
+    def _graph(db: sqlite3.Connection, day: str, graph: Graph) -> None:
+        """The day's mentions and links, after its units (whose ids the mentions need)."""
+        ids: dict[tuple[str, str], int] = {}
+
+        def entity(kind: str, key: str, name: str) -> int:
+            found = ids.get((kind, key))
+            if found is None:
+                found = db.execute(
+                    "INSERT INTO entities(kind, key, name) VALUES (?, ?, ?) "
+                    "ON CONFLICT(kind, key) DO UPDATE SET name = excluded.name RETURNING id",
+                    (kind, key, name),
+                ).fetchone()[0]
+                ids[(kind, key)] = found
+            return found
+
+        units = dict(db.execute("SELECT evidence_id, id FROM units WHERE day = ?", (day,)).fetchall())
+        db.executemany(
+            "INSERT OR IGNORE INTO mentions VALUES (?, ?, ?)",
+            [(units[e], entity(*target), role) for e, target, role in graph.mentions if e in units],
+        )
+        db.executemany(
+            "INSERT OR IGNORE INTO links VALUES (?, ?, ?, ?, ?)",
+            [(day, entity(*a), entity(*b), kind, evidence or "") for a, b, kind, evidence in graph.links],
+        )
+        _drop_orphans(db)
+
+    @staticmethod
     def _delete_day(db: sqlite3.Connection, day: str) -> None:
+        db.execute("DELETE FROM mentions WHERE unit_id IN (SELECT id FROM units WHERE day = ?)", (day,))
+        db.execute("DELETE FROM links WHERE day = ?", (day,))
         db.execute(
             "INSERT INTO units_fts(units_fts, rowid, text) SELECT 'delete', id, text FROM units WHERE day = ?", (day,)
         )
@@ -340,6 +397,25 @@ class LifeStore:
                     found[row["id"]] = dict(row)
         return found
 
+    def graph(
+        self,
+        *,
+        since: float | None = None,
+        until: float | None = None,
+        kinds: Sequence[str] | None = None,
+        limit: int = 200,
+    ) -> Record:
+        """The most mentioned entities in a time window, and the links among them."""
+        self.ensure()
+        with self.connect() as db:
+            return graph_view(db, since=since, until=until, kinds=kinds, limit=limit)
+
+    def entity(self, entity_id: int, *, limit: int = 50) -> Record | None:
+        """One entity: what it is, the records that mention it (newest first), its neighbours."""
+        self.ensure()
+        with self.connect() as db:
+            return entity_view(db, entity_id, limit=limit)
+
     def stats(self) -> Record:
         with self.connect() as db:
             days, units, unembedded = db.execute(
@@ -356,6 +432,13 @@ class LifeStore:
             "model": self.embedder.name if self.embedder else None,
             "bytes": size,
         }
+
+
+def _drop_orphans(db: sqlite3.Connection) -> None:
+    db.execute(
+        "DELETE FROM entities WHERE NOT EXISTS (SELECT 1 FROM mentions WHERE entity_id = entities.id) "
+        "AND NOT EXISTS (SELECT 1 FROM links WHERE src = entities.id OR dst = entities.id)"
+    )
 
 
 def _drop_all(db: sqlite3.Connection) -> None:

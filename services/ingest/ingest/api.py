@@ -7,7 +7,10 @@ import secrets
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from datetime import date as date_type
+from datetime import time as time_type
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 import httpx
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request
@@ -22,6 +25,7 @@ from .contracts import ContractError
 from .generated.event import Event
 from .index.embed import Embedder, default_embedder
 from .store import LifeStore
+from .time import instant
 from .vault import Record, Vault, read_json
 
 MEDIA_SUFFIXES = frozenset({".jpg", ".jpeg", ".png", ".svg", ".mp4", ".wav", ".glb", ".ply", ".spz"})
@@ -154,6 +158,36 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
     @app.get("/day/{date}/graph")
     def graph(date: str) -> Record:
         return vault.snapshot(date).graph
+
+    def epoch(value: str | None) -> float | None:
+        """A date (local midnight, in the vault's time zone) or an ISO time, as epoch seconds."""
+        if not value:
+            return None
+        if len(value) == 10:
+            return datetime.combine(
+                date_type.fromisoformat(value), time_type(), ZoneInfo(settings.timezone)
+            ).timestamp()
+        return instant(value).timestamp()
+
+    @app.get("/graph")
+    def knowledge_graph(
+        since: str | None = None,
+        until: str | None = None,
+        kinds: str | None = None,
+        limit: int = Query(200, ge=1, le=2000),
+    ) -> Record:
+        """Entities the records name (sites, pages, searches, courses, deadlines, places, people)
+        most mentioned between ``since`` and ``until``, and the links among them."""
+        return store.graph(
+            since=epoch(since), until=epoch(until), kinds=kinds.split(",") if kinds else None, limit=limit
+        )
+
+    @app.get("/entity/{entity_id}")
+    def entity(entity_id: int, limit: int = Query(50, ge=1, le=500)) -> Record:
+        found = store.entity(entity_id, limit=limit)
+        if found is None:
+            raise FileNotFoundError(entity_id)
+        return found
 
     @app.get("/moment/{moment_id}")
     def moment(moment_id: str, date: str = Query(...)) -> Record:

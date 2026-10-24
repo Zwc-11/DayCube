@@ -24,6 +24,9 @@ deleting it costs nothing but the time to rebuild.
 | `units_fts` | FTS5 over `units.text` (external content) |
 | `vectors` | Per embedded unit: the int8 embedding (384 bytes) and its sign bits (48 bytes) |
 | `meta` | Embedding model and dimension, and the write counter. A model change replaces every vector |
+| `entities` | The knowledge graph's nodes: kind (site, page, query, course, deadline, place, person, topic), a canonical key, a display name. Shared by every day |
+| `mentions` | Unit to entity, with a role: `on` (happened on that page or site), `about` (names it), `at` (a place), `with` (a person) |
+| `links` | Entity to entity, per day and with the record that shows it: `part_of`, `led_to`, `mentions`, `due` |
 | `speakers`, `deletions` | Carried over from the per-day index for speaker naming and purges |
 
 Unit ids use `AUTOINCREMENT`, so they are never reused and a vector can never point at another
@@ -76,6 +79,32 @@ Block texts are sent once per page load, so the previous day's text snapshots ar
 line that does not parse is skipped. The day's source stamp covers its capture logs (compacted or
 not), so new capture lines re-index the day at the next search. A capture-only day takes the
 receiver's time zone (`DAYCUBE_TIMEZONE`, default America/Toronto) and has no places.
+
+## Knowledge graph
+
+`ingest/graph/extract.py` names entities only where a record names them exactly, so the graph
+needs no language model and no guessing:
+
+| Kind | Key | From |
+| --- | --- | --- |
+| `site` | domain without `www.` | every capture record with a URL |
+| `page` | URL without fragment, tracking parameters or trailing slash | visits, reads, dwells, looks, clicks, copies, media |
+| `query` | the search, lower case | searches |
+| `course` | a course code (`CS 136`, `MATH 135`: 2-5 capitals, 3 digits) | page titles, text read or stared at |
+| `deadline` | date (and time) plus course | "due October 30 at 11:59 PM" in text read or stared at; without a year, the next such date |
+| `place`, `person`, `topic` | the vault's own ids and names | visits; events' `people` and `topics` |
+
+Links: a page is `part_of` its site; a search `led_to` the page opened from its results (the next
+page in that tab that is not a results page, within 5 minutes); a page `led_to` the page a link on
+it opened; a page `mentions` a course; a course (or the page, without one) is `due` at a deadline.
+Mentions and links are written with the day's units, in the same transaction, and entities that
+nothing points at any more are dropped. A place's records are found through `units.place` rather
+than a mention per event.
+
+`GET /graph?since=&until=&kinds=&limit=` returns the most mentioned entities in a window and the
+links among them; `GET /entity/{id}` one entity with its records (newest first) and neighbours.
+On the synthetic large day (5,053 units, every event a visit and so a place mention) writing the
+graph adds 45 ms to the day's update (107 to 152 ms); a real day names far fewer entities.
 
 ## Retrieval
 

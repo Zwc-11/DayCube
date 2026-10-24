@@ -235,4 +235,6 @@ def test_a_database_from_another_schema_version_is_rebuilt(vault: Vault) -> None
     assert hits and retrieve(store, "stale", day=DAY) == []
     with closing(sqlite3.connect(path)) as db:
         db.execute("INSERT INTO units_fts(units_fts, rank) VALUES ('integrity-check', 1)")
-        assert db.execute("PRAGMA user_version").fetchone()[0] == 2
+        from ingest.store.db import SCHEMA_VERSION
+
+        assert db.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
