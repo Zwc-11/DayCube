@@ -1,5 +1,9 @@
 # DeepInfer reference review
 
+The [2026-10-24 follow-up](review-2026-10-24.md#current-deepinfer-reference) records the newer
+upstream revision and additional implementations examined. The pinned reference below remains
+the provenance of the original review.
+
 Reference: [deepseek-ai/DeepInfer](https://github.com/deepseek-ai/DeepInfer), revision
 [`774ce244b87cc0eb8d4b94ab9f5de2ab22049f01`](https://github.com/deepseek-ai/DeepInfer/tree/774ce244b87cc0eb8d4b94ab9f5de2ab22049f01).
 
