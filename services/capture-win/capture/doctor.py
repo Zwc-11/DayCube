@@ -25,6 +25,7 @@ from zoneinfo import ZoneInfo
 import httpx
 
 from .restart import code_stamp
+from .supervise import speech_python
 
 PASS, WARN, FAIL, INFO = "pass", "warn", "FAIL", "info"
 # Median error at which paragraphs at 100% zoom stop being separable: a 1920 px wide 24" monitor at
@@ -278,6 +279,12 @@ def _jobs(vault: Path, now: float | None = None) -> list[tuple[str, str, str]]:
         stage = STAGES.get(name)
         if stage is not None and not stage.ready():
             when = "once its tool is installed (docs/splat.md: uv run daycube splat)"
+        elif stage is not None and stage.run is None and name == "speech" and speech_python() is None:
+            rows.append((WARN, "jobs", f"{title(name)}: {counts['queued']} waiting, and the speech worker is not"
+                         " installed: uv sync --project services/speech (docs/speech.md)"))  # fmt: skip
+            continue
+        elif stage is not None and stage.run is None:
+            when = f"by {stage.worker or 'its worker'}, when you are away 10 min or at night"
         elif stage is not None and stage.needs == "gpu":
             when = "when you are away 10 min, or at night"
         else:

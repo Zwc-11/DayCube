@@ -173,3 +173,34 @@ def test_a_worker_elsewhere_leases_over_http_and_what_follows_is_queued(
         monkeypatch.setattr(capture_api, "idle_seconds", lambda: 5.0)
         monkeypatch.setattr("ingest.jobs.policy.NIGHT", (0, 0))
         assert client.post("/jobs/lease", json={"worker": "s", "needs": "gpu"}, headers=auth).json() == {"job": None}
+
+
+def test_voice_memos_are_queued_for_speech_and_a_finished_one_refreshes_the_days_index(
+    vault: Vault, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from capture import api as capture_api
+    from capture.api import create_capture_app
+
+    moment = vault.root / "2026-10-24" / "moments" / "mo_voice_20261024_214746"
+    moment.mkdir(parents=True)
+    (moment / "scene.json").write_text('{"kind": "audio", "audio": "audio.m4a"}')
+    (moment / "audio.m4a").write_bytes(b"\0")
+    other = vault.root / "2026-10-24" / "moments" / "mo_voice_done"
+    other.mkdir()
+    (other / "scene.json").write_text('{"kind": "audio", "audio": "audio.m4a"}')
+    (other / "audio.m4a").write_bytes(b"\0")
+    (other / "speech.json").write_text("{}")
+    monkeypatch.setattr(capture_api, "idle_seconds", lambda: AWAY)
+    refreshed: list[str] = []
+    settings = Settings(vault_root=vault.root, vector_search=False, _env_file=None)
+    auth = {"Authorization": f"Bearer {vault.token}"}
+    with TestClient(create_capture_app(settings)) as client:
+        monkeypatch.setattr(client.app.state.receiver.vault, "invalidate_index", refreshed.append)
+        store = client.app.state.jobs
+        assert len(stages.discover(vault, store)) == 1  # the one without speech.json
+        job = client.post("/jobs/lease", json={"worker": "speech@pc", "needs": "gpu", "stages": ["speech"]}, headers=auth).json()["job"]
+        assert job["inputs"] == {"date": "2026-10-24", "moment": "mo_voice_20261024_214746"}
+        # The receiver's own GPU thread never takes it: its code is in the speech environment.
+        assert worker.runnable("gpu", idle_s=AWAY) == ["splat_train"] or "speech" not in worker.runnable("gpu", idle_s=AWAY)
+        done = client.post(f"/jobs/{job['id']}/done", json={"worker": "speech@pc", "outputs": {"turns": 2}}, headers=auth)
+        assert done.json()["ok"] and refreshed == ["2026-10-24"]

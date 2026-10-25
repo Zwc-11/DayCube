@@ -43,6 +43,8 @@ class Stage:
     ready: Callable[[], bool] = _always  # e.g. its tool is installed
     attempts: int = MAX_ATTEMPTS
     title: str = ""
+    worker: str = ""  # for a stage run elsewhere: what runs it, for doctor
+    after: Callable[[Vault, dict, dict], None] | None = None  # once done, in the receiver (inputs, outputs)
     extra: dict = field(default_factory=dict)
 
 
@@ -93,6 +95,30 @@ register(Stage("splat_preview", 1, "cpu", _splat_preview, follow=lambda i, o: [(
 register(Stage("splat_train", 1, "gpu", _splat_train, ready=_training_allowed, attempts=2, title="3D training"))
 
 
+# ---- speech (services/speech: its own environment, leasing over HTTP) --------------------------
+
+
+def _speech_done(vault: Vault, inputs: dict, outputs: dict) -> None:
+    # Searches re-check changed files on their own (store/db.py FULL_CHECK_S); this drops what
+    # the receiver itself had confirmed about the day.
+    vault.invalidate_index(inputs["date"])
+
+
+register(Stage("speech", 1, "gpu", None, title="speech", after=_speech_done,
+               worker="the speech worker (docs/speech.md: uv sync --project services/speech)"))  # fmt: skip
+
+
+def audio_inputs(vault_root: Path) -> list[tuple[dict, bool]]:
+    """``({"date", "moment"}, whether its speech is done)`` for every recording moment of sound."""
+    out = []
+    for scene_path in sorted(vault_root.glob("*/moments/*/scene.json"), reverse=True):
+        scene = read_json(scene_path) or {}
+        if scene.get("kind") == "audio" and scene.get("audio") and (scene_path.parent / scene["audio"]).is_file():
+            inputs = {"date": scene_path.parent.parent.parent.name, "moment": scene_path.parent.name}
+            out.append((inputs, (scene_path.parent / "speech.json").is_file()))
+    return out
+
+
 def scan_inputs(vault_root: Path) -> list[tuple[dict, dict]]:
     """``({"date", "moment"}, its scene's splat entry or {})`` for every scan in the vault."""
     out = []
@@ -109,8 +135,8 @@ def scan_inputs(vault_root: Path) -> list[tuple[dict, dict]]:
 
 
 def discover(vault: Vault, jobs: Jobs) -> list[int]:
-    """Queue what the vault's scans still need: a preview for a scan with its depth and no 3D,
-    training for one with only the preview. Ids of the jobs that are new; a stage already run on
+    """Queue what the vault still needs: a preview for a scan with its depth and no 3D, training
+    for one with only the preview, speech for a recording of sound without it. Ids of the jobs that are new; a stage already run on
     an input (done or failed) is not queued again."""
     from ..splat.run import find_capture
 
@@ -127,4 +153,9 @@ def discover(vault: Vault, jobs: Jobs) -> list[int]:
         job_id, created = enqueue(jobs, name, inputs)
         if created:
             new.append(job_id)
+    for inputs, done in audio_inputs(vault.root):
+        if not done:
+            job_id, created = enqueue(jobs, "speech", inputs)
+            if created:
+                new.append(job_id)
     return new
