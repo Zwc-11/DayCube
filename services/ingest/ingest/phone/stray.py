@@ -176,9 +176,10 @@ def heading(scan: Scan) -> np.ndarray:
     """Compass heading (degrees from north) the camera looked along, per odometry row (needs
     ``georeference``)."""
     x, y, z, w = scan.rotation.T
-    # The camera looks along its -z axis; rotated into ARKit's frame.
-    fx = -(2 * (x * z + w * y))
-    fz = -(1 - 2 * (x * x + y * y))
+    # Stray Scanner writes poses in the OpenCV camera convention: the camera looks along its +z
+    # axis (on 2026-10-24 +z pointed along the walk, cosine 0.93). Rotated into ARKit's frame.
+    fx = 2 * (x * z + w * y)
+    fz = 1 - 2 * (x * x + y * y)
     forward = np.column_stack([fx, -fz])  # seen from above, as the path
     if scan.fit is None:
         return np.full(len(forward), np.nan)
@@ -246,6 +247,28 @@ def camera_path(scan: Scan) -> list[dict]:
             point["heading_deg"] = round(float(headings[i]), 1)
         out.append(point)
     return out
+
+
+def keep_capture(files: dict[str, Path], target: Path) -> dict | None:
+    """The capture's depth, confidence and poses copied beside the moment, so it can be fused or
+    trained into 3D later (ingest/splat) without the original folder. None without depth."""
+    depth = files.get("depth")
+    if depth is None or not depth.is_dir():
+        return None
+    target.mkdir(parents=True, exist_ok=True)
+    for name in ("depth", "confidence"):
+        source = depth.parent / name if name != "depth" else depth
+        if source.is_dir():
+            shutil.copytree(source, target / name, dirs_exist_ok=True)
+    for key, name in (("odometry", "odometry.csv"), ("camera", "camera_matrix.csv")):
+        if files.get(key) is not None:
+            shutil.copyfile(files[key], target / name)
+    imu = files["odometry"].parent / "imu.csv"
+    if imu.is_file():
+        shutil.copyfile(imu, target / "imu.csv")
+    frames = sum(1 for _ in (target / "depth").glob("*.png"))
+    return {"folder": target.name, "depth_frames": frames,
+            "bytes": sum(p.stat().st_size for p in target.rglob("*") if p.is_file())}  # fmt: skip
 
 
 def store(scan: Scan, folder: Path) -> str:

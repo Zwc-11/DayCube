@@ -169,6 +169,7 @@ def _scan(files: dict[str, Path], fixes: list, say: Any) -> Moment:
 
     def write(folder: Path) -> dict:
         name = stray.store(scan, folder)
+        kept = stray.keep_capture(files, folder / "capture")  # depth and poses, for 3D (ingest/splat)
         frames = stray.keyframes(scan, folder)
         watch = stray.preview(scan, folder)
         (folder / "camera.json").write_text(json.dumps({"fit": scan.fit, "points": stray.camera_path(scan)}) + "\n",
@@ -179,6 +180,7 @@ def _scan(files: dict[str, Path], fixes: list, say: Any) -> Moment:
             "rotate_deg": stray.upright(scan),  # clockwise to stand upright (the preview and keyframes are)
             "keyframes": frames, "path": "camera.json", "georeferenced": scan.fit, "stamped": scan.stamped,
             "depth": None if scan.depth is None else "provided, not yet fused",
+            "capture": kept,
             "reason": None if scan.depth is not None else
             "A 3D scene needs the capture's depth folder (one PNG per frame); only the video and camera path came.",
         }  # fmt: skip
@@ -251,10 +253,22 @@ def _write_day(vault: Vault, day: str, zone_name: str, spans: list, moments: lis
     moment_events = []
     for moment in moments:
         folder = path / "moments" / moment.id
+        # A scan's 3D (ingest/splat) took the GPU minutes to make: it survives importing the same
+        # capture again.
+        kept_splat = None
         if folder.exists():
+            before = read_json(folder / "scene.json") if (folder / "scene.json").is_file() else {}
+            if (folder / "splat").is_dir() and before.get("source") == moment.file and before.get("splat"):
+                kept_splat = (path / "moments" / f".{moment.id}.splat", before["splat"])
+                if kept_splat[0].exists():
+                    shutil.rmtree(kept_splat[0])
+                (folder / "splat").rename(kept_splat[0])
             shutil.rmtree(folder)
         folder.mkdir(parents=True)
         scene = moment.write(folder) | {"source": moment.file}
+        if kept_splat:
+            kept_splat[0].rename(folder / "splat")
+            scene["splat"] = kept_splat[1]
         meta = {
             "id": moment.id, "title": moment.title, "t0": moment.t0.astimezone(zone).isoformat(timespec="seconds"),
             "duration_s": round(moment.duration_s, 3), "lat": moment.lat, "lon": moment.lon,

@@ -37,13 +37,14 @@ from .vault import Record, Vault, read_json
 
 log = logging.getLogger("daycube.api")
 
-MEDIA_SUFFIXES = frozenset({".jpg", ".jpeg", ".png", ".svg", ".mp4", ".wav", ".m4a", ".mp3", ".glb", ".ply", ".spz"})
+MEDIA_SUFFIXES = frozenset({".jpg", ".jpeg", ".png", ".svg", ".mp4", ".wav", ".m4a", ".mp3", ".glb", ".ply", ".spz", ".splat"})
 # Types the platform may not know (Windows has no .m4a in its registry by default).
 MEDIA_TYPES = {
     ".m4a": "audio/mp4",
     ".mp3": "audio/mpeg",
     ".glb": "model/gltf-binary",
     ".spz": "application/octet-stream",
+    ".splat": "application/octet-stream",
 }
 SAFE_ID = re.compile(r"[A-Za-z0-9_-]+")
 SAFE_FILE = re.compile(r"[A-Za-z0-9_-]+\.json")
@@ -329,6 +330,10 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
         camera = scene.get("path") if isinstance(scene, dict) else None
         if isinstance(camera, str) and SAFE_FILE.fullmatch(camera) and (path / camera).is_file():
             out["camera"] = read_json(path / camera)
+        # A scan in 3D: where the camera was every few frames, for the viewer to follow the walk.
+        splat = scene.get("splat") if isinstance(scene, dict) else None
+        if isinstance(splat, dict) and (path / "splat" / "cameras.json").is_file():
+            out["splat_cameras"] = read_json(path / "splat" / "cameras.json")
         return out
 
     @app.get("/vault/{date}/{asset_path:path}")
