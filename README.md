@@ -89,6 +89,10 @@ client and converts the API's seconds-since-midnight into the renderer's decimal
 - Phone recordings into the day they were recorded: visits, drives and walks, floors and every GPS
   fix from Sensor Logger; voice memos transcribed and searchable; Stray Scanner captures with their
   camera path on the map. Drop the exports into `vault/inbox/phone`. See [phone](docs/phone.md).
+- LiDAR scans in 3D: a LiDAR preview at once, then Gaussian splats trained on the GPU (Brush) from
+  the video and ARKit's poses, viewed following the walk. See [splat](docs/splat.md).
+- Processing as jobs in `vault/jobs.sqlite`, run by the receiver: GPU stages while the PC is free,
+  retries with back-off, and an HTTP lease API for workers elsewhere. See [jobs](docs/jobs.md).
 - A character that walks the day: routes go around furniture and through doorways, climb
   stairs step by step between floors, and cut away the floor above while it is indoors.
   Playback slows while it walks. Visits without measured indoor positions get an
@@ -96,7 +100,7 @@ client and converts the API's seconds-since-midnight into the renderer's decimal
 - Python tests, JavaScript contract tests, real-browser API checks and a CI workflow.
 
 Native window capture, OCR execution, turning capture logs into day events,
-generative answers, deletion, splats and full moment reconstruction remain
+generative answers, deletion and full moment reconstruction remain
 future milestones. Unimplemented ingest stages and hour deletion return HTTP 501.
 The sample moment has a synthetic transcript and **no source video/audio or GLB**.
 See [implementation status](docs/implementation-status.md) for exact boundaries.

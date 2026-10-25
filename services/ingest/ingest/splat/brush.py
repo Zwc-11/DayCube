@@ -58,6 +58,12 @@ def locate() -> Path | None:
     return found[0] if found else None
 
 
+def allowed() -> bool:
+    """Whether scans may be trained without being asked: Brush is installed (the first
+    ``daycube splat`` installs it), or ``DAYCUBE_SPLAT_TRAIN=1``. Nothing fetches it on its own."""
+    return locate() is not None or os.environ.get("DAYCUBE_SPLAT_TRAIN") == "1"
+
+
 def install(say: Callable[[str], None] = print) -> Path:
     """Download the pinned release, check its hash, unpack it; returns the executable."""
     found = locate()
