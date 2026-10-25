@@ -33,7 +33,9 @@ GAP_S = 1.0
 
 
 def _cache() -> Path:
-    folder = Path.home() / ".cache" / "daycube-speech" / "canary"
+    from . import PROJECT_ROOT
+
+    folder = PROJECT_ROOT / ".cache" / "speech-canary"
     folder.mkdir(parents=True, exist_ok=True)
     return folder
 

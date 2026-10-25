@@ -68,7 +68,8 @@ The research is in the project's pipeline plan.
 
 - **Install.** On Windows the environment takes PyTorch for CUDA 12.8, which runs on the RTX 5070
   (sm_120). The models are fetched from Hugging Face the first time, about 7 GB, and need no
-  sign-in.
+  sign-in. They are kept in the checkout's `.cache/huggingface` (set `HF_HOME` to put them
+  elsewhere), so they stay off the system drive.
 - **The receiver.**
   - Once the environment exists, the receiver starts the worker (`python -m speech serve`) and
     restarts it if it stops. Its log is `vault/logs/speech.log`.

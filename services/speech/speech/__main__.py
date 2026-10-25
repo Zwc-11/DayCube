@@ -11,7 +11,7 @@ import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
+from . import PROJECT_ROOT
 
 
 def vault_root(given: str | None) -> Path:
