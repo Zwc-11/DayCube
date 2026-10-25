@@ -458,6 +458,23 @@ def test_the_doctor_shows_why_the_tracker_is_not_running(vault: Vault, monkeypat
     assert "toolbar button" in found["eye tracker"]
 
 
+def test_the_doctor_shows_the_speech_models_last_check(vault: Vault) -> None:
+    from capture import doctor
+
+    assert doctor._speech_check(vault.root) == []
+    folder = vault.root / "derived" / "speech"
+    folder.mkdir(parents=True)
+    report = {"made": "2026-10-25T23:10:00+00:00", "device": "cuda:0", "asr": "Qwen/Qwen3-ASR-1.7B", "ok": True,
+              "zh_cer": 0.0, "en_wer": 0.067}  # fmt: skip
+    (folder / "canary.json").write_text(json.dumps(report), encoding="utf-8")
+    assert doctor._speech_check(vault.root) == [
+        (doctor.PASS, "speech check", "Qwen/Qwen3-ASR-1.7B on cuda:0, 2026-10-25 23:10 UTC: zh CER 0.0, en WER 0.067")
+    ]
+    (folder / "canary.json").write_text(json.dumps({**report, "ok": False, "why": "3 turns, not 4"}), encoding="utf-8")
+    [(level, _, detail)] = doctor._speech_check(vault.root)
+    assert level == doctor.FAIL and "3 turns, not 4" in detail
+
+
 def test_the_librarian_keeps_the_days_notes_current(vault: Vault) -> None:
     from zoneinfo import ZoneInfo
 

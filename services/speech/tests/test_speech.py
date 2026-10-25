@@ -112,6 +112,29 @@ def test_canary_scores() -> None:
     assert len(audio) == 16000 * 2 + 8000 * 2 + 16000 * 4
 
 
+def test_the_canarys_report_is_printed_and_kept_in_utf8_on_a_cp1252_console(tmp_path: Path) -> None:
+    """Windows writes redirected output in cp1252; the PC's first canary report, with its Mandarin,
+    failed to print there. The models are left out: the report is given."""
+    import subprocess
+    import sys
+
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    script = (
+        "import sys, speech.canary as c\n"
+        "c.run = lambda device=None, say=print: {'device': 'cuda:0', 'asr': 'Qwen/Qwen3-ASR-1.7B', 'ok': True,"
+        " 'turns': [['S2', 8.6, '甚至出现交易几乎停滞的情况。']], 'zh_cer': 0.0, 'en_wer': 0.067}\n"
+        f"sys.argv = ['speech', 'canary', '--vault', {str(vault)!r}]\n"
+        "from speech.__main__ import main\nmain()\n"
+    )
+    done = subprocess.run([sys.executable, "-c", script], capture_output=True,
+                          env={**os.environ, "PYTHONIOENCODING": "cp1252"}, timeout=120)  # fmt: skip
+    assert done.returncode == 0, done.stderr.decode("utf-8", "replace")
+    assert "甚至出现交易几乎停滞的情况" in done.stdout.decode("utf-8")
+    kept = json.loads((vault / "derived" / "speech" / "canary.json").read_text(encoding="utf-8"))
+    assert kept["ok"] and kept["turns"][0][2].startswith("甚至") and kept["made"][:2] == "20"
+
+
 def test_the_worker_leases_runs_and_reports_to_the_receiver(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     (tmp_path / ".token").write_text("secret")
     calls: list[tuple[str, dict]] = []

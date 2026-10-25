@@ -80,6 +80,21 @@ def cer(said: str, truth: str) -> float:
     return edit_distance(a, list(truth)) / len(truth)
 
 
+def keep(vault_root: Path, report: dict) -> Path | None:
+    """The report in ``derived/speech/canary.json``, with when it ran, for the receiver's doctor."""
+    import json
+    from datetime import UTC, datetime
+
+    folder = vault_root / "derived" / "speech"
+    if not vault_root.is_dir():
+        return None
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / "canary.json"
+    made = datetime.now(UTC).isoformat(timespec="seconds")
+    path.write_text(json.dumps({"made": made, **report}, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    return path
+
+
 def run(device: str | None = None, say: Callable[[str], None] = print) -> dict:
     audio, placed = build(fetch())
     result = transcribe(audio, Models(device), say)

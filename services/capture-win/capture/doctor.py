@@ -301,6 +301,20 @@ def _jobs(vault: Path, now: float | None = None) -> list[tuple[str, str, str]]:
     return rows
 
 
+def _speech_check(vault: Path) -> list[tuple[str, str, str]]:
+    """The speech models' last check (``python -m speech canary``, derived/speech/canary.json)."""
+    try:
+        report = json.loads((vault / "derived" / "speech" / "canary.json").read_text(encoding="utf-8"))
+    except (FileNotFoundError, ValueError):
+        return []
+    when = str(report.get("made", ""))[:16].replace("T", " ")
+    where = f"{report.get('asr', 'the models')} on {report.get('device', '?')}, {when} UTC"
+    if report.get("ok"):
+        return [(PASS, "speech check", f"{where}: zh CER {report.get('zh_cer')}, en WER {report.get('en_wer')}")]
+    why = report.get("why") or f"zh CER {report.get('zh_cer')}, en WER {report.get('en_wer')}, speakers {report.get('speakers_ok')}"
+    return [(FAIL, "speech check", f"{where}: {why} (docs/speech.md, the check)")]
+
+
 PHONE_QUIET_S = 2 * 3600  # the app sends a heartbeat every hour
 
 
@@ -509,6 +523,7 @@ def checks(status: dict | None, vault: Path, zone: ZoneInfo, now: datetime, auto
     if gaze.get("tracking") and gaze.get("learning"):
         out += _tuning(vault)
     out += _jobs(vault)
+    out += _speech_check(vault)
     out += _phones(vault)
 
     decoding = status.get("line_decoding") or {}
