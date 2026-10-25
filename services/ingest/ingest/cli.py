@@ -64,6 +64,7 @@ def main() -> None:
     jobs.add_argument("--id", type=int, help="retry: only this job")
     jobs.add_argument("--needs", choices=["cpu", "gpu"], default="cpu", help="run: which jobs (default cpu)")
     jobs.add_argument("--now", action="store_true", help="run: take the GPU now, at the PC or not")
+    commands.add_parser("voices", help="Rebuild the voices across recordings and name them; how far apart they are")
     compact = commands.add_parser("compact", help="Compress large logs of finished days; reads stay transparent")
     compact.add_argument("--before", help="Compact every day before this date (default: today)")
     args = parser.parse_args()
@@ -159,6 +160,12 @@ def main() -> None:
             discover(vault, store)
             result = store.status()
         store.close()
+    elif args.command == "voices":
+        from .voices import update
+
+        gallery = update(vault)
+        result = {"same": gallery.get("same"), "voices": [{k: v for k, v in voice.items() if k != "print"}
+                                                          for voice in gallery["voices"]]}  # fmt: skip
     elif args.command == "compact":
         before = args.before or datetime.now(ZoneInfo(settings.timezone)).date().isoformat()
         result = {d["date"]: vault.compact_day(d["date"]) for d in vault.list_days() if d["date"] < before}

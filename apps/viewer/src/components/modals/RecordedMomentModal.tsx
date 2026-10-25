@@ -1,6 +1,6 @@
 import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { Footprints, X } from 'lucide-react';
-import type { MomentCamera, SceneMesh, SceneSplat } from '@daycube/api-client';
+import type { MomentCamera, MomentSpeech, SceneMesh, SceneSplat } from '@daycube/api-client';
 import { backendBridge } from '../../lib/backendBridge';
 import { Dialog } from '../ui';
 
@@ -45,6 +45,139 @@ function localTime(iso: string): string {
   const match = /T(\d{2}):(\d{2})/.exec(iso);
   return match ? `${match[1]}:${match[2]}` : iso;
 }
+
+/** A person id as a name: ``person:ana-maria`` is Ana Maria, ``person:me`` is You. */
+export function personName(id: string | null | undefined): string | null {
+  if (!id) return null;
+  if (id === 'person:me') return 'You';
+  const words = id.replace(/^person:/, '').split(/[-_]+/).filter(Boolean);
+  return words.map((w) => w.slice(0, 1).toUpperCase() + w.slice(1)).join(' ') || null;
+}
+
+/** A typed name as a person id (letters of any script, digits, hyphens), or null when empty. */
+export function personId(name: string): string | null {
+  const slug = name.normalize('NFC').trim().toLowerCase().replace(/[^\p{L}\p{M}\p{N}_-]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 80);
+  if (!slug) return null;
+  return slug === 'you' || slug === 'me' ? 'person:me' : `person:${slug}`;
+}
+
+// emotion2vec+ labels worth a tag; neutral, other and unknown are not.
+const FEELINGS = new Set(['angry', 'disgusted', 'fearful', 'happy', 'sad', 'surprised']);
+// Sound events worth a tag on the lines they overlap (SenseVoice, 10 s windows).
+const SOUNDS = new Set(['laughter', 'applause', 'crying']);
+
+/** How a turn sounded, as short tags: its emotion when the model is sure enough, and laughter or
+ * the like heard while it was said. */
+function soundTags(speech: MomentSpeech, index: number, start: number, end: number): string[] {
+  const out: string[] = [];
+  const turn = speech.turns?.find((x) => x.segment === index);
+  const feeling = turn?.emotion;
+  if (feeling && FEELINGS.has(feeling.label) && (feeling.scores[feeling.label] ?? 0) >= 0.5) out.push(feeling.label);
+  for (const e of speech.events ?? []) {
+    if (e.end <= start || e.start >= end) continue;
+    for (const kind of e.events) if (SOUNDS.has(kind) && !out.includes(kind)) out.push(kind);
+  }
+  return out;
+}
+
+interface Speaker {
+  label: string;
+  shown: string;
+  person: string | null;
+  how: 'confirmed' | 'same voice' | 'you' | null;
+}
+
+const HOW: Record<string, string> = {
+  confirmed: 'Named by you',
+  'same voice': 'The same voice as one you named in another recording',
+  you: 'You: the voice in the most of your recordings',
+};
+const HOW_SHORT: Record<string, string> = { 'same voice': 'same voice', you: 'by voice' };
+
+/** The recording's speakers as chips; a chip opens a field to name them. The name goes with their
+ * voice, to every recording where it speaks. */
+const SpeakerChips: React.FC<{ speakers: Speaker[]; onName: (label: string, person: string) => Promise<void> }> = ({ speakers, onName }) => {
+  const [editing, setEditing] = useState<string | null>(null);
+  const [draft, setDraft] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const save = async (label: string) => {
+    const person = personId(draft);
+    if (!person) {
+      setError('Type a name.');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await onName(label, person);
+      setEditing(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'The name was not saved.');
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <div className="speaker-pick" role="group" aria-label="Speakers">
+      {speakers.map((s) =>
+        editing === s.label ? (
+          <form
+            key={s.label}
+            className="row"
+            style={{ gap: 6 }}
+            onSubmit={(e) => {
+              e.preventDefault();
+              void save(s.label);
+            }}
+          >
+            <input
+              className="input"
+              style={{ height: 24, width: 140 }}
+              aria-label={`Name of ${s.shown}`}
+              value={draft}
+              autoFocus
+              disabled={saving}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  e.stopPropagation();
+                  setEditing(null);
+                }
+              }}
+            />
+            <button type="submit" className="btn btn--secondary btn--sm" disabled={saving}>
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+            <button type="button" className="btn btn--ghost btn--sm" onClick={() => setEditing(null)}>
+              Cancel
+            </button>
+          </form>
+        ) : (
+          <button
+            key={s.label}
+            type="button"
+            className="chip"
+            title={`${s.how ? HOW[s.how] : 'Not named yet'}. Click to name.`}
+            onClick={() => {
+              setEditing(s.label);
+              setDraft(s.person && s.person !== 'person:me' ? s.shown : s.person === 'person:me' ? 'You' : '');
+              setError(null);
+            }}
+          >
+            {s.shown}
+            {s.how && HOW_SHORT[s.how] ? <span className="faint"> · {HOW_SHORT[s.how]}</span> : null}
+          </button>
+        )
+      )}
+      {error ? (
+        <span role="alert" style={{ color: 'var(--danger)' }}>
+          {error}
+        </span>
+      ) : null}
+    </div>
+  );
+};
 
 /** The camera's path seen from above, metres east and north of where it began, with where it is
  * at ``t`` and the way it looks. */
@@ -105,6 +238,7 @@ export const RecordedMomentModal: React.FC<RecordedMomentModalProps> = ({ date, 
     };
   }, [date, momentId]);
 
+  const refresh = () => backendBridge.moment(date, momentId).then((m) => m && setMoment(m));
   const segments = moment && moment !== 'loading' ? moment.transcript.segments : [];
   const active = segments.findIndex((s) => t >= s.start && t <= s.end);
   useEffect(() => {
@@ -151,6 +285,22 @@ export const RecordedMomentModal: React.FC<RecordedMomentModalProps> = ({ date, 
   const which = source ?? (splat?.trained ? 'trained' : splat ? 'lidar' : 'mesh');
   const splatUrl = splat && which !== 'mesh' ? file(which === 'trained' && splat.trained ? splat.trained : splat.lidar) : null;
   const meshUrl = mesh && which === 'mesh' ? file(mesh.file) : null;
+  // Who spoke (services/speech): each speaker label with its name, given here or by the same voice
+  // elsewhere; S1 speaks most.
+  const speech = moment.speech;
+  const names = moment.transcript.speaker_map ?? {};
+  const labels = speech?.speakers?.length
+    ? speech.speakers.map((x) => x.label)
+    : [...new Set(segments.map((x) => x.speaker).filter((x): x is string => !!x))];
+  const speakers: Speaker[] = labels.map((label, k) => {
+    const person = names[label] ?? speech?.voices?.[label]?.person ?? null;
+    return { label, person, shown: personName(person) ?? `Speaker ${k + 1}`, how: person ? speech?.voices?.[label]?.how ?? 'confirmed' : null };
+  });
+  const speakerOf = new Map(speakers.map((x) => [x.label, x]));
+  const nameSpeaker = async (label: string, person: string) => {
+    await backendBridge.confirmSpeaker(date, meta.id, label, person);
+    await refresh();
+  };
   const scenes = [
     ...(splat?.trained ? [['trained', 'Splat'] as const] : []),
     ...(splat ? [['lidar', 'LiDAR'] as const] : []),
@@ -324,9 +474,11 @@ export const RecordedMomentModal: React.FC<RecordedMomentModalProps> = ({ date, 
             <h3 className="section__title" style={{ margin: 0 }}>
               Transcript
             </h3>
-            {segments.length ? (
+            {speakers.length ? (
+              <SpeakerChips speakers={speakers} onName={nameSpeaker} />
+            ) : segments.length ? (
               <div className="faint" style={{ fontSize: 12, marginTop: 4 }}>
-                Speakers are not told apart yet.
+                Speakers are told apart once the speech worker has run on this recording.
               </div>
             ) : null}
           </div>
@@ -336,30 +488,64 @@ export const RecordedMomentModal: React.FC<RecordedMomentModalProps> = ({ date, 
                 {untranscribed ?? (isScan ? 'The capture has no sound.' : 'Nothing was said, or there is no sound.')}
               </p>
             ) : (
-              segments.map((seg, i) => (
-                <button
-                  key={`${seg.start}-${i}`}
-                  ref={i === active ? activeRowRef : undefined}
-                  type="button"
-                  className="seg-row"
-                  style={{ gridTemplateColumns: '40px 1fr' }}
-                  aria-current={i === active}
-                  onClick={() => seek(seg.start)}
-                >
-                  <span className="faint num" style={{ fontSize: 12, paddingTop: 2 }}>
-                    {clockS(seg.start)}
-                  </span>
-                  <span className="quote__text">
-                    {seg.words.length && i === active
-                      ? seg.words.map((w, wi) => (
-                          <span key={wi} className={t >= w.start && t <= w.end + 0.3 ? 'word--active' : undefined}>
-                            {w.word}{' '}
+              segments.map((seg, i) => {
+                const said =
+                  seg.words.length && i === active
+                    ? seg.words.map((w, wi) => (
+                        <span key={wi} className={t >= w.start && t <= w.end + 0.3 ? 'word--active' : undefined}>
+                          {w.word}{' '}
+                        </span>
+                      ))
+                    : seg.text;
+                const who = seg.speaker ? speakerOf.get(seg.speaker) : undefined;
+                if (!who) {
+                  return (
+                    <button
+                      key={`${seg.start}-${i}`}
+                      ref={i === active ? activeRowRef : undefined}
+                      type="button"
+                      className="seg-row"
+                      style={{ gridTemplateColumns: '40px 1fr' }}
+                      aria-current={i === active}
+                      onClick={() => seek(seg.start)}
+                    >
+                      <span className="faint num" style={{ fontSize: 12, paddingTop: 2 }}>
+                        {clockS(seg.start)}
+                      </span>
+                      <span className="quote__text">{said}</span>
+                    </button>
+                  );
+                }
+                const tags = speech ? soundTags(speech, i, seg.start, seg.end) : [];
+                return (
+                  <button
+                    key={`${seg.start}-${i}`}
+                    ref={i === active ? activeRowRef : undefined}
+                    type="button"
+                    className="seg-row"
+                    aria-current={i === active}
+                    onClick={() => seek(seg.start)}
+                  >
+                    <span className={`avatar${who.person === 'person:me' ? ' avatar--you' : ''}`} aria-hidden>
+                      {who.shown.slice(0, 1).toUpperCase()}
+                    </span>
+                    <span>
+                      <span className="quote__head">
+                        <span className="quote__who">{who.shown}</span>
+                        <span className="faint num">{clockS(seg.start)}</span>
+                        {tags.map((tag) => (
+                          <span key={tag} className="tag" data-testid="sound-tag">
+                            {tag}
                           </span>
-                        ))
-                      : seg.text}
-                  </span>
-                </button>
-              ))
+                        ))}
+                      </span>
+                      <span className="quote__text" style={{ display: 'block' }}>
+                        {said}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })
             )}
           </div>
         </div>
