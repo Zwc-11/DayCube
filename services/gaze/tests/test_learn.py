@@ -259,6 +259,41 @@ def test_the_tracker_records_the_first_frame_an_update_reaches(tmp_path: Path) -
     assert events[-1] == "applied" and "fit" in events
 
 
+def test_an_update_loaded_at_start_is_recorded_as_applied_on_the_first_frame(tmp_path: Path) -> None:
+    """The tracker restarted: the learner loads update N before the tracker exists, and the first
+    frame predicts with it. That frame records it applied (doctor waited for the next fit)."""
+    from gaze.track import Tracker
+    from test_track import CALIBRATION, Camera, Clock, Computer, Receiver, Scene
+
+    first = Learner(estimator(), MONITOR, tmp_path, CALIBRATED)
+    for k, (x, y, v, _) in enumerate(clicks(120, seed=3)):
+        first.add(1_800_000_000.0 + 2 * k, x, y, v)
+    assert first.version >= 1
+    est = estimator()
+    learner = Learner(est, MONITOR, tmp_path, CALIBRATED)  # after the restart
+    assert learner.version == first.version and learner.applied is None
+    vector = pack(Poser(CAMERA).measure(face((700, 400), *HOME)))
+
+    class Head:
+        model = est.model
+
+        def extract_features(self, frame: object) -> tuple[np.ndarray, bool]:
+            return vector, False
+
+        def predict(self, X: np.ndarray) -> np.ndarray:
+            return est.predict(X)
+
+    clock, scene, log = Clock(), Scene(), []
+    tracker = Tracker(Head(), lambda: Camera(scene, log), Receiver(), CALIBRATION | {"monitor": list(MONITOR)},
+                      system=Computer(), clock=clock, sleep=clock.sleep, timer=clock, learner=learner)  # fmt: skip
+    for _ in range(200):
+        tracker.step()
+        if learner.applied:
+            break
+    assert learner.applied is not None and learner.applied["version"] == first.version
+    assert learner.applied["after_ms"] is None  # fitted before this tracker started
+
+
 def lines(n: int, seed: int, shift: float = 0.0) -> list[tuple[float, float, float, np.ndarray, np.ndarray]]:
     """(y, x0, x1, frame vector, true point): looks along lines being read, from the moved head
     poses; the label's height ``shift`` px off where the eyes were (a decoder a line astray)."""
