@@ -13,8 +13,9 @@ It runs on the GPU as a [job](jobs.md) and needs no command.
 
 | Stage | Model | License | What it gives |
 | --- | --- | --- | --- |
-| Speech regions | Silero VAD | MIT | where people speak; pauses under 0.6 s bridged |
-| Transcript | Qwen3-ASR-1.7B on the GPU, 0.6B on a CPU | Apache-2.0 | text and its languages, in pieces of at most 170 s |
+| Speech regions | Silero VAD | MIT | where people speak, in stamps split at 300 ms pauses; for speakers, pauses under 0.6 s bridged |
+| Language | SenseVoice-Small | model card: not stated | the language of each stamp (zh, en, yue, ja, ko), so each piece the recogniser is given is in one language |
+| Transcript | Qwen3-ASR-1.7B on the GPU, 0.6B on a CPU | Apache-2.0 | text and its language, per piece: a run of stamps of one language, at most 170 s |
 | Word times | Qwen3-ForcedAligner-0.6B | Apache-2.0 | each word's start and end (each character in Chinese), with the transcript's punctuation put back |
 | Speakers | CAM++ (`funasr/campplus`) | Apache-2.0 | a voice embedding per 1.5 s window, every 0.75 s, clustered |
 | Emotion | emotion2vec+ large | model card: not stated | 9 classes per turn of at least 1 s, plus its 1024-number embedding |
@@ -42,6 +43,25 @@ The research is in the project's pipeline plan.
 - pyannote's community-1 pipeline was the plan's pick. It is gated behind a Hugging Face sign-in,
   so nothing here uses it.
 
+### Pieces of one language
+
+Qwen3-ASR-1.7B, given a piece that changes language, transcribes one language and drops the other.
+
+- **Found** on the PC's first GPU canary (2026-10-25): of English, Mandarin, English, Mandarin in one
+  27 s piece, it returned the English sentence twice and no Mandarin. The aligner then spread the
+  second English sentence over the first Mandarin clip.
+- **Reproduced** in bfloat16 on a CPU: English then Mandarin, and Mandarin then English, each gave
+  only the English; each clip alone gave both right. The 0.6B model did not do this on the canary.
+- **The fix.** SenseVoice tells each speech stamp's language from its first 20 s. A stamp shorter
+  than 1 s, or with none told, takes the language of the stamps before it. Pieces are runs of one
+  language, still at most 170 s, and the recogniser detects the language of each.
+- **Result:** the canary on Qwen3-ASR-1.7B (bfloat16, CPU) gives 4 pieces (en, zh, en, zh),
+  Mandarin CER 0.0, English WER 0.133, times to 0.02 s.
+- **Still possible.** A switch inside a stamp, with no pause of 300 ms, is in one piece. Mixing
+  English words into Mandarin sentences is left to the recogniser.
+- `speech.json` `pieces` lists each piece with the language told and the one the recogniser heard.
+  Speech from before (`version` 1) was cut by length only.
+
 ### Turns
 
 - A turn is a run of one speaker's words.
@@ -54,8 +74,8 @@ The research is in the project's pipeline plan.
 ## The same voices across recordings (`ingest/voices.py`)
 
 The speech worker keeps each speaker's voiceprint: the mean of their CAM++ windows, 192 numbers. When
-a speech job finishes, and when you name a speaker, the receiver rebuilds the voices from all of
-them:
+a speech job finishes, when you name a speaker, and when the receiver finds voiceprints newer than
+the voices (speech run with `python -m speech moment`), it rebuilds the voices from all of them:
 
 - **Voices.** Voiceprints are clustered by cosine similarity, merging groups while their average
   similarity is above 0.5 (`SAME`). Two speakers of one recording are never merged: diarization
@@ -121,6 +141,8 @@ The receiver, the vault's one writer of days, makes each span a talk moment (`in
   - Like every GPU job, a speech job is handed out only while the PC is free.
 - **Without a GPU** each stage runs in a process of its own, so only one model is in memory at a
   time. Freeing a model inside one process gave back 600 MB of its 3.2 GB.
+- **The GPU's model on a CPU:** `DAYCUBE_ASR_MODEL=Qwen/Qwen3-ASR-1.7B DAYCUBE_SPEECH_DTYPE=bfloat16`
+  runs the 1.7B in 3.4 GB, with the GPU's numbers (about 2 min for the canary on 2 cores).
 
 ## The check (`speech/canary.py`)
 
@@ -138,14 +160,15 @@ them. The check passes when:
 
 - punctuation back on aligned words, in English and Chinese
 - word languages
-- pieces and windows
+- pieces and windows, and pieces cut where the language changes
 - clustering two voices, with a stray window
 - turns and smoothing
 - fillers
 - the canary's scores
 - the worker leasing, finishing and failing jobs against a stand-in receiver
 
-`DAYCUBE_SPEECH_CANARY=1` adds the canary on the real models.
+`DAYCUBE_SPEECH_CANARY=1` adds the canary on the real models, and SenseVoice telling the canary's
+English and Mandarin apart (whole clips and their first 2 s).
 
 `services/ingest/tests/test_voices.py` covers the voices: three people over five days found as three
 voices, you found and named, a name given once spread to the other recordings and a name given by

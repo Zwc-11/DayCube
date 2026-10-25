@@ -85,7 +85,10 @@ def run(device: str | None = None, say: Callable[[str], None] = print) -> dict:
     result = transcribe(audio, Models(device), say)
     turns = result["transcript"]["segments"]
     report: dict = {
+        "device": result["speech"]["device"],
+        "asr": result["speech"]["models"]["asr"],
         "turns": [(t["speaker"], round(t["start"], 2), t["text"]) for t in turns],
+        "pieces": [(p["start"], p["end"], p["told"], p["heard"]) for p in result["speech"]["pieces"]],
         "timing_s": result["speech"]["timing_s"],
     }
     if len(turns) != 4:

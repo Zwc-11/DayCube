@@ -53,6 +53,30 @@ def test_speech_regions_are_grouped_into_pieces_the_aligner_takes() -> None:
     assert w[0] == (10.0, 11.5) and w[1][0] == 10.75 and 14.0 - w[-1][1] <= 0.25  # at most 0.25 s left over
 
 
+def test_pieces_never_change_language() -> None:
+    """English, then Mandarin, then English: three pieces, though they would fit in one. A short
+    stamp (a 0.4 s "嗯", an untold one) goes with the stamps before it; untold first stamps take the
+    first language told."""
+    found = [(0.0, 3.0), (3.4, 7.0), (8.0, 12.0), (12.5, 12.9), (13.3, 16.0), (17.0, 20.0)]
+    told = ["en", "en", "zh", "zh", "zh", "en"]
+    assert vad.by_language(found, told) == [(0.0, 7.0, "en"), (8.0, 16.0, "zh"), (17.0, 20.0, "en")]
+    assert vad.by_language(found, ["nospeech", "en", "zh", "en", "zh", "en"]) == [
+        (0.0, 7.0, "en"), (8.0, 16.0, "zh"), (17.0, 20.0, "en")]  # fmt: skip
+    # One language: the pieces of before, cut at 170 s.
+    long = [(k * 10.0, k * 10.0 + 8.0) for k in range(40)]
+    assert [(a, b) for a, b, _ in vad.by_language(long, ["zh"] * 40)] == vad.chunks(long, max_s=170)
+    assert vad.by_language([], []) == []
+
+
+@pytest.mark.skipif(os.environ.get("DAYCUBE_SPEECH_CANARY") != "1", reason="runs the models (DAYCUBE_SPEECH_CANARY=1)")
+def test_sensevoice_tells_the_canarys_languages_apart() -> None:
+    from speech.sound import Events
+
+    clips = canary.fetch()
+    assert Events("cpu").languages([clips["en"], clips["zh"], clips["en"][: 16000 * 2], clips["zh"][: 16000 * 2]]) == [
+        "en", "zh", "en", "zh"]  # fmt: skip
+
+
 def test_windows_of_two_voices_become_two_speakers_and_a_stray_window_joins_the_nearer() -> None:
     rng = np.random.default_rng(0)
     a, b = rng.normal(size=192), rng.normal(size=192)

@@ -29,7 +29,7 @@ from .audio import RATE, clip, load
 from .sound import Emotion, Events, fillers
 from .speakers import Embedder, diarize
 
-VERSION = 1
+VERSION = 2  # 2: pieces of one language each
 TURN_GAP_S = 1.5  # a pause this long starts a new segment, even for one speaker
 TURN_MAX_S = 30.0  # past this, a segment ends at the next sentence end
 EMOTION_MIN_S = 1.0
@@ -63,6 +63,10 @@ def _emotion(where: str, wavs: list[np.ndarray]) -> list[dict]:
 
 def _events(where: str, audio: np.ndarray) -> list[dict]:
     return Events(where)(audio)
+
+
+def _languages(where: str, wavs: list[np.ndarray]) -> list[str]:
+    return Events(where).languages(wavs)
 
 
 def _apart(fn: Callable, *args: object) -> object:
@@ -111,6 +115,11 @@ class Models:
             return _apart(_emotion, self.device, wavs)  # type: ignore[return-value]
         return self._get("emotion", lambda: Emotion(self.device))(wavs)  # type: ignore[operator]
 
+    def languages(self, wavs: list[np.ndarray]) -> list[str]:
+        if not self.keep:
+            return _apart(_languages, self.device, wavs)  # type: ignore[return-value]
+        return self._get("events", lambda: Events(self.device)).languages(wavs)  # type: ignore[attr-defined]
+
     def events(self, audio: np.ndarray) -> list[dict]:
         if not self.keep:
             return _apart(_events, self.device, audio)  # type: ignore[return-value]
@@ -152,10 +161,17 @@ def transcribe(audio: np.ndarray, models: Models, say: Callable[[str], None] = p
         clock = now
 
     duration = len(audio) / RATE
-    spans = vad.regions(audio)
-    pieces = vad.chunks(spans)
+    found = vad.stamps(audio)
+    spans = vad.merge(found)
     lap("vad")
-    say(f"{sum(b - a for a, b in spans):.0f} s of speech in {duration:.0f} s, {len(pieces)} pieces")
+    # Each piece in one language: the recogniser keeps one language of a piece and drops the rest.
+    told = models.languages([clip(audio, a, b) for a, b in found]) if found else []
+    cut = vad.by_language(found, told)
+    pieces = [(a, b) for a, b, _ in cut]
+    lap("language")
+    runs = sum(1 for k in range(len(told)) if k == 0 or told[k] != told[k - 1])
+    say(f"{sum(b - a for a, b in spans):.0f} s of speech in {duration:.0f} s, {len(pieces)} pieces"
+        f" ({', '.join(sorted(set(told) - {'nospeech'})) or 'no language told'}, {runs} runs)")  # fmt: skip
     wavs = [clip(audio, a, b) for a, b in pieces]
     texts = models.asr(wavs) if wavs else []
     lap("asr")
@@ -214,6 +230,9 @@ def transcribe(audio: np.ndarray, models: Models, say: Callable[[str], None] = p
             for k, t in enumerate(turns)
         ],
         "events": events,
+        # What the recogniser was given: each piece, the language SenseVoice told, the one it heard.
+        "pieces": [{"start": a, "end": b, "told": lang, "heard": heard}
+                   for (a, b, lang), (heard, _) in zip(cut, texts, strict=True)],
         "timing_s": timing,
     }  # fmt: skip
     embeddings = {
