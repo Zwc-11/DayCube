@@ -42,15 +42,16 @@ test('live search and empty results stay separate from prototype evidence', asyn
 });
 
 test('the calendar lists recorded days and opens them', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?view=days');
   const day = page.getByRole('button', { name: /Tuesday, October 20/ });
   await expect(day).toBeVisible();
   await expect(page.locator('.cal__day--empty').first()).toBeVisible();
   await day.click();
   await expect(page).toHaveURL(/\?date=2026-10-20$/);
   await expect(page.locator('canvas')).toBeVisible();
-  await page.getByRole('button', { name: 'All days', exact: true }).click();
+  await page.getByRole('button', { name: 'Home', exact: true }).click();
   await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByTestId('graph')).toBeVisible(); // home is the graph of notes
   await page.goBack();
   await expect(page.locator('canvas')).toBeVisible();
 });

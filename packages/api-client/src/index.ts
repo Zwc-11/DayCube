@@ -1,8 +1,8 @@
 import {
   askResultSchema, dataCenterSchema, dayNotesSchema, gazeLearningSchema, dayResponseSchema, entitySchema, eventSchema, graphSchema,
-  knowledgeGraphSchema, momentSchema, noteSchema, searchResultSchema, skeletonSchema, transcriptSchema,
+  knowledgeGraphSchema, momentSchema, noteGraphSchema, noteSchema, searchResultSchema, skeletonSchema, transcriptSchema,
   type AskResult, type DataCenter, type Day, type GazeLearning, type DayNotes, type DayResponse, type Entity, type Event,
-  type KnowledgeGraph, type Note, type SearchResult,
+  type KnowledgeGraph, type Note, type NoteGraph, type SearchResult,
 } from '@daycube/schemas';
 import { consumeSse } from './sse.mjs';
 
@@ -117,6 +117,14 @@ export class DaycubeClient {
   /** The day's knowledge base; its notes are written or refreshed on the server first. */
   async dayNotes(date: string, signal?: AbortSignal): Promise<DayNotes> {
     return dayNotesSchema.parse(await this.request(`/day/${encodeURIComponent(date)}/notes`, { signal }));
+  }
+  /** The vault's graph, or null while `etag` is still current (an empty 304). */
+  async noteGraphIfChanged(etag?: string | null, signal?: AbortSignal): Promise<{ etag: string | null; graph: NoteGraph } | null> {
+    const headers = new Headers(etag ? { 'If-None-Match': etag } : undefined);
+    const response = await this.transport(`${this.baseUrl}/notes/graph`, { headers, cache: 'no-store', signal });
+    if (response.status === 304) return null;
+    if (!response.ok) throw await ApiError.from(response);
+    return { etag: response.headers.get('ETag'), graph: noteGraphSchema.parse(await response.json()) };
   }
   async note(path: string, signal?: AbortSignal): Promise<Note> {
     return noteSchema.parse(await this.request(`/note?path=${encodeURIComponent(path)}`, { signal }));

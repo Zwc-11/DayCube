@@ -39,28 +39,53 @@ The folder is read back into the vault database whenever a note changes:
   generated note connects to the page, course or day it stands for; a link to a note not written
   yet still makes a node, as in Obsidian. `.obsidian/` and other hidden folders are skipped.
 
-## Reading a day in the viewer
+## The graph: the viewer's home page
 
-Click a day on the calendar. A day with only computer capture opens as its notes; a day with places
-opens in 3D, and **Notes** in the top bar switches to its notes (**3D** switches back).
+The viewer opens on every note in `vault/notes` and every `[[link]]` between them, as Obsidian's
+graph view draws a vault (`GET /notes/graph`). On a wide screen the newest recorded day's note is
+open beside it.
 
 | Pane | Shows |
 | --- | --- |
-| Left | The day's notes: its daily note, the sources and courses it links to, and your own notes that link to it. While searching: the results |
-| Middle | The note, rendered: `[[links]]` open the note they name (a link to a note not written yet is dimmed), the generated region is marked, front matter shows as properties, and **Open in Obsidian** opens the file there |
-| Right | The day's local graph (click a node with a note to open it), the note's backlinks and outgoing links |
+| Left | The notes folder (folders with how many notes they hold, days newest first, each note with its kind's colour). While searching: the results |
+| Middle | The graph. A dot per note, sized by its links and coloured by kind (days, sources, courses, your notes, notes not written yet); the open note glows amber with its links. Hover a note to light it and its neighbours; names appear as you zoom in, the most linked first, never on top of each other |
+| Right | The open note, rendered: `[[links]]` open the note they name (a link to a note not written yet is dimmed), the generated region is marked, front matter shows as properties, **Open in Obsidian** opens the file there; then what links to it (**Linked from**) and what it links to (**Links to**). A daily note steps to the day before or after, and a day with places has **3D** |
 
-Search sits in the top bar (`/` or `Ctrl K`): results update as you type, for this day or all days,
-with the time, kind and site words of [search.md](search.md#question-filters). Enter or a click opens
-the result in its note (a page's source note, else the day's daily note) with the line marked.
+Opening a note anywhere (a dot, the list, a link, a search result) shows it on the right and brings
+it into view on the graph; `?note=<path>` is its address, so back and forward work. Drag the
+background to pan, scroll or pinch to zoom, drag a dot to pull it and its neighbours. The legend
+hides or shows a kind of note; **Linked to open note** shows only the open note and its neighbours
+(Obsidian's local graph). The note's edge drags wider or narrower. On a phone the list slides over
+the graph and the note covers it.
+
+Search sits in the top bar (`/` or `Ctrl K`): results update as you type, across every day, with the
+time, kind and site words of [search.md](search.md#question-filters), and the notes they are in
+light up on the graph. Enter or a click opens the result in its note (a page's source note, else
+the day's daily note) with the line marked. **Days** opens the calendar (`?view=days`); a day there
+opens in 3D, or, with only computer capture, as its note on the graph (`?date=<day>&view=notes`,
+also where **Notes** in a day's 3D view goes).
 
 Notes hold text from the web, so the viewer renders Markdown itself, to React elements: no HTML from
 a note is ever inserted into the page, and links open only http(s), mailto and obsidian URLs.
 
-Opening a day writes its notes if its records changed since they were last written (`GET
-/day/{date}/notes`), so a day is never older than its capture logs; today's page refreshes every
-minute. `GET /note?path=` returns one note with its links resolved and its backlinks
-(`note_links` keeps every link of every note, generated or written, with the note it opens).
+**How it is drawn.** The layout is a live force simulation (`apps/viewer/src/lib/graphSim.ts`):
+every note repels every other by Barnes–Hut (O(n log n) a tick, no repulsion past 120 + 14√n so lone
+notes stay near the rest), links are springs weakened at busy notes as d3-force weakens them, and a
+pull toward the middle keeps clusters together. It runs in a worker, a tick per frame, and stops at
+rest; positions are kept per browser, so the graph opens as you left it and a new note appears next
+to what it links to. The canvas draws only when something moved, batching dots by kind (ten fills)
+and edges by state (three strokes). With 2,600 notes a full redraw takes about 4 ms and the layout
+comes to rest about 6 s after a first load (`apps/viewer/e2e/knowledge.spec.ts`; the vault comes
+from `scripts/build-notes-fixture.py`, a fictional term of linked notes).
+
+**What the server does.** `GET /notes/graph` writes the daily note of any recorded day that has none
+yet, then returns each note's path and kind, the links to notes not written yet (one per name,
+matched as Obsidian matches them), and every link as `[from, to, count]`. It is built from the
+`notes` and `note_links` tables in two queries and kept until a note changes (ETag, an empty 304
+for a client holding the current copy); the page asks again every minute while it is visible. A
+day's note is refreshed from its records when it opens (`GET /day/{date}/notes`), and today's every
+minute. `GET /note?path=` returns one note with its links resolved and its backlinks (`note_links`
+keeps every link of every note, generated or written, with the note it opens).
 
 ## When notes are written
 
@@ -70,7 +95,8 @@ minute. `GET /note?path=` returns one note with its links resolved and its backl
 - On demand: `uv run daycube notes --date 2026-10-22` (or `--all`), or `POST /notes/{date}` with
   the vault token. `GET /notes` lists the notes as last read.
 
-Code: `services/ingest/ingest/notes/` (Markdown, writing, and `read.py` for the viewer),
+Code: `services/ingest/ingest/notes/` (Markdown, writing, `read.py` and `graph.py` for the viewer),
 `services/ingest/ingest/store/notes.py` (reading back), `apps/viewer/src/components/knowledge/`
-and `apps/viewer/src/lib/markdown.tsx` (the page). Tests: `services/ingest/tests/test_notes.py`,
-`test_knowledge.py`, `apps/viewer/e2e/knowledge.spec.ts`.
+(the page: `KnowledgePage`, `GraphCanvas`, `FileTree`, `NotePanel`), `apps/viewer/src/lib/`
+(`noteGraph.ts`, `graphSim.ts` and its worker, `markdown.tsx`). Tests:
+`services/ingest/tests/test_notes.py`, `test_knowledge.py`, `apps/viewer/e2e/knowledge.spec.ts`.

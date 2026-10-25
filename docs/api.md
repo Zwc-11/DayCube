@@ -16,6 +16,7 @@ for actions. Do not paste external provider keys there.
 | GET | `/entity/{id}` | One entity: its records (newest first) and neighbours |
 | GET | `/data` | Data center: source files by stream (vault days, each capture log, notes, calibration) and the database built from them (rows per table, kinds, sizes) |
 | GET | `/notes` | The notes folder as read into the database |
+| GET | `/notes/graph` | Every note (path, kind) and every `[[link]]` between them, links to notes not written yet as their own nodes (`missing`); edges `[from, to, count]`. Writes the daily note of a recorded day that has none first. ETag: an empty 304 while the folder is unchanged |
 | GET | `/day/{date}/notes` | A day's knowledge base: daily note (written or refreshed first), the notes it links to and that link to it, local graph with each node's note |
 | GET | `/note?path=` | One note: Markdown, links with the note each opens, backlinks; paths confined to `vault/notes` |
 | GET | `/search?q=&date=` | Search as you type: the `/ask` answer and evidence without the token, each result with its `note` and the words to mark (`match`), and `took_ms` |

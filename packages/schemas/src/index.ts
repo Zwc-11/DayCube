@@ -208,11 +208,20 @@ export const noteSchema = z.object({
   backlinks: z.array(z.object({ path: z.string(), title: z.string() })),
   file: z.string(), modified: z.string(),
 });
+// Every note in vault/notes and every [[link]] between them (GET /notes/graph). An edge is
+// [a, b, count]: a indexes notes; b indexes notes, or missing (links to notes not written yet)
+// after them.
+export const noteGraphSchema = z.object({
+  notes: z.array(z.object({ path: z.string(), kind: z.enum(['daily', 'source', 'course', 'note']) })),
+  missing: z.array(z.string()),
+  edges: z.array(z.tuple([z.number().int(), z.number().int(), z.number().int()])),
+});
 export const searchResultSchema = askResultSchema.extend({
   evidence: z.array(evidenceSchema.extend({ note: z.string().nullable(), match: z.string() })),
   took_ms: z.number(),
 });
 export type DayNotes = z.infer<typeof dayNotesSchema>;
 export type Note = z.infer<typeof noteSchema>;
+export type NoteGraph = z.infer<typeof noteGraphSchema>;
 export type SearchResult = z.infer<typeof searchResultSchema>;
 export type SearchEvidence = SearchResult['evidence'][number];

@@ -29,6 +29,7 @@ from .config import Settings
 from .contracts import ContractError
 from .generated.event import Event
 from .index.embed import Embedder, default_embedder
+from .notes.graph import NoteGraph
 from .notes.read import DayNotes, attach_notes, read_note
 from .store import EmbeddingModelChanged, LifeStore
 from .time import instant
@@ -97,6 +98,7 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
     bearer = HTTPBearer(auto_error=False)
 
     day_notes = DayNotes(store)
+    note_graph = NoteGraph(store, day_notes)
 
     def warm_up() -> None:
         started = perf_counter()
@@ -261,6 +263,17 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
         """The day's knowledge base: its daily note (written or refreshed now if its records changed),
         the notes it links to and that link to it, and its local graph."""
         return day_notes.view(date)
+
+    @app.get("/notes/graph")
+    def notes_graph(request: Request) -> Response:
+        """Every note in vault/notes (path, kind) and every [[link]] between them, links to notes
+        not written yet as their own nodes (``missing``): the vault's graph. Every recorded day gets
+        its daily note first. Tagged: a client holding the current copy gets an empty 304."""
+        body, etag = note_graph.tagged()
+        headers = {"ETag": etag, "Cache-Control": "no-cache"}
+        if etag in (tag.strip().removeprefix("W/") for tag in request.headers.get("if-none-match", "").split(",")):
+            return Response(status_code=304, headers=headers)
+        return Response(body, media_type="application/json", headers=headers)
 
     @app.get("/note")
     def note(path: str = Query(..., max_length=1000)) -> Record:
