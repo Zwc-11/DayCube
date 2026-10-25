@@ -243,6 +243,37 @@ def _tuning(vault: Path) -> list[tuple[str, str, str]]:
     return [(INFO, "tuning", detail + "kept the settings in use (not 3% better)")]
 
 
+def _scenes(vault: Path) -> list[tuple[str, str, str]]:
+    """LiDAR scans into 3D (capture.scans): what waits, what trains, what failed."""
+    try:
+        from ingest.splat.queue import report
+    except ImportError:
+        return []
+    state = report(vault)
+    if not state:
+        return []
+    rows = []
+    running = state.get("running")
+    if running:
+        rows.append((INFO, "3D scans", f"training {running['moment']} on the GPU"))
+    elif state.get("waiting"):
+        when = (
+            "when you are away 10 min, or at night"
+            if state.get("training_allowed")
+            else ("once Brush is installed: uv run daycube splat --date <day> (docs/splat.md)")
+        )
+        rows.append((INFO, "3D scans", f"{state['waiting']} waiting to train, {when}"))
+    last = state.get("last")
+    if last and last.get("did") == "trained":
+        psnr = f", {last['psnr_db']:.1f} dB" if last.get("psnr_db") else ""
+        rows.append((PASS, "3D scans", f"last trained {last['moment']} ({(last.get('splats') or 0):,} splats{psnr})"))
+    for failed in state.get("failed") or []:
+        rows.append(
+            (WARN, "3D scans", f"{failed} failed to train: the reason is in its scene.json; daycube splat tries again")
+        )
+    return rows
+
+
 def checks(status: dict | None, vault: Path, zone: ZoneInfo, now: datetime, autostart: str | None) -> list[tuple]:
     out: list[tuple[str, str, str]] = []
     if status is None:
@@ -414,6 +445,7 @@ def checks(status: dict | None, vault: Path, zone: ZoneInfo, now: datetime, auto
     out += _drift(gaze)
     if gaze.get("tracking") and gaze.get("learning"):
         out += _tuning(vault)
+    out += _scenes(vault)
 
     decoding = status.get("line_decoding") or {}
     seen = decoding.get("fixations", 0)

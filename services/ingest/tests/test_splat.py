@@ -272,3 +272,26 @@ def test_brush_progress_is_read_from_its_log() -> None:
                  "Eval iter 3000: PSNR 23.41, ssim 0.712", "15000/30000"]:  # fmt: skip
         p.read(line)
     assert (p.step, p.splats, p.psnr, p.ssim) == (15000, 815433, [(3000, 23.41)], 0.712)
+
+
+def test_new_scans_get_their_preview_then_train_when_the_pc_is_free(vault: Vault, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from ingest.phone.importer import import_phone
+    from ingest.splat import queue
+
+    capture = make_capture(tmp_path / "drop" / "scan")
+    import_phone(vault, [capture], transcribe=False, say=lambda _: None)
+    moment = next(vault.root.glob("*/moments/mo_scan_*"))
+    monkeypatch.delenv("DAYCUBE_BRUSH", raising=False)
+    monkeypatch.setenv("DAYCUBE_TOOLS", str(tmp_path / "no-tools"))  # no Brush installed
+    day = datetime(2026, 10, 25, 14, 0)
+    assert queue.step(vault, idle_s=0, now=day, say=lambda _: None)["did"] == "preview"
+    assert read_json(moment / "scene.json")["splat"]["status"] == "lidar"
+    # Without Brush it never trains, idle or not: installing it is your call (daycube splat).
+    assert queue.step(vault, idle_s=3600, now=day, say=lambda _: None) == {"did": None, "waiting": 1, "allowed": False}
+    monkeypatch.setenv("DAYCUBE_BRUSH", str(fake_brush(tmp_path)))
+    assert queue.step(vault, idle_s=60, now=day, say=lambda _: None)["did"] is None  # you are at the PC
+    assert queue.step(vault, idle_s=60, now=datetime(2026, 10, 25, 3, 0), say=lambda _: None)["did"] == "trained"  # night
+    assert read_json(moment / "scene.json")["splat"]["status"] == "trained"
+    status = queue.report(vault.root)
+    assert status["last"]["did"] == "trained" and status["running"] is None and status["waiting"] == 0
+    assert queue.step(vault, idle_s=3600, now=day, say=lambda _: None)["did"] is None  # nothing left
