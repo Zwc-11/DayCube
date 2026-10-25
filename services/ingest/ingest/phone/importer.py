@@ -45,6 +45,10 @@ SOURCES = frozenset({sensor_logger.SOURCE})
 KIND_NAMES = {"house": "Home", "venue": "Building", "outdoor": "Outdoors"}
 
 
+# Made from a moment's capture after its import, kept when the same capture is imported again.
+KEPT_FILES = ("splat", "mesh", "speech.json", "transcript.json", "transcript.whisper.json")
+KEPT_SCENE = ("splat", "mesh")  # scene.json entries, kept with their folder
+
 @dataclass
 class Moment:
     id: str
@@ -253,22 +257,35 @@ def _write_day(vault: Vault, day: str, zone_name: str, spans: list, moments: lis
     moment_events = []
     for moment in moments:
         folder = path / "moments" / moment.id
-        # A scan's 3D (ingest/splat) took the GPU minutes to make: it survives importing the same
-        # capture again.
-        kept_splat = None
+        # What later stages made from the same capture survives importing it again: a scan's 3D
+        # (ingest/splat: GPU minutes) and a recording's speech (services/speech).
+        stash, kept_scene = None, {}
         if folder.exists():
             before = read_json(folder / "scene.json") if (folder / "scene.json").is_file() else {}
-            if (folder / "splat").is_dir() and before.get("source") == moment.file and before.get("splat"):
-                kept_splat = (path / "moments" / f".{moment.id}.splat", before["splat"])
-                if kept_splat[0].exists():
-                    shutil.rmtree(kept_splat[0])
-                (folder / "splat").rename(kept_splat[0])
+            if before.get("source") == moment.file:
+                stash = path / "moments" / f".{moment.id}.kept"
+                if stash.exists():
+                    shutil.rmtree(stash)
+                stash.mkdir()
+                for name in KEPT_FILES:
+                    if (folder / name).exists():
+                        (folder / name).rename(stash / name)
+                kept_scene = {key: before[key] for key in KEPT_SCENE if before.get(key) and (stash / key).exists()}
             shutil.rmtree(folder)
         folder.mkdir(parents=True)
         scene = moment.write(folder) | {"source": moment.file}
-        if kept_splat:
-            kept_splat[0].rename(folder / "splat")
-            scene["splat"] = kept_splat[1]
+        if stash is not None:
+            for item in stash.iterdir():
+                if item.name == "transcript.json" and not (stash / "speech.json").exists():
+                    continue  # no speech pass yet: the transcript just imported stands
+                target = folder / item.name
+                if target.is_dir():
+                    shutil.rmtree(target)
+                elif target.exists():
+                    target.unlink()
+                item.rename(target)
+            shutil.rmtree(stash)
+            scene |= kept_scene
         meta = {
             "id": moment.id, "title": moment.title, "t0": moment.t0.astimezone(zone).isoformat(timespec="seconds"),
             "duration_s": round(moment.duration_s, 3), "lat": moment.lat, "lon": moment.lon,

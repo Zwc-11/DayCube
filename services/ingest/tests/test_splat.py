@@ -309,9 +309,11 @@ def test_new_scans_get_their_preview_then_train_when_the_pc_is_free(vault: Vault
     day, night = datetime(2026, 10, 25, 14, 0), datetime(2026, 10, 25, 3, 0)
     quiet = {"say": lambda _: None}
 
-    assert len(discover(vault, jobs)) == 1 and discover(vault, jobs) == []  # queued once
-    assert run_next(vault, jobs, "cpu", "cpu", **quiet)["stage"] == "splat_preview"
+    assert len(discover(vault, jobs)) == 2 and discover(vault, jobs) == []  # mesh and preview, queued once
+    ran = {run_next(vault, jobs, "cpu", "cpu", **quiet)["stage"] for _ in range(2)}
+    assert ran == {"scan_mesh", "splat_preview"}
     assert read_json(moment / "scene.json")["splat"]["status"] == "lidar"
+    assert read_json(moment / "scene.json")["mesh"]["status"] == "made" and (moment / "mesh" / "scene.glb").is_file()
     assert jobs.status()["stages"]["splat_train"]["queued"] == 1  # the preview leads to training
     # Without Brush it never trains, idle or not: installing it is your call (daycube splat).
     assert run_next(vault, jobs, "gpu", "gpu", idle_s=3600, now=day, **quiet) is None

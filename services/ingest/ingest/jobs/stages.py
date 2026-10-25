@@ -44,6 +44,7 @@ class Stage:
     attempts: int = MAX_ATTEMPTS
     title: str = ""
     worker: str = ""  # for a stage run elsewhere: what runs it, for doctor
+    install: str = ""  # for a stage that is not ready: how to make it ready, for doctor
     after: Callable[[Vault, dict, dict], None] | None = None  # once done, in the receiver (inputs, outputs)
     extra: dict = field(default_factory=dict)
 
@@ -91,8 +92,27 @@ def _training_allowed() -> bool:
     return brush.allowed()
 
 
+def _scan_mesh(vault: Vault, inputs: dict, say: Say) -> dict:
+    from ..splat.run import SplatError, mesh_moment
+
+    try:
+        made = mesh_moment(vault, inputs["date"], inputs["moment"], say=say)
+    except SplatError as error:
+        raise Permanent(str(error)) from error
+    return {"triangles": made["triangles"], "median_m": (made.get("check") or {}).get("median_m")}
+
+
+def _mesh_available() -> bool:
+    from ..splat import mesh
+
+    return mesh.available()
+
+
+register(Stage("scan_mesh", 1, "cpu", _scan_mesh, ready=_mesh_available, title="3D mesh",
+               install="uv sync --extra mesh (docs/splat.md)"))  # fmt: skip
 register(Stage("splat_preview", 1, "cpu", _splat_preview, follow=lambda i, o: [("splat_train", i)], title="3D preview"))
-register(Stage("splat_train", 1, "gpu", _splat_train, ready=_training_allowed, attempts=2, title="3D training"))
+register(Stage("splat_train", 1, "gpu", _splat_train, ready=_training_allowed, attempts=2, title="3D training",
+               install="uv run daycube splat --date <day>, which installs Brush (docs/splat.md)"))  # fmt: skip
 
 
 # ---- speech (services/speech: its own environment, leasing over HTTP) --------------------------
@@ -135,15 +155,21 @@ def scan_inputs(vault_root: Path) -> list[tuple[dict, dict]]:
 
 
 def discover(vault: Vault, jobs: Jobs) -> list[int]:
-    """Queue what the vault still needs: a preview for a scan with its depth and no 3D, training
-    for one with only the preview, speech for a recording of sound without it. Ids of the jobs that are new; a stage already run on
+    """Queue what the vault still needs: for a scan with its depth, its mesh, its preview and then
+    its training; for a recording of sound, its speech. Ids of the jobs that are new; a stage already run on
     an input (done or failed) is not queued again."""
     from ..splat.run import find_capture
 
     new = []
     for inputs, splat in scan_inputs(vault.root):
+        moment = vault.day_path(inputs["date"]) / "moments" / inputs["moment"]
+        has_capture = find_capture(vault, moment) is not None
+        if has_capture and not (read_json(moment / "scene.json") or {}).get("mesh"):
+            job_id, created = enqueue(jobs, "scan_mesh", inputs)
+            if created:
+                new.append(job_id)
         if not splat:
-            if find_capture(vault, vault.day_path(inputs["date"]) / "moments" / inputs["moment"]) is None:
+            if not has_capture:
                 continue
             name = "splat_preview"
         elif splat.get("status") in ("lidar", "training"):

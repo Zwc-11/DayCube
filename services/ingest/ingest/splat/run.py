@@ -103,11 +103,36 @@ def cameras(capture: Path, width: int, height: int) -> dict:
     }
 
 
-def _write_scene(vault: Vault, moment: Path, splat: dict) -> None:
-    scene = read_json(moment / "scene.json")
-    scene["splat"] = splat
+def _write_scene(vault: Vault, moment: Path, splat: dict, key: str = "splat") -> None:
     with vault.lock:
+        scene = read_json(moment / "scene.json")
+        scene[key] = splat
         vault.write_json(moment / "scene.json", scene)
+
+
+def mesh_moment(vault: Vault, date: str, moment_id: str, *, capture: Path | None = None,
+                say: Callable[[str], None] = print) -> dict:  # fmt: skip
+    """The scan's surfaces as ``moments/<id>/mesh/scene.glb`` (``ingest.splat.mesh``), and its
+    ``scene.json`` ``mesh`` entry."""
+    from . import mesh
+
+    moment = vault.day_path(date) / "moments" / moment_id
+    if not (moment / "scene.json").is_file():
+        raise SplatError(f"No moment {moment_id} on {date}")
+    scene = read_json(moment / "scene.json")
+    if scene.get("kind") != "camera-path":
+        raise SplatError(f"{moment_id} is not a scan")
+    capture = capture or find_capture(vault, moment)
+    if capture is None:
+        raise SplatError(f"{moment_id}: the capture's depth folder is not in the vault; give it with --capture")
+    video = moment / scene["video"] if (moment / str(scene.get("video"))).is_file() else capture / "rgb.mp4"
+    with exclusive(vault.root / "derived" / "mesh" / date / moment_id):
+        made = mesh.build(capture, moment / "mesh" / "scene.glb", video=video, say=say)
+    entry = {"status": "made", "file": "mesh/scene.glb"} | {
+        k: made[k] for k in ("triangles", "vertices", "fused_frames", "voxel_m", "bounds", "check", "seconds", "bytes")
+    }
+    _write_scene(vault, moment, entry, "mesh")
+    return entry
 
 
 def splat_moment(
@@ -117,7 +142,7 @@ def splat_moment(
     *,
     capture: Path | None = None,
     steps: int = 30_000,
-    frames: int = 420,
+    frames: int = 1260,
     train: bool = True,
     say: Callable[[str], None] = print,
 ) -> dict:
@@ -190,7 +215,9 @@ def _make(vault: Vault, moment: Path, scene: dict, capture: Path, video: Path, w
         splat["error"] = str(error)[:2000]
         _write_scene(vault, moment, splat)
         raise
-    trained = export.splat_from_gaussians(work / "export" / "splat.ply", out / "scene.splat")
+    path = np.array([np.array(f["transform_matrix"])[:3, 3] for f in json.loads((train_dir / "transforms.json").read_text())["frames"]])
+    reach = float(np.linalg.norm(path - path.mean(0), axis=1).max()) + 20.0  # the walk and what it saw, not the sky
+    trained = export.splat_from_gaussians(work / "export" / "splat.ply", out / "scene.splat", near=(path.mean(0), reach))
     splat |= {
         "status": "trained",
         "trained": "splat/scene.splat",

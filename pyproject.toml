@@ -11,6 +11,7 @@ modal = ["modal>=1,<2"]
 skeleton = ["scikit-learn>=1.6,<2", "numpy>=2,<3"]
 moments = ["pillow>=11,<13", "trimesh>=4,<5", "numpy>=2,<3"]
 transcribe = ["faster-whisper>=1.2,<2"]  # voice memos from the phone (docs/phone.md)
+mesh = ["open3d>=0.19,<0.21"]  # a scan's surface as a mesh, from its LiDAR depth (docs/splat.md)
 
 [dependency-groups]
 dev = ["pytest>=8,<10", "ruff>=0.14,<1", "datamodel-code-generator>=0.35,<1"]

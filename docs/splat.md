@@ -10,7 +10,7 @@ viewer. There are two stages, and the viewer shows the best one available:
 
     uv run daycube splat --date 2026-10-24              # every scan of the day: preview, then training
     uv run daycube splat --date 2026-10-24 --no-train   # the preview only
-    uv run daycube splat --date 2026-10-24 --moment mo_scan_20261024_202749 --steps 30000 --frames 420
+    uv run daycube splat --date 2026-10-24 --moment mo_scan_20261024_202749 --steps 30000 --frames 1260
 
 ## The training set (`ingest/splat/dataset.py`)
 
@@ -23,7 +23,7 @@ No structure from motion is run. ARKit already knows where the camera was for ev
   axes are flipped when the file is read. The same fix corrected the scan's heading on the map,
   which had been 180 degrees off.
 - **Frames.** The video is decoded once at 480 px to score sharpness (variance of the Laplacian).
-  The sharpest frame of each of 420 equal windows is kept, skipping the first half second, before
+  The sharpest frame of each of 1,260 equal windows is kept (one every 13 cm on 2026-10-24), skipping the first half second, before
   ARKit's tracking settles (on 2026-10-24 the first pose looked 34 degrees down, a second later 8).
   Each kept frame is written at 1440 px with its own intrinsics into `transforms.json`.
 - **Starting points.**
@@ -34,6 +34,13 @@ No structure from motion is run. ARKit already knows where the camera was for ev
     They seed the trees and walls the LiDAR cannot reach.
   - Brush starts from these points instead of random splats, which is what lets a forward walk,
     with little parallax, train.
+- **Sky shell.**
+  - Brush renders on a black background and starts only from these points. Without anything past
+    15 m, the sky between the trees had to be learned from nothing.
+  - On 2026-10-24, with 420 frames, held-out PSNR fell from 14.7 to 13.5 dB while the training views
+    were fitted.
+  - Points on a sphere three times the walk's reach from its middle (239 m), above −10°, are now
+    added. Each is coloured from the kept frame that looks most directly at it (128,000 points).
 - **Check, before any GPU time.** Depth pixels of one kept frame are carried into a frame about
   0.9 s later.
   - Their predicted depth must match the LiDAR's there to within 3%.
@@ -49,6 +56,26 @@ No structure from motion is run. ARKit already knows where the camera was for ev
   | Stray's poses read as already OpenGL | 23% | 41 | | 26 |
 
   The second reading fails both tests.
+
+## The mesh (`ingest/splat/mesh.py`)
+
+`daycube mesh --date <day>`, or the `scan_mesh` job once the `mesh` extra is installed
+(`uv sync --extra mesh`, Open3D):
+
+- **Fusion.** Every third depth map (medium or high confidence, within 5 m) is fused into a
+  truncated signed distance field at ARKit's poses, using Open3D's tensor `VoxelBlockGrid` with
+  4 cm voxels. Its legacy `ScalableTSDFVolume` fused nothing in the 0.20 wheel. Colours come from
+  the video at the depth maps' size.
+- **Cleanup.** Islands under 400 triangles are dropped, and the mesh is simplified to at most
+  600,000 triangles.
+- **Output.** `moments/<id>/mesh/scene.glb`, with a `mesh` entry in `scene.json`.
+- **Check.** LiDAR points of depth maps that were not fused are measured against the mesh. On
+  2026-10-24:
+  - 600,000 triangles, from 958,625
+  - median distance 1.6 cm, 90th percentile 4.3 cm
+  - 75 s on two CPU cores
+- **In the viewer.** **Mesh** sits beside Splat and LiDAR. It is drawn unlit in the video's colours,
+  and it follows the walk the same way.
 
 ## Training (`ingest/splat/brush.py`)
 
@@ -66,6 +93,20 @@ headless with these settings:
 - spherical harmonics of degree 3
 - at most 4 M splats
 - every 25th frame held out to measure the fit (PSNR)
+
+On 2026-10-24 (165 m, a forest track, RTX 5070, 30,000 steps, 4 M splats):
+
+| Run | Frames | Sky shell | Held-out PSNR (start → end) | SSIM (end) | Minutes |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 420 | no | 14.7 → 13.5 dB, falling from step 3,000 | 0.17 | 38 |
+| 2 | 1,260 | yes | 15.5 → 15.3 dB, highest 15.6 at step 9,000 | 0.20 | 36 |
+
+- **Reference points.** Copying the neighbouring frame, 0.4 m away, scores 10.2 dB; a black frame
+  scores 6.1 dB.
+- **Why it is low.** Thin foliage seen from a forward walk is the hard case for Gaussian splats, and
+  Brush 0.3.0 cannot use the LiDAR's depth as a loss.
+- **Default.** More frames per metre held the overfitting back, so 1,260 frames is now the
+  default.
 
 Its log goes to `vault/derived/splat/<date>/<moment>/brush.log`. Progress is printed every few
 seconds, with steps, splats, minutes and PSNR.

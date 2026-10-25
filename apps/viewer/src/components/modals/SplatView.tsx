@@ -35,7 +35,7 @@ type Viewer = {
 const SETTLE_S = 0.5;
 
 /** The pose at time t, between the two nearest kept poses. */
-function poseAt(cams: SplatCameras, at: number) {
+export function poseAt(cams: SplatCameras, at: number) {
   const ts = cams.t;
   const t = Math.max(at, ts[0] + SETTLE_S);
   let lo = 0;

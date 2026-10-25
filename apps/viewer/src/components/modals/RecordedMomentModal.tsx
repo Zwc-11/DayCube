@@ -1,6 +1,6 @@
 import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { Footprints, X } from 'lucide-react';
-import type { MomentCamera, SceneSplat } from '@daycube/api-client';
+import type { MomentCamera, SceneMesh, SceneSplat } from '@daycube/api-client';
 import { backendBridge } from '../../lib/backendBridge';
 import { Dialog } from '../ui';
 
@@ -17,8 +17,14 @@ type Loaded = NonNullable<Awaited<ReturnType<typeof backendBridge.moment>>>;
 
 // three.js's splat renderer loads only when a scan is opened in 3D.
 const SplatView = lazy(() => import('./SplatView'));
+const MeshView = lazy(() => import('./MeshView'));
 
 /** What a scan's 3D side says, in a line. */
+function meshSummary(mesh: SceneMesh): string {
+  const off = mesh.check?.median_m;
+  return `${mesh.triangles.toLocaleString()} triangles` + (off != null ? `, ${(off * 100).toFixed(1)} cm from the LiDAR` : '');
+}
+
 function splatSummary(splat: SceneSplat): string {
   if (splat.status === 'trained' && splat.training) {
     const psnr = splat.training.psnr_db ? `, ${splat.training.psnr_db.toFixed(1)} dB on frames it never saw` : '';
@@ -86,7 +92,7 @@ export const RecordedMomentModal: React.FC<RecordedMomentModalProps> = ({ date, 
   const [t, setT] = useState(0);
   const [view, setView] = useState<'video' | '3d' | null>(null); // null: 3D when there is a scene
   const [following, setFollowing] = useState(true);
-  const [source, setSource] = useState<'trained' | 'lidar' | null>(null);
+  const [source, setSource] = useState<'trained' | 'lidar' | 'mesh' | null>(null);
   const mediaRef = useRef<HTMLMediaElement | null>(null);
   const activeRowRef = useRef<HTMLButtonElement>(null);
 
@@ -140,9 +146,16 @@ export const RecordedMomentModal: React.FC<RecordedMomentModalProps> = ({ date, 
   const fit = (scene.georeferenced ?? null) as { rmse_m: number } | null;
   const isScan = scene.kind === 'camera-path';
   const splat = isScan && scene.splat && typeof scene.splat === 'object' ? (scene.splat as SceneSplat) : null;
-  const showing3d = splat !== null && (view ?? '3d') === '3d';
-  const which = source ?? (splat?.trained ? 'trained' : 'lidar');
-  const splatUrl = splat ? file(which === 'trained' && splat.trained ? splat.trained : splat.lidar) : null;
+  const mesh = isScan && scene.mesh && typeof scene.mesh === 'object' ? (scene.mesh as SceneMesh) : null;
+  const showing3d = (splat !== null || mesh !== null) && (view ?? '3d') === '3d';
+  const which = source ?? (splat?.trained ? 'trained' : splat ? 'lidar' : 'mesh');
+  const splatUrl = splat && which !== 'mesh' ? file(which === 'trained' && splat.trained ? splat.trained : splat.lidar) : null;
+  const meshUrl = mesh && which === 'mesh' ? file(mesh.file) : null;
+  const scenes = [
+    ...(splat?.trained ? [['trained', 'Splat'] as const] : []),
+    ...(splat ? [['lidar', 'LiDAR'] as const] : []),
+    ...(mesh ? [['mesh', 'Mesh'] as const] : []),
+  ];
 
   return (
     <Dialog onClose={onClose} title={meta.title ?? 'Moment'} className="viewer">
@@ -156,7 +169,7 @@ export const RecordedMomentModal: React.FC<RecordedMomentModalProps> = ({ date, 
           </div>
         </div>
         <div className="row">
-          {splat && (
+          {(splat || mesh) && (
             <div className="seg seg--sm" role="group" aria-label="Show">
               <button type="button" className="seg__item" aria-pressed={!showing3d} onClick={() => setView('video')}>
                 Video
@@ -177,31 +190,42 @@ export const RecordedMomentModal: React.FC<RecordedMomentModalProps> = ({ date, 
 
       <div className="viewer__body">
         <div className="viewer__main" style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', justifyContent: 'center', position: 'relative' }}>
-          {showing3d && splatUrl ? (
+          {showing3d && (splatUrl || meshUrl) ? (
             <Suspense fallback={<div className="splat__status">Loading the 3D view…</div>}>
-              <SplatView
-                url={splatUrl}
-                cameras={moment.splatCameras}
-                bounds={splat!.bounds}
-                t={t}
-                following={following}
-                onLookAround={() => setFollowing(false)}
-                label={`The scan in 3D: ${splat ? splatSummary(splat) : ''}`}
-              />
+              {meshUrl ? (
+                <MeshView
+                  url={meshUrl}
+                  cameras={moment.splatCameras}
+                  bounds={mesh!.bounds}
+                  t={t}
+                  following={following}
+                  onLookAround={() => setFollowing(false)}
+                  label={`The scan's surfaces: ${meshSummary(mesh!)}`}
+                />
+              ) : (
+                <SplatView
+                  url={splatUrl!}
+                  cameras={moment.splatCameras}
+                  bounds={splat!.bounds}
+                  t={t}
+                  following={following}
+                  onLookAround={() => setFollowing(false)}
+                  label={`The scan in 3D: ${splat ? splatSummary(splat) : ''}`}
+                />
+              )}
               <div className="splat__controls">
                 {!following && moment.splatCameras && (
                   <button type="button" className="btn btn--secondary btn--sm" onClick={() => setFollowing(true)}>
                     <Footprints size={14} aria-hidden /> Follow the walk
                   </button>
                 )}
-                {splat?.trained && (
+                {scenes.length > 1 && (
                   <div className="seg seg--sm" role="group" aria-label="Scene">
-                    <button type="button" className="seg__item" aria-pressed={which === 'trained'} onClick={() => setSource('trained')}>
-                      Splat
-                    </button>
-                    <button type="button" className="seg__item" aria-pressed={which === 'lidar'} onClick={() => setSource('lidar')}>
-                      LiDAR
-                    </button>
+                    {scenes.map(([key, name]) => (
+                      <button key={key} type="button" className="seg__item" aria-pressed={which === key} onClick={() => setSource(key)}>
+                        {name}
+                      </button>
+                    ))}
                   </div>
                 )}
               </div>
@@ -280,6 +304,14 @@ export const RecordedMomentModal: React.FC<RecordedMomentModalProps> = ({ date, 
                 <dd style={{ margin: 0 }} data-testid="splat-summary">
                   {splat ? splatSummary(splat) : reason ? 'needs the depth folder' : 'not made yet (daycube splat)'}
                 </dd>
+                {mesh ? (
+                  <>
+                    <dt>Surfaces</dt>
+                    <dd style={{ margin: 0 }} data-testid="mesh-summary">
+                      {meshSummary(mesh)}
+                    </dd>
+                  </>
+                ) : null}
               </dl>
               {camera ? (
                 <div style={{ marginTop: 12 }}>
