@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -53,6 +54,12 @@ def main() -> None:
     splat.add_argument("--steps", type=int, default=30_000, help="Training steps (default 30000)")
     splat.add_argument("--frames", type=int, default=420, help="Video frames to train on (default 420)")
     splat.add_argument("--no-train", action="store_true", help="Only the training set and the LiDAR preview")
+    jobs = commands.add_parser("jobs", help="The vault's processing jobs (vault/jobs.sqlite): status, retry, run")
+    jobs.add_argument("action", nargs="?", choices=["status", "retry", "run"], default="status")
+    jobs.add_argument("--stage", help="retry: only this stage's failed jobs")
+    jobs.add_argument("--id", type=int, help="retry: only this job")
+    jobs.add_argument("--needs", choices=["cpu", "gpu"], default="cpu", help="run: which jobs (default cpu)")
+    jobs.add_argument("--now", action="store_true", help="run: take the GPU now, at the PC or not")
     compact = commands.add_parser("compact", help="Compress large logs of finished days; reads stay transparent")
     compact.add_argument("--before", help="Compact every day before this date (default: today)")
     args = parser.parse_args()
@@ -120,6 +127,26 @@ def main() -> None:
                             train=not args.no_train, say=lambda line: print(line, file=sys.stderr, flush=True))
             for m in moments
         }  # fmt: skip
+    elif args.command == "jobs":
+        from .jobs.stages import discover
+        from .jobs.store import Jobs
+        from .jobs.worker import run_next
+
+        store = Jobs.of(vault.root)
+        if args.action == "retry":
+            result = {"queued_again": store.retry(stage=args.stage, job_id=args.id)}
+        elif args.action == "run":
+            discover(vault, store)
+            done = []
+            idle = float("inf") if args.now else None
+            while (step := run_next(vault, store, f"cli-{os.getpid()}", args.needs, idle_s=idle,
+                                    say=lambda line: print(line, file=sys.stderr, flush=True))) is not None:  # fmt: skip
+                done.append(step)
+            result = {"ran": done, **store.status()}
+        else:
+            discover(vault, store)
+            result = store.status()
+        store.close()
     elif args.command == "compact":
         before = args.before or datetime.now(ZoneInfo(settings.timezone)).date().isoformat()
         result = {d["date"]: vault.compact_day(d["date"]) for d in vault.list_days() if d["date"] < before}

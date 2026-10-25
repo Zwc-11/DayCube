@@ -17,6 +17,7 @@ import contextlib
 import json
 import re
 import sys
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -243,34 +244,49 @@ def _tuning(vault: Path) -> list[tuple[str, str, str]]:
     return [(INFO, "tuning", detail + "kept the settings in use (not 3% better)")]
 
 
-def _scenes(vault: Path) -> list[tuple[str, str, str]]:
-    """LiDAR scans into 3D (capture.scans): what waits, what trains, what failed."""
+def _jobs(vault: Path, now: float | None = None) -> list[tuple[str, str, str]]:
+    """The vault's jobs (capture.jobs): what runs, what waits and why, what failed."""
     try:
-        from ingest.splat.queue import report
+        from ingest.jobs.stages import STAGES
+        from ingest.jobs.store import Jobs
     except ImportError:
         return []
-    state = report(vault)
-    if not state:
+    if not (vault / "jobs.sqlite").is_file():
         return []
+    jobs = Jobs.of(vault)
+    try:
+        state = jobs.status(now=now)
+    finally:
+        jobs.close()
+    now = time.time() if now is None else now
+
+    def what(job: dict) -> str:
+        inputs = job["inputs"]
+        return "/".join(str(inputs[k]) for k in ("date", "moment") if k in inputs) or json.dumps(inputs)
+
+    def title(name: str) -> str:
+        stage = STAGES.get(name)
+        return (stage.title if stage and stage.title else name).capitalize()
+
     rows = []
-    running = state.get("running")
-    if running:
-        rows.append((INFO, "3D scans", f"training {running['moment']} on the GPU"))
-    elif state.get("waiting"):
-        when = (
-            "when you are away 10 min, or at night"
-            if state.get("training_allowed")
-            else ("once Brush is installed: uv run daycube splat --date <day> (docs/splat.md)")
-        )
-        rows.append((INFO, "3D scans", f"{state['waiting']} waiting to train, {when}"))
-    last = state.get("last")
-    if last and last.get("did") == "trained":
-        psnr = f", {last['psnr_db']:.1f} dB" if last.get("psnr_db") else ""
-        rows.append((PASS, "3D scans", f"last trained {last['moment']} ({(last.get('splats') or 0):,} splats{psnr})"))
-    for failed in state.get("failed") or []:
-        rows.append(
-            (WARN, "3D scans", f"{failed} failed to train: the reason is in its scene.json; daycube splat tries again")
-        )
+    for job in state["running"]:
+        minutes = (now - (job.get("started") or now)) / 60
+        rows.append((INFO, "jobs", f"{title(job['stage'])} of {what(job)}: running {minutes:.0f} min ({job['worker']})"))
+    for name, counts in sorted(state["stages"].items()):
+        if not counts["queued"]:
+            continue
+        stage = STAGES.get(name)
+        if stage is not None and not stage.ready():
+            when = "once its tool is installed (docs/splat.md: uv run daycube splat)"
+        elif stage is not None and stage.needs == "gpu":
+            when = "when you are away 10 min, or at night"
+        else:
+            when = "next"
+        rows.append((INFO, "jobs", f"{title(name)}: {counts['queued']} waiting, {when}"))
+    for job in state["failed"]:
+        reason = (job.get("error") or "").strip().splitlines()[-1:] or ["no reason kept"]
+        rows.append((WARN, "jobs", f"{title(job['stage'])} of {what(job)} failed: {reason[0][:160]}"
+                     f" (uv run daycube jobs retry --stage {job['stage']})"))  # fmt: skip
     return rows
 
 
@@ -445,7 +461,7 @@ def checks(status: dict | None, vault: Path, zone: ZoneInfo, now: datetime, auto
     out += _drift(gaze)
     if gaze.get("tracking") and gaze.get("learning"):
         out += _tuning(vault)
-    out += _scenes(vault)
+    out += _jobs(vault)
 
     decoding = status.get("line_decoding") or {}
     seen = decoding.get("fixations", 0)

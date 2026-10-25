@@ -282,23 +282,39 @@ def test_brush_progress_is_read_from_its_log() -> None:
 
 
 def test_new_scans_get_their_preview_then_train_when_the_pc_is_free(vault: Vault, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from ingest.jobs.stages import discover
+    from ingest.jobs.store import Jobs
+    from ingest.jobs.worker import run_next
     from ingest.phone.importer import import_phone
-    from ingest.splat import queue
 
     capture = make_capture(tmp_path / "drop" / "scan")
     import_phone(vault, [capture], transcribe=False, say=lambda _: None)
     moment = next(vault.root.glob("*/moments/mo_scan_*"))
     monkeypatch.delenv("DAYCUBE_BRUSH", raising=False)
+    monkeypatch.delenv("DAYCUBE_SPLAT_TRAIN", raising=False)
     monkeypatch.setenv("DAYCUBE_TOOLS", str(tmp_path / "no-tools"))  # no Brush installed
-    day = datetime(2026, 10, 25, 14, 0)
-    assert queue.step(vault, idle_s=0, now=day, say=lambda _: None)["did"] == "preview"
+    jobs = Jobs.of(vault.root)
+    day, night = datetime(2026, 10, 25, 14, 0), datetime(2026, 10, 25, 3, 0)
+    quiet = {"say": lambda _: None}
+
+    assert len(discover(vault, jobs)) == 1 and discover(vault, jobs) == []  # queued once
+    assert run_next(vault, jobs, "cpu", "cpu", **quiet)["stage"] == "splat_preview"
     assert read_json(moment / "scene.json")["splat"]["status"] == "lidar"
+    assert jobs.status()["stages"]["splat_train"]["queued"] == 1  # the preview leads to training
     # Without Brush it never trains, idle or not: installing it is your call (daycube splat).
-    assert queue.step(vault, idle_s=3600, now=day, say=lambda _: None) == {"did": None, "waiting": 1, "allowed": False}
+    assert run_next(vault, jobs, "gpu", "gpu", idle_s=3600, now=day, **quiet) is None
     monkeypatch.setenv("DAYCUBE_BRUSH", str(fake_brush(tmp_path)))
-    assert queue.step(vault, idle_s=60, now=day, say=lambda _: None)["did"] is None  # you are at the PC
-    assert queue.step(vault, idle_s=60, now=datetime(2026, 10, 25, 3, 0), say=lambda _: None)["did"] == "trained"  # night
+    assert run_next(vault, jobs, "gpu", "gpu", idle_s=60, now=day, **quiet) is None  # you are at the PC
+    result = run_next(vault, jobs, "gpu", "gpu", idle_s=60, now=night, **quiet)
+    assert result["did"] == "done" and result["outputs"]["psnr_db"] == 27.5
     assert read_json(moment / "scene.json")["splat"]["status"] == "trained"
-    status = queue.report(vault.root)
-    assert status["last"]["did"] == "trained" and status["running"] is None and status["waiting"] == 0
-    assert queue.step(vault, idle_s=3600, now=day, say=lambda _: None)["did"] is None  # nothing left
+    assert discover(vault, jobs) == [] and run_next(vault, jobs, "gpu", "gpu", idle_s=3600, now=day, **quiet) is None
+
+
+def test_one_scan_is_made_by_one_process_at_a_time(tmp_path: Path) -> None:
+    from ingest.splat.run import Busy, exclusive
+
+    with exclusive(tmp_path / "work"), pytest.raises(Busy), exclusive(tmp_path / "work"):
+        pass
+    with exclusive(tmp_path / "work"):  # released
+        pass

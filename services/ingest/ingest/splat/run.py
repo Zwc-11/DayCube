@@ -15,9 +15,11 @@ size), else from ``--capture``.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import numpy as np
@@ -26,6 +28,40 @@ from ..vault import Vault, read_json
 from . import brush, dataset, export
 
 CAMERA_EVERY = 3  # frames between camera poses kept for the viewer
+
+
+class Busy(RuntimeError):
+    """Another process is making this scan's 3D right now."""
+
+
+@contextmanager
+def exclusive(work: Path) -> Iterator[None]:
+    """Hold the scan's lock (``work/.lock``) while making its 3D. The operating system releases it
+    when the process ends, so a crash leaves no stale lock."""
+    work.mkdir(parents=True, exist_ok=True)
+    handle = (work / ".lock").open("a+b")
+    try:
+        if os.name == "nt":
+            import msvcrt
+
+            handle.seek(0)
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)  # type: ignore[attr-defined]
+        else:
+            import fcntl
+
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError as error:
+        handle.close()
+        raise Busy(f"{work.name}: its 3D is being made by another process") from error
+    try:
+        yield
+    finally:
+        if os.name == "nt":
+            import msvcrt
+
+            handle.seek(0)
+            msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)  # type: ignore[attr-defined]
+        handle.close()
 
 
 class SplatError(RuntimeError):
@@ -96,6 +132,12 @@ def splat_moment(
         raise SplatError(f"{moment_id}: the capture's depth folder is not in the vault; give it with --capture")
     video = moment / scene["video"] if (moment / str(scene.get("video"))).is_file() else capture / "rgb.mp4"
     work = vault.root / "derived" / "splat" / date / moment_id
+    with exclusive(work):
+        return _make(vault, moment, scene, capture, video, work, date, steps=steps, frames=frames, train=train, say=say)
+
+
+def _make(vault: Vault, moment: Path, scene: dict, capture: Path, video: Path, work: Path, date: str, *, steps: int,
+          frames: int, train: bool, say: Callable[[str], None]) -> dict:  # fmt: skip
     train_dir = work / "train"
     if train_dir.exists():
         shutil.rmtree(train_dir)

@@ -41,10 +41,14 @@ from fastapi import Body, Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from ingest.config import Settings
+from ingest.jobs import stages as job_stages
+from ingest.jobs.store import Job, Jobs
+from ingest.jobs.worker import finish, runnable
 from ingest.vault import Vault, read_lines
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
 from .attention import Attention
+from .jobs import idle_seconds
 from .reading import LineBox
 from .records import Blocks, BrowserRecord, GazeBatch, LivePoint, View
 from .restart import code_stamp
@@ -72,6 +76,25 @@ CODE = code_stamp()  # the code this receiver loaded; `capture restart` and doct
 
 class Display(BaseModel):
     gaze_ring: bool
+
+
+class Lease(BaseModel):
+    worker: str = Field(min_length=1, max_length=200)
+    needs: str = Field(pattern="^(cpu|gpu)$")
+    stages: list[str] | None = None  # the stages this worker has code for; None: any
+
+
+class JobWorker(BaseModel):
+    worker: str = Field(min_length=1, max_length=200)
+
+
+class JobDone(JobWorker):
+    outputs: dict[str, Any] = Field(default_factory=dict)
+
+
+class JobFailed(JobWorker):
+    error: str = Field(max_length=20000)
+    retry: bool = True
 
 
 class Exclusions(BaseModel):
@@ -564,5 +587,49 @@ def create_capture_app(
     @app.get("/live", dependencies=[Depends(authorize)])
     def live(doc: str) -> dict:
         return receiver.live_view(doc)
+
+    # Jobs for workers outside the receiver (the speech worker, a GPU elsewhere): lease one,
+    # keep its lease alive, report it done or failed. What follows a job is queued here.
+    jobs = Jobs.of(settings.vault_root)
+    app.state.jobs = jobs
+
+    @app.post("/jobs/lease", dependencies=[Depends(authorize)])
+    def lease_job(body: Lease) -> dict:
+        names = runnable(body.needs, idle_s=idle_seconds(), here=False)
+        if body.stages is not None:
+            names = [n for n in names if n in body.stages]
+        job = jobs.lease(body.worker, names)
+        if job is None:
+            return {"job": None}
+        stage = job_stages.STAGES[job.stage]
+        return {"job": {"id": job.id, "stage": job.stage, "version": stage.version, "inputs": job.inputs,
+                        "attempts": job.attempts}}  # fmt: skip
+
+    @app.post("/jobs/{job_id}/heartbeat", dependencies=[Depends(authorize)])
+    def job_heartbeat(job_id: int, body: JobWorker) -> dict:
+        return {"ok": jobs.heartbeat(job_id, body.worker)}
+
+    @app.post("/jobs/{job_id}/done", dependencies=[Depends(authorize)])
+    def job_done(job_id: int, body: JobDone) -> dict:
+        row = jobs.get(job_id)
+        if row is None:
+            raise HTTPException(404, f"No job {job_id}")
+        job = Job(job_id, row["stage"], row["version"], row["inputs"], row["attempts"], body.worker)
+        if row["status"] != "leased" or row["worker"] != body.worker:
+            return {"ok": False, "queued": []}
+        return {"ok": True, "queued": finish(jobs, job, body.outputs)}
+
+    @app.post("/jobs/{job_id}/fail", dependencies=[Depends(authorize)])
+    def job_fail(job_id: int, body: JobFailed) -> dict:
+        row = jobs.get(job_id)
+        if row is None:
+            raise HTTPException(404, f"No job {job_id}")
+        stage = job_stages.STAGES.get(row["stage"])
+        attempts = stage.attempts if stage else 3
+        return {"status": jobs.fail(job_id, body.worker, body.error, retry=body.retry, max_attempts=attempts)}
+
+    @app.get("/jobs/status", dependencies=[Depends(authorize)])
+    def jobs_status() -> dict:
+        return jobs.status()
 
     return app

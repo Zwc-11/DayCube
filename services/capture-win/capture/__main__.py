@@ -76,10 +76,12 @@ def run(args: argparse.Namespace) -> None:
 
     inbox = PhoneInbox(settings.vault_root)  # phone exports dropped into vault/inbox/phone
     inbox.start()
-    from .scans import SceneMaker
+    from .jobs import JobRunner
 
-    scenes = SceneMaker(settings.vault_root)  # LiDAR scans into 3D: preview at once, splat when idle
-    scenes.start()
+    # The vault's jobs (a scan's 3D, ...): CPU stages at once, GPU stages while the PC is free.
+    runners = [JobRunner(settings.vault_root, needs) for needs in ("cpu", "gpu")]
+    for runner in runners:
+        runner.start()
     receiver = app.state.receiver
     if args.no_screen:
         receiver.screen_problem = "started with --no-screen"
@@ -97,7 +99,8 @@ def run(args: argparse.Namespace) -> None:
         if librarian is not None:
             librarian.stop()
         inbox.stop()
-        scenes.stop()
+        for runner in runners:
+            runner.stop()
         if receiver.screen is not None:
             receiver.screen.stop()
         log.info("receiver stopped")
