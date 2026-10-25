@@ -77,6 +77,14 @@ def cluster(prints: np.ndarray, recordings: list[str], *, same: float = SAME) ->
     return [order[m] for m in member.tolist()]
 
 
+def stale(vault_root: Path) -> bool:
+    """Whether a recording's voiceprints are newer than the voices: speech run outside a job (the
+    speech worker's ``moment`` command) is matched to the others at the receiver's next look."""
+    gallery = vault_root / "derived" / "speech" / "voices.json"
+    built = gallery.stat().st_mtime if gallery.is_file() else -1.0
+    return any(p.stat().st_mtime > built for p in (vault_root / "derived" / "speech").glob("*/*/embeddings.npz"))
+
+
 def update(vault: Vault) -> dict:
     """Rebuild the voices and spread the names; the gallery written."""
     root = vault.root

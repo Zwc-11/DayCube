@@ -64,6 +64,21 @@ class Events:
         return out
 
 
+    def languages(self, wavs: list[np.ndarray], batch: int = 16, max_s: float = 20.0) -> list[str]:
+        """SenseVoice's language tag of each clip (zh, en, yue, ja, ko, or nospeech), from at most
+        its first ``max_s``."""
+        out: list[str] = []
+        for k in range(0, len(wavs), batch):
+            group = [w[: int(max_s * RATE)] for w in wavs[k : k + batch]]
+            for r in self.model.generate(input=group, language="auto", use_itn=False):
+                tags = TAG.findall(r.get("text", ""))
+                out.append(next((t for t in tags if t in LANGUAGE_TAGS), "nospeech"))
+        return out
+
+
+LANGUAGE_TAGS = ("zh", "en", "yue", "ja", "ko", "nospeech")
+
+
 def fillers(words: list[dict]) -> dict[str, int]:
     """Filler words and particles in a run of words, by kind."""
     counts: dict[str, int] = {}

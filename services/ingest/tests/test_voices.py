@@ -128,3 +128,28 @@ def test_a_year_of_speakers_is_clustered_in_seconds() -> None:
     # Each found voice is one person.
     for g in set(labels):
         assert len({int(who[k]) for k in range(1500) if labels[k] == g}) == 1
+
+
+def test_speech_run_outside_a_job_is_matched_at_the_next_look(vault: Vault) -> None:
+    import os
+
+    from ingest.jobs.stages import discover
+    from ingest.jobs.store import Jobs
+
+    recording(vault, "2026-10-20", "mo_voice_1", ["me", "ana"])
+    recording(vault, "2026-10-21", "mo_voice_2", ["me"])
+    assert voices.stale(vault.root)
+    jobs = Jobs.of(vault.root)
+    try:
+        discover(vault, jobs)
+        assert not voices.stale(vault.root)
+        assert names(vault, "2026-10-21", "mo_voice_2") == {"S1": "person:me"}
+        recording(vault, "2026-10-22", "mo_voice_3", ["ana"])
+        later = (vault.root / "derived" / "speech" / "voices.json").stat().st_mtime + 5
+        os.utime(vault.root / "derived" / "speech" / "2026-10-22" / "mo_voice_3" / "embeddings.npz", (later, later))
+        assert voices.stale(vault.root)
+        discover(vault, jobs)
+        speech = read_json(vault.root / "2026-10-22" / "moments" / "mo_voice_3" / "speech.json")
+        assert speech["voices"]["S1"]["voice"] is not None
+    finally:
+        jobs.close()

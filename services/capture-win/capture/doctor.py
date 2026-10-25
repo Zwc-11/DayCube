@@ -84,6 +84,7 @@ def tracker_log(vault: Path) -> str | None:
     text = last[24:].strip()
     for prefix in ("gaze ", "capture.gaze "):
         text = text.removeprefix(prefix)
+    text = f"{last[:16]} {text}"  # when: the last such line can be from days before
     crash = _crash(_tail(vault / "logs" / "gaze.log"))
     if crash and crash not in text:
         text += f" (the tracker's error: {crash})"
@@ -294,6 +295,9 @@ def _jobs(vault: Path, now: float | None = None) -> list[tuple[str, str, str]]:
         reason = (job.get("error") or "").strip().splitlines()[-1:] or ["no reason kept"]
         rows.append((WARN, "jobs", f"{title(job['stage'])} of {what(job)} failed: {reason[0][:160]}"
                      f" (uv run daycube jobs retry --stage {job['stage']})"))  # fmt: skip
+    if not rows:
+        done = sum(c["done"] for c in state["stages"].values())
+        rows.append((PASS, "jobs", f"nothing waiting; {done} done"))
     return rows
 
 

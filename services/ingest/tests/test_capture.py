@@ -451,7 +451,7 @@ def test_the_doctor_shows_why_the_tracker_is_not_running(vault: Vault, monkeypat
     assert found["eye tracker"] == (
         doctor.FAIL,
         "not tracking: not running. Last from the tracker's logs: "
-        "WARNING eye tracker exited with code 1; restarting in 10 s",
+        "2026-10-23 22:18 WARNING eye tracker exited with code 1; restarting in 10 s",
     )
     paused = status | {"gaze": {"tracking": False, "reason": "paused"}}
     found = {name: d for _, name, d in doctor.checks(paused, vault.root, zone, now, None)}

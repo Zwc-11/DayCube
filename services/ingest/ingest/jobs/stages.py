@@ -204,4 +204,8 @@ def discover(vault: Vault, jobs: Jobs) -> list[int]:
             job_id, created = enqueue(jobs, "speech", inputs)
             if created:
                 new.append(job_id)
+    from .. import voices
+
+    if voices.stale(vault.root):
+        voices.update(vault)
     return new

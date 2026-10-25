@@ -27,8 +27,13 @@ LANGUAGES = ("Chinese", "English", "Cantonese", "Japanese", "Korean")
 
 
 def _dtype(device: str):  # noqa: ANN202 - torch is imported late
+    """bfloat16 on a GPU, float32 on a CPU; ``DAYCUBE_SPEECH_DTYPE=bfloat16`` runs the GPU's
+    numbers on a CPU (the 1.7B model in 3.4 GB instead of 6.8)."""
     import torch
 
+    wanted = os.environ.get("DAYCUBE_SPEECH_DTYPE")
+    if wanted:
+        return getattr(torch, wanted)
     return torch.bfloat16 if device.startswith("cuda") else torch.float32
 
 
