@@ -84,8 +84,10 @@ frames are turned 90 degrees clockwise. The keyframes and `preview.mp4` (540 px,
 H.264: 14 MB for the 2 min capture) are upright; `video.mp4` is the original, kept for
 reconstruction.
 
-**3D.** A scene needs the capture's `depth/` folder (one PNG per frame) fused with the poses; only
-the video and poses have come so far, so the moment says so instead of showing a reconstruction.
+**3D.** With the capture's `depth/` folder, `daycube splat` makes a LiDAR preview at once and then
+trains a Gaussian splat on the GPU ([splat.md](splat.md)). The importer keeps the depth, confidence
+and poses in the moment's `capture/` folder for that. Stray Scanner's poses are in the OpenCV camera
+convention (looking along +z); the scan's heading on the map is read that way.
 
 ## In the viewer
 
@@ -93,7 +95,7 @@ Each visit is a layer (an outdoor visit on an open park stage); drives are the t
 Double-click a voice memo or scan on the day to open it: the recording itself (audio, or the upright
 preview), the transcript by time (a line seeks the recording there), the keyframes, and for a scan
 the capture's details and its path seen from above with where the camera is and which way it
-looks.
+looks. A scan with a 3D scene opens in 3D, following the walk with the video ([splat.md](splat.md)).
 
 ## Tests
 

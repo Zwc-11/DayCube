@@ -28,6 +28,29 @@ export interface MomentCamera {
   points: { t: number; xyz: [number, number, number]; lat?: number; lon?: number; heading_deg?: number }[];
 }
 
+/** A scan's splats (``scene.splat``): the LiDAR preview, then the trained splat when it is done. */
+export interface SceneSplat {
+  status: 'lidar' | 'training' | 'trained' | 'failed';
+  lidar: string;
+  trained?: string;
+  cameras: string;
+  points: number;
+  splats?: number;
+  bounds: { min: [number, number, number]; max: [number, number, number] } | null;
+  training?: { trainer: string; steps: number; minutes: number; psnr_db: number | null; ssim: number | null };
+  error?: string;
+}
+
+/** Where a scan's camera was every few frames (world metres, y up), for following the walk in 3D. */
+export interface SplatCameras {
+  t: number[];
+  position: [number, number, number][];
+  forward: [number, number, number][];
+  up: [number, number, number][];
+  fov_long_deg: number;
+  fov_short_deg: number;
+}
+
 export interface ClientOptions {
   baseUrl?: string;
   token?: () => string;
@@ -145,6 +168,7 @@ export class DaycubeClient {
       meta: momentSchema.parse(data.meta), transcript: transcriptSchema.parse(data.transcript),
       scene: (data.scene ?? {}) as Record<string, unknown>,
       camera: (data.camera ?? null) as MomentCamera | null,
+      splatCameras: (data.splat_cameras ?? null) as SplatCameras | null,
     };
   }
   /** `date: null` searches every day in the vault. */

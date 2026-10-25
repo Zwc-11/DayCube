@@ -44,6 +44,15 @@ def main() -> None:
         action="store_true",
         help="The recording app stamps audio files with their start, not their end (Voice Memos: the end)",
     )
+    splat = commands.add_parser(
+        "splat", help="Turn a day's LiDAR scans into 3D: a LiDAR preview at once, then a splat trained on the GPU"
+    )
+    splat.add_argument("--date", required=True)
+    splat.add_argument("--moment", help="One scan moment (default: every scan of the day)")
+    splat.add_argument("--capture", type=Path, help="The Stray Scanner folder, if its depth is not in the vault")
+    splat.add_argument("--steps", type=int, default=30_000, help="Training steps (default 30000)")
+    splat.add_argument("--frames", type=int, default=420, help="Video frames to train on (default 420)")
+    splat.add_argument("--no-train", action="store_true", help="Only the training set and the LiDAR preview")
     compact = commands.add_parser("compact", help="Compress large logs of finished days; reads stay transparent")
     compact.add_argument("--before", help="Compact every day before this date (default: today)")
     args = parser.parse_args()
@@ -100,6 +109,17 @@ def main() -> None:
             from .phone.importer import import_phone
 
             result = import_phone(vault, args.paths, say=lambda m: print(m, file=sys.stderr), **options)
+    elif args.command == "splat":
+        from .splat.run import scans, splat_moment
+
+        moments = [args.moment] if args.moment else scans(vault, args.date)
+        if not moments:
+            parser.error(f"no scans on {args.date}")
+        result = {
+            m: splat_moment(vault, args.date, m, capture=args.capture, steps=args.steps, frames=args.frames,
+                            train=not args.no_train, say=lambda line: print(line, file=sys.stderr, flush=True))
+            for m in moments
+        }  # fmt: skip
     elif args.command == "compact":
         before = args.before or datetime.now(ZoneInfo(settings.timezone)).date().isoformat()
         result = {d["date"]: vault.compact_day(d["date"]) for d in vault.list_days() if d["date"] < before}

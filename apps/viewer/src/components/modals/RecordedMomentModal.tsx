@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { X } from 'lucide-react';
-import type { MomentCamera } from '@daycube/api-client';
+import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
+import { Footprints, X } from 'lucide-react';
+import type { MomentCamera, SceneSplat } from '@daycube/api-client';
 import { backendBridge } from '../../lib/backendBridge';
 import { Dialog } from '../ui';
 
@@ -14,6 +14,20 @@ interface RecordedMomentModalProps {
 }
 
 type Loaded = NonNullable<Awaited<ReturnType<typeof backendBridge.moment>>>;
+
+// three.js's splat renderer loads only when a scan is opened in 3D.
+const SplatView = lazy(() => import('./SplatView'));
+
+/** What a scan's 3D side says, in a line. */
+function splatSummary(splat: SceneSplat): string {
+  if (splat.status === 'trained' && splat.training) {
+    const psnr = splat.training.psnr_db ? `, ${splat.training.psnr_db.toFixed(1)} dB on frames it never saw` : '';
+    return `${(splat.splats ?? 0).toLocaleString()} splats, trained in ${Math.round(splat.training.minutes)} min${psnr}`;
+  }
+  if (splat.status === 'training') return `LiDAR points now; training the splat on the GPU`;
+  if (splat.status === 'failed') return `LiDAR points; training failed (${(splat.error ?? '').split('\n')[0].slice(0, 80)})`;
+  return `${splat.points.toLocaleString()} LiDAR points; not trained yet`;
+}
 
 function clockS(s: number): string {
   const m = Math.floor(s / 60);
@@ -70,6 +84,9 @@ const CameraMap: React.FC<{ camera: MomentCamera; t: number }> = ({ camera, t })
 export const RecordedMomentModal: React.FC<RecordedMomentModalProps> = ({ date, momentId, placeName, onClose }) => {
   const [moment, setMoment] = useState<Loaded | null | 'loading'>('loading');
   const [t, setT] = useState(0);
+  const [view, setView] = useState<'video' | '3d' | null>(null); // null: 3D when there is a scene
+  const [following, setFollowing] = useState(true);
+  const [source, setSource] = useState<'trained' | 'lidar' | null>(null);
   const mediaRef = useRef<HTMLMediaElement | null>(null);
   const activeRowRef = useRef<HTMLButtonElement>(null);
 
@@ -122,6 +139,10 @@ export const RecordedMomentModal: React.FC<RecordedMomentModalProps> = ({ date, 
   const sideways = turn === 90 || turn === 270;
   const fit = (scene.georeferenced ?? null) as { rmse_m: number } | null;
   const isScan = scene.kind === 'camera-path';
+  const splat = isScan && scene.splat && typeof scene.splat === 'object' ? (scene.splat as SceneSplat) : null;
+  const showing3d = splat !== null && (view ?? '3d') === '3d';
+  const which = source ?? (splat?.trained ? 'trained' : 'lidar');
+  const splatUrl = splat ? file(which === 'trained' && splat.trained ? splat.trained : splat.lidar) : null;
 
   return (
     <Dialog onClose={onClose} title={meta.title ?? 'Moment'} className="viewer">
@@ -135,6 +156,16 @@ export const RecordedMomentModal: React.FC<RecordedMomentModalProps> = ({ date, 
           </div>
         </div>
         <div className="row">
+          {splat && (
+            <div className="seg seg--sm" role="group" aria-label="Show">
+              <button type="button" className="seg__item" aria-pressed={!showing3d} onClick={() => setView('video')}>
+                Video
+              </button>
+              <button type="button" className="seg__item" aria-pressed={showing3d} onClick={() => setView('3d')}>
+                3D
+              </button>
+            </div>
+          )}
           <span className="tag tag--live" title="Recorded on your phone and imported into the vault.">
             Recorded
           </span>
@@ -145,9 +176,40 @@ export const RecordedMomentModal: React.FC<RecordedMomentModalProps> = ({ date, 
       </div>
 
       <div className="viewer__body">
-        <div className="viewer__main" style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', justifyContent: 'center' }}>
+        <div className="viewer__main" style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', justifyContent: 'center', position: 'relative' }}>
+          {showing3d && splatUrl ? (
+            <Suspense fallback={<div className="splat__status">Loading the 3D view…</div>}>
+              <SplatView
+                url={splatUrl}
+                cameras={moment.splatCameras}
+                bounds={splat!.bounds}
+                t={t}
+                following={following}
+                onLookAround={() => setFollowing(false)}
+                label={`The scan in 3D: ${splat ? splatSummary(splat) : ''}`}
+              />
+              <div className="splat__controls">
+                {!following && moment.splatCameras && (
+                  <button type="button" className="btn btn--secondary btn--sm" onClick={() => setFollowing(true)}>
+                    <Footprints size={14} aria-hidden /> Follow the walk
+                  </button>
+                )}
+                {splat?.trained && (
+                  <div className="seg seg--sm" role="group" aria-label="Scene">
+                    <button type="button" className="seg__item" aria-pressed={which === 'trained'} onClick={() => setSource('trained')}>
+                      Splat
+                    </button>
+                    <button type="button" className="seg__item" aria-pressed={which === 'lidar'} onClick={() => setSource('lidar')}>
+                      LiDAR
+                    </button>
+                  </div>
+                )}
+              </div>
+            </Suspense>
+          ) : null}
           {video ? (
             <video
+              className={showing3d ? 'splat__pip' : undefined}
               ref={(el) => {
                 mediaRef.current = el;
               }}
@@ -156,7 +218,7 @@ export const RecordedMomentModal: React.FC<RecordedMomentModalProps> = ({ date, 
               controls
               preload="metadata"
               onTimeUpdate={onTime}
-              style={{ width: '100%', flex: '1 1 0', minHeight: 0, objectFit: 'contain', background: '#000' }}
+              style={showing3d ? undefined : { width: '100%', flex: '1 1 0', minHeight: 0, objectFit: 'contain', background: '#000' }}
             />
           ) : null}
           {audio ? (
@@ -215,7 +277,9 @@ export const RecordedMomentModal: React.FC<RecordedMomentModalProps> = ({ date, 
                 <dt>On the map</dt>
                 <dd style={{ margin: 0 }}>{fit ? `to ${fit.rmse_m} m, fitted to the GPS track` : 'not placed (no GPS then)'}</dd>
                 <dt>3D scene</dt>
-                <dd style={{ margin: 0 }}>{reason ? 'needs the depth folder' : String(scene.depth ?? 'none')}</dd>
+                <dd style={{ margin: 0 }} data-testid="splat-summary">
+                  {splat ? splatSummary(splat) : reason ? 'needs the depth folder' : 'not made yet (daycube splat)'}
+                </dd>
               </dl>
               {camera ? (
                 <div style={{ marginTop: 12 }}>

@@ -3684,3 +3684,60 @@ button.np-link:hover {
     padding: 18px 16px 72px;
   }
 }
+
+/* A scan in 3D (the moment viewer): the scene fills the stage, the recorded video plays in a
+   corner and drives where the camera is. */
+.splat {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+  background: #0b0c0e;
+}
+
+.splat__canvas {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  touch-action: none;
+}
+
+.splat__canvas canvas {
+  display: block;
+}
+
+.splat__status {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--fg-3);
+  font-size: 13px;
+  pointer-events: none;
+}
+
+.splat__controls {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 2;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.splat__controls .seg {
+  background: rgba(23, 25, 29, 0.9);
+}
+
+.splat__pip {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 2;
+  width: min(30%, 220px);
+  max-height: 45%;
+  border-radius: var(--radius-m);
+  background: #000;
+  box-shadow: var(--shadow-pop);
+  object-fit: contain;
+}
