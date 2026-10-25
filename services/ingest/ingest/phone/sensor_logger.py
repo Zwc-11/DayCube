@@ -119,6 +119,10 @@ def parse(path: Path) -> Recording:
         ZoneInfo(tz)  # an unknown zone fails here, not later
         zone = ZoneInfo(tz)
         name = re.sub(r"[-_]?\d{4}-\d{2}-\d{2}[_ ]\d{2}-\d{2}-\d{2}$", "", path.stem).replace("_", " ").strip()
+        if re.search(r"(?:^|[-_])sensors-\d{8}T\d{6}Z$", path.name):
+            name = (meta.get("recording name") or "").strip()  # DayCube Capture names its hours by their start
+        if path.is_dir() and (path / "name.txt").is_file():  # a copy kept in vault/sources (phone/sources.py)
+            name = (path / "name.txt").read_text(encoding="utf-8").strip()
         altitude = sorted(
             (_seconds(r["time"]), float(r["relativeAltitude"]))
             for r in files.rows("Barometer.csv")
@@ -186,3 +190,26 @@ def _number(value: str | None) -> float | None:
     except ValueError:
         return None
     return number if number is not None and number == number else None
+
+
+def join(recordings: list[Recording], *, max_gap_s: float = 600.0) -> list[Recording]:
+    """Recordings that follow one another (the same phone, the same time zone, less than
+    ``max_gap_s`` apart: DayCube Capture's hours, or Sensor Logger restarted) as one, so a stay
+    across the hour is one visit. Relative altitude and steps start again at 0 in each recording:
+    they are carried on from where the previous one ended, as nothing is measured in the gap."""
+    out: list[Recording] = []
+    for recording in sorted((r for r in recordings if r.fixes or r.altitude), key=lambda r: r.t0):
+        last = out[-1] if out else None
+        if last is None or last.device != recording.device or last.tz != recording.tz or recording.t0 - last.t1 > max_gap_s:
+            out.append(Recording(recording.tz, recording.name, recording.device, list(recording.fixes),
+                                 list(recording.altitude), list(recording.steps), list(recording.activity)))  # fmt: skip
+            continue
+        lift = (last.altitude[-1][1] - recording.altitude[0][1]) if last.altitude and recording.altitude else 0.0
+        steps = (last.steps[-1][1] - recording.steps[0][1]) if last.steps and recording.steps else 0
+        seen = {f.t for f in last.fixes}
+        last.fixes += [f for f in recording.fixes if f.t not in seen]
+        last.altitude += [(t, a + lift) for t, a in recording.altitude]
+        last.steps += [(t, n + steps) for t, n in recording.steps]
+        last.activity += recording.activity
+        last.name = last.name or recording.name
+    return out

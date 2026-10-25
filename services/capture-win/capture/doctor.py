@@ -279,7 +279,7 @@ def _jobs(vault: Path, now: float | None = None) -> list[tuple[str, str, str]]:
         stage = STAGES.get(name)
         if stage is not None and not stage.ready():
             when = f"once it is installed: {stage.install or 'see docs/jobs.md'}"
-        elif stage is not None and stage.run is None and name == "speech" and speech_python() is None:
+        elif stage is not None and stage.run is None and name in ("speech", "conversations") and speech_python() is None:
             rows.append((WARN, "jobs", f"{title(name)}: {counts['queued']} waiting, and the speech worker is not"
                          " installed: uv sync --project services/speech (docs/speech.md)"))  # fmt: skip
             continue

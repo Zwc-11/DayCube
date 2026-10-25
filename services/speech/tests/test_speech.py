@@ -99,7 +99,9 @@ def test_the_worker_leases_runs_and_reports_to_the_receiver(tmp_path: Path, monk
         body = json.loads(request.content or b"{}")
         calls.append((request.url.path, body))
         if request.url.path == "/jobs/lease":
-            assert body["stages"] == ["speech"] and body["needs"] == "gpu"
+            assert (body["stages"], body["needs"]) in ((["conversations"], "cpu"), (["speech"], "gpu"))
+            if body["stages"] == ["conversations"]:
+                return httpx.Response(200, json={"job": None})
             return httpx.Response(200, json={"job": jobs.pop(0) if jobs else None})
         return httpx.Response(200, json={"ok": True, "status": "failed"})
 
@@ -113,10 +115,35 @@ def test_the_worker_leases_runs_and_reports_to_the_receiver(tmp_path: Path, monk
 
     monkeypatch.setattr(worker, "run_moment", fake_run)
     assert worker.serve(tmp_path, "http://receiver", once=True, models=object()) == 1
-    paths = [p for p, _ in calls]
-    assert paths == ["/jobs/lease", "/jobs/7/done", "/jobs/lease", "/jobs/8/fail", "/jobs/lease"]
-    assert calls[1][1]["outputs"] == {"turns": 3, "speakers": 2}
-    assert calls[3][1]["retry"] is False and "no audio" in calls[3][1]["error"]
+    reports = [(p, b) for p, b in calls if p != "/jobs/lease"]
+    assert [p for p, _ in reports] == ["/jobs/7/done", "/jobs/8/fail"]
+    assert sum(p == "/jobs/lease" for p, _ in calls) == 6  # conversations, then speech, each round
+    assert reports[0][1]["outputs"] == {"turns": 3, "speakers": 2}
+    assert reports[1][1]["retry"] is False and "no audio" in reports[1][1]["error"]
+
+
+def test_conversations_are_cut_out_of_an_hour_at_long_silences(tmp_path: Path) -> None:
+    """Two talks in ten minutes of sound, the second of two bursts 60 s apart; a lone short word
+    is not a conversation. The speech is the canary's English clip, where Silero VAD finds speech."""
+    from speech.audio import RATE
+    from speech.conversations import find
+
+    clip = canary.fetch()["en"]  # 7 s of speech
+    hour = np.zeros(int(600 * RATE), np.float32)
+
+    def put(at_s: float, wav: np.ndarray) -> None:
+        hour[int(at_s * RATE) : int(at_s * RATE) + len(wav)] = wav
+
+    put(30, clip)
+    put(40, clip)  # one talk: 30-47 s
+    put(300, clip)
+    put(367, clip)  # a 60 s pause: the same talk, 300-374 s
+    put(520, clip[: int(1.0 * RATE)])  # one word: too little to be a talk
+    found = find(hour)
+    assert len(found) == 2
+    assert found[0]["start_s"] == pytest.approx(29.0, abs=1.0) and found[0]["end_s"] == pytest.approx(48.2, abs=1.5)
+    assert found[1]["start_s"] == pytest.approx(299.0, abs=1.0) and found[1]["end_s"] == pytest.approx(375.2, abs=1.5)
+    assert found[1]["speech_s"] >= 10
 
 
 @pytest.mark.skipif(os.environ.get("DAYCUBE_SPEECH_CANARY") != "1", reason="runs the models (DAYCUBE_SPEECH_CANARY=1)")

@@ -51,6 +51,18 @@ The research is in the project's pipeline plan.
 - Fillers are counted as words, not told apart from their ordinary uses. "like" as a verb and 吧 at
   the end of a sentence are counted too.
 
+## Conversations in all-day sound (`speech/conversations.py`)
+
+The app records all day in one-hour files. The `conversations` job runs Silero VAD over an hour,
+on the CPU and without waiting for the GPU, then:
+
+- joins speech with less than 2 minutes of silence between it
+- keeps stretches with at least 8 s of speech, each padded by a second
+- returns their spans
+
+The receiver, the vault's one writer of days, makes each span a talk moment (`ingest/phone/importer.py`
+`add_talks`) and queues its `speech` job.
+
 ## What is written
 
 | Path | What |

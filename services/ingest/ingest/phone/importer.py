@@ -35,7 +35,7 @@ from .. import contracts
 from ..moments.media import executable
 from ..skeleton.floors import estimate_floors, floor_events
 from ..vault import Record, Vault, read_json, read_lines
-from . import sensor_logger, stray, voice
+from . import sensor_logger, sources, stray, voice
 from .geo import local
 from .visits import Span, segment
 
@@ -69,17 +69,19 @@ class Moment:
 def classify(paths: list[Path]) -> dict[str, list]:
     """Which of ``paths`` are Sensor Logger recordings, voice memos, Stray Scanner captures and
     transcripts (``<audio stem>.json`` beside a memo, or any .json given with one memo)."""
-    sensors, audio, transcripts, rest = [], [], [], []
+    sensors, audio, hours, transcripts, rest = [], [], [], [], []
     for path in paths:
         if sensor_logger.is_recording(path):
             sensors.append(path)
+        elif path.is_file() and path.suffix.lower() in voice.AUDIO_SUFFIXES and (sources.app_start(path) or ("",))[0] == "audio":
+            hours.append(path)  # DayCube Capture's hour of sound: cut into conversations, not one memo
         elif path.is_file() and path.suffix.lower() in voice.AUDIO_SUFFIXES:
             audio.append(path)
         elif path.is_file() and path.suffix.lower() == ".json":
             transcripts.append(path)
         else:
             rest.append(path)
-    return {"sensor": sensors, "audio": audio, "transcripts": transcripts, "scans": stray.find(rest)}
+    return {"sensor": sensors, "audio": audio, "hours": hours, "transcripts": transcripts, "scans": stray.find(rest)}
 
 
 def import_phone(
@@ -94,11 +96,23 @@ def import_phone(
     left out and why (``skipped``: a memo or scan that could not be read, say with FFmpeg missing);
     the rest is imported regardless. Raises ValueError when nothing could be."""
     found = classify([Path(p) for p in paths])
-    if not any(found[k] for k in ("sensor", "audio", "scans")):
+    if not any(found[k] for k in ("sensor", "audio", "hours", "scans")):
         raise ValueError("Nothing to import: no Sensor Logger recording, voice memo or Stray Scanner capture")
-    recordings = [sensor_logger.parse(p) for p in found["sensor"]]
-    zone_name = recordings[0].tz if recordings else vault_timezone(vault)
+    new = [sensor_logger.parse(p) for p in found["sensor"]]
+    zone_name = new[0].tz if new else vault_timezone(vault)
     zone = ZoneInfo(zone_name)
+    sources.backfill(vault)
+    for path, recording in zip(found["sensor"], new, strict=True):
+        if recording.fixes or recording.altitude:
+            sources.keep_sensors(vault, path, recording.t0, recording.t1, recording.name)
+    # Every day a new recording touches is made again from all the recordings kept for it, those
+    # that follow one another joined (DayCube Capture's hours), so it keeps what earlier ones gave.
+    touched = {d for r in new if r.fixes or r.altitude for d in _days(r.t0, r.t1, zone)}
+    recordings = []
+    if touched:
+        lo = datetime.fromisoformat(min(touched)).replace(tzinfo=zone).timestamp()
+        hi = datetime.fromisoformat(max(touched)).replace(tzinfo=zone).timestamp() + 86400
+        recordings = sensor_logger.join([sensor_logger.parse(p) for p in sources.sensors_between(vault, lo, hi)])
     fixes = sorted((f for r in recordings for f in r.fixes), key=lambda f: f.t)
     spans = [(r, s) for r in recordings for s in segment(r)]
     moments: list[Moment] = []
@@ -114,21 +128,90 @@ def import_phone(
             moments.append(_scan(files, fixes, say))
         except (RuntimeError, OSError, ValueError, subprocess.SubprocessError) as error:
             skipped.append({"paths": [str(f) for f in files.values()], "reason": str(error)})
+    hours = []
+    for path in found["hours"]:
+        try:
+            hours.append(_hour(vault, path, say))
+        except (RuntimeError, OSError, ValueError, subprocess.SubprocessError) as error:
+            skipped.append({"paths": [str(path)], "reason": str(error)})
     for item in skipped:
         say(f"left out {', '.join(Path(p).name for p in item['paths'])}: {item['reason']}")
-    if not spans and not moments:
+    if not spans and not moments and not hours:
         raise ValueError("Nothing could be imported: " + "; ".join(item["reason"] for item in skipped))
     days: dict[str, dict] = defaultdict(lambda: {"spans": [], "moments": []})
     for recording, span in spans:
         for day, piece in _by_day(span, zone):
-            days[day]["spans"].append((recording, piece))
+            if day in touched:
+                days[day]["spans"].append((recording, piece))
     for moment in moments:
         days[moment.t0.astimezone(zone).date().isoformat()]["moments"].append(moment)
     written = {
         day: _write_day(vault, day, zone_name, parts["spans"], parts["moments"], say)
         for day, parts in sorted(days.items())
     }
-    return {"days": written, "skipped": skipped}
+    return {"days": written, "skipped": skipped, "hours": hours}
+
+
+def _days(t0: float, t1: float, zone: ZoneInfo) -> list[str]:
+    first = datetime.fromtimestamp(t0, zone).date()
+    last = datetime.fromtimestamp(t1, zone).date()
+    return [(first + timedelta(days=k)).isoformat() for k in range((last - first).days + 1)]
+
+
+def _hour(vault: Vault, path: Path, say: Any) -> dict:
+    """Keep the app's hour of sound and queue the job that finds the conversations in it."""
+    from ..jobs.stages import enqueue
+    from ..jobs.store import Jobs
+
+    _, start = sources.app_start(path)  # type: ignore[misc]
+    audio = voice.read(path, start=start)
+    device = path.name.split("-audio-")[0] if "-audio-" in path.name else "phone"
+    relative = sources.keep_audio(vault, path, device, start, audio.duration_s)
+    jobs = Jobs.of(vault.root)
+    try:
+        job_id, _ = enqueue(jobs, "conversations", {"audio": relative, "t0": start.isoformat(), "duration_s": round(audio.duration_s, 3)})
+    finally:
+        jobs.close()
+    say(f"{path.name}: {audio.duration_s / 60:.0f} min of sound kept; conversations job {job_id}")
+    return {"audio": relative, "job": job_id, "duration_s": round(audio.duration_s, 1)}
+
+
+def add_talks(vault: Vault, inputs: dict, spans: list[list[float]], say: Any = print) -> list[str]:
+    """The conversations found in an hour of sound (the ``conversations`` job) as talk moments:
+    each a clip of the hour (copied, not re-encoded), in the day it began, named by its start, put
+    with the visit it overlaps. Their speech is the next job (``speech``). Ids of the moments."""
+    from ..config import Settings
+
+    source = vault.root / inputs["audio"]
+    start = datetime.fromisoformat(inputs["t0"])
+    zone_name = Settings().timezone
+    zone = ZoneInfo(zone_name)
+    by_day: dict[str, list[Moment]] = defaultdict(list)
+    for a, b in spans:
+        t0 = start + timedelta(seconds=a)
+        moment_id = "mo_talk_" + t0.astimezone(zone).strftime("%Y%m%d_%H%M%S")
+
+        def write(folder: Path, a: float = a, b: float = b) -> dict:
+            target = folder / f"audio{source.suffix.lower()}"
+            subprocess.run(
+                [executable("ffmpeg"), "-nostdin", "-v", "error", "-y", "-ss", f"{a:.3f}", "-t", f"{b - a:.3f}",
+                 "-i", str(source), "-c", "copy", "-map_metadata", "-1", str(target)],
+                check=True, capture_output=True, timeout=600,
+            )  # fmt: skip
+            return {"kind": "audio", "audio": target.name, "stamped": "the recording's start (DayCube Capture), plus the offset",
+                    "clip": {"of": inputs["audio"], "start_s": round(a, 3), "end_s": round(b, 3)}}  # fmt: skip
+
+        minutes = (b - a) / 60
+        by_day[t0.astimezone(zone).date().isoformat()].append(
+            Moment(moment_id, "audio", t0, b - a, f"Conversation · {minutes:.0f} min" if minutes >= 1 else "Conversation", 60.0,
+                   write, source={"kind": "daycube-capture", "ref": f"daycube-capture:{source.name}@{a:.0f}"},
+                   file={"name": f"{source.name}@{a:.1f}-{b:.1f}", "bytes": source.stat().st_size})  # fmt: skip
+        )
+    made = []
+    for day, moments in sorted(by_day.items()):
+        _write_day(vault, day, zone_name, [], moments, say)
+        made += [m.id for m in moments]
+    return made
 
 
 def vault_timezone(vault: Vault) -> str:

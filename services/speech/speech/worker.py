@@ -1,6 +1,7 @@
-"""Speech jobs leased from the capture receiver (docs/jobs.md): the receiver queues one for every
-recording with speech that has none yet, and hands them out while the PC is free; this worker,
-started by the receiver, runs them on the GPU and reports back.
+"""Jobs leased from the capture receiver (docs/jobs.md), run by this worker, which the receiver
+starts: ``conversations`` (an hour of the app's sound cut into conversations, on the CPU) and
+``speech`` (a recording's transcript, speakers and the rest, on the GPU, handed out only while the
+PC is free). The receiver queues them; the results go back to it.
 """
 
 from __future__ import annotations
@@ -15,9 +16,10 @@ from pathlib import Path
 
 import httpx
 
+from .conversations import run_job as find_conversations
 from .pipeline import Models, run_moment
 
-STAGE = "speech"
+STAGES = (("conversations", "cpu"), ("speech", "gpu"))
 HEARTBEAT_S = 40.0
 log = logging.getLogger("speech")
 
@@ -55,7 +57,7 @@ def serve(vault_root: Path, receiver: str, *, once: bool = False, wait_s: float 
     done = 0
     while True:
         try:
-            job = client.post("/jobs/lease", json={"worker": worker, "needs": "gpu", "stages": [STAGE]}).json()["job"]
+            job = _lease(client, worker)
         except (httpx.HTTPError, KeyError, ValueError) as error:
             if once:
                 raise
@@ -71,7 +73,10 @@ def serve(vault_root: Path, receiver: str, *, once: bool = False, wait_s: float 
         beat.start()
         inputs = job["inputs"]
         try:
-            outputs = run_moment(vault_root, inputs["date"], inputs["moment"], models, say)
+            if job["stage"] == "conversations":
+                outputs = find_conversations(vault_root, inputs)
+            else:
+                outputs = run_moment(vault_root, inputs["date"], inputs["moment"], models, say)
         except FileNotFoundError as error:
             beat.stop()
             client.post(f"/jobs/{job['id']}/fail", json={"worker": worker, "error": str(error), "retry": False})
@@ -85,4 +90,14 @@ def serve(vault_root: Path, receiver: str, *, once: bool = False, wait_s: float 
         beat.stop()
         client.post(f"/jobs/{job['id']}/done", json={"worker": worker, "outputs": outputs})
         done += 1
-        say(f"speech of {inputs['date']} {inputs['moment']}: {outputs}")
+        say(f"{job['stage']} of {inputs}: {outputs}")
+
+
+def _lease(client: httpx.Client, worker: str) -> dict | None:
+    """The next job this worker runs: finding conversations (CPU, at once) before speech (the GPU,
+    only while the PC is free)."""
+    for stage, needs in STAGES:
+        job = client.post("/jobs/lease", json={"worker": worker, "needs": needs, "stages": [stage]}).json()["job"]
+        if job is not None:
+            return job
+    return None
