@@ -37,6 +37,7 @@ import csv
 import json
 import subprocess
 import tempfile
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -113,7 +114,7 @@ def sharpness(video: Path, width: int, height: int) -> np.ndarray:
     size = SCORE_W * h
     proc = subprocess.Popen(
         [executable("ffmpeg"), "-nostdin", "-v", "error", "-i", str(video), "-vf", f"scale={SCORE_W}:{h},format=gray",
-         "-f", "rawvideo", "pipe:1"],
+         "-fps_mode", "passthrough", "-f", "rawvideo", "pipe:1"],
         stdout=subprocess.PIPE,
     )  # fmt: skip
     scores = []
@@ -139,22 +140,52 @@ def choose(scores: np.ndarray, target: int, usable: np.ndarray) -> np.ndarray:
 
 def extract(video: Path, picks: np.ndarray, images: Path, size: tuple[int, int]) -> np.ndarray:
     """Write the picked frames as JPEGs at ``size`` (``images/00000.jpg``...) and return them at
-    the depth maps' size, RGB, for colouring the points."""
+    the depth maps' size, RGB, for colouring the points.
+
+    One ffmpeg decodes every frame in order (the same frames, counted the same way, as
+    ``sharpness``) and the picked ones are passed to a second that writes them. No frame list is
+    given to ffmpeg: a ``select`` expression of 420 terms is refused by some builds ("Cannot
+    allocate memory", FFmpeg on Windows, 2026-10-25)."""
     images.mkdir(parents=True, exist_ok=True)
-    expr = "+".join(f"eq(n\\,{i})" for i in picks)
-    graph = (f"[0:v]select='{expr}',split=2[a][b];[a]scale={size[0]}:{size[1]}:flags=lanczos[big];"
-             f"[b]scale={DEPTH_W}:{DEPTH_H}:flags=area,format=rgb24[small]")  # fmt: skip
-    proc = subprocess.Popen(
-        [executable("ffmpeg"), "-nostdin", "-v", "error", "-y", "-i", str(video), "-filter_complex", graph,
-         "-map", "[big]", "-fps_mode", "passthrough", "-q:v", "2", "-start_number", "0", str(images / "%05d.jpg"),
-         "-map", "[small]", "-fps_mode", "passthrough", "-f", "rawvideo", "pipe:1"],
+    width, height = size
+    frame_bytes = width * height * 3
+    wanted = {int(i) for i in picks}
+    last = max(wanted)
+    decode = subprocess.Popen(
+        [executable("ffmpeg"), "-nostdin", "-v", "error", "-i", str(video),
+         "-vf", f"scale={width}:{height}:flags=lanczos,format=rgb24", "-fps_mode", "passthrough",
+         "-f", "rawvideo", "pipe:1"],
         stdout=subprocess.PIPE,
     )  # fmt: skip
-    assert proc.stdout is not None
-    raw = proc.stdout.read()
-    if proc.wait() != 0:
-        raise RuntimeError(f"ffmpeg could not extract frames from {video.name}")
-    small = np.frombuffer(raw, np.uint8).reshape(-1, DEPTH_H, DEPTH_W, 3)
+    encode = subprocess.Popen(
+        [executable("ffmpeg"), "-nostdin", "-v", "error", "-y",
+         "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{width}x{height}", "-r", "1", "-i", "pipe:0",
+         "-filter_complex", f"[0:v]split=2[big][b];[b]scale={DEPTH_W}:{DEPTH_H}:flags=area,format=rgb24[small]",
+         "-map", "[big]", "-fps_mode", "passthrough", "-q:v", "2", "-start_number", "0", str(images / "%05d.jpg"),
+         "-map", "[small]", "-fps_mode", "passthrough", "-f", "rawvideo", "pipe:1"],
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+    )  # fmt: skip
+    assert decode.stdout is not None and encode.stdin is not None and encode.stdout is not None
+    out: list[bytes] = []
+    reader = threading.Thread(target=lambda: out.append(encode.stdout.read()), daemon=True)  # type: ignore[union-attr]
+    reader.start()
+    sent = index = 0
+    try:
+        while index <= last and len(frame := decode.stdout.read(frame_bytes)) == frame_bytes:
+            if index in wanted:
+                encode.stdin.write(frame)
+                sent += 1
+            index += 1
+    finally:
+        encode.stdin.close()
+        if decode.poll() is None:
+            decode.kill()  # the frames after the last pick are not needed
+        decode.wait()
+        decode.stdout.close()
+        reader.join()
+    if encode.wait() != 0 or sent != len(wanted):
+        raise RuntimeError(f"ffmpeg could not extract frames from {video.name} ({sent} of {len(wanted)} written)")
+    small = np.frombuffer(out[0] if out else b"", np.uint8).reshape(-1, DEPTH_H, DEPTH_W, 3)
     if len(small) != len(picks):
         raise RuntimeError(f"expected {len(picks)} frames from {video.name}, got {len(small)}")
     return small
