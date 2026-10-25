@@ -273,6 +273,13 @@ def test_brush_progress_is_read_from_its_log() -> None:
         p.read(line)
     assert (p.step, p.splats, p.psnr, p.ssim) == (15000, 815433, [(3000, 23.41)], 0.712)
 
+    # Brush 0.3.0 headless (the RTX 5070, 2026-10-25): no progress bar, only its log
+    p = brush.Progress(total=30000)
+    for line in ["[2026-10-25T15:37:31Z INFO  brush_cli] Loaded dataset with 403 training, 17 eval views",
+                 "[2026-10-25T15:38:59Z INFO  brush_cli] Refine iter 1801, 2154157 splats."]:  # fmt: skip
+        p.read(line)
+    assert (p.step, p.splats) == (1800, 2154157)
+
 
 def test_new_scans_get_their_preview_then_train_when_the_pc_is_free(vault: Vault, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from ingest.phone.importer import import_phone

@@ -110,8 +110,14 @@ class Progress:
         if m := EVAL.search(line):
             self.psnr.append((int(m[1]), float(m[2])))
             self.ssim = float(m[3])
+            self.step = max(self.step, int(m[1]))
         if m := REFINE.search(line):
             self.splats = int(m[2])
+            # Brush 0.3.0 run headless prints no progress bar: its refine lines carry the step.
+            self.step = max(self.step, int(m[1]) - 1)
+            return
+        if "INFO" in line:
+            return  # log lines name files and sizes, not progress
         for m in STEP.finditer(line):
             done, total = int(m[1]), int(m[2])
             if total == self.total or (self.total == 0 and total >= 100):
@@ -164,8 +170,8 @@ def train(
                 if not line:
                     continue
                 progress.read(line)
-                if stream and not STEP.fullmatch(line):
-                    stream.write(line + "\n")
+                if stream and not STEP.fullmatch(line) and "load_scene_img" not in line:
+                    stream.write(line[:2000] + "\n")  # each image load dumps the dataset's file table (22 KB)
                 progress.lines = (progress.lines + [line])[-40:]
             now = time.monotonic()
             if on_progress and now - last > 5:
