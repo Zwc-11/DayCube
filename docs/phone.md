@@ -48,6 +48,35 @@ The DayCube Capture app uploads to the receiver, over Tailscale, through `/phone
 - **Doctor.** `.\capture doctor` shows each phone: when it was last heard from, its battery, the
   queue and what it records. It warns after two hours of silence.
 
+### DayCube Capture's own files
+
+The app writes in formats the importer already reads, so nothing on the PC tells it apart from
+the exports:
+
+- **Sensors.** An hour of sensors is a folder `sensors-<UTC start>` in Sensor Logger's CSV layout:
+  `Metadata.csv`, `Location.csv`, `Barometer.csv`, `Pedometer.csv`, `Activity.csv`.
+- **Sound.** An hour of sound is `audio-<UTC start>.m4a`, AAC, mono, 16 kHz. Its start comes from
+  its name, not the file's stamp. It is kept in `vault/sources/audio/<device>/`, and the
+  `conversations` job cuts the talks out of it ([speech.md](speech.md)):
+  - Speech with less than 2 minutes of silence between it is one talk, and holds at least 8 s of
+    speech.
+  - Each talk becomes a moment `mo_talk_<local start>` with its clip of the hour (copied, not
+    re-encoded), and its speech is the next job.
+- **Scans.** A scan is a Stray Scanner folder, as before.
+
+### Every recording of a day, every time
+
+The five CSVs the importer reads from each sensor recording (Sensor Logger's, or an hour of the
+app's) are kept in `vault/sources/sensors/` (`phone/sources.py`):
+
+- **Rebuilt days.** An import rebuilds the places, trips and GPS fixes of each day it touches from
+  all the recordings kept for that day.
+- **Joined recordings.** Recordings from the same phone less than 10 minutes apart are joined first,
+  so a stay across an hour is one visit. Relative altitude and steps carry on across the join.
+- **The old bug.** Importing a second recording of a day replaced what the first had given it.
+- **Backfill.** Recordings imported before they were kept are kept from `inbox/phone/imported/`
+  the first time.
+
 ## Visits and trips
 
 `visits.py` cuts the recording into stays and trips. The phone's motion activity (Core Motion:
@@ -126,6 +155,12 @@ looks. A scan with a 3D scene opens in 3D, following the walk with the video ([s
   - an item reaching the inbox only when complete, and being acknowledged again
   - a Stray scan uploaded file by file becoming a scan moment with no command
   - heartbeats in doctor
+- `services/ingest/tests/test_phone_app.py` covers:
+  - the app's two back-to-back hours giving the same visits, trips and floors as one recording
+  - a later recording adding to its day
+  - the backfill
+  - an hour of sound uploaded through the receiver becoming two talk moments with their clips,
+    each queued for its speech
 
 
 `services/ingest/tests/test_phone_import.py` builds a synthetic afternoon the way the apps export

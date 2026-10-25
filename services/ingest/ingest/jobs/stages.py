@@ -124,6 +124,23 @@ def _speech_done(vault: Vault, inputs: dict, outputs: dict) -> None:
     vault.invalidate_index(inputs["date"])
 
 
+def _talks(vault: Vault, inputs: dict, outputs: dict) -> None:
+    """The conversations the speech worker found in an hour of sound become talk moments (made
+    here, in the receiver, the vault's one writer of days), each queued for its speech."""
+    from ..phone.importer import add_talks
+
+    made = add_talks(vault, inputs, outputs.get("spans") or [], say=lambda _: None)
+    jobs = Jobs.of(vault.root)
+    try:
+        day_of = {m: f"{m[8:12]}-{m[12:14]}-{m[14:16]}" for m in made}  # mo_talk_YYYYMMDD_...
+        for moment in made:
+            enqueue(jobs, "speech", {"date": day_of[moment], "moment": moment})
+    finally:
+        jobs.close()
+
+
+register(Stage("conversations", 1, "cpu", None, title="conversations", after=_talks,
+               worker="the speech worker (docs/speech.md: uv sync --project services/speech)"))  # fmt: skip
 register(Stage("speech", 1, "gpu", None, title="speech", after=_speech_done,
                worker="the speech worker (docs/speech.md: uv sync --project services/speech)"))  # fmt: skip
 

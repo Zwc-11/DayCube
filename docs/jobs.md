@@ -9,6 +9,8 @@ They are queued in `vault/jobs.sqlite` and run by the capture receiver with no c
 | --- | --- | --- | --- | --- |
 | `splat_preview` | CPU | 1 | the scan's training set and LiDAR preview (`ingest/splat`, a minute or two) | `splat_train` |
 | `splat_train` | GPU | 1 | Brush on the RTX 5070 (tens of minutes); ready once Brush is installed | |
+| `scan_mesh` | CPU | 1 | the scan's mesh (`ingest/splat/mesh.py`); ready once Open3D is installed | |
+| `conversations` | CPU | 1 | the speech worker finds the talks in an hour of the app's sound; the receiver makes them talk moments | `speech` for each |
 | `speech` | GPU | 1 | the speech worker, in its own environment, leased over HTTP ([speech.md](speech.md)) | |
 
 - Every stage has a name, a version, what it needs, its code, and what follows it.
