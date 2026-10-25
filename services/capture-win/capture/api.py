@@ -49,6 +49,8 @@ from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
 from .attention import Attention
 from .jobs import idle_seconds
+from .phone_api import Phones
+from .phone_api import router as phone_router
 from .reading import LineBox
 from .records import Blocks, BrowserRecord, GazeBatch, LivePoint, View
 from .restart import code_stamp
@@ -631,5 +633,9 @@ def create_capture_app(
     @app.get("/jobs/status", dependencies=[Depends(authorize)])
     def jobs_status() -> dict:
         return jobs.status()
+
+    # The phone (DayCube Capture): pairing, resumable uploads into vault/inbox/phone, heartbeats.
+    app.state.phones = Phones(settings.vault_root)
+    app.include_router(phone_router(app.state.phones, lambda: vault.token))
 
     return app

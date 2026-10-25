@@ -27,6 +27,27 @@ Importing again replaces exactly what an earlier import wrote: places `ph-HHMMSS
 moments `mo_voice_...` and `mo_scan_...`, skeleton points with source `sensor-logger`. Anything else
 in the day (computer capture, edits, other sources) is kept.
 
+### Straight from the phone (`capture/phone_api.py`)
+
+The DayCube Capture app uploads to the receiver, over Tailscale, through `/phone/*`:
+
+| Endpoint | Token | What |
+| --- | --- | --- |
+| `POST /phone/pair {name}` | the vault's | a device id and its own token; only the token's SHA-256 is kept (`vault/capture/phone-devices.json`) |
+| `POST /phone/uploads {item, name, bytes, sha256}` | the phone's | an upload's id, and how much has arrived; `done` if the file is there already |
+| `PUT /phone/uploads/{id}?offset=` | the phone's | a chunk of at most 4 MB at that offset; 409 with the right offset otherwise |
+| `POST /phone/uploads/{id}/complete` | the phone's | the size and SHA-256 checked; a mismatch is refused and the upload starts over |
+| `POST /phone/items/complete {item}` | the phone's | the item's files moved into the inbox together; asking again later answers `done` |
+| `POST /phone/heartbeat {battery, storage_free_mb, state, queue_files, ...}` | the phone's | kept for doctor; every one appended to `vault/capture/phone-heartbeats.jsonl` |
+| `GET /phone/status` | the vault's | devices, their last heartbeat, uploads in progress |
+
+- **Items.** An item is what is imported together: one audio hour, one sensor recording, one scan.
+  Its files wait in `inbox/phone/.staging/` until the item is complete, then land in the inbox as
+  `<device>-<item>`. A scan whose upload paused half way is never imported half made.
+- **Deleting on the phone.** The phone deletes a file only after the receiver has acknowledged it.
+- **Doctor.** `.\capture doctor` shows each phone: when it was last heard from, its battery, the
+  queue and what it records. It warns after two hours of silence.
+
 ## Visits and trips
 
 `visits.py` cuts the recording into stays and trips. The phone's motion activity (Core Motion:
@@ -98,6 +119,14 @@ the capture's details and its path seen from above with where the camera is and 
 looks. A scan with a 3D scene opens in 3D, following the walk with the video ([splat.md](splat.md)).
 
 ## Tests
+
+- `services/ingest/tests/test_phone_api.py` covers:
+  - pairing, and that a token is never stored
+  - a resumed upload, a wrong offset and a corrupted file
+  - an item reaching the inbox only when complete, and being acknowledged again
+  - a Stray scan uploaded file by file becoming a scan moment with no command
+  - heartbeats in doctor
+
 
 `services/ingest/tests/test_phone_import.py` builds a synthetic afternoon the way the apps export
 it (home, a drive, a walk around a park with a scan turned 30 degrees from north, the drive back

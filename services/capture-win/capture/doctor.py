@@ -297,6 +297,42 @@ def _jobs(vault: Path, now: float | None = None) -> list[tuple[str, str, str]]:
     return rows
 
 
+PHONE_QUIET_S = 2 * 3600  # the app sends a heartbeat every hour
+
+
+def _phones(vault: Path, now: float | None = None) -> list[tuple[str, str, str]]:
+    """Paired phones (capture.phone_api): when each was last heard from, its battery and queue. A
+    phone quiet for two hours is recording nothing the vault will get (the app was swiped away,
+    the phone is off or offline)."""
+    path = vault / "capture" / "phone-devices.json"
+    try:
+        devices = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, ValueError):
+        return []
+    now = time.time() if now is None else now
+    rows = []
+    for device, info in sorted(devices.items()):
+        name = info.get("name") or device
+        last = info.get("last")
+        if not last:
+            rows.append((INFO, "phone", f"{name}: paired, nothing heard from it yet"))
+            continue
+        age = now - float(last.get("received", 0))
+        parts = []
+        if last.get("battery") is not None:
+            parts.append(f"battery {round(100 * last['battery'])}%" + (" charging" if last.get("charging") else ""))
+        if last.get("queue_files"):
+            parts.append(f"{last['queue_files']} files waiting to upload")
+        recording = [k for k, v in (last.get("state") or {}).items() if v and v != "off"]
+        if recording:
+            parts.append("recording " + ", ".join(recording))
+        heard = f"{age / 60:.0f} min ago" if age < 3600 else f"{age / 3600:.0f} h ago"
+        level = PASS if age < PHONE_QUIET_S else WARN
+        hint = "" if level == PASS else "; open DayCube Capture on the phone (never swipe it away)"
+        rows.append((level, "phone", f"{name}: heard {heard}" + (f", {', '.join(parts)}" if parts else "") + hint))
+    return rows
+
+
 def checks(status: dict | None, vault: Path, zone: ZoneInfo, now: datetime, autostart: str | None) -> list[tuple]:
     out: list[tuple[str, str, str]] = []
     if status is None:
@@ -469,6 +505,7 @@ def checks(status: dict | None, vault: Path, zone: ZoneInfo, now: datetime, auto
     if gaze.get("tracking") and gaze.get("learning"):
         out += _tuning(vault)
     out += _jobs(vault)
+    out += _phones(vault)
 
     decoding = status.get("line_decoding") or {}
     seen = decoding.get("fixations", 0)
