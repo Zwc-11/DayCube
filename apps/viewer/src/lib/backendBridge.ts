@@ -1,6 +1,6 @@
 import { DaycubeClient, ApiError } from '@daycube/api-client';
 import type {
-  AskResult as SchemaAskResult, DataCenter, DayNotes, DayResponse, Entity, GazeLearning, KnowledgeGraph, Note, SearchResult,
+  AskResult as SchemaAskResult, DataCenter, DayNotes, DayResponse, Entity, GazeLearning, KnowledgeGraph, Note, SearchResult, NoteGraph,
 } from '@daycube/schemas';
 import {
   AskResult,
@@ -643,6 +643,15 @@ export class BackendBridge {
   /** The day's knowledge base (notes, links, local graph), or null when it cannot be loaded. */
   dayNotes(date: string) {
     return this.read<DayNotes>(`/api/day/${date}/notes`, () => this.client.dayNotes(date), (d) => `${d.notes.length} notes, ${d.records} records`);
+  }
+
+  /** The vault's graph: the new copy, 'same' while `etag` still matches, or null offline. */
+  async noteGraph(etag?: string | null): Promise<{ etag: string | null; graph: NoteGraph } | 'same' | null> {
+    return this.read(
+      '/api/notes/graph',
+      async () => (await this.client.noteGraphIfChanged(etag)) ?? ('same' as const),
+      (g) => (g === 'same' ? 'unchanged (304)' : `${g.graph.notes.length} notes, ${g.graph.edges.length} links`)
+    );
   }
 
   note(path: string) {

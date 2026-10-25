@@ -45,6 +45,24 @@ class DayNotes:
                 self._written.put_metadata(day, row[0])
         self.store.sync_notes()  # the person's own notes may have changed too
 
+    def ensure_all(self) -> None:
+        """Every recorded day with its daily note, for the vault's graph: a day never written
+        is written now. A day already written is refreshed when it is opened (``ensure``), and the
+        capture receiver keeps today's current, so the graph does not rewrite every day."""
+        self.store.ensure(quick=True)
+        with self.store.connect() as db:
+            missing = db.execute(
+                "SELECT day, stamp FROM days WHERE 'day ' || day NOT IN "
+                "(SELECT identity FROM notes WHERE identity IS NOT NULL) ORDER BY day"
+            ).fetchall()
+        if missing:
+            with self._lock:
+                writer = Notes(self.store)  # one writer: the folder's note paths are read once
+                for day, stamp in missing:
+                    writer.write_day(day)
+                    self._written.put_metadata(day, stamp)
+        self.store.sync_notes()
+
     def view(self, day: str) -> Record:
         """The day's knowledge base: its daily note, the notes it links to, the notes that link to
         it, its local graph (each node with the note it has, if any) and what it holds."""

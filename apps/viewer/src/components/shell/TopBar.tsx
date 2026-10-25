@@ -64,7 +64,7 @@ export const TopBar = React.memo(function TopBar({
         >
           <PanelLeft size={17} />
         </button>
-        <button type="button" className="brand brand--btn" onClick={onHome} aria-label="All days">
+        <button type="button" className="brand brand--btn" onClick={onHome} aria-label="Home">
           <BrandMark />
           <span className="brand__name">DayCube</span>
         </button>
