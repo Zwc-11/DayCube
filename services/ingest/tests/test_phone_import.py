@@ -163,6 +163,41 @@ def scan(folder: Path, rotation_deg: float = 30.0) -> Path:
     return capture
 
 
+@needs_ffmpeg
+@pytest.mark.parametrize("duration", [1.0, 10.0])
+def test_scan_keyframes_use_standard_jpeg_without_changing_sample_times(tmp_path: Path, duration: float) -> None:
+    video = tmp_path / "short.mp4"
+    subprocess.run(
+        ["ffmpeg", "-nostdin", "-v", "error", "-f", "lavfi", "-i",
+         f"color=c=0x204060:size=64x48:rate=10:duration={duration}", "-pix_fmt", "yuv420p", str(video)],
+        check=True, capture_output=True, timeout=30,
+    )  # fmt: skip
+    capture = stray.Scan(
+        video=video,
+        t0=START,
+        duration_s=duration,
+        width=64,
+        height=48,
+        fov_deg=60,
+        t=np.array([0.0]),
+        position=np.zeros((1, 3)),
+        rotation=np.array([[0.0, 0.0, 0.0, 1.0]]),
+    )
+    folder = tmp_path / "moment"
+    frames = stray.keyframes(capture, folder)
+    assert [frame["t"] for frame in frames] == ([] if duration < 4 else [4.0])
+    for frame in frames:
+        image = folder / frame["file"]
+        assert image.read_bytes().startswith(b"\xff\xd8\xff")
+        decoded = subprocess.run(
+            ["ffmpeg", "-nostdin", "-v", "error", "-i", str(image), "-frames:v", "1",
+             "-pix_fmt", "rgb24", "-f", "rawvideo", "pipe:1"],
+            check=True, capture_output=True, timeout=30,
+        )  # fmt: skip
+        pixels = np.frombuffer(decoded.stdout, dtype=np.uint8).reshape(480, 640, 3)
+        assert np.max(np.abs(pixels[240, 320].astype(int) - [32, 64, 96])) <= 5
+
+
 def test_a_recording_is_split_into_stays_and_trips(tmp_path: Path) -> None:
     recording = sensor_logger.parse(sensor_zip(tmp_path))
     assert recording.tz == "America/Toronto" and recording.name == "1 Main St" and recording.device == "Test Phone"

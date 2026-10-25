@@ -5,15 +5,15 @@
   "counts": {
     "configuration": 35,
     "documentation": 27,
-    "test": 52,
-    "source": 149,
+    "test": 53,
+    "source": 150,
     "asset": 16,
     "fixture": 13,
     "measurement_or_fixture": 44,
     "lockfile": 4,
     "generated": 11
   },
-  "manual_reviews": 220,
+  "manual_reviews": 222,
   "files": [
     {
       "path": ".env.example",
@@ -41,14 +41,14 @@
     },
     {
       "path": ".github/workflows/ci.yml",
-      "sha256": "8ed7aea046232048de2df646bf78a806cc148f99b1397f2eeb0390ec401ea503",
+      "sha256": "76c8fd0f5d62ac685312ca67dd56c76962fecde94324a63d642c9cfbdb424f38",
       "category": "configuration",
-      "bytes": 1376,
+      "bytes": 1391,
       "lines": 39,
-      "structural_check": "UTF-8 text inventory; build/configuration review is separate",
+      "structural_check": "Targeted configuration/documentation review; CI and browser checks recorded separately",
       "manual_review": {
-        "scope": "CI runtime dependency and platform isolation review",
-        "notes": "Linux MediaPipe Image tests require libEGL.so.1; install libegl1 and libgles2 before the checks. Disable matrix fail-fast so a Linux failure does not cancel Windows evidence. Keep native Image ownership assertions enabled."
+        "scope": "Targeted phone CI follow-up against 14d398c, 2026-10-25",
+        "notes": "Install the FFmpeg runtime needed by phone fixtures on Linux; leave both platforms enabled and preserve existing checks."
       }
     },
     {
@@ -755,13 +755,13 @@
     {
       "path": "docs/efficiency-review.md",
       "category": "documentation",
-      "sha256": "defbd928ad256dd00dae2b8951ab961b9d7b8d97134ee7d189f250b354615f32",
-      "bytes": 11883,
-      "lines": 160,
-      "structural_check": "UTF-8 text inventory; targeted documentation review recorded separately",
+      "sha256": "e5318eb74a9631f3314bd924358e57bd1d451262c811276fee124c67c2cfd147",
+      "bytes": 14030,
+      "lines": 190,
+      "structural_check": "Targeted configuration/documentation review; CI and browser checks recorded separately",
       "manual_review": {
-        "scope": "Targeted screen/caching correctness review; d8f8391 baseline with a526d52 preserved",
-        "notes": "Combined PR review scope, test counts, cache capacities and explicit native Windows/extension acceptance limits recorded; earlier performance claims not remeasured."
+        "scope": "Targeted phone CI follow-up against 14d398c, 2026-10-25",
+        "notes": "Record the Linux failure, dependency preflight, JPEG encoder fix, synthetic fixture scope and remaining runtime limits."
       }
     },
     {
@@ -2605,14 +2605,14 @@
     },
     {
       "path": "scripts/start-api-test.mjs",
-      "sha256": "fa70cf226d10995d3d5ea0a9968b6230b5a337bac5e2e3309995412ec8ad49d0",
+      "sha256": "a950adb8aab0fd5185a0ce2e277fa834f851938ff552ddfc63ac6288388399e8",
       "category": "source",
-      "bytes": 842,
-      "lines": 13,
-      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
+      "bytes": 1738,
+      "lines": 27,
+      "structural_check": "Node syntax check; dependency-failure smoke check and browser suite recorded separately",
       "manual_review": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Explicit scratch vault environment, child startup/status and signal forwarding. Browser fixtures never seed the personal vault. Windows descendant cleanup after forced interruption remains a process-management limit."
+        "scope": "Targeted phone CI follow-up against 14d398c, 2026-10-25",
+        "notes": "Check ffmpeg and ffprobe before synthetic vault reset/import; missing dependency smoke check exits with a direct error. Production partial imports are unchanged."
       }
     },
     {
@@ -4590,6 +4590,36 @@
       }
     },
     {
+      "path": "services/ingest/ingest/phone/stray.py",
+      "category": "source",
+      "sha256": "36dae1078c8fdac488635b9ea5d40c4e488426b3746e7e1d94317441e5a86a9d",
+      "bytes": 13491,
+      "lines": 281,
+      "functions": [
+        "find:64 (loops including nested scopes: 2)",
+        "read:89 (loops including nested scopes: 5)",
+        "_camera_fx:117 (loops including nested scopes: 0)",
+        "georeference:124 (loops including nested scopes: 4)",
+        "_kabsch:163 (loops including nested scopes: 0)",
+        "heading:175 (loops including nested scopes: 0)",
+        "upright:192 (loops including nested scopes: 0)",
+        "keyframes:207 (loops including nested scopes: 2)",
+        "preview:224 (loops including nested scopes: 0)",
+        "camera_path:239 (loops including nested scopes: 2)",
+        "keep_capture:253 (loops including nested scopes: 4)",
+        "store:275 (loops including nested scopes: 0)"
+      ],
+      "review_signals": [
+        "213: check subprocess timeout or explicit process ownership at subprocess.run",
+        "229: check subprocess timeout or explicit process ownership at subprocess.run"
+      ],
+      "structural_check": "Python AST parsed; Ruff and suite results recorded separately",
+      "manual_review": {
+        "scope": "Targeted phone CI follow-up against 14d398c, 2026-10-25",
+        "notes": "Keyframe JPEG output format only: explicit full-range YUV fixes FFmpeg 9 encoder startup for empty samples. Keyframe selection, upright rotation and timestamps are unchanged; other parser paths are outside this targeted refresh."
+      }
+    },
+    {
       "path": "services/ingest/ingest/skeleton/__init__.py",
       "sha256": "2bd1c8b7999de35a408af55e04d80c69f711d7df583eb77e281b62091af919c7",
       "category": "source",
@@ -5389,6 +5419,50 @@
       "manual_review": {
         "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
         "notes": "Fixture/setup, assertions, loops, mocks and resource cleanup inspected. Tests use synthetic inputs; suite execution and remaining device/port restrictions are recorded in docs/review-2026-10-24.md."
+      }
+    },
+    {
+      "path": "services/ingest/tests/test_phone_import.py",
+      "category": "test",
+      "sha256": "ef445261e05e4fbc0c83141768d6fede95a62176701e2adadfe3c05d8b909b68",
+      "bytes": 18114,
+      "lines": 363,
+      "functions": [
+        "offset:36 (loops including nested scopes: 0)",
+        "walk_at:41 (loops including nested scopes: 0)",
+        "afternoon:47 (loops including nested scopes: 2)",
+        "sensor_zip:68 (loops including nested scopes: 5)",
+        "voice_memo:121 (loops including nested scopes: 0)",
+        "scan:140 (loops including nested scopes: 1)",
+        "test_scan_keyframes_use_standard_jpeg_without_changing_sample_times:168 (loops including nested scopes: 2)",
+        "test_a_recording_is_split_into_stays_and_trips:201 (loops including nested scopes: 2)",
+        "test_an_afternoon_of_recordings_becomes_a_vault_day:214 (loops including nested scopes: 16)",
+        "test_the_inbox_imports_what_has_stopped_changing_and_does_not_retry_a_failure:296 (loops including nested scopes: 1)",
+        "test_a_scan_is_found_among_loose_attachment_files:314 (loops including nested scopes: 2)",
+        "test_without_ffmpeg_the_recording_is_imported_and_the_memo_waits:324 (loops including nested scopes: 2)",
+        "test_a_capture_held_upright_is_turned_to_stand_upright:349 (loops including nested scopes: 0)",
+        "table:72 (loops including nested scopes: 0)",
+        "turned:354 (loops including nested scopes: 0)"
+      ],
+      "review_signals": [
+        "125: check subprocess timeout or explicit process ownership at subprocess.run",
+        "136: check text/binary mode and default encoding at beside.write_text",
+        "146: check subprocess timeout or explicit process ownership at subprocess.run",
+        "162: check text/binary mode and default encoding at (capture / 'camera_matrix.csv').write_text",
+        "170: check subprocess timeout or explicit process ownership at subprocess.run",
+        "272: check text/binary mode and default encoding at log.write_text",
+        "307: check text/binary mode and default encoding at (drop / 'notes.txt').write_text",
+        "153: check text/binary mode and default encoding at (capture / 'odometry.csv').open",
+        "192: check subprocess timeout or explicit process ownership at subprocess.run",
+        "311: check text/binary mode and default encoding at (drop / 'errors.jsonl').read_text",
+        "316: check text/binary mode and default encoding at (tmp_path / name).write_text",
+        "336: check text/binary mode and default encoding at (drop / 'errors.jsonl').read_text",
+        "272: check text/binary mode and default encoding at log.read_text"
+      ],
+      "structural_check": "Python AST parsed; Ruff and suite results recorded separately",
+      "manual_review": {
+        "scope": "Targeted phone CI follow-up against 14d398c, 2026-10-25",
+        "notes": "Two new synthetic media regressions cover short and ordinary clips, frame timestamps, decoded JPEG dimensions and colors. Existing importer tests are unchanged."
       }
     },
     {
