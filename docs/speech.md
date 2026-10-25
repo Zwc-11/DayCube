@@ -154,6 +154,10 @@ them. The check passes when:
 - there are four turns from two speakers, in the order A B A B
 - each clip's second turn starts as far after its first as it was placed, to within 0.15 s
 
+The report is printed and kept in `vault/derived/speech/canary.json`; the receiver's doctor shows
+the last one (`speech check`). Output is UTF-8 whatever the console: Windows writes redirected
+output in cp1252, where the report's Mandarin made the PC's second canary stop before printing it.
+
 ## Tests
 
 `services/speech/tests/test_speech.py` covers, without models:

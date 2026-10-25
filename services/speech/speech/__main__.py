@@ -18,7 +18,17 @@ def vault_root(given: str | None) -> Path:
     return Path(given or os.environ.get("DAYCUBE_VAULT_ROOT") or PROJECT_ROOT / "vault")
 
 
+def utf8_output() -> None:
+    """UTF-8 out, whatever the console: Windows writes redirected output in its ANSI code page
+    (cp1252), where printing a Mandarin transcript raised UnicodeEncodeError (the PC's canary,
+    2026-10-25)."""
+    for stream in (sys.stdout, sys.stderr):
+        if stream is not None and hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
+
+
 def main() -> None:
+    utf8_output()
     parser = argparse.ArgumentParser(prog="speech", description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     serve = commands.add_parser("serve", help="Lease speech jobs from the capture receiver and run them")
@@ -31,6 +41,7 @@ def main() -> None:
     one.add_argument("--moment", required=True)
     canary = commands.add_parser("canary", help="Check the models on clips with known words and speakers")
     canary.add_argument("--device")
+    canary.add_argument("--vault", help="where the report is kept (derived/speech/canary.json)")
     args = parser.parse_args()
 
     if args.command == "serve":
@@ -53,9 +64,11 @@ def main() -> None:
         print(json.dumps(run_moment(vault_root(args.vault), args.date, args.moment, Models(),
                                     say=lambda m: print(m, file=sys.stderr)), ensure_ascii=False))  # fmt: skip
     else:
+        from .canary import keep
         from .canary import run as check
 
         result = check(device=args.device, say=lambda m: print(m, file=sys.stderr))
+        keep(vault_root(args.vault), result)
         print(json.dumps(result, ensure_ascii=False, indent=1))
         sys.exit(0 if result["ok"] else 1)
 
