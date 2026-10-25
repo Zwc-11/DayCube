@@ -119,7 +119,7 @@ seconds, with steps, splats, minutes and PSNR.
 | `.../dataset.json` | frames, size, path length, extent, starting points, the check |
 | `.../export/splat.ply` | the trained splat, with view-dependent colour |
 | `moments/<id>/splat/lidar.splat` | the preview (32-byte `.splat` records, most visible first) |
-| `moments/<id>/splat/scene.splat` | the trained splat for the viewer (without the higher spherical harmonics) |
+| `moments/<id>/splat/scene.splat` | the trained splat for the viewer (without the higher spherical harmonics, and without splats that reach the walked path: the phone passed through that space, and a renderer draws a splat around the camera across the whole view; 5,578 of 3 M on 2026-10-24) |
 | `moments/<id>/splat/cameras.json` | where the camera was every 3 frames, for following the walk |
 | `moments/<id>/scene.json` `splat` | `status` (`lidar`, `training`, `trained`, `failed`), files, counts, bounds, training figures, error |
 
@@ -154,6 +154,10 @@ Double-click a scan on the day:
   **Video** shows the video full size again.
 - **Capture panel.** It says what the scene is, for example "1,391,603 LiDAR points; not trained
   yet", or the splat count, the training minutes and the PSNR on frames it never saw.
+
+The whole scene is shown at once. GaussianSplats3D's default reveal grows a visible sphere from
+the scene's centre one step per drawn frame. On a slow renderer it had not reached the follow
+camera 115 m out after a minute, so the view stayed empty.
 
 The renderer is [GaussianSplats3D](https://github.com/mkkellogg/GaussianSplats3D) 0.4.7 (MIT) on
 the viewer's three.js 0.168. Spark needs three.js 0.180. It loads only when a scan opens in 3D. It

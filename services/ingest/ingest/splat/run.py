@@ -217,11 +217,14 @@ def _make(vault: Vault, moment: Path, scene: dict, capture: Path, video: Path, w
         raise
     path = np.array([np.array(f["transform_matrix"])[:3, 3] for f in json.loads((train_dir / "transforms.json").read_text())["frames"]])
     reach = float(np.linalg.norm(path - path.mean(0), axis=1).max()) + 20.0  # the walk and what it saw, not the sky
-    trained = export.splat_from_gaussians(work / "export" / "splat.ply", out / "scene.splat", near=(path.mean(0), reach))
+    walked = np.array(cameras(capture, width, height)["position"])
+    trained = export.splat_from_gaussians(work / "export" / "splat.ply", out / "scene.splat", near=(path.mean(0), reach),
+                                          free=walked)  # fmt: skip
     splat |= {
         "status": "trained",
         "trained": "splat/scene.splat",
         "splats": trained["splats"],
+        "on_path": trained["on_path"],  # left out: they covered the walked path
         "bounds": trained["bounds"] or splat["bounds"],
         "training": {
             "trainer": f"Brush {brush.VERSION}",

@@ -199,6 +199,14 @@ def test_splats_for_the_viewer(tmp_path: Path) -> None:
     assert list(records["rotation"][0]) == [255, 128, 128, 128]  # w=1 normalized
 
 
+def test_splats_covering_the_walked_path_are_left_out(tmp_path: Path) -> None:
+    path = np.array([[0, 0, 0], [0, 0, -10.0]])
+    position = np.array([[0, 0, -5.0], [2, 0, -5.0], [1.5, 0, -5.0], [0.1, 0.1, -20.0]], np.float32)
+    scale = np.array([[0.02] * 3, [0.05] * 3, [1.0] * 3, [0.02] * 3], np.float32)
+    # on the path; 2 m beside it and small; 1.5 m beside it but 1 m across (2 sigma reaches); past its end
+    assert export.covering(position, scale, path).tolist() == [True, False, True, False]
+
+
 def fake_brush(folder: Path) -> Path:
     """A stand-in for Brush that logs like it and exports a two-splat PLY."""
     script = folder / "fake_brush.py"
@@ -212,7 +220,8 @@ def fake_brush(folder: Path) -> Path:
         "print('Refine iter 200, 12345 splats', flush=True)\n"
         "print(f'Eval iter {steps}: PSNR 27.5, ssim 0.91', flush=True)\n"
         "f = ['x','y','z','scale_0','scale_1','scale_2','opacity','rot_0','rot_1','rot_2','rot_3','f_dc_0','f_dc_1','f_dc_2']\n"
-        "d = np.zeros(2, dtype=[(k, '<f4') for k in f]); d['rot_0'] = 1; d['opacity'] = 3\n"
+        "d = np.zeros(2, dtype=[(k, '<f4') for k in f]); d['rot_0'] = 1; d['opacity'] = 3; d['x'] = 3\n"
+        "for k in ('scale_0', 'scale_1', 'scale_2'): d[k] = -4  # 2 cm, beside the walk\n"
         "h = 'ply\\nformat binary_little_endian 1.0\\nelement vertex 2\\n' + ''.join(f'property float {k}\\n' for k in f) + 'end_header\\n'\n"
         "out.write_bytes(h.encode() + d.tobytes())\n"
     )
