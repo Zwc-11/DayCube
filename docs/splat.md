@@ -59,8 +59,8 @@ No structure from motion is run. ARKit already knows where the camera was for ev
 
 ## The mesh (`ingest/splat/mesh.py`)
 
-`daycube mesh --date <day>`, or the `scan_mesh` job once the `mesh` extra is installed
-(`uv sync --extra mesh`, Open3D):
+`daycube mesh --date <day>` (with the `mesh` extra: `uv sync --extra mesh`), or the receiver's
+`scan_mesh` job (Open3D is one of the receiver's dependencies):
 
 - **Fusion.** Every third depth map (medium or high confidence, within 5 m) is fused into a
   truncated signed distance field at ARKit's poses, using Open3D's tensor `VoxelBlockGrid` with

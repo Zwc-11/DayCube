@@ -109,7 +109,7 @@ def _mesh_available() -> bool:
 
 
 register(Stage("scan_mesh", 1, "cpu", _scan_mesh, ready=_mesh_available, title="3D mesh",
-               install="uv sync --extra mesh (docs/splat.md)"))  # fmt: skip
+               install="Open3D in the receiver: .\\capture restart after git pull (docs/splat.md)"))  # fmt: skip
 register(Stage("splat_preview", 1, "cpu", _splat_preview, follow=lambda i, o: [("splat_train", i)], title="3D preview"))
 register(Stage("splat_train", 1, "gpu", _splat_train, ready=_training_allowed, attempts=2, title="3D training",
                install="uv run daycube splat --date <day>, which installs Brush (docs/splat.md)"))  # fmt: skip
