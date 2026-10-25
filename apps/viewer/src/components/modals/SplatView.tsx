@@ -8,7 +8,8 @@ import type { SplatCameras } from '@daycube/api-client';
  * there. The renderer loads only when a scan's 3D view opens.
  *
  * The walk is 150 m long: the sort runs in floating point (integer sorting overflows on scenes
- * that size) and without shared memory, which would need cross-origin isolation.
+ * that size), without shared memory, which would need cross-origin isolation, and the whole scene
+ * is shown at once rather than revealed outward from its centre.
  */
 
 interface SplatViewProps {
@@ -91,6 +92,10 @@ export const SplatView: React.FC<SplatViewProps> = ({ url, cameras, bounds, t, f
         integerBasedSort: false,
         dynamicScene: false,
         sphericalHarmonicsDegree: 0,
+        // The default reveal grows a visible sphere from the scene's centre a step per frame: the
+        // follow camera can start 115 m out (2026-10-24 at 95 s), beyond it until enough frames
+        // have been drawn, and on a slow renderer never got there.
+        sceneRevealMode: GS.SceneRevealMode.Instant,
         logLevel: GS.LogLevel.None,
       }) as unknown as Viewer;
       viewer.current = made;

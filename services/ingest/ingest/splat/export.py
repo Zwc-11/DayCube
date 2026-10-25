@@ -58,10 +58,30 @@ def _records(position: np.ndarray, scale: np.ndarray, rgb: np.ndarray, alpha: np
     return out
 
 
+def covering(position: np.ndarray, scale: np.ndarray, path: np.ndarray, *, step_m: float = 0.25,
+             sigmas: float = 2.0) -> np.ndarray:  # fmt: skip
+    """Which splats reach the walked path (``sigmas`` times their largest scale): the phone passed
+    through that space, so nothing was there. A renderer draws a splat around the camera across the
+    whole view (2026-10-24: a 5 m dark splat around the 95 s pose)."""
+    seg = np.linalg.norm(np.diff(path, axis=0), axis=1)
+    along = np.concatenate([[0.0], np.cumsum(seg)])
+    grid = np.arange(0.0, along[-1] + step_m, step_m)
+    points = np.stack([np.interp(grid, along, path[:, k]) for k in range(3)], 1).astype(np.float32)
+    reach = sigmas * scale.max(1) + step_m / 2
+    nearest = np.full(len(position), np.inf, np.float32)
+    for i in range(0, len(position), 250_000):
+        chunk = position[i : i + 250_000]
+        for j in range(0, len(points), 32):
+            d = np.linalg.norm(chunk[:, None, :] - points[None, j : j + 32, :], axis=2).min(1)
+            np.minimum(nearest[i : i + 250_000], d, out=nearest[i : i + 250_000])
+    return nearest < reach
+
+
 def splat_from_gaussians(ply: Path, target: Path, *, cap: int | None = 3_000_000, min_alpha: float = 1 / 255,
-                         near: tuple[np.ndarray, float] | None = None) -> dict:  # fmt: skip
+                         near: tuple[np.ndarray, float] | None = None, free: np.ndarray | None = None) -> dict:  # fmt: skip
     """A trained splat PLY as ``.splat``; returns counts and the bounds of the bulk, of the splats
-    within ``near`` (centre, radius) when given: the sky shell is not the scene."""
+    within ``near`` (centre, radius) when given: the sky shell is not the scene. ``free``: the
+    walked path; splats reaching it are left out (``covering``)."""
     v = read_ply(ply)
     position = np.stack([v["x"], v["y"], v["z"]], 1).astype(np.float32)
     scale = np.exp(np.stack([v["scale_0"], v["scale_1"], v["scale_2"]], 1)).astype(np.float32)
@@ -69,13 +89,19 @@ def splat_from_gaussians(ply: Path, target: Path, *, cap: int | None = 3_000_000
     alpha = 1 / (1 + np.exp(-v["opacity"].astype(np.float64)))
     quat = np.stack([v["rot_0"], v["rot_1"], v["rot_2"], v["rot_3"]], 1).astype(np.float64)
     keep = (alpha >= min_alpha) & np.isfinite(position).all(1) & np.isfinite(scale).all(1)
+    on_path = 0
+    if free is not None and len(free) > 1:
+        hit = covering(position, scale, free.astype(np.float32)) & keep
+        on_path = int(hit.sum())
+        keep &= ~hit
     records = _records(position[keep], scale[keep], rgb[keep], alpha[keep], quat[keep], cap)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(records.tobytes())
     inside = records["position"]
     if near is not None:
         inside = inside[np.linalg.norm(inside - near[0], axis=1) < near[1]]
-    return {"splats": int(len(records)), "trained": int(len(v)), "bytes": target.stat().st_size, **bounds(inside)}
+    return {"splats": int(len(records)), "trained": int(len(v)), "on_path": on_path, "bytes": target.stat().st_size,
+            **bounds(inside)}  # fmt: skip
 
 
 def splat_from_points(clouds: list[tuple[Path, float]], target: Path, *, alpha: float = 0.9) -> dict:

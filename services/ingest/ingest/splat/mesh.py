@@ -14,10 +14,14 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 
 from . import dataset
+
+if TYPE_CHECKING:
+    import open3d as o3d
 
 GL_TO_CV = np.diag([1.0, -1.0, -1.0, 1.0])
 
@@ -131,8 +135,15 @@ def build(
 
 
 def _check(
-    mesh, capture: Path, odo, held: np.ndarray, depth_of: dict, max_depth_m: float, min_confidence: int, s: float
-) -> dict:  # noqa: ANN001
+    mesh: o3d.geometry.TriangleMesh,
+    capture: Path,
+    odo: dataset.Odometry,
+    held: np.ndarray,
+    depth_of: dict,
+    max_depth_m: float,
+    min_confidence: int,
+    s: float,
+) -> dict:
     """Distance from LiDAR points of depth maps that were not fused to the mesh."""
     import open3d as o3d
 
