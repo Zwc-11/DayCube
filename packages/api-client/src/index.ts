@@ -41,6 +41,17 @@ export interface SceneSplat {
   error?: string;
 }
 
+/** A scan's surfaces as a mesh (scene.json ``mesh``): the LiDAR's depth fused at ARKit's poses. */
+export interface SceneMesh {
+  status: 'made';
+  file: string;
+  triangles: number;
+  vertices: number;
+  voxel_m: number;
+  bounds: { min: [number, number, number]; max: [number, number, number] } | null;
+  check: { points: number; median_m: number | null; p90_m: number | null };
+}
+
 /** Where a scan's camera was every few frames (world metres, y up), for following the walk in 3D. */
 export interface SplatCameras {
   t: number[];

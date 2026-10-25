@@ -52,8 +52,12 @@ def main() -> None:
     splat.add_argument("--moment", help="One scan moment (default: every scan of the day)")
     splat.add_argument("--capture", type=Path, help="The Stray Scanner folder, if its depth is not in the vault")
     splat.add_argument("--steps", type=int, default=30_000, help="Training steps (default 30000)")
-    splat.add_argument("--frames", type=int, default=420, help="Video frames to train on (default 420)")
+    splat.add_argument("--frames", type=int, default=1260, help="Video frames to train on (default 1260)")
     splat.add_argument("--no-train", action="store_true", help="Only the training set and the LiDAR preview")
+    mesh = commands.add_parser("mesh", help="A day's LiDAR scans as meshes, from their depth (the mesh extra)")
+    mesh.add_argument("--date", required=True)
+    mesh.add_argument("--moment", help="One scan moment (default: every scan of the day)")
+    mesh.add_argument("--capture", type=Path, help="The Stray Scanner folder, if its depth is not in the vault")
     jobs = commands.add_parser("jobs", help="The vault's processing jobs (vault/jobs.sqlite): status, retry, run")
     jobs.add_argument("action", nargs="?", choices=["status", "retry", "run"], default="status")
     jobs.add_argument("--stage", help="retry: only this stage's failed jobs")
@@ -127,6 +131,14 @@ def main() -> None:
                             train=not args.no_train, say=lambda line: print(line, file=sys.stderr, flush=True))
             for m in moments
         }  # fmt: skip
+    elif args.command == "mesh":
+        from .splat.run import mesh_moment, scans
+
+        moments = [args.moment] if args.moment else scans(vault, args.date)
+        if not moments:
+            parser.error(f"no scans on {args.date}")
+        result = {m: mesh_moment(vault, args.date, m, capture=args.capture,
+                                 say=lambda line: print(line, file=sys.stderr, flush=True)) for m in moments}  # fmt: skip
     elif args.command == "jobs":
         from .jobs.stages import discover
         from .jobs.store import Jobs

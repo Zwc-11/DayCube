@@ -191,6 +191,38 @@ def extract(video: Path, picks: np.ndarray, images: Path, size: tuple[int, int])
     return small
 
 
+def frames_at(video: Path, picks: np.ndarray, size: tuple[int, int] = (DEPTH_W, DEPTH_H)) -> tuple[np.ndarray, np.ndarray]:
+    """The picked frames (decoded frame numbers, counted as in ``sharpness``) at ``size``, RGB, and
+    whether each was decoded (a video can decode a frame short of its packet count)."""
+    width, height = size
+    frame_bytes = width * height * 3
+    wanted = {int(i): k for k, i in enumerate(picks)}
+    out = np.zeros((len(picks), height, width, 3), np.uint8)
+    decode = subprocess.Popen(
+        [executable("ffmpeg"), "-nostdin", "-v", "error", "-i", str(video),
+         "-vf", f"scale={width}:{height}:flags=area,format=rgb24", "-fps_mode", "passthrough", "-f", "rawvideo", "pipe:1"],
+        stdout=subprocess.PIPE,
+    )  # fmt: skip
+    assert decode.stdout is not None
+    found = np.zeros(len(picks), bool)
+    index = 0
+    last = max(wanted) if wanted else -1
+    try:
+        while index <= last and len(frame := decode.stdout.read(frame_bytes)) == frame_bytes:
+            if index in wanted:
+                out[wanted[index]] = np.frombuffer(frame, np.uint8).reshape(height, width, 3)
+                found[wanted[index]] = True
+            index += 1
+    finally:
+        if decode.poll() is None:
+            decode.kill()
+        decode.wait()
+        decode.stdout.close()
+    if found.sum() < len(picks) - 1:
+        raise RuntimeError(f"{video.name}: {int(found.sum())} of {len(picks)} frames decoded")
+    return out, found
+
+
 def read_maps(paths: list[Path], pix_fmt: str, dtype: str) -> np.ndarray:
     """PNGs (depth: 16-bit, confidence: 8-bit) decoded by ffmpeg's concat demuxer, in order."""
     with tempfile.TemporaryDirectory() as tmp:
@@ -405,7 +437,7 @@ def build(
     capture: Path,
     out: Path,
     *,
-    target: int = 420,
+    target: int = 1260,
     long_side: int = 1440,
     max_depth_m: float = 5.5,
     min_confidence: int = 1,

@@ -114,3 +114,88 @@ test('a scan with splats opens in 3D, follows the walk with the video and looks 
     await rm(path.join(folder, 'splat'), { recursive: true, force: true });
   }
 });
+
+/** A glTF binary of one coloured quad: the ground under the walk, 2 m wide and 10 m long. */
+function quadGlb(): Buffer {
+  const positions = new Float32Array([-1, -1.4, 0, 1, -1.4, 0, 1, -1.4, -10, -1, -1.4, -10]);
+  const colours = new Float32Array([0.8, 0.5, 0.2, 0.8, 0.5, 0.2, 0.3, 0.6, 0.3, 0.3, 0.6, 0.3]);
+  const indices = new Uint16Array([0, 1, 2, 0, 2, 3]);
+  const bin = Buffer.concat([Buffer.from(positions.buffer), Buffer.from(colours.buffer), Buffer.from(indices.buffer)]);
+  const gltf = {
+    asset: { version: '2.0' },
+    scene: 0, scenes: [{ nodes: [0] }], nodes: [{ mesh: 0 }],
+    meshes: [{ primitives: [{ attributes: { POSITION: 0, COLOR_0: 1 }, indices: 2 }] }],
+    buffers: [{ byteLength: bin.length }],
+    bufferViews: [
+      { buffer: 0, byteOffset: 0, byteLength: 48 },
+      { buffer: 0, byteOffset: 48, byteLength: 48 },
+      { buffer: 0, byteOffset: 96, byteLength: 12 },
+    ],
+    accessors: [
+      { bufferView: 0, componentType: 5126, count: 4, type: 'VEC3', min: [-1, -1.4, -10], max: [1, -1.4, 0] },
+      { bufferView: 1, componentType: 5126, count: 4, type: 'VEC3' },
+      { bufferView: 2, componentType: 5123, count: 6, type: 'SCALAR' },
+    ],
+  };
+  let json = Buffer.from(JSON.stringify(gltf));
+  json = Buffer.concat([json, Buffer.alloc((4 - (json.length % 4)) % 4, 0x20)]);
+  const binPadded = Buffer.concat([bin, Buffer.alloc((4 - (bin.length % 4)) % 4)]);
+  const header = Buffer.alloc(12);
+  header.writeUInt32LE(0x46546c67, 0);
+  header.writeUInt32LE(2, 4);
+  header.writeUInt32LE(12 + 8 + json.length + 8 + binPadded.length, 8);
+  const chunk = (data: Buffer, type: number) => {
+    const head = Buffer.alloc(8);
+    head.writeUInt32LE(data.length, 0);
+    head.writeUInt32LE(type, 4);
+    return Buffer.concat([head, data]);
+  };
+  return Buffer.concat([header, chunk(json, 0x4e4f534a), chunk(binPadded, 0x004e4942)]);
+}
+
+test('a scan with a mesh shows its surfaces and follows the walk there too', async ({ page }) => {
+  const { mkdir, writeFile, rm } = await import('node:fs/promises');
+  const folder = path.resolve('.daycube-e2e-vault/2026-10-21/moments/mo_scan_20261021_181540');
+  const sceneFile = path.join(folder, 'scene.json');
+  const original = await readFile(sceneFile, 'utf8');
+  const t = Array.from({ length: 100 }, (_, k) => k * 0.1);
+  const cameras = {
+    t, position: t.map((s) => [0, 0, -s]), forward: t.map(() => [0, -0.2, -0.98]), up: t.map(() => [1, 0, 0]),
+    fov_long_deg: 70, fov_short_deg: 55,
+  };
+  const records = Buffer.alloc(32 * 10);
+  for (let i = 0; i < 10; i++) records.set([200, 120, 60, 230, 255, 128, 128, 128], 32 * i + 24);
+  await mkdir(path.join(folder, 'splat'), { recursive: true });
+  await mkdir(path.join(folder, 'mesh'), { recursive: true });
+  await writeFile(path.join(folder, 'splat', 'lidar.splat'), records);
+  await writeFile(path.join(folder, 'splat', 'cameras.json'), JSON.stringify(cameras));
+  await writeFile(path.join(folder, 'mesh', 'scene.glb'), quadGlb());
+  const scene = JSON.parse(original);
+  scene.splat = { status: 'lidar', lidar: 'splat/lidar.splat', cameras: 'splat/cameras.json', points: 10,
+    bounds: { min: [-1, -1.4, -10], max: [1, -1.4, 0] } };
+  scene.mesh = { status: 'made', file: 'mesh/scene.glb', triangles: 2, vertices: 4, voxel_m: 0.04,
+    bounds: { min: [-1, -1.4, -10], max: [1, -1.4, 0] }, check: { points: 100, median_m: 0.012, p90_m: 0.03 } };
+  await writeFile(sceneFile, JSON.stringify(scene));
+  try {
+    await page.goto('/?date=2026-10-21');
+    await page.getByRole('button', { name: /Outdoors/ }).first().click();
+    await page.getByRole('main', { name: 'Diorama' }).getByRole('button', { name: /LiDAR scan/ }).first().dblclick();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByTestId('mesh-summary')).toHaveText('2 triangles, 1.2 cm from the LiDAR');
+    await dialog.getByRole('group', { name: 'Scene' }).getByRole('button', { name: 'Mesh' }).click();
+    await expect(dialog.getByTestId('mesh-view')).toHaveAttribute('data-state', 'ready', { timeout: 30000 });
+    await expect(dialog.getByTestId('splat-view')).toHaveCount(0);
+    const camera = () => page.evaluate(() => (window as any).__mesh.camera.position.toArray().map((v: number) => +v.toFixed(2)));
+    await dialog.locator('video').evaluate((v: HTMLVideoElement) => { v.currentTime = 4; });
+    await expect.poll(camera).toEqual([0, 0, -4]);
+    // The quad is drawn: the middle of the view, looking down the walk at the ground, is not the background.
+    const shot = await dialog.getByTestId('mesh-view').screenshot();
+    expect(shot.length).toBeGreaterThan(2000);
+    await dialog.getByRole('group', { name: 'Scene' }).getByRole('button', { name: 'LiDAR' }).click();
+    await expect(dialog.getByTestId('splat-view')).toHaveAttribute('data-state', 'ready', { timeout: 30000 });
+  } finally {
+    await writeFile(sceneFile, original);
+    await rm(path.join(folder, 'splat'), { recursive: true, force: true });
+    await rm(path.join(folder, 'mesh'), { recursive: true, force: true });
+  }
+});

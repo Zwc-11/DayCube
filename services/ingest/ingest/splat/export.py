@@ -58,8 +58,10 @@ def _records(position: np.ndarray, scale: np.ndarray, rgb: np.ndarray, alpha: np
     return out
 
 
-def splat_from_gaussians(ply: Path, target: Path, *, cap: int | None = 3_000_000, min_alpha: float = 1 / 255) -> dict:
-    """A trained splat PLY as ``.splat``; returns counts and the bounds of the bulk."""
+def splat_from_gaussians(ply: Path, target: Path, *, cap: int | None = 3_000_000, min_alpha: float = 1 / 255,
+                         near: tuple[np.ndarray, float] | None = None) -> dict:  # fmt: skip
+    """A trained splat PLY as ``.splat``; returns counts and the bounds of the bulk, of the splats
+    within ``near`` (centre, radius) when given: the sky shell is not the scene."""
     v = read_ply(ply)
     position = np.stack([v["x"], v["y"], v["z"]], 1).astype(np.float32)
     scale = np.exp(np.stack([v["scale_0"], v["scale_1"], v["scale_2"]], 1)).astype(np.float32)
@@ -70,7 +72,10 @@ def splat_from_gaussians(ply: Path, target: Path, *, cap: int | None = 3_000_000
     records = _records(position[keep], scale[keep], rgb[keep], alpha[keep], quat[keep], cap)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(records.tobytes())
-    return {"splats": int(len(records)), "trained": int(len(v)), "bytes": target.stat().st_size, **bounds(records["position"])}
+    inside = records["position"]
+    if near is not None:
+        inside = inside[np.linalg.norm(inside - near[0], axis=1) < near[1]]
+    return {"splats": int(len(records)), "trained": int(len(v)), "bytes": target.stat().st_size, **bounds(inside)}
 
 
 def splat_from_points(clouds: list[tuple[Path, float]], target: Path, *, alpha: float = 0.9) -> dict:
