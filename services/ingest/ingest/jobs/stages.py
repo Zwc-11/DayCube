@@ -122,6 +122,9 @@ def _speech_done(vault: Vault, inputs: dict, outputs: dict) -> None:
     # Searches re-check changed files on their own (store/db.py FULL_CHECK_S); this drops what
     # the receiver itself had confirmed about the day.
     vault.invalidate_index(inputs["date"])
+    from ..voices import update as voices
+
+    voices(vault)  # its speakers matched to the voices of other recordings, names carried over
 
 
 def _talks(vault: Vault, inputs: dict, outputs: dict) -> None:

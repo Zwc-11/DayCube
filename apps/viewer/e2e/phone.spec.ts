@@ -199,3 +199,55 @@ test('a scan with a mesh shows its surfaces and follows the walk there too', asy
     await rm(path.join(folder, 'mesh'), { recursive: true, force: true });
   }
 });
+
+test("a recording's speakers are named from their chip, and the name shows on what they said", async ({ page }) => {
+  // The fixture's memo as the speech worker leaves it: two speakers, you named by your voice, the
+  // second line said happily with laughter.
+  const { writeFile, rm } = await import('node:fs/promises');
+  const folder = path.resolve('.daycube-e2e-vault/2026-10-21/moments/mo_voice_20261021_183430');
+  const transcriptFile = path.join(folder, 'transcript.json');
+  const speechFile = path.join(folder, 'speech.json');
+  const original = await readFile(transcriptFile, 'utf8');
+  const transcript = JSON.parse(original);
+  transcript.segments = transcript.segments.map((s: any, k: number) => ({ ...s, speaker: k === 1 ? 'S2' : 'S1' }));
+  transcript.speaker_map = { S1: 'person:me' };
+  const speech = {
+    version: 1, languages: { en: 8.5 }, models: {},
+    speakers: [{ label: 'S1', talk_s: 5, turns: 2 }, { label: 'S2', talk_s: 3.5, turns: 1 }],
+    turns: transcript.segments.map((s: any, k: number) => ({
+      segment: k, speaker: s.speaker, start: s.start, end: s.end, language: 'en', fillers: {},
+      emotion: k === 1 ? { label: 'happy', scores: { happy: 0.82, neutral: 0.1 } } : { label: 'neutral', scores: { neutral: 0.9 } },
+    })),
+    events: [{ start: 10, end: 20, events: ['laughter'] }],
+    voices: { S1: { voice: 'voice:1', person: 'person:me', how: 'you' }, S2: { voice: 'voice:2', person: null, how: null } },
+  };
+  await writeFile(transcriptFile, JSON.stringify(transcript));
+  await writeFile(speechFile, JSON.stringify(speech));
+  try {
+    await page.goto('/?date=2026-10-21');
+    const token = (await readFile(path.resolve('.daycube-e2e-vault/.token'), 'utf8')).trim();
+    await page.evaluate(async ({ token, modulePath }) => {
+      (await import(modulePath)).backendBridge.setToken(token);
+    }, { token, modulePath: '/src/lib/backendBridge.ts' });
+    await page.getByRole('main', { name: 'Diorama' }).getByRole('button', { name: /Voice memo/ }).dblclick();
+    const dialog = page.getByRole('dialog');
+    const speakers = dialog.getByRole('group', { name: 'Speakers' });
+    await expect(speakers.getByRole('button')).toHaveText(['You · by voice', 'Speaker 2']);
+    const park = dialog.getByRole('button', { name: /The park was quiet/ });
+    await expect(park.getByTestId('sound-tag')).toHaveText(['happy', 'laughter']);
+    await expect(park.getByText('Speaker 2', { exact: true })).toBeVisible();
+    await expect(dialog.getByRole('button', { name: /Almost home now/ }).getByTestId('sound-tag')).toHaveCount(0);
+
+    await speakers.getByRole('button', { name: 'Speaker 2' }).click();
+    await speakers.getByLabel('Name of Speaker 2').fill('Ana Maria');
+    await speakers.getByRole('button', { name: 'Save' }).click();
+    await expect(speakers.getByRole('button')).toHaveText(['You · by voice', 'Ana Maria']);
+    await expect(park.getByText('Ana Maria', { exact: true })).toBeVisible();
+    const saved = JSON.parse(await readFile(transcriptFile, 'utf8'));
+    expect(saved.speaker_map).toEqual({ S1: 'person:me', S2: 'person:ana-maria' });
+    expect(JSON.parse(await readFile(speechFile, 'utf8')).voices.S2).toMatchObject({ person: 'person:ana-maria', how: 'confirmed' });
+  } finally {
+    await writeFile(transcriptFile, original);
+    await rm(speechFile, { force: true });
+  }
+});

@@ -30,7 +30,7 @@ for actions. Do not paste external provider keys there.
 | GET | `/jobs/{id}` | Job snapshot |
 | GET | `/jobs/{id}?stream=1` | SSE `progress` events |
 | POST | `/places/rename` | `{place_id,name}` → global name override |
-| POST | `/speakers/confirm` | `{date,moment_id,diar_label,person_id}` → persisted speaker map |
+| POST | `/speakers/confirm` | `{date,moment_id,diar_label,person_id}` (`person:<letters, digits, -, _>`) → the speaker map saved, and the name spread to every recording of the same voice (docs/speech.md) |
 | POST | `/pause`, `/resume` | Forward to receiver; 503 if absent |
 | DELETE | `/day/{date}/hours` | 501 until complete purge/reindex semantics exist |
 

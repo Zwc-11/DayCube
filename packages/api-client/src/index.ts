@@ -52,6 +52,24 @@ export interface SceneMesh {
   check: { points: number; median_m: number | null; p90_m: number | null };
 }
 
+/** A recording's speech (``speech.json``, services/speech): who spoke, how each turn sounded, sound
+ *  events, and whose voice each speaker is across recordings. */
+export interface MomentSpeech {
+  languages: Record<string, number> | null;
+  speakers: { label: string; talk_s: number; turns: number }[] | null;
+  turns: {
+    segment: number; speaker: string; start: number; end: number; language: string | null;
+    emotion: { label: string; scores: Record<string, number> } | null;
+    fillers: Record<string, number>;
+  }[] | null;
+  events: { start: number; end: number; events: string[] }[] | null;
+  /** Per speaker label: the voice it is, its name, and how the name is known: given here
+   *  ('confirmed'), given to the same voice in another recording ('same voice'), or found as you,
+   *  the voice in the most recordings ('you'). */
+  voices: Record<string, { voice: string | null; person: string | null; how: 'confirmed' | 'same voice' | 'you' | null }> | null;
+  models: Record<string, string> | null;
+}
+
 /** Where a scan's camera was every few frames (world metres, y up), for following the walk in 3D. */
 export interface SplatCameras {
   t: number[];
@@ -180,6 +198,7 @@ export class DaycubeClient {
       scene: (data.scene ?? {}) as Record<string, unknown>,
       camera: (data.camera ?? null) as MomentCamera | null,
       splatCameras: (data.splat_cameras ?? null) as SplatCameras | null,
+      speech: (data.speech ?? null) as MomentSpeech | null,
     };
   }
   /** `date: null` searches every day in the vault. */

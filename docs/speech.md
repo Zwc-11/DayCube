@@ -51,6 +51,35 @@ The research is in the project's pipeline plan.
 - Fillers are counted as words, not told apart from their ordinary uses. "like" as a verb and 吧 at
   the end of a sentence are counted too.
 
+## The same voices across recordings (`ingest/voices.py`)
+
+The speech worker keeps each speaker's voiceprint: the mean of their CAM++ windows, 192 numbers. When
+a speech job finishes, and when you name a speaker, the receiver rebuilds the voices from all of
+them:
+
+- **Voices.** Voiceprints are clustered by cosine similarity, merging groups while their average
+  similarity is above 0.5 (`SAME`). Two speakers of one recording are never merged: diarization
+  told them apart there.
+- **Ids.** A voice keeps its id (`voice:3`) across rebuilds when its voiceprint is within 0.6 of the
+  same id's before.
+- **You** are the voice in the most recordings, once it is in at least two and in more than any
+  other voice. It is named `person:me` unless you name it. No enrolment.
+- **Names.** Naming a speaker (`/speakers/confirm`, the chips above a transcript) names their voice.
+  - Every other recording where it speaks gets the name in its transcript's `speaker_map`.
+  - A name given by hand in a recording stays there, even against the voice's.
+  - When one voice was given two names in different recordings, the one given most is spread; on a
+    tie, the one from the earliest recording.
+- **Checking 0.5.** It is a starting value, set before there were recordings of the same people on
+  different days. `daycube voices` rebuilds the voices and prints, per voice, its least alike
+  speaker (`least_alike`) and the voice most like it (`closest`). The threshold is right when every
+  `least_alike` is above it and every `closest` below.
+
+The viewer shows a recording's speakers as chips above the transcript. A chip says how its name is
+known: given here, `same voice` (given to this voice elsewhere), or `by voice` (found as you).
+Clicking it opens a field to name them. Each line shows its speaker and, as tags, its emotion when
+emotion2vec+ gives it at least 0.5 (not neutral), and laughter, applause or crying heard while it was
+said.
+
 ## Conversations in all-day sound (`speech/conversations.py`)
 
 The app records all day in one-hour files. The `conversations` job runs Silero VAD over an hour,
@@ -71,6 +100,8 @@ The receiver, the vault's one writer of days, makes each span a talk moment (`in
 | `moments/<id>/transcript.whisper.json` | the faster-whisper transcript it replaced (the first time only) |
 | `moments/<id>/speech.json` | seconds of speech per language; speakers with talking time and turns; per turn its language, emotion scores and fillers; sound events; the models; each stage's seconds |
 | `vault/derived/speech/<date>/<id>/embeddings.npz` | each speaker's voice embedding (192) for recognising them across days, and each turn's emotion embedding (1024) for training |
+| `moments/<id>/speech.json` `voices` | per speaker: the voice it is, its name, and how the name is known (`confirmed`, `same voice`, `you`); written by the receiver |
+| `vault/derived/speech/voices.json` | the voices: id, name, whether it is you, its recordings, `least_alike`, `closest`, the voiceprint |
 
 ## Running
 
@@ -115,3 +146,9 @@ them. The check passes when:
 - the worker leasing, finishing and failing jobs against a stand-in receiver
 
 `DAYCUBE_SPEECH_CANARY=1` adds the canary on the real models.
+
+`services/ingest/tests/test_voices.py` covers the voices: three people over five days found as three
+voices, you found and named, a name given once spread to the other recordings and a name given by
+hand kept, ids kept across a rebuild, one recording's two speakers never merged, naming through
+`/speakers/confirm` (also in Mandarin), and 1,500 voiceprints clustered (1.5 s here). The
+viewer's chips and tags are covered by `apps/viewer/e2e/phone.spec.ts`.

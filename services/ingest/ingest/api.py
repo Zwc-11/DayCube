@@ -78,7 +78,7 @@ class SpeakerRequest(RequestModel):
     date: str
     moment_id: str
     diar_label: str
-    person_id: str = Field(pattern=r"^person:[A-Za-z0-9_-]+$")
+    person_id: str = Field(pattern=r"^person:[\w-]{1,80}$")  # letters of any script: names are not only ASCII
 
 
 def sse(event: str, value: Record) -> str:
@@ -334,6 +334,11 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
         splat = scene.get("splat") if isinstance(scene, dict) else None
         if isinstance(splat, dict) and (path / "splat" / "cameras.json").is_file():
             out["splat_cameras"] = read_json(path / "splat" / "cameras.json")
+        # A recording's speech (services/speech): per turn its emotion and fillers, sound events,
+        # and whose voice each speaker is.
+        if (path / "speech.json").is_file():
+            speech = read_json(path / "speech.json")
+            out["speech"] = {k: speech.get(k) for k in ("languages", "speakers", "turns", "events", "voices", "models")}
         return out
 
     @app.get("/vault/{date}/{asset_path:path}")
@@ -468,7 +473,18 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
             transcript["speaker_map"][body.diar_label] = body.person_id
             vault.write_json(path, transcript)
             vault.invalidate_index(body.date)
-        return {"ok": True, "message": "Speaker map saved; quote event regeneration is not implemented yet"}
+            # Given by hand, even when it is the name the voice already had.
+            speech_path = path.with_name("speech.json")
+            speech = read_json(speech_path) if speech_path.is_file() else None
+            if isinstance(speech, dict) and isinstance(speech.get("voices"), dict):
+                entry = speech["voices"].setdefault(body.diar_label, {"voice": None})
+                entry.update(person=body.person_id, how="confirmed")
+                vault.write_json(speech_path, speech)
+        # The name goes with the voice: every other recording where it speaks gets it too.
+        from .voices import update as spread_names
+
+        spread_names(vault)
+        return {"ok": True, "message": "Speaker named here and wherever their voice speaks"}
 
     @app.delete("/day/{date}/hours", dependencies=[Depends(authorize)])
     def delete_hours(date: str) -> None:
