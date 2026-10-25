@@ -212,7 +212,8 @@ def keyframes(scan: Scan, folder: Path, every_s: float = KEYFRAME_S) -> list[dic
         old.unlink()
     subprocess.run(
         [executable("ffmpeg"), "-nostdin", "-v", "error", "-i", str(scan.video), "-vf",
-         f"fps=1/{every_s},{TURN[upright(scan)]}scale=640:-2", "-q:v", "4", str(target / "kf_%03d.jpg")],
+         f"fps=1/{every_s},{TURN[upright(scan)]}scale=640:-2", "-pix_fmt", "yuvj420p",
+         "-q:v", "4", str(target / "kf_%03d.jpg")],
         check=True, capture_output=True, timeout=600,
     )  # fmt: skip
     # The fps filter takes the frame at the middle of each interval.

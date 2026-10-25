@@ -4,6 +4,13 @@ import { fileURLToPath } from 'node:url';
 
 const cwd = fileURLToPath(new URL('../', import.meta.url));
 const env = { ...process.env, DAYCUBE_VAULT_ROOT: '.daycube-e2e-vault' };
+for (const command of ['ffmpeg', 'ffprobe']) {
+  const result = spawnSync(command, ['-version'], { cwd, env, stdio: 'pipe', windowsHide: true, timeout: 10_000 });
+  if (result.error || result.status !== 0) {
+    console.error(`Phone test fixtures require ${command} on PATH. Install FFmpeg before running browser tests.`);
+    process.exit(1);
+  }
+}
 // A fictional afternoon exported from a phone (scripts/build-phone-fixture.py), imported as 2026-10-21.
 const phone = ['12 Example Ave-2026-10-21_18-00-00.zip', 'Example Ave 2.m4a', 'Example Ave 2.json', 'scan'].map(name => `fixtures/phone-day/${name}`);
 rmSync(new URL('../.daycube-e2e-vault/2026-10-21', import.meta.url), { recursive: true, force: true }); // imported fresh each run

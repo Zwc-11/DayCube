@@ -17,11 +17,11 @@ jobs:
         with:
           version: '0.12.17'
           enable-cache: true
-      - name: Install MediaPipe runtime libraries
+      - name: Install MediaPipe and phone import runtimes
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libegl1 libgles2
+          sudo apt-get install -y --no-install-recommends libegl1 libgles2 ffmpeg
       - run: uv sync --locked --python 3.11
       - run: uv sync --locked --project services/gaze --python 3.11
       - run: npm ci
