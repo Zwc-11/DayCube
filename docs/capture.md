@@ -340,11 +340,6 @@ for web pages. `python -m capture screen --exclude slack` adds an app to never r
 the window in front once and prints what OCR found, and the receiver's `--no-screen` leaves it
 out.
 
-After `git pull`, `python -m capture restart` stops the running receiver and eye tracker and
-starts them on the new code (`install-autostart` does it too when the running receiver is older;
-`/status` reports a stamp of the code it loaded, and `doctor` says "receiver code: older than this
-checkout" until then).
-
 `doctor` reports it: `screen reading: windows OCR (zh-Hans-CN + en-US), 14 reads in 10 min of code.exe,
 sumatrapdf.exe, 182 ms each; reading code.exe now`. Checked here: the window-finding, capture and
 reader loop in Wine 9 (a window on top wins over the one beneath, the desktop is
@@ -353,6 +348,25 @@ OCR (RapidOCR on rendered text: one read record with all three lines and no text
 and the receiver path in `services/ingest/tests/test_screen.py` with a simulated Windows and OCR.
 `Windows.Media.Ocr` itself runs only on Windows: `python -m capture screen check` and `doctor`
 show it working there.
+
+## Updating
+
+Double-click `update.cmd` in the repository folder after an update is pushed. It:
+
+1. pulls it (`git pull --ff-only`), and stops there if that fails
+2. syncs the receiver's, the eye tracker's and, once installed, the speech worker's environments
+3. runs the speech check on the GPU (`python -m speech canary`) when `services/speech` changed
+4. restarts the receiver and eye tracker on the new code, and waits 45 s for them
+5. runs `doctor`, and shows its rows in the window for a minute
+
+Everything goes to `vault\logs\update.log`. `services/ingest/tests/test_update_cmd.py` runs it in
+Wine's `cmd` with git, uv and the receiver stood in for: each step in each case (speech changed or
+not, no speech worker, a failed pull, sync or check), and that it gets to the end.
+
+After `git pull`, `python -m capture restart` stops the running receiver and eye tracker and
+starts them on the new code (`install-autostart` does it too when the running receiver is older;
+`/status` reports a stamp of the code it loaded, and `doctor` says "receiver code: older than this
+checkout" until then).
 
 ## Everyday use
 
