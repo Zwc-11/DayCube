@@ -266,6 +266,51 @@ def project(points: np.ndarray, K: np.ndarray, c2w: np.ndarray, s: float) -> tup
     return u, v, inside
 
 
+def sky_shell(
+    positions: np.ndarray,
+    K: np.ndarray,
+    c2w: np.ndarray,
+    images: np.ndarray,
+    s: float,
+    *,
+    count: int = 150_000,
+    lowest_deg: float = -10.0,
+) -> tuple[np.ndarray, np.ndarray, float]:
+    """Points on a sphere far around the walk (three times its reach from its middle), above
+    ``lowest_deg`` of elevation, each coloured from the kept frame that looks most directly at it;
+    points no frame sees are left out.
+
+    Brush renders on black and starts only from these points: with nothing past the LiDAR's 15 m,
+    the sky between the trees starts black and is learned as floaters in front of them, which the
+    held-out frames do not see (2026-10-24: 14.6 dB PSNR, SSIM 0.21 at 9,000 steps)."""
+    centre = positions.mean(0)
+    radius = max(100.0, 3.0 * float(np.linalg.norm(positions - centre, axis=1).max()))
+    floor = np.sin(np.radians(lowest_deg))
+    total = int(count * 2 / (1 - floor))  # an even spread over the whole sphere, the cap above ``floor`` kept
+    i = np.arange(total) + 0.5
+    y = 1 - 2 * i / total
+    ring = np.sqrt(np.clip(1 - y * y, 0, None))
+    phi = i * np.pi * (3 - np.sqrt(5))
+    keep = y >= floor
+    points = centre + radius * np.stack([ring * np.cos(phi), y, ring * np.sin(phi)], 1)[keep]
+    best = np.full(len(points), -np.inf)
+    colours = np.zeros((len(points), 3), np.uint8)
+    for k in range(len(c2w)):
+        u, v, inside = project(points, K[k], c2w[k], s)
+        if not inside.any():
+            continue
+        ahead = -c2w[k][:3, 2]
+        towards = points[inside] - c2w[k][:3, 3]
+        aligned = towards @ ahead / np.linalg.norm(towards, axis=1)
+        idx = np.nonzero(inside)[0]
+        better = aligned > best[idx]
+        idx = idx[better]
+        best[idx] = aligned[better]
+        colours[idx] = images[k][np.round(v[idx]).astype(int), np.round(u[idx]).astype(int)]
+    seen = np.isfinite(best)
+    return points[seen].astype(np.float32), colours[seen], radius
+
+
 def depth_error(points: np.ndarray, K: np.ndarray, c2w: np.ndarray, depth_m: np.ndarray, good: np.ndarray, s: float) -> float | None:
     """Median relative difference between the depth world points should have in a frame and the
     depth its LiDAR measured there (``good``: pixels to trust). None when too few land in it."""
@@ -369,6 +414,7 @@ def build(
     far_depth_m: float = 15.0,
     far_voxel_m: float = 0.10,
     far_points: int = 300_000,
+    sky_points: int = 150_000,
     video: Path | None = None,
     say: Callable[[str], None] = print,
 ) -> dict:
@@ -463,9 +509,18 @@ def build(
             merged_rgb = np.concatenate([merged_rgb, frgb])
             init["far_points"] = int(len(fxyz))
             init["far_voxel_m"] = round(far_used, 4)
+        if sky_points:
+            sxyz, srgb, radius = sky_shell(odo.c2w[picks, :3, 3], odo.K[picks], odo.c2w[picks], small, DEPTH_W / width,
+                                           count=sky_points)  # fmt: skip
+            write_ply(out / "sky.ply", sxyz, srgb)
+            merged = np.concatenate([merged, sxyz])
+            merged_rgb = np.concatenate([merged_rgb, srgb])
+            init["sky_points"] = int(len(sxyz))
+            init["sky_radius_m"] = round(radius, 1)
         write_ply(out / "init.ply", merged, merged_rgb)
-        say(f"Starting cloud: {init['points']:,} LiDAR points from {len(xyz):,} (voxel {used * 100:.1f} cm)"
-            f" and {init['far_points']:,} beyond its range")
+        say(f"Starting cloud: {init['points']:,} LiDAR points from {len(xyz):,} (voxel {used * 100:.1f} cm),"
+            f" {init['far_points']:,} beyond its range and {init.get('sky_points', 0):,} on the sky"
+            f" {init.get('sky_radius_m', 0):.0f} m out")
 
     transforms = {"camera_model": "OPENCV", "frames": frames}
     if init:
