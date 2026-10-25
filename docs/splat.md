@@ -88,6 +88,22 @@ seconds, with steps, splats, minutes and PSNR.
   matched by the video's name and size, or can be given with `--capture`.
 - **Re-import.** Importing the same capture again keeps `splat/` and the `splat` entry.
 
+## Without a command (`ingest/splat/queue.py`)
+
+The capture receiver (`.\capture`) makes the 3D itself, two minutes after it starts and then every
+five minutes:
+
+- A scan with its depth and no 3D yet gets its LiDAR preview at once (CPU, a minute or two).
+- A scan with only the preview is trained, one at a time, when training is allowed and the PC is
+  free: no keyboard or mouse input for 10 minutes, or between 01:00 and 07:00. Training is allowed
+  once Brush is installed (the first `daycube splat` installs it) or with `DAYCUBE_SPLAT_TRAIN=1`.
+  The receiver never downloads a trainer on its own.
+- A failed training is not retried until `daycube splat` is run again. The reason is in the
+  moment's `scene.json`.
+
+`vault/derived/splat/status.json` holds what is waiting, what is running, what failed and what was
+last done. `.\capture doctor` shows it on its `3D scans` rows.
+
 ## In the viewer
 
 Double-click a scan on the day:

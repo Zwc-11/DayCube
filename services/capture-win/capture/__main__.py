@@ -76,6 +76,10 @@ def run(args: argparse.Namespace) -> None:
 
     inbox = PhoneInbox(settings.vault_root)  # phone exports dropped into vault/inbox/phone
     inbox.start()
+    from .scans import SceneMaker
+
+    scenes = SceneMaker(settings.vault_root)  # LiDAR scans into 3D: preview at once, splat when idle
+    scenes.start()
     receiver = app.state.receiver
     if args.no_screen:
         receiver.screen_problem = "started with --no-screen"
@@ -93,6 +97,7 @@ def run(args: argparse.Namespace) -> None:
         if librarian is not None:
             librarian.stop()
         inbox.stop()
+        scenes.stop()
         if receiver.screen is not None:
             receiver.screen.stop()
         log.info("receiver stopped")
