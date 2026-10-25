@@ -138,6 +138,18 @@ def test_a_capture_becomes_a_training_set_with_opengl_poses_and_lidar_points(tmp
     on = np.minimum(np.abs(xyz[:, 1] - GROUND_Y), np.minimum(np.abs(xyz[:, 0] - WALL_X), np.abs(xyz[:, 0] - WALL_X - 1.5)))
     assert len(xyz) > 1000 and np.quantile(on, 0.95) < 0.05
     assert report["init"]["far_points"] > 0  # the wall and ground past 5.5 m
+    # The sky shell: far out, above -10 degrees, coloured from frames that see it, part of init.ply.
+    sky = export.read_ply(tmp_path / "train" / "sky.ply")
+    sxyz = np.stack([sky["x"], sky["y"], sky["z"]], 1).astype(float)
+    path = np.array([np.array(f["transform_matrix"])[:3, 3] for f in transforms["frames"]])
+    reach = np.linalg.norm(sxyz - path.mean(0), axis=1)
+    assert len(sxyz) == report["init"]["sky_points"] > 0
+    assert reach == pytest.approx(np.full(len(reach), report["init"]["sky_radius_m"]), rel=0.01)
+    assert report["init"]["sky_radius_m"] >= 100
+    assert (sxyz[:, 1] - path.mean(0)[1] >= np.sin(np.radians(-10)) * reach - 0.5).all()
+    assert (np.stack([sky["red"], sky["green"], sky["blue"]], 1).sum(1) > 0).mean() > 0.9
+    init = export.read_ply(tmp_path / "train" / "init.ply")
+    assert len(init) == report["init"]["points"] + report["init"]["far_points"] + report["init"]["sky_points"]
 
 
 def test_the_check_refuses_poses_in_the_wrong_convention(tmp_path: Path) -> None:
