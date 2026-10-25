@@ -77,6 +77,14 @@ def run(args: argparse.Namespace) -> None:
     inbox = PhoneInbox(settings.vault_root)  # phone exports dropped into vault/inbox/phone
     inbox.start()
     from .jobs import JobRunner
+    from .supervise import WorkerSupervisor, speech_python
+
+    speech = None
+    if args.receive and (python := speech_python()) is not None:
+        # Speech jobs run in their own environment (services/speech), on the GPU, leased over HTTP.
+        speech = WorkerSupervisor("speech worker", [str(python), "-m", "speech", "serve", "--vault",
+                                                    str(settings.vault_root), "--receiver", f"http://127.0.0.1:{args.port}"])  # fmt: skip
+        speech.start()
 
     # The vault's jobs (a scan's 3D, ...): CPU stages at once, GPU stages while the PC is free.
     runners = [JobRunner(settings.vault_root, needs) for needs in ("cpu", "gpu")]
@@ -101,6 +109,8 @@ def run(args: argparse.Namespace) -> None:
         inbox.stop()
         for runner in runners:
             runner.stop()
+        if speech is not None:
+            speech.stop()
         if receiver.screen is not None:
             receiver.screen.stop()
         log.info("receiver stopped")

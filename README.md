@@ -91,6 +91,9 @@ client and converts the API's seconds-since-midnight into the renderer's decimal
   camera path on the map. Drop the exports into `vault/inbox/phone`. See [phone](docs/phone.md).
 - LiDAR scans in 3D: a LiDAR preview at once, then Gaussian splats trained on the GPU (Brush) from
   the video and ARKit's poses, viewed following the walk. See [splat](docs/splat.md).
+- Speech in recordings: transcripts with word times (Qwen3-ASR and its aligner), who spoke
+  (CAM++), emotion per turn (emotion2vec+), laughter and music (SenseVoice) and filler words, in
+  English and Mandarin, on the GPU. See [speech](docs/speech.md).
 - Processing as jobs in `vault/jobs.sqlite`, run by the receiver: GPU stages while the PC is free,
   retries with back-off, and an HTTP lease API for workers elsewhere. See [jobs](docs/jobs.md).
 - A character that walks the day: routes go around furniture and through doorways, climb

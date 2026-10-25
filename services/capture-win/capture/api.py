@@ -617,7 +617,7 @@ def create_capture_app(
         job = Job(job_id, row["stage"], row["version"], row["inputs"], row["attempts"], body.worker)
         if row["status"] != "leased" or row["worker"] != body.worker:
             return {"ok": False, "queued": []}
-        return {"ok": True, "queued": finish(jobs, job, body.outputs)}
+        return {"ok": True, "queued": finish(jobs, job, body.outputs, vault)}
 
     @app.post("/jobs/{job_id}/fail", dependencies=[Depends(authorize)])
     def job_fail(job_id: int, body: JobFailed) -> dict:

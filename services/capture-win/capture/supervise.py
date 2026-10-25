@@ -103,3 +103,55 @@ class GazeSupervisor(threading.Thread):
                 process.wait(5)
             except subprocess.TimeoutExpired:
                 process.kill()
+
+
+def speech_python(root: Path = PROJECT_ROOT) -> Path | None:
+    """The speech worker's interpreter (``services/speech``, its own environment), if installed."""
+    venv = root / "services" / "speech" / ".venv"
+    for candidate in (venv / "Scripts" / "pythonw.exe", venv / "Scripts" / "python.exe", venv / "bin" / "python"):
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+class WorkerSupervisor(threading.Thread):
+    """A job worker in its own environment (the speech worker), run as a child of the receiver:
+    started with it, restarted when it stops (quickly after a long run, backing off to 5 minutes
+    when it keeps failing), stopped with it. It logs to its own file in vault/logs."""
+
+    def __init__(self, name: str, command: list[str]) -> None:
+        super().__init__(name=f"{name}-supervisor", daemon=True)
+        self.label, self.command = name, command
+        self.stopping = threading.Event()
+        self.process: subprocess.Popen | None = None
+
+    def run(self) -> None:
+        delay = 5.0
+        while not self.stopping.is_set():
+            started = time.monotonic()
+            try:
+                flags = 0x08000000 if sys.platform == "win32" else 0  # CREATE_NO_WINDOW
+                self.process = subprocess.Popen(
+                    self.command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    creationflags=flags,
+                )  # fmt: skip
+            except OSError as error:
+                log.error("%s failed to start: %s", self.label, error)
+                self.stopping.wait(300)
+                continue
+            code = self.process.wait()
+            if self.stopping.is_set():
+                break
+            delay = 5.0 if time.monotonic() - started > 300 else min(delay * 2, 300.0)
+            log.warning("%s exited with code %s; restarting in %.0f s", self.label, code, delay)
+            self.stopping.wait(delay)
+
+    def stop(self) -> None:
+        self.stopping.set()
+        process = self.process
+        if process is not None and process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(10)
+            except subprocess.TimeoutExpired:
+                process.kill()

@@ -20,7 +20,7 @@ daycube-ingest = { workspace = true }
 
 [tool.uv.workspace]
 members = ["services/ingest"]
-exclude = ["services/capture-win", "services/gaze"]
+exclude = ["services/capture-win", "services/gaze", "services/speech"]
 
 [tool.pytest.ini_options]
 testpaths = ["services/ingest/tests"]

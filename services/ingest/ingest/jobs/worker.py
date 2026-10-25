@@ -45,12 +45,15 @@ class _Lease(threading.Thread):
         self.join()
 
 
-def finish(jobs: Jobs, job: Job, outputs: dict) -> list[int]:
-    """Record a finished job and queue what follows it; the ids of the new jobs."""
+def finish(jobs: Jobs, job: Job, outputs: dict, vault: Vault | None = None) -> list[int]:
+    """Record a finished job, run its stage's ``after`` and queue what follows; the new jobs' ids."""
     if not jobs.done(job.id, str(job.worker), outputs):
         return []  # the lease ran out meanwhile: the job was re-queued and is someone else's
+    stage = STAGES[job.stage]
+    if stage.after is not None and vault is not None:
+        stage.after(vault, job.inputs, outputs)
     new = []
-    for name, inputs in STAGES[job.stage].follow(job.inputs, outputs):
+    for name, inputs in stage.follow(job.inputs, outputs):
         job_id, created = enqueue(jobs, name, inputs)
         if created:
             new.append(job_id)
@@ -88,7 +91,7 @@ def run_next(
         return {"job": job.id, "stage": job.stage, "inputs": job.inputs, "did": "failed" if status == "failed" else "retry",
                 "error": reason}  # fmt: skip
     lease.stop()
-    follows = finish(jobs, job, outputs)
+    follows = finish(jobs, job, outputs, vault)
     return {
         "job": job.id,
         "stage": job.stage,

@@ -9,6 +9,7 @@ They are queued in `vault/jobs.sqlite` and run by the capture receiver with no c
 | --- | --- | --- | --- | --- |
 | `splat_preview` | CPU | 1 | the scan's training set and LiDAR preview (`ingest/splat`, a minute or two) | `splat_train` |
 | `splat_train` | GPU | 1 | Brush on the RTX 5070 (tens of minutes); ready once Brush is installed | |
+| `speech` | GPU | 1 | the speech worker, in its own environment, leased over HTTP ([speech.md](speech.md)) | |
 
 - Every stage has a name, a version, what it needs, its code, and what follows it.
 - A stage with no code here (`run=None`) is run by a worker in another environment, such as the
@@ -34,8 +35,10 @@ They are queued in `vault/jobs.sqlite` and run by the capture receiver with no c
 - **The receiver (`capture/jobs.py`).** One thread runs CPU stages and one runs GPU stages.
   - The GPU thread takes a job only while the PC is free: no keyboard or mouse input for 10 minutes,
     or between 01:00 and 07:00 (`ingest/jobs/policy.py`).
-  - Every minute the CPU thread looks for what the vault's scans still need (`discover`), and both
-    threads run jobs until none is left.
+  - Every minute the CPU thread looks for what the vault still needs (`discover`): a scan's 3D,
+    a recording's speech. Both threads run jobs until none is left.
+  - When `services/speech` is installed, the receiver also runs the speech worker and restarts it
+    if it stops.
 - **Workers elsewhere.** These use the receiver's API, with the vault's bearer token:
   - `POST /jobs/lease {worker, needs: cpu|gpu, stages?}` returns `{job}` or `{job: null}`. It returns
     null when nothing may run now, for example a GPU job while you are at the PC.
