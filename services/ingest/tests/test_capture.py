@@ -567,6 +567,26 @@ def test_the_doctor_reports_the_ring_over_every_window(vault: Vault, monkeypatch
     assert old[0][0] == doctor.WARN and "older than this checkout" in old[0][1]
 
 
+def test_no_face_in_view_is_not_taken_for_an_old_tracker(vault: Vault, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A tracker with no face in view has no fixations to report coverage or noise from; doctor
+    said its code was old (2026-10-25, face in 7% of frames)."""
+    from zoneinfo import ZoneInfo
+
+    from capture import doctor
+
+    now = datetime.now(UTC)
+    monkeypatch.setattr(doctor.sys, "platform", "linux")
+
+    def rows(face: float) -> dict:
+        gaze = {"tracking": True, "fps": 28.6, "target_fps": 30.0, "face": face, "coverage": None, "noise_px": None}
+        status = {"paused": False, "browser": {"last": now.isoformat()}, "reading": None, "gaze": gaze}
+        return {name: (v, d) for v, name, d in doctor.checks(status, vault.root, ZoneInfo("America/Toronto"), now, None)}
+
+    away = rows(0.07)
+    assert "tracker code" not in away and away["face found"][0] == doctor.FAIL
+    assert rows(1.0)["tracker code"][0] == doctor.WARN
+
+
 def test_the_doctor_reports_the_webcam_rate_and_how_to_get_60(vault: Vault, monkeypatch: pytest.MonkeyPatch) -> None:
     from zoneinfo import ZoneInfo
 

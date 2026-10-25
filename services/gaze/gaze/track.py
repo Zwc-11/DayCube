@@ -258,7 +258,9 @@ class Tracker:
         self.overlay: Any = None
         # Learning from clicks (gaze.learn): the frames before each click, and the click.
         self.learner = learner
-        self._model_version = getattr(getattr(estimator, "model", None), "version", None)
+        # None, not the model's version: an update loaded at start (gaze.learn) is recorded as
+        # applied on the first frame too, or doctor waits for one until the next fit.
+        self._model_version: int | None = None
 
     # -- state -------------------------------------------------------------------------------------
 

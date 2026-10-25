@@ -378,8 +378,10 @@ def checks(status: dict | None, vault: Path, zone: ZoneInfo, now: datetime, auto
                 detail += f". Last from the tracker's logs: {last}"
         out.append((INFO if normal else FAIL, "eye tracker", detail))
     else:
-        if gaze.get("fps") and gaze.get("coverage") is None and gaze.get("noise_px") is None:
-            # A current tracker reports both within seconds of turning the camera on.
+        face_seen = (gaze.get("face") or 0) >= 0.8
+        if gaze.get("fps") and face_seen and gaze.get("coverage") is None and gaze.get("noise_px") is None:
+            # A current tracker reports both within seconds of turning the camera on, given a face
+            # (with none in view there are no fixations to measure: 7% of frames, 2026-10-25).
             out.append((WARN, "tracker code", "older than this checkout: restarting the receiver restarts it"))
         fps, target = gaze.get("fps"), gaze.get("target_fps") or 30
         out.append((PASS if fps and fps >= 0.8 * target else WARN, "frame rate", f"{fps} of {target} frames/s"))
