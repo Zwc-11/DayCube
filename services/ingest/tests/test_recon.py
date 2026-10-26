@@ -15,7 +15,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 from ingest.phone.geo import EARTH_M
-from ingest.recon import align, sfm, simulate
+from ingest.recon import align, learned, sfm, simulate
 from ingest.skeleton.parsers.types import Fix
 
 pytestmark = [
@@ -245,3 +245,20 @@ def test_the_training_sets_carry_the_held_out_frames_into_each_reconstruction(wa
     # Upright in the reconstruction too: the cameras' up (OpenGL +y) is world +y.
     ups = pose["train_recon"][0][:, :3, 1]
     assert np.all(ups[:, 1] > 0.99)
+
+
+def test_sequential_pairs_are_the_next_few_and_quadratically_further() -> None:
+    pairs = learned.sequential_pairs(12, 2)
+    assert (0, 1) in pairs and (0, 2) in pairs and (0, 3) in pairs and (0, 4) in pairs and (0, 6) in pairs
+    assert (0, 5) not in pairs and (0, 10) in pairs and all(a < b < 12 for a, b in pairs)
+
+
+@pytest.mark.skipif(not learned.available(), reason="needs PyTorch and Kornia (services/recon)")
+def test_learned_features_rebuild_photos_2_m_apart(walk: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(simulate.MODES, "photo_2s", {"every_s": 2.0, "long_side": 1920, "label": "a photo every 2 s"})
+    report = simulate.simulate(walk, walk / "rgb.mp4", tmp_path / "work", fixes=gps(), t0=START.timestamp(),
+                               modes=["photo_2s"], features="aliked", say=lambda _: None)  # fmt: skip
+    r = report["modes"]["photo_2s"]
+    assert report["features"] == "aliked" and r["registered_share"] >= 0.9, r
+    assert r["path"]["rmse_m"] < 0.15 and r["path"]["turn_median_deg"] < 1.5, r["path"]
+    assert r["timings"]["matched_pairs"] >= r["images"] - 1

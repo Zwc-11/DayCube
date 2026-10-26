@@ -28,7 +28,16 @@ camera path is known: a Stray Scanner scan, where ARKit gives the phone's pose f
 - SIFT features in every image, one shared pinhole camera.
 - Each image matched with the next 10 (and, quadratically, a few further on).
 - Incremental mapping; `--mapper global` uses GLOMAP. The largest model is kept.
+- **The first pair of images.** COLMAP's defaults refuse a first pair whose camera moved mostly
+  along its own view (`init_max_forward_motion` 0.95) and ask for 16° between its rays. Every pair
+  of a walk looking ahead is refused. Here any motion is allowed, with 4°.
 - pycolmap installs from pip on Windows and Linux and runs on the CPU.
+- **Learned features** (`--features aliked`, `learned.py`). ALIKED keypoints matched by LightGlue
+  (Kornia; ALIKED BSD-3, LightGlue Apache-2.0), on the GPU when there is one. They are written
+  into the COLMAP database, and COLMAP verifies and maps them as its own. The pip build of
+  pycolmap has no ONNX, so COLMAP's own ALIKED and LoMa are not there; this runs them in PyTorch,
+  in `services/recon`'s environment (the speech worker's torch 2.9.1+cu128, linked from uv's
+  cache).
 
 **3. Score against the phone's path** (`align.py`):
 
@@ -67,6 +76,10 @@ On the PC, double-click `check-glasses.cmd`. It runs:
 
     uv run --project services/capture-win python eval/glasses_sim.py --train
 
+`check-glasses-learned.cmd` sets up `services/recon` (once) and runs the same with
+`--features aliked`. Its report is `vault/logs/glasses-sim-aliked.json`. Once that environment
+exists, `update.cmd` keeps it in sync.
+
 It uses the day's first scan (`--date 2026-10-24` by default). It writes:
 
 - `vault/logs/glasses-sim.json`, the numbers only, rewritten after each mode
@@ -103,11 +116,22 @@ picked photos at their exact times, not the sharpest frame near them.
 
 **`stream_5fps`**: stopped while matching (at 8,192 features, 5.5 s a frame); now 4,096.
 
-**So far:** occasional stills of a tree-lined trail do not reconstruct with SIFT. Next comes a dense
-stream, and on stills a learned matcher, which the pip build of pycolmap lacks (no ONNX):
+**Second and third runs** (sharp stills, then forward motion allowed): `photo_3s` still placed
+nothing.
 
-- ALIKED + LightGlue, or COLMAP's LoMa, from the COLMAP Windows CUDA release or a PyTorch
-  environment
+- Most neighbouring photos 3.8 m apart had no SIFT match at all, from about 17,000 features each:
+  157 of 195 pairs were degenerate.
+- `photo_1s`, with sharp stills and COLMAP's defaults: 19 of 129 placed, covering 25.5 m.
+  - path RMS 0.24 m
+  - GPS residual 0.33 m, scale +3%
+  - PSNR 14.8 dB rebuilt against 15.3 dB with the phone's poses, on the 4 held-out frames inside
+
+- `photo_1s`, forward motion allowed: the largest model 17 of 129.
+
+**So far:** occasional stills of a tree-lined trail do not reconstruct with SIFT. The learned
+matcher (ALIKED + LightGlue, `check-glasses-learned.cmd`) is the next run. After it, if needed:
+
+- COLMAP's LoMa, from the COLMAP Windows CUDA release
 - MapAnything, the plan's feed-forward option
 
 ## What it does not show
@@ -128,11 +152,13 @@ runs 3 s off the video's clock. It checks:
 
 - the similarity fit and gravity levelling
 - the frame picks: photos at their times; held-out frames no photo mode uses
-- images alone, a photo a second and a 0.4 s stream:
+- images alone, a photo every 2 s (2 m apart) and a 0.4 s stream:
   - ≥ 90% placed
   - path error under 10 cm and turn error under 1°
-  - the 3 s clock offset found
+  - the 3 s clock offset found: to a second from the photos, exactly from the stream
   - GPS residual under 1 m and scale within 4%
+- with PyTorch (`uv run --project services/recon pytest ...`): ALIKED + LightGlue place photos
+  2 m apart, path under 15 cm; the pairs are the next few and quadratically further
 - the training sets, with a stand-in for Brush:
   - in metres both ways
   - each held-out camera where it stands among the training cameras in both
