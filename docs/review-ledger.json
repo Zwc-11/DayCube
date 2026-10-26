@@ -1,19 +1,44 @@
 {
-  "baseline_revision": "eec3e5e3206e6e1e7c14a22a75bb42770461b20b",
+  "baseline_revision": "53b1e5757d1a1b572a1a2f949e269198a21b9e2d",
   "scope": "Every tracked file, except this generated ledger itself. No vendored source is tracked; dependencies live in ignored environments and lockfiles.",
   "limits": "Structural checks cover every listed file; manual_review only identifies implementations actually examined. Neither is a proof of maximum efficiency, a dependency audit or DeepInfer throughput parity. Missing manual_review is explicitly unreviewed at the semantic level.",
   "counts": {
-    "configuration": 41,
-    "documentation": 32,
-    "test": 71,
-    "source": 218,
+    "configuration": 43,
+    "documentation": 33,
+    "test": 83,
+    "source": 227,
     "asset": 17,
     "fixture": 19,
-    "measurement_or_fixture": 62,
+    "measurement_or_fixture": 72,
     "lockfile": 5,
     "generated": 11
   },
-  "manual_reviews": 213,
+  "category_treatments": {
+    "source": "First-party implementation: current manual notes record the examined algorithms, resources and limits.",
+    "test": "Test or browser harness: current manual notes record coverage, fixtures and environment limitations.",
+    "configuration": "Supporting build/runtime/presentation configuration: current manual notes record behavior and limits.",
+    "generated": "Mechanical output of canonical JSON Schemas; verify regeneration and review producers/consumers, not an independent algorithm audit.",
+    "lockfile": "Resolved dependency inventory and syntax/hash checks; dependency implementations and supply-chain auditing are outside this review.",
+    "asset": "Static UI/media asset: hash and size, with producer/consumer review; no first-party executable algorithm to optimize.",
+    "fixture": "Identifiable sample/synthetic input: inventory/hash and producer/consumer correctness; not live telemetry or performance proof.",
+    "measurement_or_fixture": "Retained measurement or fixture with its original provenance; inventory/parsing does not mean the workload was rerun.",
+    "documentation": "Supporting or historical documentation: inventory and current report updates; historical results retain their original scope."
+  },
+  "manual_reviews": 353,
+  "coverage": {
+    "source": {
+      "files": 227,
+      "current_manual_reviews": 227
+    },
+    "test": {
+      "files": 83,
+      "current_manual_reviews": 83
+    },
+    "configuration": {
+      "files": 43,
+      "current_manual_reviews": 43
+    }
+  },
   "files": [
     {
       "path": ".env.example",
@@ -34,9 +59,9 @@
       "bytes": 59,
       "lines": 3,
       "structural_check": "UTF-8 text inventory; build/configuration review is separate",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Build/runtime/test configuration, environment boundaries, dependency declarations and generated/ignored output treatment reviewed; relevant gate/build/package results in the report. Dependency internals are not audited."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete line-ending policy: LF for text and CRLF for Windows launchers. Review/benchmark hashes use actual source bytes and generated contracts check canonical serialization; no policy change."
       }
     },
     {
@@ -58,9 +83,9 @@
       "bytes": 270,
       "lines": 24,
       "structural_check": "UTF-8 text inventory; build/configuration review is separate",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Build/runtime/test configuration, environment boundaries, dependency declarations and generated/ignored output treatment reviewed; relevant gate/build/package results in the report. Dependency internals are not audited."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete ignore rules for vault/capture/exports, tokens via .env, caches, environments, scratch tests and database files. Ignoring does not untrack already-added data; staged paths must still be checked before publication. Two unrelated untracked benchmark drafts remain excluded."
       }
     },
     {
@@ -96,15 +121,27 @@
       "structural_check": "UTF-8 text inventory; build/configuration review is separate"
     },
     {
+      "path": "apps/viewer/e2e/bridge-scale.spec.ts",
+      "sha256": "5764ef79bb1940ac224141321bc10fadfb0e018313e1ad8e0d156cf378a10825",
+      "category": "test",
+      "bytes": 1182,
+      "lines": 22,
+      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Authored and reviewed synthetic actual fetchDay regression: 200000 unpositioned path points formerly caused spread argument overflow and returned offline; reduced confidence now remains 0.125 with illustrative fidelity. Routes isolate every oversized input from user data; no large HTTP latency claim."
+      }
+    },
+    {
       "path": "apps/viewer/e2e/data.spec.ts",
       "sha256": "b7a8fc6481390b462d5852b78fd57510d8d4db66a66cb8bfed2a131a2e06fad6",
       "category": "test",
       "bytes": 4248,
       "lines": 72,
       "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Fixture/setup, assertions, loops, mocks and resource cleanup inspected. Tests use synthetic inputs; suite execution and remaining device/port restrictions are recorded in docs/review-2026-10-24.md."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete data-center/graph/calendar/own-note client integration. Synthetic test vault isolates content and token, note teardown uses finally. Graph and records assertions check actual rendered/parsed API output rather than implementation-only counters; no large-history memory evidence."
       }
     },
     {
@@ -113,7 +150,35 @@
       "category": "test",
       "bytes": 4279,
       "lines": 61,
-      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately"
+      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete synthetic calibration/click/fit/line/tuning dashboard fixture, units and ETag/304 assertion. Fixture errors are deliberately constructed rather than live telemetry. Teardown removes only the dedicated test-vault calibration folder; no webcam or learner training occurs."
+      }
+    },
+    {
+      "path": "apps/viewer/e2e/fixtures/camera-map.html",
+      "sha256": "d7f84864bf470682cd2116b7f3d6c2917393006638b959a60ddabe2e460e3459",
+      "category": "configuration",
+      "bytes": 189,
+      "lines": 3,
+      "structural_check": "UTF-8 text inventory; build/configuration review is separate",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete minimal synthetic React map profiler entry; no API or user data."
+      }
+    },
+    {
+      "path": "apps/viewer/e2e/fixtures/camera-map.tsx",
+      "sha256": "fb3a23e7b92deffd5f6d57770bb3bbae66b6d76eb146daf23e40779c7e80b9dc",
+      "category": "test",
+      "bytes": 953,
+      "lines": 20,
+      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Authored and reviewed complete actual-component React Profiler workload: seeded geolocation poses, deterministic cursor updates and figure/heap instrumentation. Startup preparation and browser paint are explicitly excluded from React commit measurements."
+      }
     },
     {
       "path": "apps/viewer/e2e/fixtures/graph-profile.html",
@@ -140,15 +205,51 @@
       }
     },
     {
+      "path": "apps/viewer/e2e/fixtures/scene-lifecycle.html",
+      "sha256": "d516730e3ecd2d96235f8233a41ef459f314788f4c8770414b63c05b107fc895",
+      "category": "configuration",
+      "bytes": 199,
+      "lines": 3,
+      "structural_check": "UTF-8 text inventory; build/configuration review is separate",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete minimal synthetic lifecycle entry document; imports only its fixture module and no user/vault data."
+      }
+    },
+    {
+      "path": "apps/viewer/e2e/fixtures/scene-lifecycle.mjs",
+      "sha256": "8f953476fd7e1fa8e1a193c613f1477896faf86c117de7c415327f69fce8d194",
+      "category": "test",
+      "bytes": 3189,
+      "lines": 52,
+      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Authored and reviewed complete synthetic driver: transformed renderer hooks require an exact marker, controlled load rejection/delayed embedded triangle, settled draw/disposal counters and bounded late-arrival poll. No receiver or vault access. Vite module instrumentation is intentionally fixture-only and fails on marker drift."
+      }
+    },
+    {
+      "path": "apps/viewer/e2e/fixtures/scene-lifecycle.tsx",
+      "sha256": "c0237d0fdb36c9d531c9067a4225bddcce7553d48cc76b4077ad47f110a5cc3c",
+      "category": "test",
+      "bytes": 1150,
+      "lines": 27,
+      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Authored and reviewed complete scene mount/unmount fixture, embedded synthetic inputs and geometry release counters. Uses actual MeshView/SplatView, fake asset routes and no capture or screenshot recording."
+      }
+    },
+    {
       "path": "apps/viewer/e2e/knowledge.spec.ts",
       "sha256": "5369ab5703b5ca03df27a8d0ea61987d935a14edae5a712b575ab5cbeea3b0f3",
       "category": "test",
       "bytes": 12783,
       "lines": 233,
       "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Fixture/setup, assertions, loops, mocks and resource cleanup inspected. Tests use synthetic inputs; suite execution and remaining device/port restrictions are recorded in docs/review-2026-10-24.md."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete graph/note navigation, local graph/search/backlinks, Markdown injection guards and thousands-of-fictional-notes rendering test. Scale case includes machine-dependent p90 draw budget and synchronous fixture generator without subprocess deadline. Scratch fixtures clean in finally; graph budget does not establish real GPU or startup latency."
       }
     },
     {
@@ -158,18 +259,46 @@
       "bytes": 6610,
       "lines": 142,
       "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Fixture/setup, assertions, loops, mocks and resource cleanup inspected. Tests use synthetic inputs; suite execution and remaining device/port restrictions are recorded in docs/review-2026-10-24.md."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete draw/shader/buffer counters, idle/orbit/modal/playback, 2D scrub and failure-dialog regressions. Ten total WebGL calls are the current sample budget; engineering guide's older eight-main-pass statement describes a different counter and needs clarification. Real GPU timing, long-session RSS and hidden-document behavior beyond these fixtures remain separate checks."
       }
     },
     {
       "path": "apps/viewer/e2e/phone.spec.ts",
-      "sha256": "7528d49e1b97b42305689be727ae61fab55d0928468d9512d3dfb591e0c9d4ff",
+      "sha256": "ca3fda91101a335e787e7b771ab0cd3075153dcb8c688f552124fb79d34671c5",
       "category": "test",
-      "bytes": 22684,
-      "lines": 368,
-      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately"
+      "bytes": 22988,
+      "lines": 372,
+      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete synthetic phone day, recording seeking, binary splat/GLB creation, walk following, speaker naming, idle stopping and playback-rate cases. Success-path visual/interaction coverage complements new failed-loader tests. Each scene/transcript fixture is restored in finally; software-rendered timing bounds are intentionally loose and are not hardware FPS evidence."
+      }
+    },
+    {
+      "path": "apps/viewer/e2e/scene-lifecycle.spec.ts",
+      "sha256": "62affe6170dfce74bbca7b2b04478a1cd4951d6e46c6bf2ca051930700a0edca",
+      "category": "test",
+      "bytes": 704,
+      "lines": 13,
+      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Authored and reviewed three failed/late-loader browser regressions sharing the standalone profiler driver. Real renderer/geometry method counters assert one disposal and no continued drawing after failure/unmount. No snapshots of user content or RSS/GPU claims."
+      }
+    },
+    {
+      "path": "apps/viewer/e2e/splat-budget.spec.ts",
+      "sha256": "770dba30edb9e75dd566a0732c8859b1987fce29cba54be45ecabc2dca883062",
+      "category": "test",
+      "bytes": 4221,
+      "lines": 81,
+      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete concurrent upstream pure-budget browser test including the 53b1e57 revision: integrated/discrete/software names, fixed pixels, slow/fast floors/ceilings, no-LOD identity and exact thresholds. It proves policy on synthetic timings rather than actual GPU throughput or native query cleanup."
+      }
     },
     {
       "path": "apps/viewer/e2e/stream.spec.ts",
@@ -190,9 +319,9 @@
       "bytes": 9044,
       "lines": 149,
       "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Fixture/setup, assertions, loops, mocks and resource cleanup inspected. Tests use synthetic inputs; suite execution and remaining device/port restrictions are recorded in docs/review-2026-10-24.md."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete token/index, ETag, prototype/live evidence isolation, date selection, failed name writes and unsupported deletion tests. Synthetic response failures preserve displayed identity and explicit error UI. Uses dedicated vault and no real token; concurrent multi-client index/mutation behavior is not covered here."
       }
     },
     {
@@ -226,9 +355,9 @@
       "bytes": 824,
       "lines": 32,
       "structural_check": "JSON parsed",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Build/runtime/test configuration, environment boundaries, dependency declarations and generated/ignored output treatment reviewed; relevant gate/build/package results in the report. Dependency internals are not audited."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete workspace scripts/dependency declarations: React/Three/Fiber/Spark runtime versions and separate type/build/preview commands. Installed resolution comes from package-lock; broad semver ranges do not establish future performance. Current production build still has large Three/Spark chunks."
       }
     },
     {
@@ -238,9 +367,9 @@
       "bytes": 25016,
       "lines": 620,
       "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Memoized lookups/callbacks, playback/visibility ownership, date routing and write handlers. Ask/reindex use open date; names update after successful writes; unsupported deletion leaves evidence intact. Capture controls still require full service integration."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete module: memoized day/layer/walk indexes, stable interaction handlers, refs for frame data, 100 ms playback timer cleanup, hidden/modal suspension, one GPU scan owner, bounded logs and live mutation failure dialogs. Capture pause remains local UI state behind an unavailable capability and must not be treated as actual recording control. Refresh races across simultaneous requests and sample frame defaults remain explicit gaps."
       }
     },
     {
@@ -306,7 +435,11 @@
       "category": "source",
       "bytes": 8333,
       "lines": 188,
-      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately"
+      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete module: source selection preserves trained/mesh/LiDAR preference, media seconds vs timeline hours, scan-boundary clamping, latest play-clock refs and asynchronous load live guard. One scene is mounted; no-scene state stays explicit. daySchedule is recomputed on renders here while App memoizes it; profile before sharing or memoizing this work."
+      }
     },
     {
       "path": "apps/viewer/src/components/home/DayCalendar.tsx",
@@ -315,9 +448,9 @@
       "bytes": 8280,
       "lines": 206,
       "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Calendar grouping, virtual date navigation, graph/data dialog loading and interactions; JSX presentation not line-audited."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete module: per-input day map, UTC date/month arithmetic, bounded month cells and glyphs, lazy dialog, keyboard navigation and ref deletion. Date lookup is O(1); days sorted oldest first by BackendBridge. No performance rewrite justified for at most 31 visible dates."
       }
     },
     {
@@ -327,9 +460,9 @@
       "bytes": 2161,
       "lines": 60,
       "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Connection/token memory and lazy dialog views; JSX presentation not line-audited."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete module: one selected data/graph/eye view mounted at a time inside Dialog, explicit offline graph message, fixed three navigation entries. Child modules own their fetch/observer lifetimes; parent does not run polling itself."
       }
     },
     {
@@ -338,7 +471,11 @@
       "category": "source",
       "bytes": 7988,
       "lines": 213,
-      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately"
+      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete module: memoized folder construction, recursive name/day sorting, flattened open rows, viewport virtualization, local-storage convenience and observer/listener cleanup. Candidate: current-row findIndex repeats over every visible row on scroll renders, even with no selected note; profile before changing it. Very deep path recursion remains input-dependent."
+      }
     },
     {
       "path": "apps/viewer/src/components/knowledge/GraphCanvas.tsx",
@@ -359,9 +496,9 @@
       "bytes": 24163,
       "lines": 613,
       "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Day/note/search requests, abort/cancellation and stale-result guards, debounce, note links and graph interactions; JSX presentation not line-audited."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete module: memoized graph/day indexes and masks, 90 ms search debounce and AbortController cleanup, visible-only polling, URL/day resolution, local scope, keyboard navigation and panel persistence. Graph reload requests lack a latest-response guard; response interleavings need a focused regression before changing the transport lifecycle. Visual structure retained; search result limits come from API."
       }
     },
     {
@@ -370,7 +507,11 @@
       "category": "source",
       "bytes": 9403,
       "lines": 216,
-      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately"
+      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete module: live guard prevents late note replacement after navigation; visible-only minute refresh for today's recorded note, timer cleanup, memoized parsing/link maps and highlight scroll identity. Reads are not aborted and old requests can finish in the background; no network-resource bound claimed. Markdown rendering uses the separately reviewed parser."
+      }
     },
     {
       "path": "apps/viewer/src/components/modals/AskBarModal.tsx",
@@ -382,6 +523,18 @@
       "manual_review": {
         "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
         "notes": "Question state, streamed early location/error and citations. Receives the actual open date. JSX presentation not line-audited; in-flight query cancellation on unmount remains open."
+      }
+    },
+    {
+      "path": "apps/viewer/src/components/modals/CameraMap.tsx",
+      "sha256": "52dbbda21625777a0b0bd3a48c5676db095a6b99a5072be5a2c1510cc78fe013",
+      "category": "source",
+      "bytes": 1315,
+      "lines": 24,
+      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Authored and reviewed complete extracted map view: stable preparation on camera input, indexed cursor, unchanged heading/projection/figure markup. Real React benchmark verifies final SVG hashes at 600, 12000 and 50000 points. Startup preparation and SVG painting remain linear and outside update timings."
       }
     },
     {
@@ -402,15 +555,23 @@
       "category": "source",
       "bytes": 26708,
       "lines": 605,
-      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately"
+      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete module: rolling sorted median bounded by 30, memoized series, resize cleanup, visible-only five-second ETag polling, finite/null telemetry and held-out-error labels. API caps clicks at 5,000, fits/applied at 200 and tunings at 20, so spread bounds are currently below argument limits. Hover rebuilds SVG path strings, and polls lack in-flight/cancellation/latest-response guards; profile/interleaving tests needed before change."
+      }
     },
     {
       "path": "apps/viewer/src/components/modals/MeshView.tsx",
-      "sha256": "2d5e2540df087f09d573d780c4b330c489a918e673c64a3a01f31e93f959fb52",
+      "sha256": "c0211be997c483068d60a968345a3a8f1fabb32b2c3586e16912443934699636",
       "category": "source",
-      "bytes": 6481,
-      "lines": 168,
-      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately"
+      "bytes": 6759,
+      "lines": 167,
+      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete module: lazy glTF/controls/renderer, metric camera following and demand draw loop. Reproduced renderer leaks on rejection/close during load; resources now register when acquired, late objects dispose immediately, shared geometry/material/texture ownership is explicit, and hidden callbacks do not draw. Normal scan playback and failure/late-load browser checks pass. CPU image-bitmap ownership is a remaining loader-internals check."
+      }
     },
     {
       "path": "apps/viewer/src/components/modals/MindGazeInspectorModal.tsx",
@@ -438,30 +599,38 @@
     },
     {
       "path": "apps/viewer/src/components/modals/RecordedMomentModal.tsx",
-      "sha256": "071c3b090296e49fa566799ffaa58ba666e5b3bb4cb88392e6bafdca5fb3f3a2",
+      "sha256": "cffee2b7ae24c4047b2e463a9d828b38f4d490e099c2a3f0277b67d7042eccd8",
       "category": "source",
-      "bytes": 24600,
-      "lines": 559,
-      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately"
+      "bytes": 22391,
+      "lines": 519,
+      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete module before/after extraction: recorded media ownership, live load guard, transcript cursor/word highlighting, confirmed speaker writes/refresh, lazy scene choice and explicit training failures. Camera map extracted after profiling repeated path generation; component output hashes match. Long transcripts still render all rows and soundTags scans turns/events per segment; remains a scale-profile candidate."
+      }
     },
     {
       "path": "apps/viewer/src/components/modals/SplatView.tsx",
-      "sha256": "502aa77f93376a33b62b4b70a2a9cc7e1baaea1430ac624953cbec81b9beb875",
+      "sha256": "3efd2073866cea95c9aeb7c7e3743f4c649fffa0b95c33a73ad9b72591e58e74",
       "category": "source",
-      "bytes": 9854,
-      "lines": 238,
-      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately"
+      "bytes": 16452,
+      "lines": 367,
+      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete loader/follow/display module and concurrent adaptive-budget changes through 53b1e57. SceneResources owns renderer, timer query pool, Spark, controls, meshes, animation loop and observer immediately, covering failure and late completion. Browser lifecycle/phone/budget cases pass. GPU pixel ratio is fixed per mount, LOD budget changes require two agreeing windows and do not force drawing. poseAt and frame telemetry still allocate; development stall history lacks a count cap and hidden/resume sample timing needs further coverage. Real GPU/RSS/worker cleanup is not established by method counters."
+      }
     },
     {
       "path": "apps/viewer/src/components/modals/SystemStudioModal.tsx",
-      "sha256": "b13c9699fe5e605c9f45935f5f1fb5013b8973febbacb6231b93234089e34c72",
+      "sha256": "6987ea8e95c232fd492942905b49d0c97c19911f8762e7f0026d3a518a1b571b",
       "category": "source",
-      "bytes": 34556,
+      "bytes": 34636,
       "lines": 943,
       "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Settings handlers, request logs, indexing status, timers and performance polling; actual day reindex fixed. JSX presentation not line-audited. Prototype telemetry panels remain labeled demonstrations."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete module: section mount lifetimes, bounded request log, token-in-memory behavior, explicit mutation failures, labelled sample graph/pipeline/study, tracer listener cleanup and on-demand performance polling. Corrected false recording/face-blurring/thumbnail claims. Pipeline replay is illustrative and timer-bound; capture control/status and deletion remain unsupported capabilities. 8-call UI target differs from the newer 10-total-draw regression metric; no GPU performance parity claimed."
       }
     },
     {
@@ -471,9 +640,9 @@
       "bytes": 13798,
       "lines": 392,
       "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Stable event/moment lookup, selection, rename and speaker handlers; JSX presentation not line-audited. Writes are now confirmed by App before persisted UI state changes."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete module: memoized event and citation indexes, stable parent handlers, source fallback scans, raw evidence IDs/units/fidelity, speaker and place write callbacks. No continuous effects. Coordinate display currently consumes nonnullable viewer fallback frames; canonical unknown locations need explicit representation rather than sample defaults."
       }
     },
     {
@@ -526,14 +695,14 @@
     },
     {
       "path": "apps/viewer/src/components/shell/TopBar.tsx",
-      "sha256": "5437081d5b5a368fa5fd3fd7b3b2f76223370d2cc87980f758a29da0f55cbb32",
+      "sha256": "7c8a88e3c2b3a3aa70ead7ef0cddd24796f981e33ef5e3d285eee4352faeb3d4",
       "category": "source",
-      "bytes": 4881,
+      "bytes": 4905,
       "lines": 152,
       "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Navigation/capture/settings event routing; JSX presentation not line-audited."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete module: memoized shell, stable parent handlers, fixed-size controls. Corrected unavailable-status wording so a disconnected viewer does not claim capture has stopped. Capture control wiring remains separate; no live recording toggled."
       }
     },
     {
@@ -574,14 +743,26 @@
     },
     {
       "path": "apps/viewer/src/lib/backendBridge.ts",
-      "sha256": "796ac966d0ce84066cea1b0217469e6485d11ffe9eb1e76342ac5b5d32f6ad8b",
+      "sha256": "4e87b1a6af5565579131ddfb6f5332fc31b96fdfcbd751d5deabfdad9c260248",
       "category": "source",
-      "bytes": 25026,
+      "bytes": 25050,
       "lines": 680,
       "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Typed HTTP adaptation, seconds/hours conversion, evidence IDs and sample boundary, streamed early location and logs. Writes now propagate failure and require a token. Some live shape/source metadata still inherits prototype defaults; see report."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete module: transport/token/log ownership, bounded caller-side logs, day place lookup map, illustrative route/time/confidence adaptation, live mutation failure propagation and explicit sample ask mode. Replaced spread over confidence values with a reduction; real public fetchDay failed at 200,000 path points before and passes after with unchanged minimum/fidelity. Auxiliary layer geometry still inherits sample defaults, and capture availability is not receiver status; those fidelity/control gaps require separate contract work."
+      }
+    },
+    {
+      "path": "apps/viewer/src/lib/cameraMap.ts",
+      "sha256": "d96b1d122f53f8bce89ad019ca0e447888c3430078b804a70cfde753c24ac990",
+      "category": "source",
+      "bytes": 2326,
+      "lines": 63,
+      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Authored and reviewed complete prepare/replay split: exact-size 2N Float64 coordinates and one SVG path per recording, loop extents, chronological lower-bound cursor with original scan fallback for invalid/unordered timestamps. Property-style original-output cases, duplicate/NaN/infinite cursors and 150000 poses pass. Camera-object mutation requires a new identity for useMemo invalidation; canonical transport supplies new objects."
       }
     },
     {
@@ -650,7 +831,11 @@
       "category": "source",
       "bytes": 397,
       "lines": 7,
-      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately"
+      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete module: typed worker protocol delegates to shared simulation host, transferring owned message buffers. Main thread owns worker termination; no duplicate force/layout implementation."
+      }
     },
     {
       "path": "apps/viewer/src/lib/markdown.tsx",
@@ -674,6 +859,30 @@
       "manual_review": {
         "scope": "2026-10-26 algorithm/resource pass; exact scope in notes",
         "notes": "CSR adjacency preparation, deduplicated edges, typed degree/visibility buffers and saved-position validation examined. No layout/visual change."
+      }
+    },
+    {
+      "path": "apps/viewer/src/lib/sceneResources.ts",
+      "sha256": "5f7305311cf501b4932055fd42e8e8d0487183c076a9e5a29ae1148934e158cb",
+      "category": "source",
+      "bytes": 1790,
+      "lines": 52,
+      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Authored and reviewed complete per-scene cleanup scope: reverse-order exactly-once release, early/late acquisition and continued cleanup after one failure. Material/geometry/texture sharing is deduplicated. Unit and real failed/late-loader browser counters pass. Texture.dispose does not establish ImageBitmap CPU storage closure, nested custom shader uniforms or third-party worker memory release; no GPU/RSS guarantee."
+      }
+    },
+    {
+      "path": "apps/viewer/src/lib/splatBudget.ts",
+      "sha256": "38fbfd28efaff53c0c6b3b35f0f04e7e3418890016960f7b03daadc8a655f81c",
+      "category": "source",
+      "bytes": 8304,
+      "lines": 185,
+      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete concurrent upstream budget/classifier and query implementation at 53b1e57: bounded pending GPU queries, disjoint-result deletion, exact milliseconds, initial pixel ratio and LOD-only budget adjustments. SceneResources now owns its timer. Pending queries are polled after draws and disposal clears active/pending queries; actual GPU context-loss/native cleanup remains separate. Regex classification is a startup heuristic, never measured hardware capability."
       }
     },
     {
@@ -738,14 +947,14 @@
     },
     {
       "path": "apps/viewer/src/styles/app.css",
-      "sha256": "319ae37fc170aeeacb481d55d04d1b59080dbdc7bed8801d670f461c815ad58f",
+      "sha256": "1f61a457e0874fd487b8f289474cf9d90ee6875268c32716b7bfcfba02000fcd",
       "category": "configuration",
-      "bytes": 64249,
-      "lines": 3785,
+      "bytes": 64479,
+      "lines": 3798,
       "structural_check": "UTF-8 text inventory; build/configuration review is separate",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Presentation/fixture markup and stylesheet treatment reviewed; preserved unchanged. No inline script found in the static test pages. Full visual/style line audit is outside this algorithm review; browser build/interaction checks are recorded."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete design tokens, responsive layout, controls, overlays, modal/knowledge/scan styles and reduced-motion rules. Preserved all styling. Backdrop blur, shadows and shimmer/background-position animation can add compositor/paint work; no CSS change or GPU speed claim without a trace. Virtual tree rows use fixed absolute positions and viewport clipping. Read the concurrent 13-line splat GPU label addition; preserved its layout and colors."
       }
     },
     {
@@ -778,7 +987,11 @@
       "category": "source",
       "bytes": 38,
       "lines": 1,
-      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately"
+      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete ambient type reference: no runtime algorithm, storage or resource lifetime."
+      }
     },
     {
       "path": "apps/viewer/tsconfig.app.json",
@@ -823,9 +1036,9 @@
       "bytes": 2551,
       "lines": 61,
       "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Build chunks, proxy/listen addresses, isolated test vaults, test ports and server ownership reviewed. Vite no longer buffers fake deletion requests or invents deletion/heap/latency results; unsupported deletion returns 501. Extension integration suites require port 7700 free."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete module: lazy scene dependency prebundling, path-based React/Three chunk separation and preload-helper placement, localhost/strict-port development proxy and no-store headers. Ephemeral delete endpoint fails explicitly with 501. Large lazy Three/Spark chunks remain a cold-scene startup cost; production startup/GPU parity unmeasured."
       }
     },
     {
@@ -834,15 +1047,23 @@
       "category": "configuration",
       "bytes": 255,
       "lines": 4,
-      "structural_check": "UTF-8 text inventory; build/configuration review is separate"
+      "structural_check": "UTF-8 text inventory; build/configuration review is separate",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete project-scoped capture launcher and Windows argument forwarding. Runs only when invoked by the user/update process; not executed against live capture in this review."
+      }
     },
     {
       "path": "check-3d.cmd",
-      "sha256": "f8a6a7776ce18067b3ce4a7a8310aa8dd1c4fe6e1845bef18f5485145e664504",
+      "sha256": "02ec61982c68ff82de2a60d49a38ba953a70e35184014e8cfb6ebe7caa4db8ca",
       "category": "configuration",
-      "bytes": 604,
-      "lines": 14,
-      "structural_check": "UTF-8 text inventory; build/configuration review is separate"
+      "bytes": 1033,
+      "lines": 19,
+      "structural_check": "UTF-8 text inventory; build/configuration review is separate",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete original and concurrent dual-GPU profiler launcher: explicit high/default GPU modes, separate labels, own viewer and headed browser. Unconditional npm install is not checked before profiling; uses real-vault profiler defaults and fixed waits. Not executed during this continuation. Synthetic reproducible profiling needs locked dependencies and explicit fixture selection."
+      }
     },
     {
       "path": "docs/algorithm-review-2026-10-24.md",
@@ -886,15 +1107,23 @@
     },
     {
       "path": "docs/capture.md",
-      "sha256": "49d7311ab3dab988f66dc60c56c3b26c3abb4564efc3fd8e010cc32b120c52a6",
+      "sha256": "814a56b5cb56fb3ad8eb603271effe0115383fc5762a4bb2219fa81164133ac0",
       "category": "documentation",
-      "bytes": 70366,
+      "bytes": 70441,
       "lines": 937,
       "structural_check": "UTF-8 text inventory; build/configuration review is separate",
       "previous_review_needs_refresh": {
         "scope": "Targeted screen/caching correctness review; d8f8391 baseline with a526d52 preserved",
         "notes": "Screen lifetime, masking, failure retry/status and cross-app click learning descriptions checked against implementation. Preserved a526d52 dashboard additions; historical measurements and other sections are not re-certified."
       }
+    },
+    {
+      "path": "docs/codebase-continuation-2026-10-26.md",
+      "sha256": "2a6191b0803338ed287c2893e4ce5655f4d51aa40031e7011b418824b07c7d91",
+      "category": "documentation",
+      "bytes": 16303,
+      "lines": 231,
+      "structural_check": "UTF-8 text inventory; build/configuration review is separate"
     },
     {
       "path": "docs/codebase-efficiency-2026-10-26.md",
@@ -926,12 +1155,12 @@
     },
     {
       "path": "docs/deepinfer-review.md",
-      "sha256": "509ec8e0f108090d4af26a93be6abdb3e04a178adfa136fb2174558498078019",
+      "sha256": "3e8e1c65d50b92716ad3f1aabb4fc827810a5f6885aa8ab464c3c9ab12aad0ca",
       "category": "documentation",
-      "bytes": 13280,
-      "lines": 130,
+      "bytes": 13856,
+      "lines": 137,
       "structural_check": "UTF-8 text inventory; build/configuration review is separate",
-      "manual_review": {
+      "previous_review_needs_refresh": {
         "scope": "2026-10-26 algorithm/resource pass; exact scope in notes",
         "notes": "Current pinned reference and exact reference review scope linked."
       }
@@ -946,10 +1175,10 @@
     },
     {
       "path": "docs/efficiency-review.md",
-      "sha256": "9a3f382b2e5d31c9e72d435619cadd8f2966cd6766b136b3574023610e6ecfbd",
+      "sha256": "5bb1721d9604fc5e6ae08e5a80b5c05b4e7b4a19c59ac5e51c06e745a3275f53",
       "category": "documentation",
-      "bytes": 14339,
-      "lines": 194,
+      "bytes": 14849,
+      "lines": 202,
       "structural_check": "UTF-8 text inventory; build/configuration review is separate",
       "previous_review_needs_refresh": {
         "scope": "Targeted phone CI follow-up against 14d398c, 2026-10-25",
@@ -958,12 +1187,12 @@
     },
     {
       "path": "docs/engineering.md",
-      "sha256": "20e983dd6adf198b2f1cd274025b454a3bfce11892b007a88b92dd4c79e1cab2",
+      "sha256": "bdd8839661b02be97e94995e1f89316e9010f285f58b48206966ba983c9817a6",
       "category": "documentation",
-      "bytes": 7905,
-      "lines": 116,
+      "bytes": 8388,
+      "lines": 122,
       "structural_check": "UTF-8 text inventory; build/configuration review is separate",
-      "manual_review": {
+      "previous_review_needs_refresh": {
         "scope": "2026-10-26 algorithm/resource pass; exact scope in notes",
         "notes": "Deterministic graph/speech test boundaries and tracked review scope documented."
       }
@@ -1052,12 +1281,12 @@
     },
     {
       "path": "docs/performance.md",
-      "sha256": "6548b36d418e72fbdf7e805a8bc1c5c92c7ee6db877e17510a270a4e411acb83",
+      "sha256": "d064feadcd98965cd84d20c9cbde9d14b105589cbb42c93c3c93036e8b4cc3d5",
       "category": "documentation",
-      "bytes": 13291,
-      "lines": 245,
+      "bytes": 13809,
+      "lines": 253,
       "structural_check": "UTF-8 text inventory; build/configuration review is separate",
-      "manual_review": {
+      "previous_review_needs_refresh": {
         "scope": "2026-10-26 algorithm/resource pass; exact scope in notes",
         "notes": "Pointer to the new scoped measurements; historical reports remain unchanged."
       }
@@ -1104,10 +1333,10 @@
     },
     {
       "path": "docs/splat.md",
-      "sha256": "50dfe07fb1ef71487170eaf8ac8ef9833c8c562b306fdf3e21f04588f053644b",
+      "sha256": "d22071c1cab633e977e7a70099447039ea05730101adeeae24441278fc2267ab",
       "category": "documentation",
-      "bytes": 13531,
-      "lines": 230,
+      "bytes": 19647,
+      "lines": 324,
       "structural_check": "UTF-8 text inventory; build/configuration review is separate"
     },
     {
@@ -1117,6 +1346,18 @@
       "bytes": 9400,
       "lines": 150,
       "structural_check": "UTF-8 text inventory; build/configuration review is separate"
+    },
+    {
+      "path": "eval/benchmark_camera_map.mjs",
+      "sha256": "768e5e25369d72c9d6bc57d04405eaa343a286f65d41450e902dc990fe5c4fc5",
+      "category": "source",
+      "bytes": 5925,
+      "lines": 91,
+      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Authored and reviewed named React update/allocation benchmark: own isolated Vite/browser, warmups and repeated commits, final exact SVG fingerprint and collected-object allocation sampling. 600/12000/50000 poses and fixed viewport/browser are recorded; cumulative sampled allocation is not retained heap. Baseline source remains in 93764d2."
+      }
     },
     {
       "path": "eval/benchmark_capture_algorithms.py",
@@ -1139,6 +1380,32 @@
       "manual_review": {
         "scope": "Focused final algorithm/resource/correctness review, 2026-10-24; see docs/algorithm-review-2026-10-24.md",
         "notes": "Reviewed seeded in-memory history fixture with actual scratch-vault atomic writes, cold/warm reader setup, output hashing, eleven timing samples and separate CPU/profile/tracemalloc calls through benchmark_notes.measure. Same environment/workload and full output hashes are checked for comparisons. Source hashes bind both reports. Browser SQLite copying, camera accuracy/FPS, RSS and GPU are explicitly outside scope."
+      }
+    },
+    {
+      "path": "eval/benchmark_capture_index.py",
+      "sha256": "cf528d27ba18db0edc6bf9cd00abebde160d404513e68f4d7617b3dcf4c0df2d",
+      "category": "source",
+      "bytes": 13155,
+      "lines": 277,
+      "functions": [
+        "_lines:65 (loops including nested scopes: 1)",
+        "write_capture_day:69 (loops including nested scopes: 12)",
+        "append_live:154 (loops including nested scopes: 2)",
+        "stored_units:178 (loops including nested scopes: 2)",
+        "main:187 (loops including nested scopes: 12)",
+        "at:79 (loops including nested scopes: 0)",
+        "index_cold:205 (loops including nested scopes: 0)",
+        "search_while_capturing:213 (loops including nested scopes: 0)"
+      ],
+      "review_signals": [
+        "241: check subprocess timeout or explicit process ownership at subprocess.check_output",
+        "242: check subprocess timeout or explicit process ownership at subprocess.check_output"
+      ],
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete externally created synthetic two-day cold-index/append-search benchmark after another PC session committed it. Seeded log-size fixtures, output/stored-unit equivalence, source hashes, CPU/tracemalloc/profile and tempfile cleanup are explicit. Cold indexing reuses warmed filesystem/database state between repeats, and each search appends more input; report records these limits. Its older baseline source is historical, not newly measured here. Contents left unchanged."
       }
     },
     {
@@ -1305,6 +1572,26 @@
       }
     },
     {
+      "path": "eval/benchmark_phone_segments.py",
+      "sha256": "fe9ff29d854ce79d80c4aa32937bcaf6d2b4fdf481444c2500c79543bbf6f379",
+      "category": "source",
+      "bytes": 4621,
+      "lines": 115,
+      "functions": [
+        "fixture:31 (loops including nested scopes: 3)",
+        "main:61 (loops including nested scopes: 8)",
+        "work:71 (loops including nested scopes: 2)"
+      ],
+      "review_signals": [
+        "83: check subprocess timeout or explicit process ownership at subprocess.check_output"
+      ],
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Authored and reviewed seeded 2/8/24-hour segmentation workload, timezone-aware fixes, seven timing samples, CPU/tracemalloc/profile and full span/Fix output hashes outside timing. No real sensor export is read. Baseline source retained in 96d20e9; compact index trades bounded timestamp storage for substantially less repeated work."
+      }
+    },
+    {
       "path": "eval/benchmark_reading_cache.py",
       "sha256": "d524c0cec8bcef26d8d98ddd688eda127c8192006bcd4e58f6555e10e599909e",
       "category": "source",
@@ -1388,6 +1675,24 @@
       }
     },
     {
+      "path": "eval/benchmark_voice_clusters.py",
+      "sha256": "3fbf74a2e8a190d0212158625fc12c9975fb31f1399ea2bbeb42002549e01f6c",
+      "category": "source",
+      "bytes": 3337,
+      "lines": 84,
+      "functions": [
+        "main:22 (loops including nested scopes: 6)"
+      ],
+      "review_signals": [
+        "39: check subprocess timeout or explicit process ownership at subprocess.check_output"
+      ],
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Authored and reviewed seeded 192-dimensional gallery workload, seven samples, explicit OpenBLAS threads and exact label fingerprints. Optional sizes support crossover measurements; target source hash uses actual imported cluster module so archived baseline provenance remains truthful. Baseline v1 is retained in af95058; dense quadratic storage remains."
+      }
+    },
+    {
       "path": "eval/blink_downgaze.py",
       "sha256": "07077c8bc7ae53d7278d57ac4b7e52aad6ef782518fe5f627ebf0c8961286cff",
       "category": "source",
@@ -1400,7 +1705,11 @@
       "review_signals": [
         "70: check text/binary mode and default encoding at args.out.write_text"
       ],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete offline blink false-positive evaluator: one cached NPZ read per person, finite face selection, explicit screen quarters and isolated detector state. Sparse/empty quarters can yield NaN and NPZ handle closure is implicit. No public dataset images or webcam frames were opened during review."
+      }
     },
     {
       "path": "eval/blink_replay.py",
@@ -1461,7 +1770,11 @@
       "review_signals": [
         "176: check text/binary mode and default encoding at args.out.write_text"
       ],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete causal replay: calibration-day selection, predict-before-learn order, seeded label noise/outliers, held-out bands and head-movement grouping. Whole-person arrays and all-person raw errors are retained; empty datasets/insufficient calibration need clearer errors. Existing result files do not establish live webcam accuracy for this PC."
+      }
     },
     {
       "path": "eval/experiment/README.md",
@@ -1555,9 +1868,9 @@
         "807: check subprocess timeout or explicit process ownership at subprocess.run"
       ],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "All simulation/error fitting, time/geometry transforms, script ordering, process-pool scenarios and reports, prior-revision extraction and synthetic live mode. Expensive fit/repeated scans and scratch cleanup are tooling gaps; no live mode invoked."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete error-model fit, seeded scripted observers, layout/geometry mapping, real tracker/attention replay, parallel trials and revision comparison. Global caches have a small normal key set but no explicit budget; profile fitting repeatedly sorts 20000 draws. Compare extraction leaves a scratch directory and subprocesses lack deadlines. Live mode defaults to the actual receiver, so it was not invoked. Simulator labels and timing do not prove real-camera accuracy or throughput."
       }
     },
     {
@@ -1731,6 +2044,18 @@
       }
     },
     {
+      "path": "eval/profile_scene_lifecycle.mjs",
+      "sha256": "23e975747733ea99af7d9d46e410a9295cbb608e69247583bb62ec491be385f5",
+      "category": "source",
+      "bytes": 3631,
+      "lines": 59,
+      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Authored and reviewed isolated Vite/headless browser profiler with finally-owned server/browser, shared synthetic driver, source/dependency hashes and optional invariant verification. Baseline v1 is retained in 20c09d4; current after report is refreshed on integrated splat sources. Counts are resource/drawing evidence, not latency or RSS."
+      }
+    },
+    {
       "path": "eval/questions.jsonl",
       "sha256": "7b157fde9e6fb4be2aa06e448000c9a2eff7f8da394232d52c50418b71d16262",
       "category": "measurement_or_fixture",
@@ -1761,7 +2086,11 @@
       "review_signals": [
         "161: check text/binary mode and default encoding at args.out.write_text"
       ],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete simulated-label accuracy and causal MPIIFaceGaze replay, seeded click/outlier choices and chronological calibration. Whole-person and pooled error arrays are retained; empty inputs/quarters and dataset availability need explicit guards. Simulated line offsets intentionally differ from actual label distributions. Not run on user calibration or images."
+      }
     },
     {
       "path": "eval/results/blink-downgaze.json",
@@ -1812,6 +2141,22 @@
       "structural_check": "JSON parsed"
     },
     {
+      "path": "eval/results/camera-map-after-2026-10-26.json",
+      "sha256": "5e9edeca9f3d5984a3d4f07169720ddc3ac9feb77c79ed8183bfcf3d36d7375e",
+      "category": "measurement_or_fixture",
+      "bytes": 6833,
+      "lines": 242,
+      "structural_check": "JSON parsed"
+    },
+    {
+      "path": "eval/results/camera-map-before-2026-10-26.json",
+      "sha256": "84ecf3ba69cf48d3d7faeece7ef523fac5aa3e29901c41c09ebfae9ebd150040",
+      "category": "measurement_or_fixture",
+      "bytes": 6926,
+      "lines": 241,
+      "structural_check": "JSON parsed"
+    },
+    {
       "path": "eval/results/capture-algorithms-after.json",
       "sha256": "f74e03e6211ecc72e81414dd54cd23a1ae2271d95f6b5ca12f12b500d9f91f30",
       "category": "measurement_or_fixture",
@@ -1825,6 +2170,14 @@
       "category": "measurement_or_fixture",
       "bytes": 8332,
       "lines": 113,
+      "structural_check": "JSON parsed"
+    },
+    {
+      "path": "eval/results/capture-index-before.json",
+      "sha256": "56b32224a33628da986df1ea9e661d06ccbf0977d6ecf13eda4ffe0cb3a593fb",
+      "category": "measurement_or_fixture",
+      "bytes": 6277,
+      "lines": 103,
       "structural_check": "JSON parsed"
     },
     {
@@ -2099,6 +2452,22 @@
       "structural_check": "JSON parsed"
     },
     {
+      "path": "eval/results/phone-segments-after-2026-10-26.json",
+      "sha256": "6b2c3eb10cd095264cd7b2c97901b9e55a009d36e5e933cc5c8b16589b2c8c20",
+      "category": "measurement_or_fixture",
+      "bytes": 6481,
+      "lines": 86,
+      "structural_check": "JSON parsed"
+    },
+    {
+      "path": "eval/results/phone-segments-before-2026-10-26.json",
+      "sha256": "9bffa09e64aa36fa6748334ad27c1e49665206680d4be139ea5d7658e5f337d1",
+      "category": "measurement_or_fixture",
+      "bytes": 6557,
+      "lines": 86,
+      "structural_check": "JSON parsed"
+    },
+    {
       "path": "eval/results/reading-cache-after.json",
       "sha256": "928f7dfd23047e8316c27a59daf2b00fe3d4974162fb02aa609b57704c992116",
       "category": "measurement_or_fixture",
@@ -2160,6 +2529,22 @@
       "category": "measurement_or_fixture",
       "bytes": 3339,
       "lines": 136,
+      "structural_check": "JSON parsed"
+    },
+    {
+      "path": "eval/results/scene-lifecycle-after-2026-10-26.json",
+      "sha256": "990b469cf3ad9ec5d156598e15b5124e5d8e7043057296be1fbb04f7018d3574",
+      "category": "measurement_or_fixture",
+      "bytes": 2496,
+      "lines": 75,
+      "structural_check": "JSON parsed"
+    },
+    {
+      "path": "eval/results/scene-lifecycle-before-2026-10-26.json",
+      "sha256": "f0494bccdd7b286d3aa07e9b25a062a2a8ebebc86a1f50c00c4fe15978704cb3",
+      "category": "measurement_or_fixture",
+      "bytes": 2266,
+      "lines": 73,
       "structural_check": "JSON parsed"
     },
     {
@@ -2251,6 +2636,30 @@
       "structural_check": "JSON parsed"
     },
     {
+      "path": "eval/results/voice-clusters-before-2026-10-26.json",
+      "sha256": "45e9a41382d07be8ea5b653714ad2e3c7f1380d7ae7715f51c35608267083657",
+      "category": "measurement_or_fixture",
+      "bytes": 6160,
+      "lines": 82,
+      "structural_check": "JSON parsed"
+    },
+    {
+      "path": "eval/results/voice-clusters-scale-after-2026-10-26.json",
+      "sha256": "f550d43b1b6b06c6cb6268634ebc3416eeb79d9802590f61b81cd2f61167a176",
+      "category": "measurement_or_fixture",
+      "bytes": 7865,
+      "lines": 100,
+      "structural_check": "JSON parsed"
+    },
+    {
+      "path": "eval/results/voice-clusters-scale-before-2026-10-26.json",
+      "sha256": "3fc3917bb4dba51421012d50f1a2e6ff1234855b582d916e97f8f76a4a73629e",
+      "category": "measurement_or_fixture",
+      "bytes": 7874,
+      "lines": 100,
+      "structural_check": "JSON parsed"
+    },
+    {
       "path": "eval/ring_filter.py",
       "sha256": "6edda1ba1fee0f94b1cbe8ef885e31fcac7f472e2bdb1e7f4a75c3c7791ee419",
       "category": "source",
@@ -2269,7 +2678,11 @@
       "review_signals": [
         "276: check text/binary mode and default encoding at args.out.write_text"
       ],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete synthetic looking/saccades, vectorized truth lookup, scalar filter timing, interpolated display and latency/spread/pursuit metrics. Same seeded camera model supports comparisons but repeated model fitting dominates harness startup. Empty near/far cases can produce NaN; sample CPU timings exclude camera/landmarks/network/GPU. Existing results are scoped simulation evidence."
+      }
     },
     {
       "path": "eval/score_retrieval.py",
@@ -2329,7 +2742,11 @@
       "review_signals": [
         "177: check text/binary mode and default encoding at args.out.write_text"
       ],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete synthetic droop/noise construction on cached public landmarks, causal click replay and held-back final-image evaluation. Stare creation changes RNG consumption between zero/nonzero-weight arms, so labels are not paired identically across those arms. Whole arrays and repeated near-neighbor scans are offline evaluation costs; do not infer live-camera causal accuracy from these results alone."
+      }
     },
     {
       "path": "eval/storage_budget.py",
@@ -2374,7 +2791,11 @@
       "review_signals": [
         "116: check text/binary mode and default encoding at args.out.write_text"
       ],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete per-person calibration, seeded labels, search/chronological holdout and bounded process-pool execution. All-person outputs are small, but each worker owns full landmark/head arrays and repeated fits; no deadline or empty-data checks. This is offline synthetic-label accuracy evaluation, not runtime throughput evidence."
+      }
     },
     {
       "path": "eval/vector_bench.py",
@@ -2412,21 +2833,21 @@
       "bytes": 20724,
       "lines": 482,
       "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Worker state, filtering, injection, pause synchronization, grouped queue delivery and alarms. One in-flight send, durable staging and bounded response deadline; new failure regressions. Queue record caps are not byte budgets."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete worker: serialized delivery, durable bounded 5000-record storage queue, batch-400 acknowledgement, epoch invalidation, guarded frames, excluded domains and trusted storage. In-memory pending grows until flush/slow storage, and startup injects all eligible tabs concurrently. Concurrent pause/delivery/settings responses lack a single state generation; a stale response race needs adversarial tests. No live extension was controlled."
       }
     },
     {
       "path": "extensions/chrome/content.js",
-      "sha256": "1026e6ea057d42b318ca8e0791b107710d79a76c8807e3a36eca72cece7cbb34",
+      "sha256": "72d24679faebc2a8d0ad854db7875a867a623a081948402f5761a990bcaac4e0",
       "category": "source",
-      "bytes": 28312,
+      "bytes": 28337,
       "lines": 598,
       "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Geometry/zoom measurement, DOM/shadow traversal, bounded line/block reports, epoch acknowledgments and markers. Four 5,000-entry caches evict together; old acknowledgments cannot resurrect evictions; original block IDs persist."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete DOM/shadow traversal, bounded block/cache counts, weak element ownership, line bisection, mutation scheduling, geometry and ring display. Reproduced same-length text edits retaining stale line content; invalidate line cache when accepted text changes, with failing-before/passing-after browser regression. First-1000-character cache keys do not detect every later-content edit, and password/shadow scans plus traversal can exceed the soft line budget. No browser work was run on user pages."
       }
     },
     {
@@ -2488,9 +2909,9 @@
       "bytes": 1450,
       "lines": 72,
       "structural_check": "JSON parsed",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Build/runtime/test configuration, environment boundaries, dependency declarations and generated/ignored output treatment reviewed; relevant gate/build/package results in the report. Dependency internals are not audited."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete Manifest V3 permissions, isolated worker, trusted storage, private-window exclusion, all-frame guard and top-frame reporter wiring. Broad page permissions support requested capture; transport itself is fixed to loopback. No extension version/deployment or permissions changed."
       }
     },
     {
@@ -2512,9 +2933,9 @@
       "bytes": 4485,
       "lines": 72,
       "structural_check": "UTF-8 text inventory; build/configuration review is separate",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Presentation/fixture markup and stylesheet treatment reviewed; preserved unchanged. No inline script found in the static test pages. Full visual/style line audit is outside this algorithm review; browser build/interaction checks are recorded."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete static options/status and privacy descriptions with external CSS/module script, explicit token/password control and labelled choices. The page's native-overlay exclusion language is stronger than the best-effort Windows affinity call; physical capture exclusion remains a hardware/OS acceptance limit. No real token or browser settings were read."
       }
     },
     {
@@ -2536,9 +2957,9 @@
       "bytes": 18048,
       "lines": 304,
       "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Fixture/setup, assertions, loops, mocks and resource cleanup inspected. Tests use synthetic inputs; suite execution and remaining device/port restrictions are recorded in docs/review-2026-10-24.md. Source reviewed, not executed in this run: these load an extension that targets the occupied live receiver port 7700. Do not treat this as a test pass."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete real-extension/scratch-vault action, privacy, shadow, geometry, focus and retry suite. It requires port 7700 free, assumes expanded response equality predating current line labels, starts default optional receiver services and does not prove its child exited before deleting scratch data. Not run against the active receiver; synthetic reporter and isolated API tests are used in this continuation."
       }
     },
     {
@@ -2548,9 +2969,9 @@
       "bytes": 19485,
       "lines": 338,
       "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Fixture/setup, assertions, loops, mocks and resource cleanup inspected. Tests use synthetic inputs; suite execution and remaining device/port restrictions are recorded in docs/review-2026-10-24.md. Source reviewed, not executed in this run: these load an extension that targets the occupied live receiver port 7700. Do not treat this as a test pass."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete synthetic-eyes integration: authoritative mouse geometry, zoom, dwell/reading truth, ring lag and native-overlay handoff. Hardcoded 7700 and wall-clock waits require isolation; child shutdown and async watcher cleanup on failure need stronger ownership. No human accuracy inference from a calibrated simulator and no live capture interruption."
       }
     },
     {
@@ -2591,14 +3012,14 @@
     },
     {
       "path": "extensions/tests/reporter.e2e.spec.ts",
-      "sha256": "f987be7d0ee2b0807e5c266b6a86549de817dfc98409024d34999d6c17af03d2",
+      "sha256": "d7e7b1b6c5e541ae3c46e4fd7456877c204eafc6838c85e55b0edc3dd35e55dd",
       "category": "test",
-      "bytes": 7867,
-      "lines": 148,
+      "bytes": 9312,
+      "lines": 172,
       "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
       "manual_review": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Fixture/setup, assertions, loops, mocks and resource cleanup inspected. Tests use synthetic inputs; suite execution and remaining device/port restrictions are recorded in docs/review-2026-10-24.md."
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete synthetic browser harness: cache eviction identity, focus/visibility republish, hung/malformed delivery retry and new same-size text mutation regression. Six tests pass against real Chromium DOM with a synthetic transport; no receiver, token, webcam or recording is used."
       }
     },
     {
@@ -2797,22 +3218,22 @@
     },
     {
       "path": "package-lock.json",
-      "sha256": "2573b1bb5021ef8ebde0c166893696675b9074b318825b3526eda6cff1ab530e",
+      "sha256": "1ee9e3cb7eabb2d79c291240637f26363bee8b99e642c4f1ea9109c87d69f4a2",
       "category": "lockfile",
-      "bytes": 118544,
-      "lines": 3414,
+      "bytes": 118724,
+      "lines": 3423,
       "structural_check": "JSON parsed"
     },
     {
       "path": "package.json",
-      "sha256": "3dc1b43153c2933ab64848c977d6e5fb8597e6f0e2fb7edc2afe4a28dd2cd6cf",
+      "sha256": "a49bccf121d635ce1c752a987bd44444c7f680af5184668fdc44382ffe0fa0c4",
       "category": "configuration",
-      "bytes": 2231,
+      "bytes": 2292,
       "lines": 44,
       "structural_check": "JSON parsed",
       "manual_review": {
-        "scope": "2026-10-26 algorithm/resource pass; exact scope in notes",
-        "notes": "New graph-label and lightweight speech gates; dependency versions and production scripts unchanged."
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete workspace check/build/test scripts, separate gaze/speech environments, contracts/transport and browser gates. Added scene-resource and camera-map unit checks to the existing viewer gate. Expensive profiling commands stay separate and no cloud/native model work is required by the core check."
       }
     },
     {
@@ -2834,9 +3255,9 @@
       "bytes": 13091,
       "lines": 247,
       "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Typed transport validation, auth, conditional loads, incremental SSE and cancellation ownership; HTTP request/body overall deadline remains open."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete module: centralized transport/token boundary, canonical main payload validation, conditional ETags, signal propagation, incremental SSE/final verification and mutation failure propagation. Auxiliary camera/splat/speech/day-summary/health fields still use typed casts rather than canonical runtime contracts; this is a remaining boundary gap. Several conditional reads do not accept cancellation yet."
       }
     },
     {
@@ -2986,9 +3407,9 @@
       "bytes": 12203,
       "lines": 227,
       "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Canonical storage wrappers and typed derived API responses; null/identity/time semantics inspected. New response schemas are handwritten Zod/Python definitions rather than canonical generated JSON Schemas: remaining contract gap."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete module: canonical Ajv core contracts wrapped in Zod, typed derivative API shapes and explicit nullable evidence/time fields. Validation is at transport boundaries; no per-frame validation. Auxiliary public response schemas remain hand-maintained and should be moved to canonical JSON Schema when those interfaces change; no wholesale contract rewrite in this pass."
       }
     },
     {
@@ -3090,9 +3511,9 @@
       "bytes": 1565,
       "lines": 48,
       "structural_check": "TOML parsed",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Build/runtime/test configuration, environment boundaries, dependency declarations and generated/ignored output treatment reviewed; relevant gate/build/package results in the report. Dependency internals are not audited."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete root workspace, optional AI/media/native dependencies, deterministic suite boundary and Ruff families. Gaze/capture/speech use separate environments to avoid incompatible native/model stacks. Core check intentionally does not install or run cloud/GPU workloads."
       }
     },
     {
@@ -3129,7 +3550,11 @@
         "write:75 (loops including nested scopes: 0)"
       ],
       "review_signals": [],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete fictional note/source/course generator. Seeded weighted sampling and stable identities exercise graph scale, but set iteration for due courses can vary with PYTHONHASHSEED. Nonpositive days/sources need validation and output can overwrite existing notes, so only explicit scratch paths are appropriate. No user notes were generated or replaced."
+      }
     },
     {
       "path": "scripts/build-phone-fixture.py",
@@ -3154,7 +3579,23 @@
         "144: check text/binary mode and default encoding at (capture / 'camera_matrix.csv').write_text",
         "154: check text/binary mode and default encoding at (OUT / 'README.md').write_text"
       ],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete fixed fictional sensor/tone/test-pattern builder. Writes only repository fixture destination and intentionally rebuilds it; FFmpeg invocations lack independent deadlines and array/table preparation scales with requested fixed duration. No real phone media is a fixture and this generator was not rerun in the continuation."
+      }
+    },
+    {
+      "path": "scripts/camera-map.test.mjs",
+      "sha256": "9648e5b610e5e54ff3a1a58a73eba62f29a51dbd1ac55b6f60b3b1fb2435d543",
+      "category": "test",
+      "bytes": 3086,
+      "lines": 57,
+      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Authored and reviewed complete original-projection oracle, first-match cursor/order/duplicate/nonfinite cases and 150000-point buffer regression. Exact markup and coordinates preserve output semantics without machine-dependent timing assertions."
+      }
     },
     {
       "path": "scripts/check-capture-package.py",
@@ -3228,11 +3669,15 @@
     },
     {
       "path": "scripts/profile-splat.mjs",
-      "sha256": "44f2abde32dcedf71db6b5d141f0a7e76ef67e518efff675c2cd53181a36d8c1",
+      "sha256": "5384377234b1cadfea36b7022d05a986b679c4d59cac516013dba28d14e2e7b5",
       "category": "source",
-      "bytes": 8255,
-      "lines": 174,
-      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately"
+      "bytes": 12900,
+      "lines": 255,
+      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete original profiler plus concurrent 5541a4c/53b1e57 changes: GPU query vs interval metrics, refresh baseline, CPU self-time and fixed-refresh default. Defaults still target real vault/service and log caption/CPU report in vault; not run by this continuation. Needs source hashes, synthetic input isolation, bounded requests and stricter argument/output validation before a reproducible synthetic GPU comparison. Existing remote-session measurements are not independently verified here."
+      }
     },
     {
       "path": "scripts/profile-viewer.mjs",
@@ -3248,24 +3693,36 @@
     },
     {
       "path": "scripts/review-inventory.py",
-      "sha256": "47f376bfd2560fd06ffa61d9157600e7d6c2ceac8bd62a86b702c311e00d45cc",
+      "sha256": "0813ffdd21eb0ed94e5c03de6c98ca46b1aa9d84279c6a77bfe6348b620f71da",
       "category": "source",
-      "bytes": 7729,
-      "lines": 174,
+      "bytes": 9399,
+      "lines": 195,
       "functions": [
-        "category:40 (loops including nested scopes: 0)",
-        "python_signals:61 (loops including nested scopes: 3)",
-        "main:81 (loops including nested scopes: 5)"
+        "category:51 (loops including nested scopes: 0)",
+        "python_signals:72 (loops including nested scopes: 3)",
+        "main:92 (loops including nested scopes: 8)"
       ],
       "review_signals": [
-        "92: check subprocess timeout or explicit process ownership at subprocess.check_output",
-        "148: check subprocess timeout or explicit process ownership at subprocess.run",
-        "160: check subprocess timeout or explicit process ownership at subprocess.check_output"
+        "103: check subprocess timeout or explicit process ownership at subprocess.check_output",
+        "159: check subprocess timeout or explicit process ownership at subprocess.run",
+        "171: check subprocess timeout or explicit process ownership at subprocess.check_output"
       ],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
       "manual_review": {
-        "scope": "2026-10-26 algorithm/resource pass; exact scope in notes",
-        "notes": "Tracked-only scope keeps unrelated drafts out; binary fixtures/media are hashed without UTF-8 parsing; structural syntax coverage remains separate from semantic review."
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete inventory/preservation implementation and added explicit category treatments for generated/schema outputs, dependencies, assets, fixtures, measurements and documents. Parses Python/JS/TOML/JSON, hashes actual bytes, preserves only hash-matching notes and marks changed reviews stale. Regenerated ledger successfully and Ruff passes; structural parsing does not certify algorithm quality."
+      }
+    },
+    {
+      "path": "scripts/scene-resources.test.mjs",
+      "sha256": "5a6b09f6f4a7e99b88eabefa7990424386ae76cdb65e2215974ddc5d8cfeb65a",
+      "category": "test",
+      "bytes": 2484,
+      "lines": 53,
+      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Authored and reviewed complete cleanup contract checks: reverse/exactly-once, failure continuation, late release and shared geometry/material/texture deduplication. Pure fake resources complement actual WebGL disposal counters; tests do not assert total GPU memory recovery."
       }
     },
     {
@@ -3347,9 +3804,9 @@
         "301: check text/binary mode and default encoding at build_opener(ProxyHandler({})).open"
       ],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
-      "previous_review_needs_refresh": {
-        "scope": "Targeted screen/caching correctness review; d8f8391 baseline with a526d52 preserved",
-        "notes": "Targeted one-shot screen diagnostic call-site and native capture cleanup review. Other command paths were not re-audited in this pass."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete CLI and startup/shutdown sequence: lazy optional imports, separate service environments, explicit pause/restart/screen commands and finally-based normal shutdown. Startup resources acquired before uvicorn's try are not all protected from a later startup exception; thread stop requests do not cancel active native jobs. No service command was run against the user's vault."
       }
     },
     {
@@ -3374,9 +3831,9 @@
       ],
       "review_signals": [],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Bounded pending clicks/recent fixations/anchors, forward-only error checks, age/calibration invalidation and local correction. Max 40-anchor quadratic diagnostics are explicitly bounded."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete weighted click-offset and held-out error estimation: 50 pending clicks, 40 anchors, cached usable subsets, explicit monitor/time units. Recent fixations are time bounded rather than count bounded and assume reasonable chronological timestamps; pathological clocks remain a retention risk. No live calibration or capture was changed."
       }
     },
     {
@@ -3435,9 +3892,9 @@
         "328: check subprocess timeout or explicit process ownership at subprocess.Popen"
       ],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Receiver auth/validation, dedupe, grouped append writes, pause state, restart priming, hook subprocess budget, live gaze and health. Partial multi-file write recovery is not a transaction across all logs."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete authenticated browser/gaze intake, append batching, bounded duplicate IDs, pause persistence, live points, hooks and worker leasing. Retry-after-partial-multifile-write can duplicate persisted records; attention state changes before persistence and has no rollback. Initial text warmup materializes up to two 64 MiB logs; body parsing precedes item-count bounds. Jobs lacks an ASGI shutdown close and hook stdin threads have no deadline. These are explicit remaining resource/recovery gaps; no live capture state changed."
       }
     },
     {
@@ -3487,9 +3944,9 @@
       ],
       "review_signals": [],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Window ownership, gaze placement, calibrated/click error, block HMM, dwell and reading visits, LRU/layout lifetimes. Page decoder follows layout evictions and is released on leave/pause. Visit paths can still grow until a visit ends."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete multiwindow placement, bounded text/layout LRU counts, likelihood/filter/reading/visit/dwell state machines and explicit monitor/CSS/epoch conversions. Work per fixation scales with visible blocks/lines and current layouts; caches bound entry count rather than bytes. Preserve chronological arrival and positive fixation durations; reset and out-of-order semantics need further adversarial tests. No accuracy claim from synthetic speed evidence."
       }
     },
     {
@@ -3510,9 +3967,9 @@
         "68: check subprocess timeout or explicit process ownership at subprocess.Popen"
       ],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Windows registry entry, quoting, windowless interpreter and detached process startup; fake-registry test, no sign-in test performed."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete registry helper: user-scoped Run key handles close, Windows argument quoting, explicit install/uninstall and detached windowless child. Sign-in process is intentionally detached rather than request-owned. No registry or live process state changed."
       }
     },
     {
@@ -3544,9 +4001,9 @@
         "67: check text/binary mode and default encoding at path.open"
       ],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Aggregate status/log checks, partial-line handling, timing units, model/accuracy diagnostics. Reads entire daily logs for counts; not run against personal capture here."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete diagnostic calculations, bounded recent error tails, closed Jobs handle and explicit freshness/units. Today's counts/dwells/reading use whole-file reads and repeated parsing, so CLI memory scales with day logs. Human-readable content may include user text/status; not invoked on the real vault for this review. Doctor's FPS threshold is diagnostic policy, not a benchmark."
       }
     },
     {
@@ -3586,7 +4043,11 @@
         "stop:43 (loops including nested scopes: 0)"
       ],
       "review_signals": [],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete polling thread: interruptible startup/poll waits, separate Vault per import round and logged failures. Stop requests take effect between imports; active media/model imports have no cancellation hook. Directory/history scale belongs to separately reviewed importer/inbox implementations."
+      }
     },
     {
       "path": "services/capture-win/capture/jobs.py",
@@ -3601,7 +4062,11 @@
         "stop:70 (loops including nested scopes: 0)"
       ],
       "review_signals": [],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete CPU/GPU workers, 32-bit idle-tick wrap, explicit unknown-idle handling, bounded worker count and finally-closed Jobs connection. Stop is cooperative between jobs and does not cancel native stages. No real job or GPU work started."
+      }
     },
     {
       "path": "services/capture-win/capture/labels.py",
@@ -3617,7 +4082,11 @@
         "drain:95 (loops including nested scopes: 0)"
       ],
       "review_signals": [],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete line-label state machine: neighboring-line confirmation, confidence/geometry gate and maxlen-2000 outgoing deque. Current-line fixation list is not count bounded during an arbitrarily long stare; retained labels are bounded only after confirmation. Circular-label safeguards rely on click-only fit acceptance downstream."
+      }
     },
     {
       "path": "services/capture-win/capture/librarian.py",
@@ -3640,40 +4109,44 @@
     },
     {
       "path": "services/capture-win/capture/phone_api.py",
-      "sha256": "af3c0f2ad2ec5433ac953872643b9d70f2d0b030409078b4c318ca93a9536d34",
+      "sha256": "e815eeaa06f2e23939a02777b6e77b36fe2af60ade8ee13b61b75e5e34ff88e9",
       "category": "source",
-      "bytes": 13116,
-      "lines": 284,
+      "bytes": 13323,
+      "lines": 288,
       "functions": [
         "_safe_parts:70 (loops including nested scopes: 1)",
-        "router:238 (loops including nested scopes: 0)",
+        "router:240 (loops including nested scopes: 1)",
         "__init__:80 (loops including nested scopes: 0)",
         "devices:90 (loops including nested scopes: 0)",
         "_save:96 (loops including nested scopes: 0)",
         "pair:102 (loops including nested scopes: 0)",
         "device_of:112 (loops including nested scopes: 1)",
         "_meta:120 (loops including nested scopes: 0)",
-        "start:126 (loops including nested scopes: 0)",
-        "put:144 (loops including nested scopes: 0)",
-        "complete:159 (loops including nested scopes: 1)",
-        "finish_item:182 (loops including nested scopes: 2)",
-        "heartbeat:214 (loops including nested scopes: 0)",
-        "status:226 (loops including nested scopes: 3)",
-        "vault_only:243 (loops including nested scopes: 0)",
-        "device:247 (loops including nested scopes: 0)",
-        "pair:254 (loops including nested scopes: 0)",
-        "status:258 (loops including nested scopes: 0)",
-        "start:262 (loops including nested scopes: 0)",
-        "put:266 (loops including nested scopes: 0)",
-        "complete:273 (loops including nested scopes: 0)",
-        "finish:277 (loops including nested scopes: 0)",
-        "heartbeat:281 (loops including nested scopes: 0)"
+        "start:128 (loops including nested scopes: 0)",
+        "put:146 (loops including nested scopes: 0)",
+        "complete:161 (loops including nested scopes: 1)",
+        "finish_item:184 (loops including nested scopes: 2)",
+        "heartbeat:216 (loops including nested scopes: 0)",
+        "status:228 (loops including nested scopes: 3)",
+        "vault_only:245 (loops including nested scopes: 0)",
+        "device:249 (loops including nested scopes: 0)",
+        "pair:256 (loops including nested scopes: 0)",
+        "status:260 (loops including nested scopes: 0)",
+        "start:264 (loops including nested scopes: 0)",
+        "put:268 (loops including nested scopes: 1)",
+        "complete:277 (loops including nested scopes: 0)",
+        "finish:281 (loops including nested scopes: 0)",
+        "heartbeat:285 (loops including nested scopes: 0)"
       ],
       "review_signals": [
-        "155: check text/binary mode and default encoding at part.open",
-        "169: check text/binary mode and default encoding at part.open"
+        "157: check text/binary mode and default encoding at part.open",
+        "171: check text/binary mode and default encoding at part.open"
       ],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete pairing/resumable intake/publication and heartbeat module. Added strict generated upload-ID validation before metadata path access and bounded streamed chunk buffering before storage, with five fail-before/pass-after cases. Hashing still holds the global phone lock; complete retries and same-size changed-content acknowledgements need additional fixes. Finished-item history is reread linearly and request concurrency/server-owned chunks are outside the one-buffer limit. No phone/token/user media accessed."
+      }
     },
     {
       "path": "services/capture-win/capture/reading.py",
@@ -3715,9 +4188,9 @@
       "functions": [],
       "review_signals": [],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Discriminated external records, field/count/length/range bounds, units and exact geometry flags; receiver validation tests."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete external record models: discriminated variants, finite numbers, timestamp awareness, bounded text/blocks/lines/fixation batches and geometry units. Fixation end-before-start is not cross-validated; nested learning diagnostics rely on intake limits. No schema identity or confidence semantics changed."
       }
     },
     {
@@ -3737,7 +4210,11 @@
         "46: check subprocess timeout or explicit process ownership at subprocess.run",
         "84: check subprocess timeout or explicit process ownership at subprocess.run"
       ],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete source stamp, bounded CIM/taskkill calls, ancestor exclusion and restart polling. Reported wait budget excludes per-status-call time; successful launch does not itself prove a new matching code stamp. This review did not enumerate or stop live processes."
+      }
     },
     {
       "path": "services/capture-win/capture/screen.py",
@@ -3842,9 +4319,9 @@
         "134: check subprocess timeout or explicit process ownership at subprocess.Popen"
       ],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Calibration gate, child-process restart/backoff, logs and terminate/kill ownership. Tested with a fake tracker, not a new camera session."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete gaze/speech supervisors: separate interpreters, no-console children, interruptible backoff and calibration-stamp waits. Shutdown races with process creation and kill-after-timeout lacks a final join/reap in stop; a future shared ownership refactor needs deterministic race tests. No tracker restart or capture interruption performed."
       }
     },
     {
@@ -3866,9 +4343,9 @@
       "bytes": 1697,
       "lines": 47,
       "structural_check": "TOML parsed",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Build/runtime/test configuration, environment boundaries, dependency declarations and generated/ignored output treatment reviewed; relevant gate/build/package results in the report. Dependency internals are not audited."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete Windows OCR/native optional dependency markers, editable ingest boundary and explicit wheel/sdist package inclusion. ignore-vcs avoids the repository runtime capture ignore hiding source. Package-content validation remains relevant; no optional model/native stage automatically executed by this review."
       }
     },
     {
@@ -3921,9 +4398,9 @@
       ],
       "review_signals": [],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Explicit check/calibrate/track/refit entry points, rate validation and estimator cleanup. No camera/check/calibration command run in this follow-up."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete CLI, optional calibration/track/check/tune imports, explicit FPS validation and startup refusal states. Model estimator is closed around tracker.run, but several earlier construction errors fall outside its finally; calibration auto-resume should preserve concurrent user pause intent. Live diagnostics/calibration were not run."
       }
     },
     {
@@ -3966,9 +4443,9 @@
       ],
       "review_signals": [],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
-      "previous_review_needs_refresh": {
-        "scope": "Blink integration review after preserving upstream work, 2026-10-24; see docs/blink-guard-2026-10-24.md",
-        "notes": "New upstream camera wrapper/probe path and mode persistence inspected alongside existing calibration phases/fit scoring. Blink fix does not modify fitting or existing saved calibration. The camera lifecycle test uses fps=30 and replaces both opener and probe, preventing hardware access. Earlier atomic-bundle and archive-reader cleanup limits remain; actual 60 FPS mode support is not claimed."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete session, candidate extraction/fitting, held-out still/moved scores, chosen-model retraining and landmark-only persistence. Full-monitor canvases allocate per target frame; constructor/window errors before try can leak acquired resources. Model/landmark/metadata publication is multi-file and nontransactional. No webcam frames were saved or calibration files opened during this review."
       }
     },
     {
@@ -4005,7 +4482,11 @@
         "state:93 (loops including nested scopes: 3)"
       ],
       "review_signals": [],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete slope/stare probe: max-900 frame segments, 30 retained stares, finite reporting, early/late feature labels and explicit pixel/mm/second units. Bounded arrays are materialized when a stare ends; callbacks run on the tracker thread. It diagnoses correlation, not causal proof of the source of drift."
+      }
     },
     {
       "path": "services/gaze/gaze/face.py",
@@ -4120,9 +4601,9 @@
       ],
       "review_signals": [],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
-      "previous_review_needs_refresh": {
-        "scope": "Blink guard implementation and correctness review, 2026-10-24; see docs/blink-guard-2026-10-24.md",
-        "notes": "Blink-specific update reviewed: per-eye rather than averaged aperture, compare before updating the reference, rapid-closing detection, bounded open-frame history, invalid/closed startup handling and narrow-eye bootstrap. Earlier pose/regression/batch/serialization review remains applicable to unchanged code. Partial-blink and long-closure failures reproduced before; new replay reports intended output changes and classifier overhead. Real blink sensitivity/specificity is not established."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete pose/ray geometry, vectorized per-eye model, immutable-reference weight cache and bounded blink references/running slopes. Prediction preserves monitor/physical units and NaN rays; solvePnP success and near-parallel eye planes need more explicit invalid-pose handling. Fixed-size array allocation remains in measurement/prediction. No new speed or live accuracy claim for this unchanged algorithm."
       }
     },
     {
@@ -4182,7 +4663,11 @@
         "split:582 (loops including nested scopes: 0)"
       ],
       "review_signals": [],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete causal click/line/stare labelling, bounded in-memory training sets, background fitting, robust weighted ridge, held-out acceptance, atomic model publication and prequential telemetry. Eight penalties repeat feature preparation; fitting and tuning lack shutdown cancellation. Labels are appended without runtime file compaction, then whole-read/compacted on restart; persistence errors are best-effort and silent. Concurrent learner counters/settings are not one atomic snapshot. No real learner fit was run."
+      }
     },
     {
       "path": "services/gaze/gaze/overlay.py",
@@ -4223,40 +4708,44 @@
         "close:507 (loops including nested scopes: 1)"
       ],
       "review_signals": [],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete bounded trail/interpolation, display-thread counters, Win32 pointer signatures and GDI ownership. Prebuilt solid/dashed bitmaps and unchanged-state reuse keep image preparation off display frames. Constructor failures after native allocation can leak partial resources; DwmFlush can outlive close's two-second join. Delay estimation uses a fallback until nine samples. No real desktop window or GPU/frame-rate acceptance was run."
+      }
     },
     {
       "path": "services/gaze/gaze/receiver.py",
-      "sha256": "a2a773692f45c7685bfb2ac166fabcd74a84ff024025377394a4880d8cf06ee5",
+      "sha256": "c7b8d750d933084ba12664de799bef82e8b55c70fa31ee4d0702ea05e0944cb1",
       "category": "source",
-      "bytes": 11256,
-      "lines": 246,
+      "bytes": 11760,
+      "lines": 255,
       "functions": [
         "iso:30 (loops including nested scopes: 0)",
-        "_grid:189 (loops including nested scopes: 3)",
-        "corrected:203 (loops including nested scopes: 0)",
-        "_lines:222 (loops including nested scopes: 2)",
-        "_reading:235 (loops including nested scopes: 3)",
+        "_grid:198 (loops including nested scopes: 3)",
+        "corrected:212 (loops including nested scopes: 0)",
+        "_lines:231 (loops including nested scopes: 2)",
+        "_reading:244 (loops including nested scopes: 3)",
         "__init__:35 (loops including nested scopes: 0)",
         "add:54 (loops including nested scopes: 0)",
         "take_lines:63 (loops including nested scopes: 0)",
-        "send:70 (loops including nested scopes: 1)",
-        "send_live:117 (loops including nested scopes: 0)",
-        "flush:129 (loops including nested scopes: 0)",
-        "_send_live_forever:134 (loops including nested scopes: 2)",
-        "paused:169 (loops including nested scopes: 0)",
-        "control:177 (loops including nested scopes: 0)",
-        "at:214 (loops including nested scopes: 0)"
+        "send:70 (loops including nested scopes: 3)",
+        "send_live:126 (loops including nested scopes: 0)",
+        "flush:138 (loops including nested scopes: 0)",
+        "_send_live_forever:143 (loops including nested scopes: 2)",
+        "paused:178 (loops including nested scopes: 0)",
+        "control:186 (loops including nested scopes: 0)",
+        "at:223 (loops including nested scopes: 0)"
       ],
       "review_signals": [
         "85: check text/binary mode and default encoding at self.opener.open",
-        "172: check text/binary mode and default encoding at self.opener.open",
-        "182: check text/binary mode and default encoding at self.opener.open"
+        "181: check text/binary mode and default encoding at self.opener.open",
+        "191: check text/binary mode and default encoding at self.opener.open"
       ],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Bounded fixation deque, token/auth handling, latest-only asynchronous live sender and kept-alive connection. Sender has process lifetime, no explicit close; slow/trickling HTTP bodies lack an overall deadline. No live telemetry speed claim."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete fixation/live transports, bounded queues, newest-only live point, interpolation and label validation. Reproduced seven malformed/mismatched success acknowledgements dropping fixations. Counts must now be nonnegative integers accounting for the batch before dequeuing; refusal retains identity for retry and hides stale display state. Live sender has no close/join, response bytes and correction grid size are not bounded and token file is reread per report; remaining resource limits are explicit."
       }
     },
     {
@@ -4275,7 +4764,11 @@
         "__call__:124 (loops including nested scopes: 6)"
       ],
       "review_signals": [],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete rest/far/near-jump filter: bounded 4/6/8-sample windows, adaptive running noise, explicit blink resume timing and independent vertical gains. Small lists/medians allocate each sample; existing simulation establishes filter tradeoffs, not maximum throughput. No tuning constants or ring behavior changed in this continuation."
+      }
     },
     {
       "path": "services/gaze/gaze/system.py",
@@ -4296,9 +4789,9 @@
       ],
       "review_signals": [],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Windows idle/desktop-lock/monitor/camera-use detection and fallback behavior. Actual lock/call/sign-in and 64-bit desktop-handle API behavior still need device acceptance."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete idle tick wrapping, button polling, input-desktop lock test, closed registry enumeration and EDID/default physical pitch. Native pointer signatures for some desktop APIs and privacy-record races need Windows acceptance; best-effort busy detection deliberately returns false when unavailable. No native camera/session operation was invoked."
       }
     },
     {
@@ -4345,9 +4838,9 @@
       ],
       "review_signals": [],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
-      "previous_review_needs_refresh": {
-        "scope": "Blink integration review after preserving upstream work, 2026-10-24; see docs/blink-guard-2026-10-24.md",
-        "notes": "Blink integration re-reviewed after preserving upstream overlay/camera telemetry and counter fixes. The monotonic blink gate remains before _gaze and thus before both live transmission and native overlay.push. Short/long recovery and buffer-release behavior retained. Desktop fake-backend regression added; complete merged gate passes 100 gaze tests. Native Win32 display and camera-mode performance are not established by this pass."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete camera COM thread/latest-frame ownership, stage timing, hold/pause/offline gates, blink resume, line snapping, reusable predictor row and fixation reporting. Native read/open can outlive bounded thread joins; no source-level fix can establish two-second physical camera release without backend/hardware evidence. Main reports still synchronously await up to two seconds of HTTP; time-bounded diagnostic deques assume progressing clocks. Existing 30 FPS result is not remeasured here."
       }
     },
     {
@@ -4375,7 +4868,11 @@
       "review_signals": [
         "253: check subprocess timeout or explicit process ownership at subprocess.Popen"
       ],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete event-sorted causal replay, memoized coordinate search, chronological holdout, bounded setting ranges, atomic result write and idle-priority detached process. Grid replay repeats feature preparation and has no deadline/cancellation; idle OS priority does not prove zero interference. Uses at most 3000 clicks/lines and 1000 stares from loaders, whose whole-file startup read is a separate limit. No user click replay or tuner process started."
+      }
     },
     {
       "path": "services/gaze/pyproject.toml",
@@ -4422,9 +4919,9 @@
       ],
       "review_signals": [],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
-      "previous_review_needs_refresh": {
-        "scope": "Blink integration review after preserving upstream work, 2026-10-24; see docs/blink-guard-2026-10-24.md",
-        "notes": "Twelve deterministic blink cases after overlay integration: the original eleven plus verification that desktop overlay.push receives no closing/reopening artifacts. Common fixtures remain synthetic; integrated replay preserves healthy eye motion. Device feedback is qualitative, not a labeled sensitivity/specificity dataset."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete synthetic per-eye aperture, closure/reference contamination, reopening timing, filter retention, overlay guard and downward-look tests. Scripted time makes blink/hold behavior deterministic and checks that held blinks do not emit fabricated points. Passing these cases does not measure actual eyelid/iris detection across people."
       }
     },
     {
@@ -4495,7 +4992,11 @@
         "release:74 (loops including nested scopes: 0)"
       ],
       "review_signals": [],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete scripted mode probe/measurement/release and threaded arrival-rate tests. First two use fake time and arrays, no hardware; final test uses sleep-paced fake frames with broad rate tolerance. It does not prove advertised webcam modes or camera exclusivity on Windows."
+      }
     },
     {
       "path": "services/gaze/tests/test_cli.py",
@@ -4509,9 +5010,9 @@
       ],
       "review_signals": [],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Fixture/setup, assertions, loops, mocks and resource cleanup inspected. Tests use synthetic inputs; suite execution and remaining device/port restrictions are recorded in docs/review-2026-10-24.md."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete rate default/override and nonfinite/nonpositive FPS validation tests. Handlers are replaced before parsing, so no camera, calibration or file-backed tracking starts."
       }
     },
     {
@@ -4530,7 +5031,11 @@
         "test_a_very_long_look_is_cut_into_stares:69 (loops including nested scopes: 0)"
       ],
       "review_signals": [],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete scripted slope, short/reading rejection, vector shape, learner label and 900-frame segmentation checks. Units and early/late expected values are asserted against known synthetic truth; no causal physiological or live accuracy claim."
+      }
     },
     {
       "path": "services/gaze/tests/test_face.py",
@@ -4604,9 +5109,9 @@
       ],
       "review_signals": [],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Fixture/setup, assertions, loops, mocks and resource cleanup inspected. Tests use synthetic inputs; suite execution and remaining device/port restrictions are recorded in docs/review-2026-10-24.md."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete canonical-face projection, camera/screen round trips, pose recovery, head compensation, EyeTrax interface save/load, blink and one-eye-missing-ray tests. NumPy/OpenCV and ridge run on synthetic arrays; no FaceLandmarker, webcam or images are loaded. Synthetic exactness does not establish real calibration quality."
       }
     },
     {
@@ -4672,7 +5177,11 @@
         "372: check text/binary mode and default encoding at (tmp_path / LINES_FILE).read_text",
         "431: check text/binary mode and default encoding at (tmp_path / 'stares.jsonl').read_text"
       ],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete seeded synthetic clicks/heads, prequential accuracy, outlier gates, background fitting, head terms, persistence per calibration, line labels and stare safeguards. Tests compare unused truth and explicit first-frame application; selected synthetic distributions cannot guarantee arbitrary adversarial-label safety. Native/model loading remains excluded."
+      }
     },
     {
       "path": "services/gaze/tests/test_overlay.py",
@@ -4711,39 +5220,45 @@
         "state:187 (loops including nested scopes: 0)"
       ],
       "review_signals": [],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete premultiplied pixels, sample interpolation, fake display pacing/hide, startup failure and concurrent state-read tests. Native Win32/GDI failure cleanup remains untested; fake renderer timing is independent of actual monitor refresh. Thread-switch test restores process settings and joins its own feeder/overlay."
+      }
     },
     {
       "path": "services/gaze/tests/test_receiver.py",
-      "sha256": "5955c3f3a41e9c690da6e443eb4d4a249e221fa70cb436f69546f13c500b2e4f",
+      "sha256": "3ae75657e1b84426de37974d4905f5c4201c3cb36a5b5cde9d4870b37deb4d3b",
       "category": "test",
-      "bytes": 6966,
-      "lines": 143,
+      "bytes": 8080,
+      "lines": 170,
       "functions": [
         "server:15 (loops including nested scopes: 0)",
-        "test_fixations_are_sent_once_and_dropped_while_paused:36 (loops including nested scopes: 0)",
-        "test_an_unreachable_receiver_keeps_the_queue:55 (loops including nested scopes: 0)",
-        "test_the_live_point_streams_only_when_the_receiver_asks:62 (loops including nested scopes: 0)",
-        "test_live_points_never_wait_and_the_newest_wins:81 (loops including nested scopes: 2)",
-        "test_the_receiver_says_whether_to_draw_the_ring_and_how_to_correct_it:101 (loops including nested scopes: 0)",
-        "test_line_labels_in_a_reply_are_kept_for_the_learner_and_bad_ones_dropped:115 (loops including nested scopes: 0)",
-        "test_the_line_being_read_comes_with_the_reply_and_a_bad_one_is_dropped:130 (loops including nested scopes: 1)",
+        "test_fixations_are_sent_once_and_dropped_while_paused:37 (loops including nested scopes: 0)",
+        "test_an_unreachable_receiver_keeps_the_queue:56 (loops including nested scopes: 0)",
+        "test_an_invalid_acknowledgement_keeps_fixations_for_retry:75 (loops including nested scopes: 1)",
+        "test_the_live_point_streams_only_when_the_receiver_asks:89 (loops including nested scopes: 0)",
+        "test_live_points_never_wait_and_the_newest_wins:108 (loops including nested scopes: 2)",
+        "test_the_receiver_says_whether_to_draw_the_ring_and_how_to_correct_it:128 (loops including nested scopes: 0)",
+        "test_line_labels_in_a_reply_are_kept_for_the_learner_and_bad_ones_dropped:142 (loops including nested scopes: 0)",
+        "test_the_line_being_read_comes_with_the_reply_and_a_bad_one_is_dropped:157 (loops including nested scopes: 1)",
         "do_POST:20 (loops including nested scopes: 0)",
-        "log_message:27 (loops including nested scopes: 0)"
+        "log_message:28 (loops including nested scopes: 0)"
       ],
       "review_signals": [
-        "38: check text/binary mode and default encoding at (tmp_path / '.token').write_text",
-        "56: check text/binary mode and default encoding at (tmp_path / '.token').write_text",
-        "64: check text/binary mode and default encoding at (tmp_path / '.token').write_text",
-        "87: check text/binary mode and default encoding at (tmp_path / '.token').write_text",
-        "103: check text/binary mode and default encoding at (tmp_path / '.token').write_text",
-        "117: check text/binary mode and default encoding at (tmp_path / '.token').write_text",
-        "132: check text/binary mode and default encoding at (tmp_path / '.token').write_text"
+        "39: check text/binary mode and default encoding at (tmp_path / '.token').write_text",
+        "57: check text/binary mode and default encoding at (tmp_path / '.token').write_text",
+        "77: check text/binary mode and default encoding at (tmp_path / '.token').write_text",
+        "91: check text/binary mode and default encoding at (tmp_path / '.token').write_text",
+        "114: check text/binary mode and default encoding at (tmp_path / '.token').write_text",
+        "130: check text/binary mode and default encoding at (tmp_path / '.token').write_text",
+        "144: check text/binary mode and default encoding at (tmp_path / '.token').write_text",
+        "159: check text/binary mode and default encoding at (tmp_path / '.token').write_text"
       ],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Fixture/setup, assertions, loops, mocks and resource cleanup inspected. Tests use synthetic inputs; suite execution and remaining device/port restrictions are recorded in docs/review-2026-10-24.md."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete stand-in HTTP tests and added seven malformed/count/type acknowledgement retries. Canonical successful stand-in replies include accepted/duplicate/stale counts. Fourteen tests pass, proving retry identity without webcam/model data. Server socket closure and daemon live sender shutdown remain harness/transport lifetime gaps; wall-clock burst assertion is machine dependent."
       }
     },
     {
@@ -4764,7 +5279,11 @@
         "spread:119 (loops including nested scopes: 3)"
       ],
       "review_signals": [],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete seeded resting noise, outlier/far/near saccade, reading, reset/blink and vertical-gain cases. Time is supplied explicitly and comparative assertions check intended filter tradeoffs. Monte Carlo/public-data replay remains separate from this deterministic small suite."
+      }
     },
     {
       "path": "services/gaze/tests/test_track.py",
@@ -4868,9 +5387,9 @@
       ],
       "review_signals": [],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
-      "previous_review_needs_refresh": {
-        "scope": "Camera/gaze algorithm and resource follow-up, 2026-10-24; see docs/gaze-tracking-review-2026-10-24.md",
-        "notes": "Scripted clock/camera/receiver fixtures and new recovery assertions reviewed. Reacquisition, off-screen fixation closure and unchanged short-blink response are covered without real devices; full gaze suite passes. Timing budgets remain in benchmarks, not correctness assertions. Subsequent camera-release buffer hooks and their two regressions reviewed: pixel scratch is released with the camera without closing/reloading the native detector. Final complete gaze suite: 74 passing tests. Performance provenance remains pinned to bf2d483; per-frame math is unchanged."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete scripted clock/system/camera/receiver suite: holds, lock/busy/away, freshness, pacing, buffers, COM/latest frame, blink/reacquisition, line snapping and learner handoff. Fake camera threads own and release their arrays; some real-time sleeps are scheduling-sensitive. Native blocking read/lock-session acceptance remains unproven by these stand-ins."
       }
     },
     {
@@ -4897,7 +5416,11 @@
         "40: check text/binary mode and default encoding at (folder / CLICKS_FILE).read_text",
         "74: check text/binary mode and default encoding at (folder / HISTORY_FILE).read_text"
       ],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete causal replay equivalence, unseen-click mask, settings persistence, daily/new-click admission and too-few-input cases. Uses a deliberately small search grid and synthetic heads, not the real user's labels. Full grid CPU/memory contention and cancellation are separate limits."
+      }
     },
     {
       "path": "services/gaze/uv.lock",
@@ -4985,9 +5508,9 @@
       ],
       "review_signals": [],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
-      "previous_review_needs_refresh": {
-        "scope": "Targeted PR correctness review against 07b07bcd13cc41c53baae7bf38deb9556c24cd33",
-        "notes": "EmbeddingModelChanged handler returns explicit HTTP 503 for JSON and streaming ask requests; other API routes were not re-reviewed in this follow-up."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete module: request bounds/authentication, typed core records, snapshot/ETag replay, indexed search/note enrichment, bounded process-local index jobs with same-day coalescing, locked mutation snapshots, asset containment and bounded capture-control HTTP calls. Auxiliary moment payloads read whole files and lack canonical response validation. Warm-up is one daemon thread without shutdown cancellation; full-history discovery and concurrent client memory remain limits. Capture capability is explicitly false, distinct from actual receiver state."
       }
     },
     {
@@ -5021,9 +5544,9 @@
       ],
       "review_signals": [],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Pattern extraction, date/zone/relative-time filters, kind/site precedence. Calendar overflow now fails as ValueError/HTTP 400. Numeric ranges construct only their selected timedelta unit."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete module: bounded API query patterns, ordered kind/site matching, local calendar/DST date windows, overflow failure and explicit filter labels. No model/network is used. Rebuilding fixed site pattern strings is small relative to retrieval and is not optimized without profiling. Relative hour subtraction uses wall-time datetime arithmetic across DST; needs an elapsed-hours boundary regression before changing semantics."
       }
     },
     {
@@ -5168,9 +5691,9 @@
       ],
       "review_signals": [],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Initialization/fixture seeding, ingest/index/notes validation, source integration dispatch, compaction and explicit opt-in jobs. No commands against user recordings run."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete command dispatcher: synthetic seeding protects existing days, optional runtimes import only in chosen branches, index/note jobs use canonical sources, media/model/GPU operations require explicit commands, standard JSON output. Jobs.close is on the normal path rather than finally in this CLI; exception cleanup is a remaining improvement. No CLI import, compaction, model or GPU job was invoked against the user's vault."
       }
     },
     {
@@ -5250,9 +5773,9 @@
         "86: check text/binary mode and default encoding at path.open"
       ],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
-      "previous_review_needs_refresh": {
-        "scope": "Targeted screen/caching correctness review; d8f8391 baseline with a526d52 preserved",
-        "notes": "Targeted learning log tail invalidation, bounded row/file/line retention, stable reader snapshots and bounded serialized responses. Initial parse work remains proportional to log size; no latency or RSS improvement claimed."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete bounded tail reader and physical anchor snapshots: at most 5000 rows from eight files, 64 KiB line guard, fixed suffix read, stamp-bound 8 MiB serialized cache and defensive finite/nullable fields. Fit-event dictionaries can retain substantial per-row payload; row and serialized limits do not establish process RSS limits."
       }
     },
     {
@@ -5382,9 +5905,9 @@
       ],
       "review_signals": [],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Canonical URLs, entities/courses/deadlines, search/page and visit links, mentions and tie order. Per-tab sorted navigation index replaces nested scan; offset and 300-second boundary regression plus identical graph fingerprints."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete extraction module: dictionary grouping, bisection association, canonical URLs, structured course/deadline regexes and deterministic graph identities. Host-only URL normalization can merge nondefault ports; inferred next-year leap-day parsing needs a boundary case. No model or network request and no measured hot-path change in this continuation."
       }
     },
     {
@@ -5537,7 +6060,11 @@
       "lines": 2,
       "functions": [],
       "review_signals": [],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete package documentation; no executable algorithm or resource acquisition."
+      }
     },
     {
       "path": "services/ingest/ingest/jobs/policy.py",
@@ -5549,7 +6076,11 @@
         "free:11 (loops including nested scopes: 0)"
       ],
       "review_signals": [],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete constant-time idle/night admission predicate, explicit seconds/local-hour units and unknown-idle behavior. Night admission is intentional even with unknown idle; actual worker lease/capacity ownership is in separately reviewed modules."
+      }
     },
     {
       "path": "services/ingest/ingest/jobs/stages.py",
@@ -5772,9 +6303,9 @@
       ],
       "review_signals": [],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Write freshness, path resolution, day graph and linked/backlink notes. Read only selected note paths/identities in 500-item chunks, preserving last-row identity tie behavior; bounded write-stamp memo."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete module: bounded written-stamp cache, serialized note writes, quick all-day discovery, 500-key batched note/identity enrichment, scoped day graph, note-path containment and evidence attachment. Whole-history discovery remains a scale limit. Missing-day discovery is outside the write lock and can repeat work under concurrent first reads; needs interleaving evidence before altering ownership."
       }
     },
     {
@@ -5811,9 +6342,9 @@
       ],
       "review_signals": [],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Markdown merge, identity/path mapping and daily/source/course notes. Page metadata uses three SQL operations per 500 pages instead of three per page. Transaction-scoped full identity map remains."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete module: identity/path ownership and collision rules, generated-region merge with preserved user text, atomic changed-only writes, 500-key SQL batching, source summaries and day/course output ordering, timestamp-zone/attention units. Per-page source history generation still scales with attended pages/history. Existing pages benchmark covers batching; no new speed claim. Non-generated file-name collisions need an explicit preservation case before changing path policy."
       }
     },
     {
@@ -5824,7 +6355,11 @@
       "lines": 0,
       "functions": [],
       "review_signals": [],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Empty package marker; no executable algorithm or resource acquisition."
+      }
     },
     {
       "path": "services/ingest/ingest/phone/geo.py",
@@ -5875,7 +6410,11 @@
       "review_signals": [
         "196: check subprocess timeout or explicit process ownership at subprocess.run"
       ],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete module: input classification, kept sources and day rebuild, minute/hour/epoch conversions, source-owned IDs, transcript and scene retention, same-file replacement, canonical validation and locked final vault writes. Fix selection and altitude windows repeat scans; moments are rewritten before final day publication and are not transactionally rolled back on failure. Concurrent source/day publication, destructive reimport rollback and mixed-zone inputs need dedicated correctness work; no import was run on user media."
+      }
     },
     {
       "path": "services/ingest/ingest/phone/inbox.py",
@@ -5923,7 +6462,11 @@
       "review_signals": [
         "92: check text/binary mode and default encoding at self.zip.open"
       ],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete module: selected CSV members, ZIP/file closure in finally, canonical epoch-nanoseconds conversion, coordinate validation, sorted interpolation and deduplicated fixes. High-rate unrelated sensors are not decoded. Join currently rebuilds a prefix timestamp set for each recording; overlapping recordings can leave appended time series unordered. Whole selected CSVs are materialized; no unbounded-import memory claim."
+      }
     },
     {
       "path": "services/ingest/ingest/phone/sources.py",
@@ -5978,20 +6521,26 @@
     },
     {
       "path": "services/ingest/ingest/phone/visits.py",
-      "sha256": "f52e1e7535e86ff005d5af906885e53ba5cf9c0a982b6a8e5ec8a638a839d158",
+      "sha256": "ac7ed459e48ec4557578bb3ad341b0b6de7184898e19db7672889d8aa5cb1346",
       "category": "source",
-      "bytes": 8913,
-      "lines": 206,
+      "bytes": 9934,
+      "lines": 231,
       "functions": [
-        "segment:58 (loops including nested scopes: 6)",
-        "_labels:85 (loops including nested scopes: 5)",
-        "_trips:111 (loops including nested scopes: 6)",
-        "_split:145 (loops including nested scopes: 8)",
-        "_describe:176 (loops including nested scopes: 7)",
-        "_kinds:192 (loops including nested scopes: 1)"
+        "segment:80 (loops including nested scopes: 7)",
+        "_labels:109 (loops including nested scopes: 5)",
+        "_trips:135 (loops including nested scopes: 6)",
+        "_split:169 (loops including nested scopes: 7)",
+        "_describe:201 (loops including nested scopes: 6)",
+        "_kinds:217 (loops including nested scopes: 1)",
+        "__init__:52 (loops including nested scopes: 2)",
+        "window:56 (loops including nested scopes: 1)"
       ],
       "review_signals": [],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete segmentation and implemented measured per-recording/stay compact-double time indexes with ordered bisection and original-order fallback. Closed/duplicate endpoints, nonfinite/reversed bounds and full span/Fix metadata hashes match. At 24 hours 4115.55 to 287.18 ms median, traced peak 1.91 to 3.28 MB. Per-second activity labels and joined unordered histories remain scale limits."
+      }
     },
     {
       "path": "services/ingest/ingest/phone/voice.py",
@@ -6107,29 +6656,39 @@
       "lines": 3,
       "functions": [],
       "review_signals": [],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete package documentation; implementations and optional GPU/native stages remain in their own modules."
+      }
     },
     {
       "path": "services/ingest/ingest/splat/brush.py",
-      "sha256": "16055b99909fa9515a141b94d9b9ad44d62fe64dda0644f16cca5c1b28c5ea1a",
+      "sha256": "3497ba8362e69cc94fdd336a69d3bc36774293da6a6ab5be55f3ef93142cf765",
       "category": "source",
-      "bytes": 7898,
-      "lines": 198,
+      "bytes": 9029,
+      "lines": 238,
       "functions": [
-        "tools_dir:41 (loops including nested scopes: 0)",
-        "locate:49 (loops including nested scopes: 0)",
-        "allowed:61 (loops including nested scopes: 0)",
-        "install:67 (loops including nested scopes: 1)",
-        "train:133 (loops including nested scopes: 2)",
-        "read:115 (loops including nested scopes: 1)"
+        "tools_dir:52 (loops including nested scopes: 0)",
+        "locate:60 (loops including nested scopes: 0)",
+        "allowed:72 (loops including nested scopes: 0)",
+        "install:78 (loops including nested scopes: 1)",
+        "train:144 (loops including nested scopes: 2)",
+        "read:126 (loops including nested scopes: 1)",
+        "read_line:179 (loops including nested scopes: 0)",
+        "stop_overdue:194 (loops including nested scopes: 0)"
       ],
       "review_signals": [
-        "81: check text/binary mode and default encoding at archive.open",
-        "84: check text/binary mode and default encoding at archive.open",
-        "166: check subprocess timeout or explicit process ownership at subprocess.Popen",
-        "94: check text/binary mode and default encoding at tarfile.open"
+        "92: check text/binary mode and default encoding at archive.open",
+        "95: check text/binary mode and default encoding at archive.open",
+        "105: check text/binary mode and default encoding at tarfile.open",
+        "190: check subprocess timeout or explicit process ownership at subprocess.Popen"
       ],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete pinned native-trainer wrapper. Three stand-in subprocess regressions reproduced silent timeout bypass, callback-error process leakage and unbounded diagnostic lines. Independent watchdog, owned process/pipe/log cleanup and bounded tails now pass. No download, camera, media, GPU or model workload ran. Direct-child termination does not establish arbitrary descendant-tree cleanup."
+      }
     },
     {
       "path": "services/ingest/ingest/splat/dataset.py",
@@ -6168,7 +6727,11 @@
         "231: check subprocess timeout or explicit process ownership at subprocess.run",
         "103: check subprocess timeout or explicit process ownership at subprocess.run"
       ],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete dataset, pose, image/depth and point preparation paths: batched NumPy transforms, streaming FFmpeg images, selected image passes, adaptive voxel merge and synthetic sky. Sharpness and encoder/decoder error paths need independent deadlines and bounded joins; some native work can block despite normal cleanup. Full maps/cloud arrays and sky-by-camera visibility remain memory/scale limits. No native reconstruction was run on user recordings."
+      }
     },
     {
       "path": "services/ingest/ingest/splat/export.py",
@@ -6187,7 +6750,11 @@
       "review_signals": [
         "23: check text/binary mode and default encoding at path.open"
       ],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete PLY/binary export: stable visibility ordering, quaternion normalization and fixed 32-byte record packing, bounded visibility chunks. A chunk can still allocate large point-by-path distance matrices; overall peak memory and real GPU upload remain unmeasured. No actual user splat was read or converted."
+      }
     },
     {
       "path": "services/ingest/ingest/splat/mesh.py",
@@ -6201,7 +6768,11 @@
         "_check:137 (loops including nested scopes: 4)"
       ],
       "review_signals": [],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete TSDF mesh conversion, axis/normal/color handling, point-cloud fallback, GLB output and native resource scopes. Native reconstruction and whole-mesh array memory are optional workload limits; synthetic existing tests cover geometry rather than GPU throughput."
+      }
     },
     {
       "path": "services/ingest/ingest/splat/run.py",
@@ -6224,7 +6795,11 @@
         "42: check text/binary mode and default encoding at (work / '.lock').open",
         "218: check text/binary mode and default encoding at (train_dir / 'transforms.json').read_text"
       ],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete optional scan orchestrator: per-scan OS lock, axis/source metadata, retained previous preview on training failure and cleanup of owned training images. Failure marking covers training but not every later export failure; metadata publication spans several files. GPU execution and transactional recovery remain separate acceptance work."
+      }
     },
     {
       "path": "services/ingest/ingest/store/__init__.py",
@@ -6480,19 +7055,23 @@
     },
     {
       "path": "services/ingest/ingest/voices.py",
-      "sha256": "c13231855bac966eb9b1f59b4e9c6b88a2fe03369c3e3b30a4ee75911e7b517c",
+      "sha256": "622b40dbd67321f8fb61d1e5558e6f08540df6c0d0b170754bd4ff45f71ba3c5",
       "category": "source",
-      "bytes": 10006,
-      "lines": 196,
+      "bytes": 11112,
+      "lines": 224,
       "functions": [
-        "_prints:38 (loops including nested scopes: 3)",
-        "cluster:52 (loops including nested scopes: 3)",
-        "stale:80 (loops including nested scopes: 1)",
-        "update:88 (loops including nested scopes: 26)",
-        "confirmed:112 (loops including nested scopes: 0)"
+        "_prints:39 (loops including nested scopes: 3)",
+        "cluster:53 (loops including nested scopes: 4)",
+        "stale:101 (loops including nested scopes: 1)",
+        "update:109 (loops including nested scopes: 26)",
+        "confirmed:133 (loops including nested scopes: 0)"
       ],
       "review_signals": [],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete gallery and clustering algorithms. Profiled repeated full-matrix maximum scans and implemented a row-winner cache above 1024 embeddings, with affected-row invalidation and first-index ties preserved. Exact oracle and synthetic output hashes match; original scan remains below the measured crossover. Dense quadratic similarity storage and worst-case repeated row invalidation remain limits. Gallery publication is not a multi-file transaction."
+      }
     },
     {
       "path": "services/ingest/pyproject.toml",
@@ -6635,6 +7214,27 @@
       }
     },
     {
+      "path": "services/ingest/tests/test_brush_process.py",
+      "sha256": "f4b9184e414caedb9f32868bc2821e08aacc3f231879f5823f81704333f933ea",
+      "category": "test",
+      "bytes": 2837,
+      "lines": 69,
+      "functions": [
+        "trainer:11 (loops including nested scopes: 0)",
+        "test_a_silent_trainer_obeys_its_deadline:22 (loops including nested scopes: 0)",
+        "test_callback_failure_closes_and_reaps_the_owned_process:28 (loops including nested scopes: 1)",
+        "test_long_output_keeps_a_bounded_diagnostic_tail_and_preserves_progress:59 (loops including nested scopes: 1)",
+        "tracked:33 (loops including nested scopes: 0)",
+        "failing:38 (loops including nested scopes: 0)"
+      ],
+      "review_signals": [],
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Authored and reviewed local Python stand-in tests: silent deadline, callback cleanup/log closure and 2 MiB diagnostic line. All three fail before and pass after; pre-fix failure cleanup reaps stand-ins in finally. No Brush installation, native trainer or model/GPU/media execution."
+      }
+    },
+    {
       "path": "services/ingest/tests/test_cache_regressions.py",
       "sha256": "6c00f391cedb5b1c163d606ae53a95d6d2e2d896348e2dcc47c95f7a6b039e16",
       "category": "test",
@@ -6708,9 +7308,9 @@
         "154: check text/binary mode and default encoding at out.read_text"
       ],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Fixture/setup, assertions, loops, mocks and resource cleanup inspected. Tests use synthetic inputs; suite execution and remaining device/port restrictions are recorded in docs/review-2026-10-24.md."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete synthetic FastAPI intake, pause/retry, dwell hooks, text warmup, line reading, calibration correction, status freshness, ring and doctor regressions. Existing failed-first-write test does not cover partial success across several log files; shutdown Jobs closure and hook failure deadlines remain untested. No actual receiver/phone/webcam is called."
       }
     },
     {
@@ -6759,9 +7359,9 @@
       ],
       "review_signals": [],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Fixture/setup, assertions, loops, mocks and resource cleanup inspected. Tests use synthetic inputs; suite execution and remaining device/port restrictions are recorded in docs/review-2026-10-24.md."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete synthetic visit/media/search/read/dwell/click/selection units, cross-day retrieval and freshness reindex tests. Evidence identity, time offsets and day-specific content are asserted; broader concurrent writers and malformed histories are covered only by separate suites."
       }
     },
     {
@@ -6870,9 +7470,9 @@
         "131: check text/binary mode and default encoding at (folder / 'clicks.jsonl').open"
       ],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
-      "previous_review_needs_refresh": {
-        "scope": "Targeted screen/caching correctness review; d8f8391 baseline with a526d52 preserved",
-        "notes": "Four additional regressions cover same-size rewrites, truncate/regrow, bounded history/file eviction and oversized partial records followed by valid data. Existing report, incremental append and ETag tests pass."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete incremental tail, partial/oversized lines, same-size rewrite, rewrite-and-regrow, LRU capacity and endpoint ETag tests. Synthetic scalar/feature columns and finite degree conversion cover live dashboard serialization without real captured content. Peak process memory and simultaneous tail writers remain separate limits."
       }
     },
     {
@@ -6992,9 +7592,9 @@
         "123: check text/binary mode and default encoding at (vault.root / 'notes' / 'Later.md').write_text"
       ],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Fixture/setup, assertions, loops, mocks and resource cleanup inspected. Tests use synthetic inputs; suite execution and remaining device/port restrictions are recorded in docs/review-2026-10-24.md."
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete notes/day/search/graph/backlink and path-validation tests. Synthetic capture and notes exercise day enrichment, missing-link normalization and changed ETags. Filesystem external mutation race and duplicate concurrent cold indexing need broader coverage."
       }
     },
     {
@@ -7012,7 +7612,11 @@
         "test_a_line_is_placed_on_the_monitor_where_attention_puts_fixations_on_it:68 (loops including nested scopes: 0)"
       ],
       "review_signals": [],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete sequential neighbor confirmation, jump/block/off resets, minimum confidence/fixation and measured geometry round trip. Long-stare current-line retention is not bounded by these tests; monitor/CSS units are checked independently of a real browser or camera."
+      }
     },
     {
       "path": "services/ingest/tests/test_notes.py",
@@ -7074,7 +7678,11 @@
         "137: check text/binary mode and default encoding at moments[0].read_text",
         "150: check text/binary mode and default encoding at (vault.root / 'capture' / 'phone-heartbeats.jsonl').read_text"
       ],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete synthetic pairing/upload/offset/hash/item/heartbeat tests and optional ray-cast scan import. They exercise stored token hashing and corrupted retry but do not yet cover request stream bounds, invalid upload IDs or same-size replacement hashes. FFmpeg cases are explicitly conditional; no real phone data used."
+      }
     },
     {
       "path": "services/ingest/tests/test_phone_app.py",
@@ -7103,7 +7711,11 @@
         "178: check subprocess timeout or explicit process ownership at subprocess.run",
         "183: check text/binary mode and default encoding at (vault.root / '2026-10-24' / 'events.jsonl').read_text"
       ],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete synthetic two-hour joining/reimport, source backfill, upload/conversation lease and tone splitting tests. Optional FFmpeg cases do not run speech models or real phone capture. Tests check retained place IDs, timezone offsets and queued-once jobs; concurrent media/source publication is not covered."
+      }
     },
     {
       "path": "services/ingest/tests/test_phone_import.py",
@@ -7147,6 +7759,43 @@
       "manual_review": {
         "scope": "Targeted phone CI follow-up against 14d398c, 2026-10-25",
         "notes": "Two new synthetic media regressions cover short and ordinary clips, frame timestamps, decoded JPEG dimensions and colors. Existing importer tests are unchanged."
+      }
+    },
+    {
+      "path": "services/ingest/tests/test_phone_segments.py",
+      "sha256": "ed13c36f878ec0c77d1a82416ec3d84ae0603ea4787480c8e9ea5091c9d381d6",
+      "category": "test",
+      "bytes": 2607,
+      "lines": 55,
+      "functions": [
+        "test_sample_windows_match_original_scans_with_duplicates_and_unordered_inputs:12 (loops including nested scopes: 5)",
+        "test_empty_and_nonfinite_samples_and_query_bounds_keep_scan_behavior:28 (loops including nested scopes: 3)",
+        "test_adjacent_spans_both_keep_fixes_exactly_on_the_shared_endpoint:36 (loops including nested scopes: 0)",
+        "test_segmentation_keeps_unordered_source_fixes_and_step_order:44 (loops including nested scopes: 3)"
+      ],
+      "review_signals": [],
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Authored and reviewed scan-oracle window cases for duplicates, unordered data, nonfinite/reversed bounds, shared closed endpoints and final segmented source order/derived metadata. Synthetic fixes preserve all identity/time fields; deterministic assertions separate from performance reports."
+      }
+    },
+    {
+      "path": "services/ingest/tests/test_phone_upload_limits.py",
+      "sha256": "cf41a74e7aae0596946396f130970db5f901689e76c94ef1e0a6f152f9070782",
+      "category": "test",
+      "bytes": 1341,
+      "lines": 35,
+      "functions": [
+        "test_upload_metadata_accepts_only_its_generated_id:13 (loops including nested scopes: 0)",
+        "test_oversized_stream_stops_before_reading_the_rest_of_the_body:19 (loops including nested scopes: 1)",
+        "receive:22 (loops including nested scopes: 0)"
+      ],
+      "review_signals": [],
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Authored and reviewed malformed upload IDs and synthetic ASGI request stream exceeding CHUNK. Five fail-before/pass-after cases prove rejection before reading the remaining body or touching storage. No paired device, real token or media is used."
       }
     },
     {
@@ -7492,7 +8141,11 @@
         "48: check text/binary mode and default encoding at (ROOT / 'update.cmd').read_text",
         "60: check text/binary mode and default encoding at (root / 'calls.log').read_text"
       ],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete Wine command stubs and pull/npm/sync/canary failure matrix. It runs copied scripts in scratch directories with a five-minute subprocess deadline, never real Git updates or capture restart. Skipped without Wine; native Windows cmd acceptance remains a separate environment requirement."
+      }
     },
     {
       "path": "services/ingest/tests/test_vault.py",
@@ -7517,30 +8170,52 @@
       }
     },
     {
-      "path": "services/ingest/tests/test_voices.py",
-      "sha256": "a838398b5fc4183700a8e46e9b333a1a5094cfee7b8532d77d84d6c734cbdc24",
+      "path": "services/ingest/tests/test_voice_clusters.py",
+      "sha256": "61b7180abe2a9720e74b8bda37cd8ec3456289791bb09e751e44230354608674",
       "category": "test",
-      "bytes": 8871,
-      "lines": 155,
+      "bytes": 2595,
+      "lines": 61,
+      "functions": [
+        "reference:8 (loops including nested scopes: 3)",
+        "test_cached_and_scanned_merges_keep_exact_labels:36 (loops including nested scopes: 3)",
+        "test_equal_scores_keep_row_major_ties_and_same_recording_constraints:51 (loops including nested scopes: 6)"
+      ],
+      "review_signals": [],
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Authored and reviewed exact old-algorithm oracle: forced indexed/full-scan modes, float32/64, 360 seeded finite-input cases and duplicate/row-major ties/cannot-link constraints. Exact labels are checked independently of benchmark timings; real voice identification quality remains outside scope."
+      }
+    },
+    {
+      "path": "services/ingest/tests/test_voices.py",
+      "sha256": "8b528a2a60894e2079604f3750003187e541a84a42ded901376ddd9d0a1bbfc8",
+      "category": "test",
+      "bytes": 8926,
+      "lines": 167,
       "functions": [
         "recording:16 (loops including nested scopes: 4)",
-        "names:35 (loops including nested scopes: 0)",
-        "test_you_are_the_voice_in_most_recordings_and_a_name_follows_the_voice:39 (loops including nested scopes: 3)",
-        "test_ids_survive_a_rebuild_and_one_recordings_speakers_stay_apart:76 (loops including nested scopes: 4)",
-        "test_naming_a_speaker_in_the_viewer_names_their_voice_elsewhere:91 (loops including nested scopes: 0)",
-        "test_a_year_of_speakers_is_clustered_in_seconds:116 (loops including nested scopes: 3)",
-        "test_speech_run_outside_a_job_is_matched_at_the_next_look:133 (loops including nested scopes: 0)"
+        "names:41 (loops including nested scopes: 0)",
+        "test_you_are_the_voice_in_most_recordings_and_a_name_follows_the_voice:45 (loops including nested scopes: 3)",
+        "test_ids_survive_a_rebuild_and_one_recordings_speakers_stay_apart:85 (loops including nested scopes: 4)",
+        "test_naming_a_speaker_in_the_viewer_names_their_voice_elsewhere:100 (loops including nested scopes: 0)",
+        "test_a_year_of_speakers_keeps_pure_clusters_under_recording_constraints:130 (loops including nested scopes: 3)",
+        "test_speech_run_outside_a_job_is_matched_at_the_next_look:145 (loops including nested scopes: 0)"
       ],
       "review_signals": [
-        "25: check text/binary mode and default encoding at (folder / 'transcript.json').write_text",
-        "26: check text/binary mode and default encoding at (folder / 'meta.json').write_text",
-        "27: check text/binary mode and default encoding at (folder / 'scene.json').write_text",
-        "28: check text/binary mode and default encoding at (folder / 'speech.json').write_text",
-        "58: check text/binary mode and default encoding at path.write_text",
-        "70: check text/binary mode and default encoding at path.write_text",
+        "27: check text/binary mode and default encoding at (folder / 'transcript.json').write_text",
+        "28: check text/binary mode and default encoding at (folder / 'meta.json').write_text",
+        "31: check text/binary mode and default encoding at (folder / 'scene.json').write_text",
+        "32: check text/binary mode and default encoding at (folder / 'speech.json').write_text",
+        "64: check text/binary mode and default encoding at path.write_text",
+        "79: check text/binary mode and default encoding at path.write_text",
         "22: check text/binary mode and default encoding at day.write_text"
       ],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete synthetic speaker constraints, deterministic gallery IDs, correction persistence and 1500-vector purity test. Removed a machine-time assertion from correctness; named seven-repeat performance workloads now live separately. Real voiceprint quality and gallery RSS remain unmeasured."
+      }
     },
     {
       "path": "services/speech/pyproject.toml",
@@ -7548,7 +8223,11 @@
       "category": "configuration",
       "bytes": 1572,
       "lines": 55,
-      "structural_check": "TOML parsed"
+      "structural_check": "TOML parsed",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete isolated model environment, Qwen pin and platform-specific CPU/CUDA indexes. CPU wheels off Windows and explicit CUDA 12.8 on Windows prevent accidental default GPU stack selection. Model-free gate skips heavyweight installs and cannot establish model speed/memory/accuracy."
+      }
     },
     {
       "path": "services/speech/speech/__init__.py",
@@ -7558,7 +8237,11 @@
       "lines": 10,
       "functions": [],
       "review_signals": [],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete package initialization: only sets a default model cache path; no model import, network, GPU or recording access."
+      }
     },
     {
       "path": "services/speech/speech/__main__.py",
@@ -7572,7 +8255,11 @@
         "main:30 (loops including nested scopes: 0)"
       ],
       "review_signals": [],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete CLI: explicit worker/moment/canary branches, lazy model imports, rotating logs and Windows UTF-8 output. Real canaries and transcription remain opt-in; no model workload ran in this continuation."
+      }
     },
     {
       "path": "services/speech/speech/asr.py",
@@ -7639,7 +8326,11 @@
         "run:98 (loops including nested scopes: 6)"
       ],
       "review_signals": [],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete published-clip builder, one-row edit-distance WER/CER, speaker/time checks and report persistence. Downloads are not pinned or given an explicit timeout here, and an interrupted download may poison the cache; real canary execution remains separate. The fixed small transcripts keep quadratic edit-distance work small; no general transcription latency claim."
+      }
     },
     {
       "path": "services/speech/speech/conversations.py",
@@ -7847,7 +8538,11 @@
       "category": "configuration",
       "bytes": 3245,
       "lines": 87,
-      "structural_check": "UTF-8 text inventory; build/configuration review is separate"
+      "structural_check": "UTF-8 text inventory; build/configuration review is separate",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete fast-forward update, dependency diff, environment sync, optional explicit speech canary, restart and diagnostic flow. Fixed waits and per-command logs are clear but restart failure is not a global abort and update can trigger a model workload. Not executed; Wine-stub tests are skipped on this Windows environment."
+      }
     },
     {
       "path": "uv.lock",
@@ -7875,7 +8570,11 @@
       "category": "configuration",
       "bytes": 810,
       "lines": 15,
-      "structural_check": "UTF-8 text inventory; build/configuration review is separate"
+      "structural_check": "UTF-8 text inventory; build/configuration review is separate",
+      "manual_review": {
+        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
+        "notes": "Read complete user-facing API/viewer launcher and log redirection. Unconditional npm install increases startup cost and failure does not stop launch; source path embedded in a PowerShell single-quoted literal needs care for apostrophes. No live viewer/service restart or installation was performed."
+      }
     }
   ]
 }

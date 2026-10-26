@@ -192,3 +192,11 @@ Local validation with FFmpeg 9.0.2: `npm run check` passed (302 core tests, 139 
 and build). All 31 viewer tests passed after syncing the existing lockfile; the three phone
 browser tests passed again after the JPEG fix. The missing-tool preflight smoke check exits
 before importing data. Upstream Brush progress commit `69fe716` was preserved during integration.
+
+## Continued implementation coverage, 2026-10-26
+
+The [continuation report](codebase-continuation-2026-10-26.md) closes the earlier missing manual
+source/test/configuration notes and records remaining resource, invalidation, recovery and native
+acceptance gaps. It adds measured preparation/indexing/clustering improvements and synthetic
+regressions for scene cleanup, failed acknowledgements, bounded uploads and stale browser lines.
+The earlier reports retain their original measurement and coverage scope.

@@ -128,3 +128,10 @@ includes before/after search measurements, output checks and remaining profiling
 Follow the [engineering guide](engineering.md) for further changes. Earlier viewer fixes and
 idle measurements are in [performance notes](performance.md). These reviews do not establish
 performance parity with DeepInfer; live-mode and capture acceptance work remains open.
+
+The [October 26 continuation](codebase-continuation-2026-10-26.md) uses the same principles in
+scene cleanup, prepared camera-map buffers, indexed time windows and cached clustering winners.
+It completes the previously missing scoped manual notes across DAYCUBE's first-party source,
+tests and supporting configuration. Per-file notes document remaining allocations, failure paths
+and measurement limits; historical fixture-specific claims above are not a statement that every
+current frame callback or module is allocation-free. Dependency internals are outside that audit.
