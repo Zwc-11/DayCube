@@ -176,12 +176,40 @@ ALIKED + LightGlue on the RTX 5070, the same frames, mapper settings and scoring
 - Checks: `photo_1s` passes GPS ≤ 3 m and scale ±5%, and misses ≥ 90% placed by one point
   (89.1%) and path ≤ 0.5 m. `photo_3s` passes GPS and scale only.
 
-**So far:** with learned matching, interval photos from a forest trail reconstruct: one model over
-the whole walk, metric from GPS within 3%. SIFT cannot do this. Still to try, in order:
+**The stream** (642 frames at 1280×960, 5 fps):
 
-- the stream with learned features (this run, next)
-- sequential-only pairs for the stream, without far pairs, against the folding above
-- COLMAP's LoMa, from the COLMAP Windows CUDA release
+| | SIFT (third run) | learned (fourth run) |
+| --- | --- | --- |
+| placed | 245 / 642 (38%), 5 models | 642 / 642 (100%), 1 model |
+| walk covered | 67.5 m, bent | 164.8 m (100%) |
+| path RMS (p90, largest) | 6.79 m (11.0, 13.7) | 1.14 m (1.60, 2.65) |
+| median / p90 turn error | 18° / 130° | 2.0° / 4.0° |
+| GPS residual, offset, scale | 4.81 m, +13 s, +24.5% | 1.65 m, +4 s, +2.6% |
+| PSNR rebuilt / phone poses (24 held out) | 11.1 / 14.9 dB (10) | 13.0 / 15.6 dB |
+| features + matching + mapping | 124 + 732 + 355 s | 26 + 466 + 1,382 s |
+
+- Every frame is placed, in one model over the whole walk. The stream passes three of the four
+  checks: placed, GPS and scale.
+- **The remaining path error is smooth.** Frame by frame, the error rises and falls slowly along
+  the walk: 2.1 m at the start, 0.1 m at frame 175, 1.5 m at 325, 0.4 m at 500, 2.3 m at the
+  end. No consecutive frames jump. That is drift, in the rebuild, in ARKit's own tracking, or in
+  both.
+  - ARKit's path fits the GPS at 2.01 m (`phone_fit`); the rebuilt paths fit it at 1.48–1.66 m.
+  - So the 0.5 m check against ARKit may be stricter than ARKit's own accuracy over 165 m.
+    Telling the two apart needs a better reference than either.
+- **Mapping is slow.** Incremental mapping took 23 minutes on the CPU: bundle adjustment over
+  8.3 million matches. Global mapping (GLOMAP), fewer keypoints for the stream, or keyframes
+  every 0.5 m would cut it.
+- The rebuilt poses cost 2.6 dB of PSNR against the phone's; the photo modes cost 0.2–1.3 dB.
+
+**So far:** with learned matching, every capture mode reconstructs the trail in one piece,
+placed on the map from GPS alone to about 1.5 m, with scale within 3%. SIFT reconstructs none of
+them in one piece. Still to try, in order:
+
+- a live tracker on the stream: DPV-SLAM (27–50 fps on an RTX 3090 in its paper), scored the
+  same way
+- global mapping and fewer stream keypoints, against the 23 minutes
+- GPS as a pose prior in the bundle adjustment, against the drift
 - MapAnything, the plan's feed-forward option
 
 ## What it does not show
