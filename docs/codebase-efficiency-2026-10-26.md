@@ -26,8 +26,8 @@ speech, graph and job modules. It distinguishes syntax/structure checks, hash-ma
 stale reviews and unreviewed implementations. Binary fixtures, assets, generated contracts and
 lockfiles have separate treatment. Unrelated untracked capture-benchmark drafts are preserved and
 excluded. An inventory is not a complete semantic audit of every algorithm or dependency.
-The final inventory covers 472 files: 200 retain hash-matching, scoped manual notes; 63 have
-older notes requiring refresh. There are 118 source/test files without a current manual review.
+The final inventory covers 476 files: 213 retain hash-matching, scoped manual notes; 62 have
+older notes requiring refresh. There are 107 source/test files without a current manual review.
 Those are explicit unfinished semantic coverage, even where the structural checks and suites pass.
 
 | Area | Review and action | Limit |
@@ -36,7 +36,7 @@ Those are explicit unfinished semantic coverage, even where the structural check
 | API, storage, search and notes | Existing snapshot/transaction/cache boundaries retained; stream capture logs and cache their text projection | History discovery and directory freshness scans still grow with the vault |
 | Capture, gaze and Opera | Existing schema boundaries, batching, latest-frame processing and queue caps preserved; scripted regressions included | No live camera, calibration, recording or Opera session was changed |
 | Phone, media and splats | Preserve native subprocess stages, units, source recordings and explicit failures; separate scheduling tests from optional mesh reconstruction | Real reconstruction and sustained GPU utilization are unmeasured here |
-| Jobs and speech | Index per-input history; examine leases, batching and model lifetime boundaries; add model-free speech tests to the common gate | CPU model process copies, GPU residency and actual recognition performance need dedicated measurements |
+| Jobs and speech | Index per-input history and word-to-speaker windows; examine leases, batching and model lifetime boundaries; add model-free speech tests to the common gate | CPU model process copies, GPU residency and actual recognition performance need dedicated measurements |
 | Schemas, tooling and fixtures | Canonical contract generation and transport checks retained; inventory understands binary fixtures and can exclude unrelated drafts | Dependency internals and generated output algorithms are not independently audited |
 
 ## Capture projection
@@ -133,6 +133,35 @@ storage/write-cost tradeoff and does not measure faster model execution.
 Reports: [before](../eval/results/job-lookup-before-2026-10-25.json),
 [after](../eval/results/job-lookup-after-2026-10-25.json).
 
+## Word-to-speaker assignment
+
+The continued speech review found a full window-array scan for each word, including temporary
+overlap/mask arrays. Chronological windows now admit batched bisection of every word's bounds;
+only the overlapping labels vote. Missing overlaps use a binary nearest-midpoint lookup. Votes,
+boundary exclusions, first-window ties and the existing short-run smoothing are unchanged.
+Unordered, nested or degenerate caller-supplied windows retain the general scan. Nonfinite words
+also retain that behavior. The index and bounds belong to one call; there is no resident cache.
+
+Named fixtures use continuous synthetic speech at three words/s, 1.5 s windows every 0.75 s,
+and three repeating speakers. Seven repetitions after one warmup, Python 3.11.9/NumPy 2.4.6 on
+the same workstation; includes index setup and smoothing, excludes fixture creation and hashing.
+
+| Recording span | Words / windows | Before median | After median |
+| --- | ---: | ---: | ---: |
+| 5 minutes | 900 / 399 | 2.39 ms | 0.79 ms |
+| 1 hour | 10,800 / 4,799 | 69.02 ms | 9.48 ms |
+| 3 hours | 32,400 / 14,399 | 502.16 ms | 31.19 ms |
+
+Output hashes match at each scale. Eleven regressions compare against the original algorithm over
+160 randomized cases and explicit touching, equal-vote, duplicate-midpoint, unordered, nested,
+zero-length, nonfinite and empty-input cases. Three-hour traced peak increases from 2.20 MB to
+2.60 MB for the per-call bounds. These are not RSS measurements; short Windows CPU-time samples
+can round to zero. No audio, webcam, model, GPU or user vault is involved. This measures assignment,
+not faster speech recognition or overall model-job throughput.
+
+Reports: [before](../eval/results/speaker-assignment-before-2026-10-26.json),
+[after](../eval/results/speaker-assignment-after-2026-10-26.json).
+
 ## Validation and remaining work
 
 The broad small/large core benchmark preserves every operation's output hash and complete stored
@@ -152,9 +181,9 @@ Final local validation on the integrated branch:
 
 - `npm run check`: Ruff, contract generation, TypeScript and production build pass;
   338 core tests pass (7 optional-tool/platform skips), 140 gaze tests, 4 contract tests,
-  9 transport tests, 10 extension tests, 2 label-buffer tests and 8 model-free speech tests pass.
+  9 transport tests, 10 extension tests, 2 label-buffer tests and 19 model-free speech tests pass.
   Core speech skips 3 model canaries and optional speaker clustering; its separate environment
-  also passes the clustering case (9 pass, 3 canary skips).
+  also passes the clustering case (20 pass, 3 canary skips).
 - All 35 viewer, 2 API and 5 extension reporter browser tests pass with synthetic fixtures.
 - Receiver wheel/source packaging and `python -m capture --help` pass. The receiver's 18 Python
   modules are included, with no runtime data. Live receiver/extension acceptance is not run;
@@ -170,12 +199,18 @@ the existing optional-media tests. Pairing, upload integrity/resume and heartbea
 without those tools. The scan test passes locally with the tools and skips explicitly without them;
 Linux CI installs the tools and retains the integration coverage.
 
+The Linux system-package step remained in progress for over 15 minutes on both initial runs,
+before any tests. Its connection timeouts/retries and total step duration are now bounded
+(30 s connections, 2 retries, 10-minute step). This makes a stalled dependency service an explicit
+CI failure; it does not skip required libraries or turn an incomplete test run into a pass.
+
 Repeat separately from correctness gates:
 
 ```powershell
 uv run python eval/benchmark_capture_projection.py --output test-results/capture-current.json --compare eval/results/capture-projection-before-2026-10-25.json
 node eval/benchmark_graph_draw.mjs --output test-results/graph-current.json --compare eval/results/graph-draw-before-2026-10-25.json
 uv run python eval/benchmark_job_lookup.py --output test-results/jobs-current.json --compare eval/results/job-lookup-before-2026-10-25.json
+uv run python eval/benchmark_speaker_assignment.py --output test-results/speakers-current.json --compare eval/results/speaker-assignment-before-2026-10-26.json
 uv run python scripts/review-inventory.py --tracked-only
 npm run check
 npm run test:e2e:viewer

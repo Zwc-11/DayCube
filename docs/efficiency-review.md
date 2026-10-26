@@ -1,7 +1,7 @@
 # Codebase efficiency review
 
 The [2026-10-26 pass](codebase-efficiency-2026-10-26.md) adds measured capture-text projection,
-graph-label reuse and indexed job-history lookup, plus integrated checks and a refreshed file ledger.
+graph-label reuse, indexed job history and word-to-speaker lookup, plus integrated checks and a refreshed file ledger.
 Its coverage and remaining limits are recorded separately from the historical reviews below.
 
 The [2026-10-24 follow-up](review-2026-10-24.md) adds a hash-bound file ledger, notes/graph/cache
