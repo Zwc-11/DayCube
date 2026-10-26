@@ -1,0 +1,73 @@
+{
+  "revision": "2450e86b0bf984dabb54f0dda0814d1bb3853874",
+  "source_hashes": {
+    "apps/viewer/src/components/modals/MeshView.tsx": "2d5e2540df087f09d573d780c4b330c489a918e673c64a3a01f31e93f959fb52",
+    "apps/viewer/src/components/modals/SplatView.tsx": "502aa77f93376a33b62b4b70a2a9cc7e1baaea1430ac624953cbec81b9beb875",
+    "apps/viewer/e2e/fixtures/scene-lifecycle.html": "d516730e3ecd2d96235f8233a41ef459f314788f4c8770414b63c05b107fc895",
+    "apps/viewer/e2e/fixtures/scene-lifecycle.tsx": "c0237d0fdb36c9d531c9067a4225bddcce7553d48cc76b4077ad47f110a5cc3c",
+    "eval/profile_scene_lifecycle.mjs": "a144cec8988cdea32420916386597a58d99ac9d9f9ed0884145c0b8bea70497e",
+    "package-lock.json": "2573b1bb5021ef8ebde0c166893696675b9074b318825b3526eda6cff1ab530e"
+  },
+  "environment": {
+    "platform": "win32",
+    "node": "v24.11.1",
+    "browser": "156.0.8078.4",
+    "cpu": "AMD Ryzen 7 9800X3D 8-Core Processor           "
+  },
+  "workload": {
+    "kind": "synthetic failed/late loaders",
+    "viewport": [
+      800,
+      600
+    ],
+    "observation_ms": 300
+  },
+  "results": {
+    "mesh_failure": {
+      "observed": {
+        "created": 1,
+        "disposed": 0,
+        "renders": 0,
+        "geometriesDisposed": 0
+      },
+      "draws_after_settling": 0,
+      "closed": {
+        "created": 1,
+        "disposed": 0,
+        "renders": 0,
+        "geometriesDisposed": 0
+      }
+    },
+    "mesh_closed_while_loading": {
+      "observed": {
+        "created": 1,
+        "disposed": 0,
+        "renders": 0,
+        "geometriesDisposed": 0
+      },
+      "draws_after_settling": 0,
+      "closed": {
+        "created": 1,
+        "disposed": 0,
+        "renders": 0,
+        "geometriesDisposed": 0
+      }
+    },
+    "splat_failure": {
+      "observed": {
+        "created": 1,
+        "disposed": 0,
+        "renders": 31,
+        "geometriesDisposed": 0
+      },
+      "draws_after_settling": 18,
+      "closed": {
+        "created": 1,
+        "disposed": 1,
+        "renders": 32,
+        "geometriesDisposed": 1
+      }
+    }
+  },
+  "limits": "One headless Chromium run. Instrumented actual renderer methods; counts are resource/drawing evidence, not FPS, heap/RSS or real-GPU performance. No API, recordings or frames are read or saved."
+}
