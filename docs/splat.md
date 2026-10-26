@@ -192,21 +192,27 @@ diorama drawn for every place of its kind (`components/diorama/ScanStage.tsx`):
   Spark's sort and detail last changed, and every frame while the scene loads.
 - **Fewer splats on a slower GPU** (`lib/splatBudget.ts`). On 2026-10-26 Edge on the PC drew the
   3 M-splat trail with the Ryzen's integrated Radeon, not the NVIDIA GPU: on a laptop with two GPUs,
-  Windows gives a browser the integrated one unless its graphics setting says High performance. At
-  2 M splats the page then stalled for 1.5–3.4 s at a time, 87 s once. Now:
+  Windows gives a browser the integrated one unless its graphics setting says High performance.
   - **The start.** The view reads the GPU's name from WebGL. A discrete GPU starts at 2 M splats
-    and 1.25 device pixels per CSS pixel; an unknown one at 1 M; an integrated one at 500,000 and
-    1; software rendering at 300,000 and 1.
+    and 1.25 device pixels per CSS pixel; an unknown one at 1 M and 1.25; an integrated one at
+    500,000 and 1; software rendering at 300,000 and 1. The pixels stay as they start: changing
+    them reallocates every render target, which took 7.8 s of the main thread when an earlier
+    version changed them as it went.
   - **The frame time.** Each drawn frame's GPU time comes from a timer query
     (`EXT_disjoint_timer_query_webgl2`) where the browser has one, else from the interval between
-    frames drawn back to back. Every half second the median moves the budget: over 8.75 ms
-    (timed) or 40 ms (intervals), splats are cut toward the share that fits, at most by half and
-    to no fewer than 200,000; then pixels, to no fewer than 0.6. Under 4.2 ms (timed) or 20 ms
-    (intervals) pixels and then splats go back up, by timer to 2 M, by interval only as far as the
-    start.
-  - **Stalls.** A GPU far behind blocks the page in WebGL calls for seconds at a time, so that
-    hardly two frames are drawn back to back. A long task over 100 ms within a second of a drawn
-    frame cuts the budget at once.
+    frames drawn back to back. Every half second the median proposes a budget:
+    - **Cut** over 8.75 ms (timed) or 40 ms (intervals): toward the share that fits, at most by
+      half, to no fewer than 200,000 splats.
+    - **Raise** under 4.2 ms (timed) or 20 ms (intervals): by a fifth, by timer up to 2 M, by
+      interval only as far as the start.
+    - **Taken** only when the next half second proposes the same direction. Each change has Spark
+      choose its splats again and upload their indices: 8 MB at 2 M splats.
+    - **No drawing.** A change does not draw a frame itself, so the view still rests when still.
+    - **Only splats move**, and only for a scene drawn through a splat tree.
+  - **Stalls, without a timer.** A GPU far behind blocks the page in WebGL calls for seconds at a
+    time, so that hardly two frames are drawn back to back. A long task over 100 ms within a second
+    of a drawn frame cuts the budget at once. With a timer the timer decides: a long task can also
+    be Spark uploading, which the GPU's frame time does not show.
   - **The corner** says what draws, unless it is a discrete GPU at the full budget: for example
     "Integrated GPU · 0.50 M splats a frame". Its tooltip names the GPU and says where Windows sets
     a browser to High performance.
@@ -224,10 +230,15 @@ speed. `check-3d.cmd` on the PC runs `scripts/profile-splat.mjs` twice:
   (`--gpu default --label splat-igpu`)
 
 Each run starts its own viewer on port 3100 (and its own API on 7711 when none answers on 7701)
-and opens the day's scan in headed Edge with unthrottled frames. It measures:
+and opens the day's scan in headed Edge. Frames come at the display's refresh, as in a browser
+opened by hand, and the refresh is measured first (rAF for a second before the scan opens). It
+measures:
 
-- **Following.** 10 s of the day playing over the scan at 4×: each drawn frame's GPU time (or
-  interval), frames drawn per second, the rAF intervals, and the camera's step each frame.
+- **Following.** 10 s of the day playing over the scan at 4×:
+  - each drawn frame's GPU time (or interval)
+  - frames drawn per second
+  - the rAF intervals, and the share later than 1.5 refreshes
+  - the camera's step each frame
 - **Orbiting.** 5 s of dragging. Each move waits for the page, so a stalled one gets fewer.
 - **At rest.** Frames drawn in a second of stillness.
 - **The budget.** Where it stood when the scene was ready, and where each phase left it.
@@ -241,15 +252,42 @@ It writes `vault/logs/splat-perf-<label>.json` and `vault/logs/splat-cpu-<label>
 - the browser drew with the NVIDIA GPU (with `--gpu high`)
 - following, each drawn frame's GPU time has p95 ≤ 8.3 ms (where the browser has no GPU timer,
   the interval between frames drawn back to back)
+- following, the rAF intervals have p95 ≤ 1.5 refreshes and p99 ≤ 3 refreshes
 - there is no long task over 50 ms
 - no frames are drawn at rest
 
-The first run (2026-10-26, 6ecac86, before the budget) is the reason for the budget. Edge drew with
-`AMD Radeon(TM) Graphics (0x13C0)`, and while following and orbiting the page stalled for
-1.5–3.4 s and 87 s; it rested when still. In software rendering here, a frame of the 600,000-splat
-test scene still takes about 8 s at the budget's floor. The rAF intervals of unthrottled frames do
-not measure drawing: the GPU's work queues up and surfaces later as stalls, so the GPU timer is
-what counts.
+`--unthrottled` (`--disable-frame-rate-limit --disable-gpu-vsync`) lets rAF run ahead of the GPU
+instead. The first two measurements used it, and it measured the queue, not drawing.
+
+**Measurements on 2026-10-26, all unthrottled:**
+
+- **Run 1** (6ecac86, before the budget):
+  - Edge drew with `AMD Radeon(TM) Graphics (0x13C0)`.
+  - Following and orbiting, the page stalled for 1.5–3.4 s, and once for 87 s.
+  - It rested when still.
+- **Run 2, RTX 5070** (17580e9, `--force_high_performance_gpu`):
+  - 2 M splats took 1.9 ms of GPU time a frame.
+  - The page still stalled for 1.7 s and 11.7 s.
+  - Main-thread self time:
+    - 13.4 s in `texSubImage2D`, from Spark's `updateLodInstances → updateLodIndices`: the splat
+      indices uploaded whole each time the splat tree's choice changes.
+    - 7.8 s in `setSize`, from that version's budget changing the pixel ratio.
+  - Its budget fell to 200,000 and never rested (3,625 frames a second). Each cut or raise caused
+    more uploads and more frames.
+- **Run 2, integrated Radeon:** 47.9 s to load, then a 99.6 s wait inside one WebGL call
+  (`uniformMatrix3fv`). Orbiting had queued 5,572 frames a second, so the GPU process fell that far
+  behind.
+
+**What changed after run 2:**
+
+- the pixels stay as they start
+- a budget change does not draw
+- with a timer, long tasks no longer cut
+- a change waits for two measurements that agree
+- frames come at the refresh
+
+In software rendering here, a frame of the 600,000-splat test scene takes about 8 s even at the
+floor.
 
 ## Tests
 
@@ -273,9 +311,14 @@ what counts.
 - `apps/viewer/e2e/splat-budget.spec.ts` checks `lib/splatBudget.ts`:
   - the GPU's kind from ten renderer strings: Radeon integrated and RX, GeForce, Arc, UHD,
     SwiftShader, Apple
-  - the budget's walk down on the integrated Radeon: splats to 200,000, then pixels to 0.6, then
-    no further
+  - the budget's walk down on the integrated Radeon: splats to 200,000 at most halving a step,
+    then no further; pixels never change
   - a discrete GPU cut to 1.15 M at 12 ms, held at 6, raised at 3
-  - frame intervals at 8 fps on a scene drawn whole: only pixels go; a 60 Hz refresh changes
-    nothing
+  - frame intervals:
+    - at 8 fps on a scene drawn whole: nothing changes
+    - a 60 Hz refresh: nothing changes
+    - on a splat tree: cut when slow, raised only as far as the start
   - a scene smaller than the budget cut from what is drawn
+- `apps/viewer/e2e/scene-lifecycle.spec.ts` (the PC session's): a failed or closed load releases
+  its renderer once and draws nothing more, with the GPU timer and long-task observer in the same
+  `SceneResources`
