@@ -123,7 +123,10 @@ export const FileTree: React.FC<FileTreeProps> = ({ model, current, onOpen }) =>
   }, []);
 
   // Bring the open note's row into view when it is opened from elsewhere.
-  const currentRow = rows.findIndex((r) => r.type === 'file' && r.path === current);
+  const currentRow = useMemo(
+    () => rows.findIndex((r) => r.type === 'file' && r.path === current),
+    [rows, current],
+  );
   useEffect(() => {
     const el = scroller.current;
     if (!el || currentRow < 0) return;

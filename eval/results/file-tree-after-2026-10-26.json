@@ -1,0 +1,47 @@
+{
+  "workload": "file-tree-scroll-synthetic-v1",
+  "measurement": "React development Profiler actualDuration; 10 warmup and 60 alternating scroll updates; synthetic root notes; initial tree creation excluded",
+  "runtime": "v24.11.1",
+  "os": "Windows_NT 10.0.26200 x64",
+  "cpu": "AMD Ryzen 7 9800X3D 8-Core Processor           ",
+  "browser": "156.0.8078.4",
+  "hashes": {
+    "component": "8fc8385731579a80c58329b09a3e5897df7b2c372ec945243c71a02457ab5b9b",
+    "fixture": "702c5711747970f9fd14b32ef4ee7c7533f14cbe44dd0ac56e974573c3b3e6a6",
+    "benchmark": "409042b67bc53862adb37cb16174324fb0a57761f69396a1f37c0dd9d15072ad"
+  },
+  "results": [
+    {
+      "size": 25000,
+      "selection": "none",
+      "samples": 60,
+      "p50_ms": 0.6000000238418579,
+      "p95_ms": 0.8999999761581421,
+      "output_sha256": "868f383765880bb197aaf47da79eb6a5c0d3c12d51b6d8ff80bf6221e5f2918b"
+    },
+    {
+      "size": 25000,
+      "selection": "last",
+      "samples": 60,
+      "p50_ms": 0.6000000238418579,
+      "p95_ms": 0.9000000953674316,
+      "output_sha256": "868f383765880bb197aaf47da79eb6a5c0d3c12d51b6d8ff80bf6221e5f2918b"
+    },
+    {
+      "size": 100000,
+      "selection": "none",
+      "samples": 60,
+      "p50_ms": 0.6000000238418579,
+      "p95_ms": 0.8999999761581421,
+      "output_sha256": "868f383765880bb197aaf47da79eb6a5c0d3c12d51b6d8ff80bf6221e5f2918b"
+    },
+    {
+      "size": 100000,
+      "selection": "last",
+      "samples": 60,
+      "p50_ms": 0.6000000238418579,
+      "p95_ms": 0.9000000953674316,
+      "output_sha256": "868f383765880bb197aaf47da79eb6a5c0d3c12d51b6d8ff80bf6221e5f2918b"
+    }
+  ]
+}

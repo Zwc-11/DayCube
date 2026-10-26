@@ -1,15 +1,15 @@
 {
-  "baseline_revision": "e506abf35fdab9171646da9a449579fca0bf6b9b",
+  "baseline_revision": "be42f3525b684c54bc276a1f62459f231d07393d",
   "scope": "Every tracked file, except this generated ledger itself. No vendored source is tracked; dependencies live in ignored environments and lockfiles.",
   "limits": "Structural checks cover every listed file; manual_review only identifies implementations actually examined. Neither is a proof of maximum efficiency, a dependency audit or DeepInfer throughput parity. Missing manual_review is explicitly unreviewed at the semantic level.",
   "counts": {
-    "configuration": 43,
-    "documentation": 33,
-    "test": 83,
-    "source": 227,
+    "configuration": 44,
+    "documentation": 35,
+    "test": 86,
+    "source": 231,
     "asset": 17,
     "fixture": 19,
-    "measurement_or_fixture": 72,
+    "measurement_or_fixture": 78,
     "lockfile": 5,
     "generated": 11
   },
@@ -24,19 +24,19 @@
     "measurement_or_fixture": "Retained measurement or fixture with its original provenance; inventory/parsing does not mean the workload was rerun.",
     "documentation": "Supporting or historical documentation: inventory and current report updates; historical results retain their original scope."
   },
-  "manual_reviews": 353,
+  "manual_reviews": 361,
   "coverage": {
     "source": {
-      "files": 227,
-      "current_manual_reviews": 227
+      "files": 231,
+      "current_manual_reviews": 231
     },
     "test": {
-      "files": 83,
-      "current_manual_reviews": 83
+      "files": 86,
+      "current_manual_reviews": 86
     },
     "configuration": {
-      "files": 43,
-      "current_manual_reviews": 43
+      "files": 44,
+      "current_manual_reviews": 44
     }
   },
   "files": [
@@ -157,6 +157,18 @@
       }
     },
     {
+      "path": "apps/viewer/e2e/file-tree-selection.spec.ts",
+      "sha256": "84a3eac819049b886c28ae125baad48c4890f24405b35ed1678c439e33a261e4",
+      "category": "test",
+      "bytes": 1847,
+      "lines": 33,
+      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
+      "manual_review": {
+        "scope": "scoped algorithm, resource, contract and failure-path review",
+        "notes": "Synthetic browser coverage for selection, rebuilt indices, click and keyboard navigation; no live vault."
+      }
+    },
+    {
       "path": "apps/viewer/e2e/fixtures/camera-map.html",
       "sha256": "d7f84864bf470682cd2116b7f3d6c2917393006638b959a60ddabe2e460e3459",
       "category": "configuration",
@@ -178,6 +190,30 @@
       "manual_review": {
         "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
         "notes": "Authored and reviewed complete actual-component React Profiler workload: seeded geolocation poses, deterministic cursor updates and figure/heap instrumentation. Startup preparation and browser paint are explicitly excluded from React commit measurements."
+      }
+    },
+    {
+      "path": "apps/viewer/e2e/fixtures/file-tree-profile.html",
+      "sha256": "7976ebbfd4fb0cb5a0e3033e99ecec09c153f56e3a529ece5b34e32498efbaef",
+      "category": "configuration",
+      "bytes": 201,
+      "lines": 2,
+      "structural_check": "UTF-8 text inventory; build/configuration review is separate",
+      "manual_review": {
+        "scope": "scoped algorithm, resource, contract and failure-path review",
+        "notes": "Isolated Vite entry for a synthetic tree fixture; no production entrypoint changes."
+      }
+    },
+    {
+      "path": "apps/viewer/e2e/fixtures/file-tree-profile.tsx",
+      "sha256": "702c5711747970f9fd14b32ef4ee7c7533f14cbe44dd0ac56e974573c3b3e6a6",
+      "category": "test",
+      "bytes": 1352,
+      "lines": 23,
+      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
+      "manual_review": {
+        "scope": "scoped algorithm, resource, contract and failure-path review",
+        "notes": "Synthetic generated notes and controlled scroll/selection for browser measurements; not production memory evidence."
       }
     },
     {
@@ -467,14 +503,14 @@
     },
     {
       "path": "apps/viewer/src/components/knowledge/FileTree.tsx",
-      "sha256": "33e16699688d8a4e0a9413570e6763a78401d97b571c5f568b9cd05a0838f2ae",
+      "sha256": "8fc8385731579a80c58329b09a3e5897df7b2c372ec945243c71a02457ab5b9b",
       "category": "source",
-      "bytes": 7988,
-      "lines": 213,
+      "bytes": 8033,
+      "lines": 216,
       "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
       "manual_review": {
-        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
-        "notes": "Read complete module: memoized folder construction, recursive name/day sorting, flattened open rows, viewport virtualization, local-storage convenience and observer/listener cleanup. Candidate: current-row findIndex repeats over every visible row on scroll renders, even with no selected note; profile before changing it. Very deep path recursion remains input-dependent."
+        "scope": "scoped algorithm, resource, contract and failure-path review",
+        "notes": "Memoized selection lookup follows rows and current path; browser interaction and synthetic profiler results recorded."
       }
     },
     {
@@ -1174,6 +1210,14 @@
       "structural_check": "UTF-8 text inventory; build/configuration review is separate"
     },
     {
+      "path": "docs/efficiency-followup-2026-10-26.md",
+      "sha256": "492e60808e3533879b541ec67e23f837c1f2dc86945f1828aa67a35fa214ea51",
+      "category": "documentation",
+      "bytes": 5422,
+      "lines": 83,
+      "structural_check": "UTF-8 text inventory; build/configuration review is separate"
+    },
+    {
       "path": "docs/efficiency-review.md",
       "sha256": "5bb1721d9604fc5e6ae08e5a80b5c05b4e7b4a19c59ac5e51c06e745a3275f53",
       "category": "documentation",
@@ -1196,6 +1240,14 @@
         "scope": "2026-10-26 algorithm/resource pass; exact scope in notes",
         "notes": "Deterministic graph/speech test boundaries and tracked review scope documented."
       }
+    },
+    {
+      "path": "docs/file-tree-scroll-profile-2026-10-26.md",
+      "sha256": "598b2258796bdc7818f0f98ec1a0907e61911cf425bb7abefdaf1d6816c19902",
+      "category": "documentation",
+      "bytes": 1699,
+      "lines": 26,
+      "structural_check": "UTF-8 text inventory; build/configuration review is separate"
     },
     {
       "path": "docs/floors.md",
@@ -1380,6 +1432,25 @@
       "manual_review": {
         "scope": "Focused final algorithm/resource/correctness review, 2026-10-24; see docs/algorithm-review-2026-10-24.md",
         "notes": "Reviewed seeded in-memory history fixture with actual scratch-vault atomic writes, cold/warm reader setup, output hashing, eleven timing samples and separate CPU/profile/tracemalloc calls through benchmark_notes.measure. Same environment/workload and full output hashes are checked for comparisons. Source hashes bind both reports. Browser SQLite copying, camera accuracy/FPS, RSS and GPU are explicitly outside scope."
+      }
+    },
+    {
+      "path": "eval/benchmark_capture_history.py",
+      "sha256": "c463105125e91a443d64c8a8faddfc5bc7b1a8d4c88b9a11d1a63ed91d49ab41",
+      "category": "source",
+      "bytes": 3252,
+      "lines": 90,
+      "functions": [
+        "main:28 (loops including nested scopes: 4)",
+        "cold_index:56 (loops including nested scopes: 1)"
+      ],
+      "review_signals": [
+        "80: check subprocess timeout or explicit process ownership at subprocess.check_output"
+      ],
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "scoped algorithm, resource, contract and failure-path review",
+        "notes": "Synthetic temporary 100-day index, complete indexed-row fingerprint, timed rebuild, profiling and source hashes; not real storage latency."
       }
     },
     {
@@ -1569,6 +1640,24 @@
       "manual_review": {
         "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
         "notes": "Fixed page/note counts and seed, warmup/repeats, SQL trace count, separate cProfile/tracemalloc and output equivalence."
+      }
+    },
+    {
+      "path": "eval/benchmark_phone_integrity.py",
+      "sha256": "1873cc73f701e0b7aa7566d4550165731ef81346771e279e2a5527ec69dfd533",
+      "category": "source",
+      "bytes": 2398,
+      "lines": 63,
+      "functions": [
+        "sample:44 (loops including nested scopes: 0)"
+      ],
+      "review_signals": [
+        "38: check text/binary mode and default encoding at target.open"
+      ],
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "scoped algorithm, resource, contract and failure-path review",
+        "notes": "Bounded synthetic staged files, warm measurements and override for baseline source; does not read user vault."
       }
     },
     {
@@ -2173,6 +2262,22 @@
       "structural_check": "JSON parsed"
     },
     {
+      "path": "eval/results/capture-history-after-2026-10-26.json",
+      "sha256": "4ef984724f40b38fea395896e3d806cf7c62e1504599ba785af901a5eec9a6ee",
+      "category": "measurement_or_fixture",
+      "bytes": 2260,
+      "lines": 28,
+      "structural_check": "JSON parsed"
+    },
+    {
+      "path": "eval/results/capture-history-before-2026-10-26.json",
+      "sha256": "7d37d485da8e85da22ede83542828453f2288e23d4d988cdfb6ba35645f19386",
+      "category": "measurement_or_fixture",
+      "bytes": 2233,
+      "lines": 28,
+      "structural_check": "JSON parsed"
+    },
+    {
       "path": "eval/results/capture-index-before.json",
       "sha256": "56b32224a33628da986df1ea9e661d06ccbf0977d6ecf13eda4ffe0cb3a593fb",
       "category": "measurement_or_fixture",
@@ -2274,6 +2379,22 @@
       "category": "measurement_or_fixture",
       "bytes": 8273,
       "lines": 238,
+      "structural_check": "JSON parsed"
+    },
+    {
+      "path": "eval/results/file-tree-after-2026-10-26.json",
+      "sha256": "29015eada4fd33a09b335fc26f78b09588e0c2aa75a2bb86f4bded0d5d60ca09",
+      "category": "measurement_or_fixture",
+      "bytes": 1630,
+      "lines": 47,
+      "structural_check": "JSON parsed"
+    },
+    {
+      "path": "eval/results/file-tree-before-2026-10-26.json",
+      "sha256": "36ae3f13956d8ed60789a8c921b05c434c097422226648ad59b80c80054a7fec",
+      "category": "measurement_or_fixture",
+      "bytes": 1610,
+      "lines": 47,
       "structural_check": "JSON parsed"
     },
     {
@@ -2449,6 +2570,22 @@
       "category": "measurement_or_fixture",
       "bytes": 4363,
       "lines": 71,
+      "structural_check": "JSON parsed"
+    },
+    {
+      "path": "eval/results/phone-integrity-after-2026-10-26.json",
+      "sha256": "415f169f1563b4b5a77f790a3f704a50153c130bf166028d6591f90da3b603cc",
+      "category": "measurement_or_fixture",
+      "bytes": 925,
+      "lines": 51,
+      "structural_check": "JSON parsed"
+    },
+    {
+      "path": "eval/results/phone-integrity-before-2026-10-26.json",
+      "sha256": "f90abd971d1e768dd007de1b764261125d751b0bd1bc5ea4da5aed32fab400d1",
+      "category": "measurement_or_fixture",
+      "bytes": 888,
+      "lines": 51,
       "structural_check": "JSON parsed"
     },
     {
@@ -3493,6 +3630,18 @@
       }
     },
     {
+      "path": "playwright.file-tree.config.ts",
+      "sha256": "630a65dbd02f61fea9c0c3828ed8c0c1cc0d7453e1339fd36699ff5859561c4b",
+      "category": "source",
+      "bytes": 584,
+      "lines": 16,
+      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
+      "manual_review": {
+        "scope": "scoped algorithm, resource, contract and failure-path review",
+        "notes": "Isolated synthetic browser fixture on a dedicated local port, no live receiver or vault."
+      }
+    },
+    {
       "path": "playwright.viewer.config.ts",
       "sha256": "fd0faff2e200e5777b97c9095dd932840100b489d6ffc4be66f21d05630edbb4",
       "category": "source",
@@ -3514,6 +3663,18 @@
       "manual_review": {
         "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
         "notes": "Read complete root workspace, optional AI/media/native dependencies, deterministic suite boundary and Ruff families. Gaze/capture/speech use separate environments to avoid incompatible native/model stacks. Core check intentionally does not install or run cloud/GPU workloads."
+      }
+    },
+    {
+      "path": "scripts/benchmark-file-tree.mjs",
+      "sha256": "409042b67bc53862adb37cb16174324fb0a57761f69396a1f37c0dd9d15072ad",
+      "category": "source",
+      "bytes": 3568,
+      "lines": 58,
+      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
+      "manual_review": {
+        "scope": "scoped algorithm, resource, contract and failure-path review",
+        "notes": "Synthetic React Profiler harness with retained timing and rendered-row hashes; development durations are not frame time."
       }
     },
     {
@@ -4109,43 +4270,47 @@
     },
     {
       "path": "services/capture-win/capture/phone_api.py",
-      "sha256": "e815eeaa06f2e23939a02777b6e77b36fe2af60ade8ee13b61b75e5e34ff88e9",
+      "sha256": "8085da5c6960a9d2849979bad4bd4887d98a9c7b26352311c4924b62a6606dbb",
       "category": "source",
-      "bytes": 13323,
-      "lines": 288,
+      "bytes": 17353,
+      "lines": 366,
       "functions": [
         "_safe_parts:70 (loops including nested scopes: 1)",
-        "router:240 (loops including nested scopes: 1)",
-        "__init__:80 (loops including nested scopes: 0)",
-        "devices:90 (loops including nested scopes: 0)",
-        "_save:96 (loops including nested scopes: 0)",
-        "pair:102 (loops including nested scopes: 0)",
-        "device_of:112 (loops including nested scopes: 1)",
-        "_meta:120 (loops including nested scopes: 0)",
-        "start:128 (loops including nested scopes: 0)",
-        "put:146 (loops including nested scopes: 0)",
-        "complete:161 (loops including nested scopes: 1)",
-        "finish_item:184 (loops including nested scopes: 2)",
-        "heartbeat:216 (loops including nested scopes: 0)",
-        "status:228 (loops including nested scopes: 3)",
-        "vault_only:245 (loops including nested scopes: 0)",
-        "device:249 (loops including nested scopes: 0)",
-        "pair:256 (loops including nested scopes: 0)",
-        "status:260 (loops including nested scopes: 0)",
-        "start:264 (loops including nested scopes: 0)",
-        "put:268 (loops including nested scopes: 1)",
-        "complete:277 (loops including nested scopes: 0)",
-        "finish:281 (loops including nested scopes: 0)",
-        "heartbeat:285 (loops including nested scopes: 0)"
+        "_file_stamp:77 (loops including nested scopes: 0)",
+        "_verified_file:81 (loops including nested scopes: 1)",
+        "router:318 (loops including nested scopes: 1)",
+        "__init__:109 (loops including nested scopes: 0)",
+        "devices:120 (loops including nested scopes: 0)",
+        "_save:126 (loops including nested scopes: 0)",
+        "pair:132 (loops including nested scopes: 0)",
+        "device_of:142 (loops including nested scopes: 1)",
+        "_meta:150 (loops including nested scopes: 0)",
+        "_save_completion:161 (loops including nested scopes: 0)",
+        "start:173 (loops including nested scopes: 0)",
+        "put:206 (loops including nested scopes: 0)",
+        "complete:223 (loops including nested scopes: 1)",
+        "finish_item:262 (loops including nested scopes: 2)",
+        "heartbeat:294 (loops including nested scopes: 0)",
+        "status:306 (loops including nested scopes: 3)",
+        "vault_only:323 (loops including nested scopes: 0)",
+        "device:327 (loops including nested scopes: 0)",
+        "pair:334 (loops including nested scopes: 0)",
+        "status:338 (loops including nested scopes: 0)",
+        "start:342 (loops including nested scopes: 0)",
+        "put:346 (loops including nested scopes: 1)",
+        "complete:355 (loops including nested scopes: 0)",
+        "finish:359 (loops including nested scopes: 0)",
+        "heartbeat:363 (loops including nested scopes: 0)"
       ],
       "review_signals": [
-        "157: check text/binary mode and default encoding at part.open",
-        "171: check text/binary mode and default encoding at part.open"
+        "84: check text/binary mode and default encoding at path.open",
+        "219: check text/binary mode and default encoding at part.open",
+        "249: check text/binary mode and default encoding at part.open"
       ],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
       "manual_review": {
-        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
-        "notes": "Read complete pairing/resumable intake/publication and heartbeat module. Added strict generated upload-ID validation before metadata path access and bounded streamed chunk buffering before storage, with five fail-before/pass-after cases. Hashing still holds the global phone lock; complete retries and same-size changed-content acknowledgements need additional fixes. Finished-item history is reread linearly and request concurrency/server-owned chunks are outside the one-buffer limit. No phone/token/user media accessed."
+        "scope": "scoped algorithm, resource, contract and failure-path review",
+        "notes": "Reviewed upload identity, bounded streaming hashes, receipts, retry recovery and lock ownership; durable receipt growth and shared-lock completion hashing remain."
       }
     },
     {
@@ -5646,38 +5811,39 @@
     },
     {
       "path": "services/ingest/ingest/capture/synthesize.py",
-      "sha256": "a0b37ba610657f971372db5b6c2d23a71e80eb84a84bb0fdea530f7d4eaab23f",
+      "sha256": "a113787c6b9ddf4b2b88de2af88d5ab35a5f723c9436bd87f3a3cbbd206c2f7a",
       "category": "source",
-      "bytes": 21747,
-      "lines": 478,
+      "bytes": 22143,
+      "lines": 490,
       "functions": [
         "_iter_records:62 (loops including nested scopes: 1)",
         "_records:77 (loops including nested scopes: 0)",
         "_block_texts:81 (loops including nested scopes: 2)",
-        "capture_days:104 (loops including nested scopes: 2)",
-        "_sources:120 (loops including nested scopes: 1)",
-        "capture_stamp:126 (loops including nested scopes: 1)",
-        "_domain:137 (loops including nested scopes: 0)",
-        "app_name:143 (loops including nested scopes: 0)",
-        "site_name:148 (loops including nested scopes: 0)",
-        "_clip:154 (loops including nested scopes: 0)",
-        "read_capture:202 (loops including nested scopes: 6)",
-        "_apps:242 (loops including nested scopes: 3)",
-        "_visits:287 (loops including nested scopes: 3)",
-        "_media:352 (loops including nested scopes: 1)",
-        "_looks:369 (loops including nested scopes: 3)",
-        "_unit:397 (loops including nested scopes: 0)",
-        "_where:420 (loops including nested scopes: 0)",
-        "capture_units:428 (loops including nested scopes: 10)",
-        "close:248 (loops including nested scopes: 0)",
-        "close:295 (loops including nested scopes: 0)",
-        "open_:304 (loops including nested scopes: 0)"
+        "has_capture_day:104 (loops including nested scopes: 1)",
+        "capture_days:116 (loops including nested scopes: 2)",
+        "_sources:132 (loops including nested scopes: 1)",
+        "capture_stamp:138 (loops including nested scopes: 1)",
+        "_domain:149 (loops including nested scopes: 0)",
+        "app_name:155 (loops including nested scopes: 0)",
+        "site_name:160 (loops including nested scopes: 0)",
+        "_clip:166 (loops including nested scopes: 0)",
+        "read_capture:214 (loops including nested scopes: 6)",
+        "_apps:254 (loops including nested scopes: 3)",
+        "_visits:299 (loops including nested scopes: 3)",
+        "_media:364 (loops including nested scopes: 1)",
+        "_looks:381 (loops including nested scopes: 3)",
+        "_unit:409 (loops including nested scopes: 0)",
+        "_where:432 (loops including nested scopes: 0)",
+        "capture_units:440 (loops including nested scopes: 10)",
+        "close:260 (loops including nested scopes: 0)",
+        "close:307 (loops including nested scopes: 0)",
+        "open_:316 (loops including nested scopes: 0)"
       ],
       "review_signals": [],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
       "manual_review": {
-        "scope": "2026-10-26 algorithm/resource pass; exact scope in notes",
-        "notes": "Streaming JSONL and bounded per-file text projection, sparse/midnight inheritance, physical/write-version invalidation and copied result maps; complete capture/evidence fingerprints match."
+        "scope": "scoped algorithm, resource, contract and failure-path review",
+        "notes": "Single-date capture check retains validated date and plain/compacted discovery semantics; direct history rebuild measured."
       }
     },
     {
@@ -6817,9 +6983,9 @@
     },
     {
       "path": "services/ingest/ingest/store/db.py",
-      "sha256": "7873b8018709d38a3f4dfa5a0e66752c2cabcc9ef9f6c78f35c34953cce527f6",
+      "sha256": "46fd2ef57bd7e22425ffb6c42001a4480b51aae3b8fe124f984d4abdc5c27d3d",
       "category": "source",
-      "bytes": 35948,
+      "bytes": 35966,
       "lines": 749,
       "functions": [
         "digest:122 (loops including nested scopes: 0)",
@@ -6866,8 +7032,8 @@
       "review_signals": [],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
       "manual_review": {
-        "scope": "Targeted PR correctness review against 07b07bcd13cc41c53baae7bf38deb9556c24cd33",
-        "notes": "Owned/borrowed WAL read snapshots; model and dimension validation; vector reuse and final write checks; helper connection lifetime. Unrelated store methods were not re-reviewed in this follow-up."
+        "scope": "scoped algorithm, resource, contract and failure-path review",
+        "notes": "Capture-only update avoids repeated history enumeration; focused date and indexed-output equivalence checks; freshness scan remains."
       }
     },
     {
@@ -7345,23 +7511,25 @@
     },
     {
       "path": "services/ingest/tests/test_capture_synthesis.py",
-      "sha256": "e34d1879aa19472bb620cc1ec7c9b3bca6c44e4ee534f2615e2fd876f5eaec5e",
+      "sha256": "b9d98d30dad17e1e7917b75b84e9a31b3174d76e07fa5256b1dcd983d1852773",
       "category": "test",
-      "bytes": 4747,
-      "lines": 93,
+      "bytes": 5922,
+      "lines": 120,
       "functions": [
-        "test_visits_follow_the_page_in_front_and_skip_idle_time:14 (loops including nested scopes: 3)",
-        "test_every_kind_of_activity_becomes_a_unit:29 (loops including nested scopes: 5)",
-        "test_a_capture_only_day_is_searchable:51 (loops including nested scopes: 0)",
-        "test_new_capture_lines_reindex_the_day:62 (loops including nested scopes: 0)",
-        "test_a_vault_day_keeps_its_units_and_gains_its_capture:87 (loops including nested scopes: 1)",
-        "append:71 (loops including nested scopes: 0)"
+        "test_visits_follow_the_page_in_front_and_skip_idle_time:15 (loops including nested scopes: 3)",
+        "test_every_kind_of_activity_becomes_a_unit:30 (loops including nested scopes: 5)",
+        "test_a_capture_only_day_is_searchable:52 (loops including nested scopes: 0)",
+        "test_single_capture_day_check_matches_history_and_update_does_not_scan:63 (loops including nested scopes: 1)",
+        "test_new_capture_lines_reindex_the_day:89 (loops including nested scopes: 0)",
+        "test_a_vault_day_keeps_its_units_and_gains_its_capture:114 (loops including nested scopes: 1)",
+        "unexpected_scan:78 (loops including nested scopes: 0)",
+        "append:98 (loops including nested scopes: 0)"
       ],
       "review_signals": [],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
       "manual_review": {
-        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
-        "notes": "Read complete synthetic visit/media/search/read/dwell/click/selection units, cross-day retrieval and freshness reindex tests. Evidence identity, time offsets and day-specific content are asserted; broader concurrent writers and malformed histories are covered only by separate suites."
+        "scope": "scoped algorithm, resource, contract and failure-path review",
+        "notes": "Synthetic regression checks direct capture day presence, missing/invalid dates and avoids history scans."
       }
     },
     {
@@ -7778,6 +7946,35 @@
       "manual_review": {
         "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
         "notes": "Authored and reviewed scan-oracle window cases for duplicates, unordered data, nonfinite/reversed bounds, shared closed endpoints and final segmented source order/derived metadata. Synthetic fixes preserve all identity/time fields; deterministic assertions separate from performance reports."
+      }
+    },
+    {
+      "path": "services/ingest/tests/test_phone_upload_integrity.py",
+      "sha256": "35b3a23bcca41973aa9702e9011cba9a1131a879786f91694600ef6aac565aba",
+      "category": "test",
+      "bytes": 6720,
+      "lines": 159,
+      "functions": [
+        "_body:14 (loops including nested scopes: 0)",
+        "_upload:18 (loops including nested scopes: 0)",
+        "test_same_size_different_content_must_be_uploaded:25 (loops including nested scopes: 0)",
+        "test_completed_upload_can_be_retried_without_leaking_to_another_device:36 (loops including nested scopes: 0)",
+        "test_replaced_staged_content_is_not_acknowledged:48 (loops including nested scopes: 0)",
+        "test_complete_recovers_if_receipt_write_fails:61 (loops including nested scopes: 0)",
+        "test_receipts_do_not_appear_as_incomplete_uploads:81 (loops including nested scopes: 0)",
+        "test_old_receipt_cannot_acknowledge_failed_reupload:87 (loops including nested scopes: 0)",
+        "test_receipt_survives_failed_metadata_cleanup_and_item_publication:102 (loops including nested scopes: 0)",
+        "test_start_rechecks_identity_after_hashing:125 (loops including nested scopes: 0)",
+        "test_retry_protocol_over_http:143 (loops including nested scopes: 0)",
+        "fail_receipt:68 (loops including nested scopes: 0)",
+        "fail_cleanup:112 (loops including nested scopes: 0)",
+        "replace_after_hash:132 (loops including nested scopes: 0)"
+      ],
+      "review_signals": [],
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "scoped algorithm, resource, contract and failure-path review",
+        "notes": "Synthetic integrity, cross-device, retry, failure recovery and file-replacement tests; no real phone data."
       }
     },
     {
