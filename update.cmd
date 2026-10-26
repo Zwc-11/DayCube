@@ -50,6 +50,16 @@ if errorlevel 1 (
   goto :end
 )
 
+rem The learned features' environment (check-glasses-learned.cmd), once set up.
+if not exist "services\recon\.venv" goto :speech
+echo [%date% %time%] sync the learned features>> "%LOG%"
+call uv sync --project services\recon >> "%LOG%" 2>&1
+if errorlevel 1 (
+  echo [%date% %time%] sync of the learned features failed>> "%LOG%"
+  goto :end
+)
+
+:speech
 if not exist "services\speech\.venv" goto :restart
 echo [%date% %time%] sync the speech worker>> "%LOG%"
 call uv sync --project services\speech >> "%LOG%" 2>&1

@@ -182,7 +182,7 @@ def picks_of(name: str, truth: Truth, sharp: np.ndarray | None) -> np.ndarray:
 def run_mode(name: str, truth: Truth, video: Path, work: Path, *, fixes: list[Fix], t0: float,
              eval_picks: np.ndarray, train: bool, steps: int, mapper: str,
              trainer: Callable[..., dict] | None, say: Callable[[str], None],
-             sharp: np.ndarray | None = None) -> dict:  # fmt: skip
+             sharp: np.ndarray | None = None, features: str = "sift") -> dict:  # fmt: skip
     mode = MODES[name]
     picks = picks_of(name, truth, sharp)
     size = _size(truth, mode["long_side"])
@@ -191,7 +191,7 @@ def run_mode(name: str, truth: Truth, video: Path, work: Path, *, fixes: list[Fi
     dataset.extract(video, picks, folder / "frames", size)
     result: dict = {"label": mode["label"], "images": len(picks), "size": list(size)}
     model = sfm.reconstruct(folder / "frames", folder / "colmap", mapper=mapper, max_features=mode.get("features", 8192),
-                            say=say)  # fmt: skip
+                            features=features, say=say)  # fmt: skip
     if model is None:
         result.update(registered=0, registered_share=0.0)
         return result
@@ -256,8 +256,8 @@ def run_mode(name: str, truth: Truth, video: Path, work: Path, *, fixes: list[Fi
 
 def simulate(capture: Path, video: Path, work: Path, *, fixes: list[Fix], t0: float,
              modes: list[str] | None = None, train: bool = False, steps: int = 7000, mapper: str = "incremental",
-             trainer: Callable[..., dict] | None = None, on_result: Callable[[dict], None] | None = None,
-             say: Callable[[str], None] = print) -> dict:  # fmt: skip
+             features: str = "sift", trainer: Callable[..., dict] | None = None,
+             on_result: Callable[[dict], None] | None = None, say: Callable[[str], None] = print) -> dict:  # fmt: skip
     """Simulate each mode on the scan (``capture``: its odometry; ``video``: its frames); ``t0``:
     epoch seconds of the first frame; ``fixes``: the day's GPS. ``on_result`` gets the report after
     each mode, so a long run can be read while it goes."""
@@ -273,7 +273,7 @@ def simulate(capture: Path, video: Path, work: Path, *, fixes: list[Fix], t0: fl
     report: dict = {
         "frames": len(truth.t), "duration_s": round(float(truth.t[-1]), 1),
         "path_m": round(float(np.linalg.norm(np.diff(truth.c2w[:, :3, 3], axis=0), axis=1).sum()), 1),
-        "video": [truth.width, truth.height], "held_out": len(eval_picks), "mapper": mapper,
+        "video": [truth.width, truth.height], "held_out": len(eval_picks), "mapper": mapper, "features": features,
         "modes": {},
     }  # fmt: skip
     if train:
@@ -284,7 +284,7 @@ def simulate(capture: Path, video: Path, work: Path, *, fixes: list[Fix], t0: fl
     for name in modes:
         report["modes"][name] = run_mode(name, truth, video, work, fixes=fixes, t0=t0, eval_picks=eval_picks,
                                          train=train, steps=steps, mapper=mapper, trainer=trainer, say=say,
-                                         sharp=sharp)  # fmt: skip
+                                         sharp=sharp, features=features)  # fmt: skip
         report["checks"] = checks(report)
         if on_result:
             on_result(report)

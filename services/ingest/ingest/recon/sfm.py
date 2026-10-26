@@ -73,11 +73,13 @@ def reconstruct(
     mapper: str = "incremental",
     max_image_size: int = 1600,
     max_features: int = 8192,
+    features: str = "sift",
     say: Callable[[str], None] = print,
 ) -> Model | None:
     """Reconstruct the images in ``images`` (taken in file-name order) into ``work``. None when
     no model could be made. ``max_features``: SIFT features per image; matching costs their
-    square (a 5 fps stream of 642 frames: 5.5 s a frame at 8,192 on the PC's CPU)."""
+    square (a 5 fps stream of 642 frames: 5.5 s a frame at 8,192 on the PC's CPU). ``features``:
+    ``sift`` (COLMAP's), or ``aliked`` (ALIKED + LightGlue, ``learned``; needs PyTorch)."""
     import pycolmap
 
     names = sorted(p.name for p in images.iterdir() if p.suffix.lower() in {".jpg", ".jpeg", ".png"})
@@ -90,24 +92,29 @@ def reconstruct(
     timings: dict[str, float] = {}
     started = time.monotonic()
 
-    reader = pycolmap.ImageReaderOptions()
-    reader.camera_model = "PINHOLE"
-    extraction = pycolmap.FeatureExtractionOptions()
-    extraction.max_image_size = max_image_size
-    extraction.sift.max_num_features = max_features
-    say(f"Features in {len(names)} images")
-    pycolmap.extract_features(database, images, image_names=names, camera_mode=pycolmap.CameraMode.SINGLE,
-                              reader_options=reader, extraction_options=extraction)  # fmt: skip
-    timings["features_s"] = round(time.monotonic() - started, 1)
+    if features == "aliked":
+        from . import learned
 
-    pairing = pycolmap.SequentialPairingOptions()
-    pairing.overlap = overlap
-    pairing.quadratic_overlap = True
-    pairing.loop_detection = False  # needs a vocabulary tree; a walk rarely comes back on itself
-    say("Matching each image with the ones after it")
-    mark = time.monotonic()
-    pycolmap.match_sequential(database, pairing_options=pairing)
-    timings["matching_s"] = round(time.monotonic() - mark, 1)
+        timings.update(learned.match(images, database, names, overlap=overlap, say=say))
+    else:
+        reader = pycolmap.ImageReaderOptions()
+        reader.camera_model = "PINHOLE"
+        extraction = pycolmap.FeatureExtractionOptions()
+        extraction.max_image_size = max_image_size
+        extraction.sift.max_num_features = max_features
+        say(f"Features in {len(names)} images")
+        pycolmap.extract_features(database, images, image_names=names, camera_mode=pycolmap.CameraMode.SINGLE,
+                                  reader_options=reader, extraction_options=extraction)  # fmt: skip
+        timings["features_s"] = round(time.monotonic() - started, 1)
+
+        pairing = pycolmap.SequentialPairingOptions()
+        pairing.overlap = overlap
+        pairing.quadratic_overlap = True
+        pairing.loop_detection = False  # needs a vocabulary tree; a walk rarely comes back on itself
+        say("Matching each image with the ones after it")
+        mark = time.monotonic()
+        pycolmap.match_sequential(database, pairing_options=pairing)
+        timings["matching_s"] = round(time.monotonic() - mark, 1)
 
     say(f"Mapping ({mapper})")
     mark = time.monotonic()
@@ -138,6 +145,6 @@ def reconstruct(
     return Model(
         names=[im.name for im in registered], c2w=c2w, K=np.array([fx, fy, cx, cy]),
         size=(int(camera.width), int(camera.height)), points=xyz, colours=rgb, images=len(names),
-        seconds=round(time.monotonic() - started, 1), mapper=mapper, models=len(models),
+        seconds=round(time.monotonic() - started, 1), mapper=f"{features}+{mapper}", models=len(models),
         reprojection_px=round(float(best.compute_mean_reprojection_error()), 3), timings=timings,
     )  # fmt: skip

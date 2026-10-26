@@ -84,6 +84,8 @@ def main() -> None:
     parser.add_argument("--train", action="store_true", help="Train Brush on each mode (the GPU, ~10 min each)")
     parser.add_argument("--steps", type=int, default=7000)
     parser.add_argument("--mapper", choices=["incremental", "global"], default="incremental")
+    parser.add_argument("--features", choices=["sift", "aliked"], default="sift",
+                        help="aliked: ALIKED + LightGlue (needs services/recon's environment, PyTorch)")
     parser.add_argument("--out", type=Path, help="Report (default vault/logs/glasses-sim.json)")
     args = parser.parse_args()
     vault = Vault(Settings().vault_root)
@@ -100,9 +102,9 @@ def main() -> None:
     t0 = datetime.fromisoformat(meta["t0"]).timestamp()
     duration = float(meta.get("duration_s") or 600)
     fixes, fixes_from = day_fixes(vault, args.date, t0, t0 + duration)
-    out = args.out or vault.root / "logs" / "glasses-sim.json"
+    out = args.out or vault.root / "logs" / ("glasses-sim.json" if args.features == "sift" else f"glasses-sim-{args.features}.json")
     out.parent.mkdir(parents=True, exist_ok=True)
-    work = vault.root / "derived" / "glasses-sim" / args.date / moment_id
+    work = vault.root / "derived" / "glasses-sim" / args.date / moment_id / args.features
     header = {"date": args.date, "moment": moment_id, "started": datetime.now().astimezone().isoformat(timespec="seconds"),
               "gps_fixes": len(fixes), "gps_from": fixes_from, "phone_fit": (read_json(moment / "camera.json") or {}).get("fit")}  # fmt: skip
     say(f"{moment_id}: {video.name}, {len(fixes)} GPS fixes from {fixes_from}; work in {work}")
@@ -111,7 +113,8 @@ def main() -> None:
         out.write_text(json.dumps(header | report, indent=1) + "\n", encoding="utf-8")
 
     report = simulate.simulate(capture, video, work, fixes=fixes, t0=t0, modes=args.modes.split(","), train=args.train,
-                               steps=args.steps, mapper=args.mapper, trainer=trainer, on_result=write, say=say)  # fmt: skip
+                               steps=args.steps, mapper=args.mapper, features=args.features, trainer=trainer,
+                               on_result=write, say=say)  # fmt: skip
     write(report | {"finished": datetime.now().astimezone().isoformat(timespec="seconds")})
     for name, r in report["modes"].items():
         path = r.get("path", {})

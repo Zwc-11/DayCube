@@ -42,7 +42,8 @@ def crlf(text: str) -> bytes:
 
 
 def run(
-    root: Path, *, speech: bool = True, pull: int = 0, diff: int = 1, sync: int = 0, canary: int = 0, npm: int = 0
+    root: Path, *, speech: bool = True, recon: bool = False, pull: int = 0, diff: int = 1, sync: int = 0, canary: int = 0,
+    npm: int = 0,
 ) -> tuple[list[str], str]:
     (root / "bin").mkdir(parents=True)
     (root / "update.cmd").write_bytes(crlf((ROOT / "update.cmd").read_text()))
@@ -51,6 +52,8 @@ def run(
         (root / "bin" / name).write_bytes(crlf(body))
     if speech:
         (root / "services" / "speech" / ".venv").mkdir(parents=True)
+    if recon:
+        (root / "services" / "recon" / ".venv").mkdir(parents=True)
     win = lambda p: "Z:" + str(p).replace("/", "\\")  # noqa: E731
     env = {**os.environ, "WINEDEBUG": "-all", "WINEPATH": win(root / "bin"), "CALLS": win(root / "calls.log"),
            "GIT_PULL_RC": str(pull), "GIT_DIFF_RC": str(diff), "UV_SYNC_RC": str(sync), "CANARY_RC": str(canary),
@@ -80,6 +83,8 @@ END = ["capture restart", "ping -n", "capture doctor", "timeout /t"]
         ("speech changed", {}, [*START, "sync speech", "git diff", "speech check", *END], "speech check: ok"),
         ("nothing changed", {"diff": 0}, [*SAME, "sync speech", "git diff", *END], "doctor"),
         ("no speech worker", {"speech": False}, [*START, *END], "doctor"),
+        ("learned features set up", {"recon": True}, [*START, "sync recon", "sync speech", "git diff", "speech check", *END],
+         "sync the learned features"),
         ("speech check fails", {"canary": 1}, [*START, "sync speech", "git diff", "speech check", *END],
          "speech check: FAILED"),
         ("pull fails", {"pull": 1}, ["git rev-parse", "git pull", "timeout /t"], "git pull failed"),
