@@ -161,6 +161,9 @@ benchmark drafts. Their contents were preserved. Its concurrent splat work (`554
 resource ownership still covers failure/late completion. This continuation did not run the
 real-vault GPU profiler or verify that session's hardware measurements. Its policy tests are
 included in the combined browser checks.
+The later `502f004` update changes only the optional GPU profiler and its documentation to
+separate settling from rest. It was read and syntax-checked after the combined gate, without
+running its real-vault workload; production viewer and backend code are unchanged by that update.
 
 Timing baselines and after reports retain their original source hashes and revision metadata.
 The scene lifecycle after report is refreshed for the integrated source. Another process added
