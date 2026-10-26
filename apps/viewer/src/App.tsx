@@ -7,6 +7,7 @@ import {
   type SceneCameraApi,
 } from './components/diorama/DioramaCanvas3D';
 import { DioramaCanvas2D } from './components/diorama/DioramaCanvas2D';
+import { ScanStage } from './components/diorama/ScanStage';
 import { EvidenceCardPanel } from './components/panels/EvidenceCardPanel';
 import type { SettingsSection } from './components/modals/SystemStudioModal';
 import { type ApiCallLog, backendBridge } from './lib/backendBridge';
@@ -41,6 +42,8 @@ const SystemStudioModal = lazy(() =>
 const SPEEDS = [1, 4, 12];
 // Moments a phone import recorded (services/ingest/ingest/phone): opened with their own media.
 const RECORDED_MOMENT = /^mo_(voice|scan)_/;
+// A scan made at a place: its 3D world replaces the place's diorama (components/diorama/ScanStage).
+const SCAN_MOMENT = /^mo_scan_/;
 const NO_TRANSITS: typeof SAMPLE_TRANSITS = [];
 
 function longDate(iso: string): string {
@@ -74,10 +77,14 @@ interface AppProps {
   day: LoadedDay;
   /** Recorded days, oldest first; null while loading. */
   days: DaySummary[] | null;
-  /** Open another day, or the calendar with null. */
+  /** Open another day, or the graph of notes with null. */
   onOpenDate: (date: string | null) => void;
   /** Show this day as its notes (the knowledge page). */
   onOpenNotes?: () => void;
+  /** The DayCube logo: the newest day's page. */
+  onHome?: () => void;
+  /** The calendar of every day. */
+  onOpenDays?: () => void;
 }
 
 function isTypingTarget(target: EventTarget | null): boolean {
@@ -86,7 +93,7 @@ function isTypingTarget(target: EventTarget | null): boolean {
   return el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName);
 }
 
-export const App: React.FC<AppProps> = ({ date, day, days, onOpenDate, onOpenNotes }) => {
+export const App: React.FC<AppProps> = ({ date, day, days, onOpenDate, onOpenNotes, onHome, onOpenDays }) => {
   const pageVisible = usePageVisible();
   const [focus] = useState(() => initialFocus(date, day.layers));
   const [layers, setLayers] = useState<Layer[]>(day.layers);
@@ -110,6 +117,10 @@ export const App: React.FC<AppProps> = ({ date, day, days, onOpenDate, onOpenNot
   });
 
   const [selectedPin, setSelectedPin] = useState<EventPin | null>(focus.pin);
+  // A visit with a scan shows the scan's 3D world unless the diorama is chosen; scans found to
+  // have no 3D scene fall back to the diorama.
+  const [sceneChoice, setSceneChoice] = useState<'scan' | 'diorama'>('scan');
+  const [noScene, setNoScene] = useState<ReadonlySet<string>>(() => new Set());
   const [askOpen, setAskOpen] = useState(false);
   const [activeMomentId, setActiveMomentId] = useState<string | null>(null);
   const [activeScreenShotId, setActiveScreenShotId] = useState<string | null>(null);
@@ -339,6 +350,12 @@ export const App: React.FC<AppProps> = ({ date, day, days, onOpenDate, onOpenNot
 
   const activeLayer = layers[activeLayerIndex] || layers[0];
   const transits = dataSource === 'sample' ? SAMPLE_TRANSITS : NO_TRANSITS;
+  const scanId =
+    dataSource === 'vault' && engineMode === 'three' && viewMode === 'layer'
+      ? activeLayer.moments.find((id) => SCAN_MOMENT.test(id) && !noScene.has(id)) ?? null
+      : null;
+  const showScan = scanId !== null && sceneChoice === 'scan';
+  const markNoScene = useCallback((id: string) => setNoScene((prev) => new Set(prev).add(id)), []);
 
   // Neighbouring recorded days and the week ending today, from the calendar's list.
   const neighbours = useMemo(() => {
@@ -354,7 +371,8 @@ export const App: React.FC<AppProps> = ({ date, day, days, onOpenDate, onOpenNot
       return { date: d, recorded: recorded.has(d), isCurrent: d === date };
     });
   }, [days, date]);
-  const goHome = useCallback(() => onOpenDate(null), [onOpenDate]);
+  const goHome = useCallback(() => (onHome ? onHome() : onOpenDate(null)), [onHome, onOpenDate]);
+  const goDays = useCallback(() => (onOpenDays ? onOpenDays() : onOpenDate(null)), [onOpenDays, onOpenDate]);
   const goPrev = useMemo(() => (neighbours.prev ? () => onOpenDate(neighbours.prev) : null), [neighbours.prev, onOpenDate]);
   const goNext = useMemo(() => (neighbours.next ? () => onOpenDate(neighbours.next) : null), [neighbours.next, onOpenDate]);
 
@@ -378,7 +396,7 @@ export const App: React.FC<AppProps> = ({ date, day, days, onOpenDate, onOpenNot
 
       <Itinerary
         dayTitle={shortDate(date)}
-        onHome={goHome}
+        onHome={goDays}
         onPrevDay={goPrev}
         onNextDay={goNext}
         layers={layers}
@@ -392,7 +410,14 @@ export const App: React.FC<AppProps> = ({ date, day, days, onOpenDate, onOpenNot
 
       <main className="stage app__stage" aria-label="Diorama">
         <div className="stage__canvas">
-          {engineMode === 'three' ? (
+          {showScan ? (
+            // One splat scene on the GPU at a time: none here while a moment's own view is open.
+            activeMomentId ? (
+              <div className="scan-stage" aria-hidden />
+            ) : (
+              <ScanStage date={date} momentId={scanId} tod={tod} onNoScene={markNoScene} onOpen={setActiveMomentId} />
+            )
+          ) : engineMode === 'three' ? (
             <DioramaCanvas3D
               playing={playing}
               playSpeed={playSpeed}
@@ -439,7 +464,18 @@ export const App: React.FC<AppProps> = ({ date, day, days, onOpenDate, onOpenNot
           </>
         )}
 
-        <StageControls
+        {scanId !== null && (
+          <div className="seg seg--sm stage__scene" role="group" aria-label="Scene">
+            <button type="button" className="seg__item" aria-pressed={showScan} onClick={() => setSceneChoice('scan')}>
+              3D scan
+            </button>
+            <button type="button" className="seg__item" aria-pressed={!showScan} onClick={() => setSceneChoice('diorama')}>
+              Diorama
+            </button>
+          </div>
+        )}
+
+        {!showScan && <StageControls
           viewMode={engineMode === 'canvas2d' ? 'layer' : viewMode}
           floors={activeLayer.floors}
           activeFloor={activeFloorFilter}
@@ -450,7 +486,7 @@ export const App: React.FC<AppProps> = ({ date, day, days, onOpenDate, onOpenNot
           onZoomIn={zoomIn}
           onZoomOut={zoomOut}
           onResetView={resetView}
-        />
+        />}
       </main>
 
       <EvidenceCardPanel

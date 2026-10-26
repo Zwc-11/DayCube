@@ -85,7 +85,7 @@ test('a scan with splats opens in 3D, follows the walk with the video and looks 
   try {
     await page.goto('/?date=2026-10-21');
     await page.getByRole('button', { name: /Outdoors/ }).first().click();
-    await page.getByRole('main', { name: 'Diorama' }).getByRole('button', { name: /LiDAR scan/ }).first().dblclick();
+    await page.getByRole('main', { name: 'Diorama' }).getByRole('button', { name: 'Video and scenes' }).click();
     const dialog = page.getByRole('dialog');
     // A scan with a scene opens in 3D, the video in a corner.
     await expect(dialog.getByRole('group', { name: 'Show' }).getByRole('button', { name: '3D' })).toHaveAttribute('aria-pressed', 'true');
@@ -179,7 +179,7 @@ test('a scan with a mesh shows its surfaces and follows the walk there too', asy
   try {
     await page.goto('/?date=2026-10-21');
     await page.getByRole('button', { name: /Outdoors/ }).first().click();
-    await page.getByRole('main', { name: 'Diorama' }).getByRole('button', { name: /LiDAR scan/ }).first().dblclick();
+    await page.getByRole('main', { name: 'Diorama' }).getByRole('button', { name: 'Video and scenes' }).click();
     const dialog = page.getByRole('dialog');
     await expect(dialog.getByTestId('mesh-summary')).toHaveText('2 triangles, 1.2 cm from the LiDAR');
     await dialog.getByRole('group', { name: 'Scene' }).getByRole('button', { name: 'Mesh' }).click();
@@ -250,4 +250,73 @@ test("a recording's speakers are named from their chip, and the name shows on wh
     await writeFile(transcriptFile, original);
     await rm(speechFile, { force: true });
   }
+});
+
+test("a visit with a scan shows the scan on the day's stage, the camera walking with the timeline", async ({ page }) => {
+  // The fixture's scan (14:15:40, 10 s, in the 14:14-14:24 walk) with a small splat and camera path.
+  const { mkdir, writeFile, rm } = await import('node:fs/promises');
+  const folder = path.resolve('.daycube-e2e-vault/2026-10-21/moments/mo_scan_20261021_181540');
+  const sceneFile = path.join(folder, 'scene.json');
+  const original = await readFile(sceneFile, 'utf8');
+  const n = 3000;
+  const records = Buffer.alloc(32 * n);
+  for (let i = 0; i < n; i++) {
+    const o = 32 * i;
+    records.writeFloatLE(((i * 7) % 20) / 10 - 1, o);
+    records.writeFloatLE(-1.4, o + 4);
+    records.writeFloatLE(-(i % 300) / 30, o + 8);
+    for (let k = 0; k < 3; k++) records.writeFloatLE(0.05, o + 12 + 4 * k);
+    records.set([200, 120 + (i % 100), 60, 230, 255, 128, 128, 128], o + 24);
+  }
+  const t = Array.from({ length: 100 }, (_, k) => k * 0.1);
+  const cameras = {
+    t, position: t.map((s) => [0, 0, -s]), forward: t.map(() => [0, -0.2, -0.98]), up: t.map(() => [1, 0, 0]),
+    fov_long_deg: 70, fov_short_deg: 55,
+  };
+  await mkdir(path.join(folder, 'splat'), { recursive: true });
+  await writeFile(path.join(folder, 'splat', 'lidar.splat'), records);
+  await writeFile(path.join(folder, 'splat', 'cameras.json'), JSON.stringify(cameras));
+  const scene = JSON.parse(original);
+  scene.splat = { status: 'lidar', lidar: 'splat/lidar.splat', cameras: 'splat/cameras.json', points: n,
+    bounds: { min: [-1, -1.4, -10], max: [1, -1.4, 0] } };
+  await writeFile(sceneFile, JSON.stringify(scene));
+  try {
+    await page.goto('/?date=2026-10-21');
+    const stage = page.getByRole('main', { name: 'Diorama' });
+    // The house the day opens on has no scan: its diorama, no scene switch.
+    await expect(stage.getByRole('group', { name: 'Scene' })).toHaveCount(0);
+    await page.getByRole('button', { name: /Outdoors/ }).first().click();
+    await expect(stage.getByTestId('scan-stage')).toHaveAttribute('data-state', 'ready');
+    await expect(stage.getByTestId('splat-view')).toHaveAttribute('data-state', 'ready', { timeout: 30000 });
+    await expect(stage.getByTestId('scan-caption')).toContainText('Scan 14:16–14:16 · LiDAR points, 3,000');
+    const camera = () => page.evaluate(() => (window as any).__splat.camera.position.toArray().map((v: number) => +v.toFixed(2)));
+    // 14:14, before the scan: where the walk starts (0.5 s in). Five minutes on, after it: where it ends.
+    await expect.poll(camera).toEqual([0, 0, -0.5]);
+    const timeline = page.getByRole('slider', { name: 'Time of day' });
+    await timeline.focus();
+    await page.keyboard.press('ArrowRight');
+    await expect.poll(camera).toEqual([0, 0, -9.9]);
+    await expect(stage.getByTestId('scan-caption')).toContainText('the timeline is at 14:19, outside the scan');
+    // The diorama instead, and back.
+    await stage.getByRole('group', { name: 'Scene' }).getByRole('button', { name: 'Diorama' }).click();
+    await expect(stage.getByTestId('scan-stage')).toHaveCount(0);
+    await expect(stage.locator('canvas').first()).toBeVisible();
+    await stage.getByRole('group', { name: 'Scene' }).getByRole('button', { name: '3D scan' }).click();
+    await expect(stage.getByTestId('splat-view')).toHaveAttribute('data-state', 'ready', { timeout: 30000 });
+    // The scan's card, once it is selected, says what its button does.
+    await page.getByRole('button', { name: /^\d\d:\d\d LiDAR scan$/ }).first().click();
+    await expect(page.getByRole('button', { name: 'Open the scan in 3D' }).first()).toBeVisible();
+  } finally {
+    await writeFile(sceneFile, original);
+    await rm(path.join(folder, 'splat'), { recursive: true, force: true });
+  }
+});
+
+test('a scan with no 3D scene leaves the visit its diorama', async ({ page }) => {
+  await page.goto('/?date=2026-10-21');
+  await page.getByRole('button', { name: /Outdoors/ }).first().click();
+  const stage = page.getByRole('main', { name: 'Diorama' });
+  await expect(stage.getByTestId('scan-stage')).toHaveCount(0);
+  await expect(stage.getByRole('group', { name: 'Scene' })).toHaveCount(0);
+  await expect(stage.getByRole('button', { name: /LiDAR scan/ }).first()).toBeVisible();
 });

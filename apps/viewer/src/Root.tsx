@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useCallback, useEffect, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import { DayCalendar } from './components/home/DayCalendar';
 import { BrandMark } from './components/shell/TopBar';
 import { type DaySummary, type LoadedDay, cachedDay, isIsoDate, listDays, loadDay } from './lib/days';
@@ -51,6 +51,15 @@ export const Root: React.FC = () => {
   const [days, setDays] = useState<DaySummary[] | null>(null);
   const date = route.page === 'day' ? route.date : null;
   const [day, setDay] = useState<LoadedDay | null>(() => (date ? cachedDay(date) ?? null : null));
+  // The day page last shown, for the logo to go back to from the graph and the calendar.
+  const [lastDay, setLastDay] = useState<string | null>(date);
+  useEffect(() => {
+    if (date) setLastDay(date);
+  }, [date]);
+  const newestDay = useMemo(
+    () => [...(days ?? [])].reverse().find((d) => d.places > 0 && !d.sample)?.date ?? null,
+    [days]
+  );
 
   useEffect(() => {
     listDays().then(setDays);
@@ -73,6 +82,14 @@ export const Root: React.FC = () => {
       go(next === null ? { page: 'graph', note: null, date: null } : view === 'notes' ? { page: 'graph', note: null, date: next } : { page: 'day', date: next }, replace),
     [go]
   );
+
+  /** The DayCube logo: a day's page. From the graph or the calendar, the day last shown; on a
+   *  day, the newest day with places; the calendar when there is none yet. */
+  const openDayPage = useCallback(() => {
+    const target = route.page === 'day' ? newestDay ?? route.date : lastDay ?? newestDay;
+    if (target) go({ page: 'day', date: target });
+    else go({ page: 'days' });
+  }, [route, lastDay, newestDay, go]);
 
   // From the calendar: a day with places opens in 3D, one with only computer capture as its note.
   const openFromCalendar = useCallback(
@@ -98,7 +115,7 @@ export const Root: React.FC = () => {
   }, [date, openDate]);
 
   if (route.page === 'days') {
-    return <DayCalendar days={days} today={localToday()} onOpen={openFromCalendar} onHome={() => openDate(null)} />;
+    return <DayCalendar days={days} today={localToday()} onOpen={openFromCalendar} onHome={() => openDate(null)} onDayPage={openDayPage} />;
   }
   if (route.page === 'graph') {
     return (
@@ -110,6 +127,7 @@ export const Root: React.FC = () => {
           onOpenNote={(note) => go({ page: 'graph', note, date: null })}
           onOpenDate={(d, view) => openDate(d, view)}
           onOpenDays={() => go({ page: 'days' })}
+          onOpenDayPage={openDayPage}
         />
       </Suspense>
     );
@@ -117,7 +135,8 @@ export const Root: React.FC = () => {
   if (!day || day.date !== route.date) return <Loading />;
   return (
     <Suspense fallback={<Loading />}>
-      <App key={route.date} date={route.date} day={day} days={days} onOpenDate={openDate} onOpenNotes={() => openDate(route.date, 'notes')} />
+      <App key={route.date} date={route.date} day={day} days={days} onOpenDate={openDate}
+           onOpenNotes={() => openDate(route.date, 'notes')} onHome={openDayPage} onOpenDays={() => go({ page: 'days' })} />
     </Suspense>
   );
 };

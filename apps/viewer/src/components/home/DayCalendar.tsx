@@ -79,9 +79,11 @@ interface DayCalendarProps {
   onOpen: (date: string) => void;
   /** Back to the graph of notes. */
   onHome: () => void;
+  /** The DayCube logo: back to a day's page. */
+  onDayPage?: () => void;
 }
 
-export const DayCalendar: React.FC<DayCalendarProps> = ({ days, today, onOpen, onHome }) => {
+export const DayCalendar: React.FC<DayCalendarProps> = ({ days, today, onOpen, onHome, onDayPage }) => {
   const byDate = useMemo(() => new Map((days ?? []).map((d) => [d.date, d])), [days]);
   const first = days?.[0]?.date ?? today;
   const last = days?.[days.length - 1]?.date ?? today;
@@ -107,7 +109,7 @@ export const DayCalendar: React.FC<DayCalendarProps> = ({ days, today, onOpen, o
   return (
     <div className="home">
       <header className="home__bar">
-        <button type="button" className="brand brand--btn" onClick={onHome} aria-label="Graph of your notes">
+        <button type="button" className="brand brand--btn" onClick={onDayPage ?? onHome} aria-label="Day pages">
           <BrandMark />
           <span className="brand__name">DayCube</span>
         </button>
