@@ -1,0 +1,75 @@
+{
+  "revision": "20c09d4771385ec67500742f31c0ed36bff1ab3a",
+  "source_hashes": {
+    "apps/viewer/src/components/modals/MeshView.tsx": "c0211be997c483068d60a968345a3a8f1fabb32b2c3586e16912443934699636",
+    "apps/viewer/src/components/modals/SplatView.tsx": "7c29bcaddfe9bf22342ca831d77a49ca001a309483e252c59cf5a508887b33e1",
+    "apps/viewer/e2e/fixtures/scene-lifecycle.html": "d516730e3ecd2d96235f8233a41ef459f314788f4c8770414b63c05b107fc895",
+    "apps/viewer/e2e/fixtures/scene-lifecycle.tsx": "c0237d0fdb36c9d531c9067a4225bddcce7553d48cc76b4077ad47f110a5cc3c",
+    "apps/viewer/e2e/fixtures/scene-lifecycle.mjs": "8f953476fd7e1fa8e1a193c613f1477896faf86c117de7c415327f69fce8d194",
+    "apps/viewer/src/lib/sceneResources.ts": "5f7305311cf501b4932055fd42e8e8d0487183c076a9e5a29ae1148934e158cb",
+    "eval/profile_scene_lifecycle.mjs": "23e975747733ea99af7d9d46e410a9295cbb608e69247583bb62ec491be385f5",
+    "package-lock.json": "2573b1bb5021ef8ebde0c166893696675b9074b318825b3526eda6cff1ab530e"
+  },
+  "environment": {
+    "platform": "win32",
+    "node": "v24.11.1",
+    "browser": "156.0.8078.4",
+    "cpu": "AMD Ryzen 7 9800X3D 8-Core Processor           "
+  },
+  "workload": {
+    "kind": "synthetic failed/late loaders",
+    "viewport": [
+      800,
+      600
+    ],
+    "observation_ms": 300
+  },
+  "results": {
+    "mesh_failure": {
+      "observed": {
+        "created": 1,
+        "disposed": 1,
+        "renders": 0,
+        "geometriesDisposed": 0
+      },
+      "draws_after_settling": 0,
+      "closed": {
+        "created": 1,
+        "disposed": 1,
+        "renders": 0,
+        "geometriesDisposed": 0
+      }
+    },
+    "mesh_closed_while_loading": {
+      "observed": {
+        "created": 1,
+        "disposed": 1,
+        "renders": 0,
+        "geometriesDisposed": 1
+      },
+      "draws_after_settling": 0,
+      "closed": {
+        "created": 1,
+        "disposed": 1,
+        "renders": 0,
+        "geometriesDisposed": 1
+      }
+    },
+    "splat_failure": {
+      "observed": {
+        "created": 1,
+        "disposed": 1,
+        "renders": 3,
+        "geometriesDisposed": 1
+      },
+      "draws_after_settling": 0,
+      "closed": {
+        "created": 1,
+        "disposed": 1,
+        "renders": 3,
+        "geometriesDisposed": 1
+      }
+    }
+  },
+  "limits": "One headless Chromium run. Instrumented actual renderer methods; counts are resource/drawing evidence, not FPS, heap/RSS or real-GPU performance. No API, recordings or frames are read or saved."
+}
