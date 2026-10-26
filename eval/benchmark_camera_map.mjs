@@ -67,6 +67,7 @@ try {
     await page.close();
   }
   const sources = ['apps/viewer/src/components/modals/RecordedMomentModal.tsx', 'apps/viewer/src/components/modals/CameraMap.tsx',
+    'apps/viewer/src/lib/cameraMap.ts',
     'apps/viewer/e2e/fixtures/camera-map.html', 'apps/viewer/e2e/fixtures/camera-map.tsx',
     'eval/benchmark_camera_map.mjs', 'package-lock.json'];
   const hashes = await Promise.all(sources.map(async p => {

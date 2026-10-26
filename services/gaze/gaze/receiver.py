@@ -100,11 +100,20 @@ class Receiver:
             self.live = self.ring = False
             self.reading = None
             return "offline"
+        try:
+            answer = json.loads(body)
+            counts = [answer.get(key) for key in ("accepted", "duplicates", "stale")]
+            if not all(type(n) is int and n >= 0 for n in counts) or sum(counts) != len(batch):
+                raise ValueError("invalid fixation acknowledgement")
+        except (ValueError, AttributeError, TypeError):
+            self.live = self.ring = False
+            self.offset_grid = self.reading = None
+            self.refusal = "invalid fixation acknowledgement"
+            return "refused"
         for _ in batch:
             self.queue.popleft()
         self.token = token
         try:
-            answer = json.loads(body)
             self.live, self.ring = bool(answer.get("live")), bool(answer.get("ring"))
             self.offset_grid = _grid(answer.get("offset_grid"))
             self.lines.extend(_lines(answer.get("lines")))

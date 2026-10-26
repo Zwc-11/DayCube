@@ -14,7 +14,7 @@
     "test:transport": "node --test packages/api-client/tests/sse.test.mjs",
     "test:gaze": "uv --directory services/gaze run pytest",
     "test:extension:unit": "node --test extensions/tests/lib.test.mjs",
-    "test:viewer:unit": "node --test scripts/graph-labels.test.mjs",
+    "test:viewer:unit": "node --test scripts/graph-labels.test.mjs scripts/scene-resources.test.mjs scripts/camera-map.test.mjs",
     "test:speech:unit": "uv run python scripts/test-speech-unit.py",
     "check": "npm run lint:api && npm run test:api && npm run test:gaze && npm run test:extension:unit && npm run test:viewer:unit && npm run test:speech:unit && npm run build",
     "setup:api": "uv sync --locked --python 3.11 && uv run daycube init",

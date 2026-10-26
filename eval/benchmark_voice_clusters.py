@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import inspect
 import json
 import os
 import platform
@@ -22,9 +23,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--compare", type=Path)
+    parser.add_argument("--sizes", type=int, nargs="+", default=[128, 512, 1024, 1536])
     args = parser.parse_args()
+    if min(args.sizes) < 1:
+        parser.error("sizes must be positive")
     results = {}
-    for size in (128, 512, 1536):
+    for size in args.sizes:
         rng = np.random.default_rng(size)
         anchors = np.eye(4, 192, dtype=np.float32)
         prints = anchors[np.arange(size) % 4] + rng.normal(scale=0.02, size=(size, 192)).astype(np.float32)
@@ -33,7 +37,12 @@ def main() -> None:
         results[str(size)] = measure(lambda prints=prints, recordings=recordings: cluster(prints, recordings), 7)
     report = {
         "revision": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
-        "source_hashes": {p: hashlib.sha256((ROOT / p).read_bytes()).hexdigest() for p in SOURCES},
+        "source_hashes": {
+            p: hashlib.sha256(
+                (Path(inspect.getfile(cluster)) if p == SOURCES[0] else ROOT / p).read_bytes()
+            ).hexdigest()
+            for p in SOURCES
+        },
         "environment": {
             "python": platform.python_version(),
             "platform": platform.platform(),
@@ -42,7 +51,7 @@ def main() -> None:
             "openblas_threads": os.environ.get("OPENBLAS_NUM_THREADS"),
         },
         "workload": {
-            "vectors": [128, 512, 1536],
+            "vectors": args.sizes,
             "dimensions": 192,
             "voices": 4,
             "per_recording": 2,
