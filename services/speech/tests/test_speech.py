@@ -78,6 +78,7 @@ def test_sensevoice_tells_the_canarys_languages_apart() -> None:
 
 
 def test_windows_of_two_voices_become_two_speakers_and_a_stray_window_joins_the_nearer() -> None:
+    pytest.importorskip("sklearn", reason="speaker clustering requires the speech environment's scikit-learn")
     rng = np.random.default_rng(0)
     a, b = rng.normal(size=192), rng.normal(size=192)
     e = np.stack([a + rng.normal(scale=0.6, size=192) for _ in range(30)]
@@ -169,6 +170,7 @@ def test_the_worker_leases_runs_and_reports_to_the_receiver(tmp_path: Path, monk
     assert reports[1][1]["retry"] is False and "no audio" in reports[1][1]["error"]
 
 
+@pytest.mark.skipif(os.environ.get("DAYCUBE_SPEECH_CANARY") != "1", reason="runs VAD and downloads the canary clips")
 def test_conversations_are_cut_out_of_an_hour_at_long_silences(tmp_path: Path) -> None:
     """Two talks in ten minutes of sound, the second of two bursts 60 s apart; a lone short word
     is not a conversation. The speech is the canary's English clip, where Silero VAD finds speech."""

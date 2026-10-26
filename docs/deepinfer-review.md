@@ -1,5 +1,9 @@
 # DeepInfer reference review
 
+The [2026-10-26 codebase pass](codebase-efficiency-2026-10-26.md) pins the current reference at
+`553741557a57df44a46fb3ab72b6aafeaf945337` and applies bounded projections, reusable label buffers
+and indexed job lookups. Its reference review scope and measurement limits are explicit.
+
 The [final algorithm pass](algorithm-review-2026-10-24.md) rechecks the current reference and
 applies scoped work sharing to reading geometry, with a sorted interval index for history filtering.
 

@@ -1,0 +1,90 @@
+{
+  "kind": "synthetic-capture-projection",
+  "revision": "188765c22b4344ee560ba89cea9290bb483a5677",
+  "source_hashes": {
+    "eval/benchmark_capture_projection.py": "7a16f35adb2eef7ce28b3b1ea9b033d76170194410ce23c8bf7d2e3b5627bcb2",
+    "eval/benchmark_notes.py": "5359aa9de867c64fc08f294f95f323e1b4c2103dba8739c3e0982280e77a3aab",
+    "services/ingest/ingest/capture/synthesize.py": "36a48fc1200d0e8d97aff93b45a914429778d5c4495bf23afaef0ad5d84533bf",
+    "services/ingest/ingest/vault.py": "55abb7b18870689282ceda2eafd2de16f7646f1cad42443a0b91e04e8204ebd0",
+    "services/ingest/ingest/cache.py": "a6d45ba6f665b32f26b3dfdf69c0a9fbe801dec5fb4975b15a09b33753cf832c",
+    "services/ingest/ingest/store/db.py": "7873b8018709d38a3f4dfa5a0e66752c2cabcc9ef9f6c78f35c34953cce527f6",
+    "services/ingest/ingest/ask/retrieve.py": "b0692f54a9958a56d97b449539190f6a1f5795a15e796e26ea6d7d31726ec9a5"
+  },
+  "environment": {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.9",
+    "cpu": "AMD64 Family 26 Model 68 Stepping 0, AuthenticAMD"
+  },
+  "workload": {
+    "docs": 120,
+    "blocks": 32,
+    "snapshots": [
+      4000,
+      400
+    ],
+    "bytes": {
+      "capture/2026-10-24/blocks.jsonl": 10985300,
+      "capture/2026-10-25/attention.jsonl": 3600,
+      "capture/2026-10-25/blocks.jsonl": 756330,
+      "capture/2026-10-25/browser.jsonl": 118
+    },
+    "repeats": 7,
+    "warmups": 1
+  },
+  "operations": {
+    "cold_capture": {
+      "wall_ms": [
+        131.56330003403127,
+        127.5572000304237,
+        122.47499998193234,
+        127.10159999551252,
+        126.23250001342967,
+        120.12599996523932,
+        130.38699998287484
+      ],
+      "median_ms": 127.10159999551252,
+      "p95_ms": 131.56330003403127,
+      "median_cpu_ms": 125.0,
+      "traced_peak_bytes": 68704535,
+      "sha256": "4101876b57a9bc41f080dd7eecd38fb08ee6228183e47d2463ec2b864dc80789",
+      "profile": "         225444 function calls in 0.157 seconds\n\n   Ordered by: cumulative time\n   List reduced from 99 to 12 due to restriction <12>\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n        1    0.001    0.001    0.157    0.157 benchmark_capture_projection.py:121(cold)\n        1    0.000    0.000    0.156    0.156 synthesize.py:406(capture_units)\n        1    0.021    0.021    0.156    0.156 synthesize.py:176(read_capture)\n        7    0.004    0.001    0.126    0.018 synthesize.py:61(_records)\n     4421    0.002    0.000    0.113    0.000 __init__.py:299(loads)\n     4421    0.004    0.000    0.110    0.000 decoder.py:332(decode)\n     4421    0.105    0.000    0.105    0.000 decoder.py:343(raw_decode)\n   166848    0.008    0.000    0.008    0.000 {method 'get' of 'dict' objects}\n       26    0.004    0.000    0.004    0.000 {method 'split' of 'str' objects}\n        4    0.000    0.000    0.004    0.001 vault.py:108(read_text)\n        4    0.000    0.000    0.004    0.001 pathlib.py:1053(read_text)\n        4    0.002    0.001    0.004    0.001 {method 'read' of '_io.TextIOWrapper' objects}\n\n\n"
+    },
+    "warm_capture": {
+      "wall_ms": [
+        132.59850000031292,
+        144.13339999737218,
+        156.93820000160486,
+        166.47429997101426,
+        169.58520002663136,
+        167.9588999832049,
+        175.2703000092879
+      ],
+      "median_ms": 166.47429997101426,
+      "p95_ms": 175.2703000092879,
+      "median_cpu_ms": 171.875,
+      "traced_peak_bytes": 68699956,
+      "sha256": "4101876b57a9bc41f080dd7eecd38fb08ee6228183e47d2463ec2b864dc80789",
+      "profile": "         225362 function calls in 0.202 seconds\n\n   Ordered by: cumulative time\n   List reduced from 82 to 12 due to restriction <12>\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n        1    0.001    0.001    0.202    0.202 benchmark_capture_projection.py:124(warm)\n        1    0.000    0.000    0.201    0.201 synthesize.py:406(capture_units)\n        1    0.029    0.029    0.201    0.201 synthesize.py:176(read_capture)\n        7    0.005    0.001    0.162    0.023 synthesize.py:61(_records)\n     4421    0.003    0.000    0.145    0.000 __init__.py:299(loads)\n     4421    0.005    0.000    0.142    0.000 decoder.py:332(decode)\n     4421    0.134    0.000    0.134    0.000 decoder.py:343(raw_decode)\n   166848    0.009    0.000    0.009    0.000 {method 'get' of 'dict' objects}\n       25    0.006    0.000    0.006    0.000 {method 'split' of 'str' objects}\n        4    0.000    0.000    0.005    0.001 vault.py:108(read_text)\n        4    0.000    0.000    0.005    0.001 pathlib.py:1053(read_text)\n        4    0.003    0.001    0.004    0.001 {method 'read' of '_io.TextIOWrapper' objects}\n\n\n"
+    },
+    "search_after_append": {
+      "wall_ms": [
+        176.47760000545532,
+        154.75849999347702,
+        180.03690004115924,
+        187.4180000158958,
+        188.52239998523146,
+        183.51619999157265,
+        176.06080003315583
+      ],
+      "median_ms": 180.03690004115924,
+      "p95_ms": 188.52239998523146,
+      "median_cpu_ms": 171.875,
+      "traced_peak_bytes": 68704409,
+      "sha256": "b93327b131720b20ce5261503045bfdf448ab20672495df727577d6d05d298c4",
+      "profile": "         236892 function calls (236875 primitive calls) in 0.218 seconds\n\n   Ordered by: cumulative time\n   List reduced from 290 to 12 due to restriction <12>\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n        1    0.000    0.000    0.218    0.218 benchmark_capture_projection.py:127(search_append)\n        1    0.000    0.000    0.216    0.216 retrieve.py:48(retrieve)\n        1    0.001    0.001    0.214    0.214 db.py:303(ensure)\n        1    0.000    0.000    0.209    0.209 db.py:347(update)\n        1    0.027    0.027    0.195    0.195 synthesize.py:176(read_capture)\n        7    0.004    0.001    0.159    0.023 synthesize.py:61(_records)\n     4431    0.003    0.000    0.143    0.000 __init__.py:299(loads)\n     4431    0.004    0.000    0.140    0.000 decoder.py:332(decode)\n     4431    0.133    0.000    0.133    0.000 decoder.py:343(raw_decode)\n    20/12    0.000    0.000    0.009    0.001 {built-in method builtins.next}\n   167465    0.009    0.000    0.009    0.000 {method 'get' of 'dict' objects}\n        6    0.000    0.000    0.007    0.001 db.py:164(connect)\n\n\n"
+    }
+  },
+  "verified_capture_sha256": "c7b07f7926eac2b57a3e7c08e5d366533f00859dbf7e0c1fcfc9058ec7ec9813",
+  "cache_charged_bytes": 0,
+  "limits": "Warm filesystem, synthetic text/geometry, in-process keyword search. No HTTP, browser or model. Each search appends one position-only snapshot; output and projection equivalence are checked. Search hashes omit regenerated SQLite unit_id but retain evidence IDs and all other fields. Traced peak is not RSS. Small sample tails are maxima, not production p95 estimates."
+}

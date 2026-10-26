@@ -1,0 +1,239 @@
+{
+  "kind": "synthetic-cpu-warm-filesystem",
+  "timestamp": "2026-10-26T01:49:31.193639+00:00",
+  "environment": {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "machine": "AMD64",
+    "processor": "AMD64 Family 26 Model 68 Stepping 0, AuthenticAMD",
+    "python": "3.11.9 (tags/v3.11.9:de54cf5, Apr  2 2024, 10:12:12) [MSC v.1938 64 bit (AMD64)]",
+    "sqlite": "3.45.1",
+    "revision": "188765c22b4344ee560ba89cea9290bb483a5677",
+    "dirty": true,
+    "source_sha256": {
+      "services/ingest/ingest/vault.py": "55abb7b18870689282ceda2eafd2de16f7646f1cad42443a0b91e04e8204ebd0",
+      "services/ingest/ingest/contracts.py": "ed8879373cea21eb3852fd01cde052f348d94cd913b582f3f5c9dc01b627fb19",
+      "services/ingest/ingest/index/build.py": "d46f57bf6fd19572c85809a7c22399c937ce654573ea4751418d9a244c9027a0",
+      "services/ingest/ingest/store/db.py": "7873b8018709d38a3f4dfa5a0e66752c2cabcc9ef9f6c78f35c34953cce527f6",
+      "services/ingest/ingest/index/timeline.py": "b7bd8acbb42d0a93241fb7acdbb75c3b49eeab88bb6ff49afb9250e90ebf4c3e",
+      "services/ingest/ingest/ask/retrieve.py": "b0692f54a9958a56d97b449539190f6a1f5795a15e796e26ea6d7d31726ec9a5",
+      "eval/benchmark_core.py": "c1009ca1c5fcbf34188936a612272be54d7fe8165902f7cae534be77ce55c490"
+    }
+  },
+  "repeats": 5,
+  "cases": {
+    "small": {
+      "workload": {
+        "places": 5,
+        "events": 250,
+        "fixes": 500,
+        "screenshots": 50
+      },
+      "metrics": {
+        "load_day": {
+          "median_ms": 0.8508999599143863,
+          "p95_ms": 1.0367999784648418,
+          "samples_ms": [
+            0.8042000117711723,
+            1.0367999784648418,
+            0.9619999909773469,
+            0.8508999599143863,
+            0.7986000273376703
+          ],
+          "output_sha256": "3264a60f8c4587694f20e801155cad9d3e45bc73a161938bc650d7188d23dd1a"
+        },
+        "collect_units": {
+          "median_ms": 0.728400016669184,
+          "p95_ms": 0.8850000449456275,
+          "samples_ms": [
+            0.6553999846801162,
+            0.728400016669184,
+            0.7383999763987958,
+            0.8850000449456275,
+            0.6853999802842736
+          ],
+          "output_sha256": "fc7f058c267382c1234e8a7dec1d2e3df0b2caab5ad9514e006bb71e9c2e57bc"
+        },
+        "store_update": {
+          "median_ms": 15.277500031515956,
+          "p95_ms": 19.390599976759404,
+          "samples_ms": [
+            19.390599976759404,
+            15.41749999159947,
+            14.529699983540922,
+            15.061500016599894,
+            15.277500031515956
+          ],
+          "output_sha256": "a1d368cfaba360bd3cae2ef067e4be67f56e74288ecb5a799a6d620ea1a5863c"
+        },
+        "store_update_cold": {
+          "median_ms": 24.72809999017045,
+          "p95_ms": 40.59930000221357,
+          "samples_ms": [
+            24.07439996022731,
+            23.39310001116246,
+            32.86470001330599,
+            40.59930000221357,
+            24.72809999017045
+          ],
+          "output_sha256": "a1d368cfaba360bd3cae2ef067e4be67f56e74288ecb5a799a6d620ea1a5863c"
+        },
+        "store_retrieve_warm": {
+          "median_ms": 4.452299966942519,
+          "p95_ms": 5.291100009344518,
+          "samples_ms": [
+            4.1606000158935785,
+            4.452299966942519,
+            5.291100009344518,
+            4.470599989872426,
+            3.639700007624924
+          ],
+          "output_sha256": "45bf4543949cc5a83b1e23ebec06a36c1e5b7f2a4cd61ca454405b7efe007e96"
+        },
+        "events_window": {
+          "median_ms": 0.47199998516589403,
+          "p95_ms": 0.7442999631166458,
+          "samples_ms": [
+            0.7442999631166458,
+            0.4862999776378274,
+            0.47199998516589403,
+            0.40040002204477787,
+            0.367600005120039
+          ],
+          "output_sha256": "080ed262061906994eab112c8852a0247bec65a9436254fcc4913b363e4c0309"
+        },
+        "day_payload_cold": {
+          "median_ms": 6.2815999845042825,
+          "p95_ms": 7.324200007133186,
+          "samples_ms": [
+            6.4974999986588955,
+            5.468299961648881,
+            6.2815999845042825,
+            7.324200007133186,
+            4.935599979944527
+          ],
+          "output_sha256": "2ab3d04d711ede4ef38b210bbfebc7f599870ec74aeeb5b66319130511632e67"
+        },
+        "day_payload_warm": {
+          "median_ms": 0.6370000191964209,
+          "p95_ms": 0.7524999673478305,
+          "samples_ms": [
+            0.6763999699614942,
+            0.7524999673478305,
+            0.6370000191964209,
+            0.5691000260412693,
+            0.4723999882116914
+          ],
+          "output_sha256": "2ab3d04d711ede4ef38b210bbfebc7f599870ec74aeeb5b66319130511632e67"
+        }
+      },
+      "verified_index_sha256": "fc7f058c267382c1234e8a7dec1d2e3df0b2caab5ad9514e006bb71e9c2e57bc"
+    },
+    "large": {
+      "workload": {
+        "places": 50,
+        "events": 5000,
+        "fixes": 10000,
+        "screenshots": 1000
+      },
+      "metrics": {
+        "load_day": {
+          "median_ms": 8.521300042048097,
+          "p95_ms": 23.35149998543784,
+          "samples_ms": [
+            8.155099989380687,
+            23.35149998543784,
+            8.521300042048097,
+            9.078800037968904,
+            7.887400046456605
+          ],
+          "output_sha256": "77f71aa1db5fabee8093697917c73987b752f873f455d2a81c0a8fee333bd2d4"
+        },
+        "collect_units": {
+          "median_ms": 5.632399988826364,
+          "p95_ms": 15.275100013241172,
+          "samples_ms": [
+            5.044599995017052,
+            6.420499994419515,
+            15.275100013241172,
+            5.510199989657849,
+            5.632399988826364
+          ],
+          "output_sha256": "ad22b91687d36ec0b825aa32134484dc5e4ca86eadabb5144a503b95c5964cfa"
+        },
+        "store_update": {
+          "median_ms": 93.44790002796799,
+          "p95_ms": 104.45919999619946,
+          "samples_ms": [
+            93.44790002796799,
+            104.45919999619946,
+            96.39729995978996,
+            93.44389999751002,
+            89.2323000007309
+          ],
+          "output_sha256": "396a45d39d1dcdbd0a7a88bc5fc7474d7e4d66bfe7cec721622501ac270daa68"
+        },
+        "store_update_cold": {
+          "median_ms": 174.85440004384145,
+          "p95_ms": 180.25370000395924,
+          "samples_ms": [
+            174.85440004384145,
+            180.25370000395924,
+            167.00840002158657,
+            165.3859000070952,
+            176.60120001528412
+          ],
+          "output_sha256": "396a45d39d1dcdbd0a7a88bc5fc7474d7e4d66bfe7cec721622501ac270daa68"
+        },
+        "store_retrieve_warm": {
+          "median_ms": 2.9895000043325126,
+          "p95_ms": 3.3054000232368708,
+          "samples_ms": [
+            3.1934999860823154,
+            2.9895000043325126,
+            2.933400042820722,
+            2.897400001529604,
+            3.3054000232368708
+          ],
+          "output_sha256": "3b0fdf0c42652e1d9515699dd6b71db4cd40b64fc8d60964d89bf25eaa34742e"
+        },
+        "events_window": {
+          "median_ms": 0.48909999895840883,
+          "p95_ms": 0.7409999961964786,
+          "samples_ms": [
+            0.7409999961964786,
+            0.7100999937392771,
+            0.48320001224055886,
+            0.4743000026792288,
+            0.48909999895840883
+          ],
+          "output_sha256": "a83b013eb4677a28c2df23bcc6f3f242b780ce8645a0ba709468a4e95a107a6f"
+        },
+        "day_payload_cold": {
+          "median_ms": 123.48360003670678,
+          "p95_ms": 130.75559999560937,
+          "samples_ms": [
+            104.27000001072884,
+            123.48360003670678,
+            130.75559999560937,
+            125.185800017789,
+            108.7056000251323
+          ],
+          "output_sha256": "696b0c330496c909d41cdb1467ddb0dc47078b39967a7487529948192f6aeb5a"
+        },
+        "day_payload_warm": {
+          "median_ms": 0.9498000144958496,
+          "p95_ms": 1.291499997023493,
+          "samples_ms": [
+            0.8524000295437872,
+            0.7371000247076154,
+            0.9498000144958496,
+            1.291499997023493,
+            1.0396999423392117
+          ],
+          "output_sha256": "696b0c330496c909d41cdb1467ddb0dc47078b39967a7487529948192f6aeb5a"
+        }
+      },
+      "verified_index_sha256": "ad22b91687d36ec0b825aa32134484dc5e4ca86eadabb5144a503b95c5964cfa"
+    }
+  }
+}

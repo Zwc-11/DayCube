@@ -51,6 +51,28 @@ def test_a_job_is_added_once_and_a_new_version_is_a_new_job(jobs: Jobs) -> None:
     assert [j["version"] for j in jobs.find("splat_train", {"date": "2026-10-24", "moment": "mo_scan_x"})] == [2, 1]
 
 
+def test_input_lookup_index_is_added_to_an_existing_queue_without_changing_history(tmp_path: Path) -> None:
+    location = tmp_path / "jobs.sqlite"
+    jobs = Jobs(location)
+    target = {"date": "2026-10-25", "moment": "target"}
+    try:
+        for version in (1, 2, 3):
+            jobs.add("speech", version, target, now=T0 + version)
+        jobs.add("speech", 1, {"date": "2026-10-25", "moment": "other"}, now=T0)
+        jobs.add("different", 1, target, now=T0)
+        expected = jobs.find("speech", dict(reversed(list(target.items()))))
+        jobs._db.execute("DROP INDEX jobs_input")
+    finally:
+        jobs.close()
+    reopened = Jobs(location)
+    try:
+        assert reopened.find("speech", target) == expected
+        assert [row["version"] for row in expected] == [3, 2, 1]
+        assert "jobs_input" in {row[1] for row in reopened._db.execute("PRAGMA index_list(jobs)")}
+    finally:
+        reopened.close()
+
+
 def test_jobs_are_leased_by_priority_then_age_and_kept_alive_by_heartbeats(jobs: Jobs) -> None:
     old, _ = jobs.add("a", 1, {"n": 1}, now=T0)
     urgent, _ = jobs.add("a", 1, {"n": 2}, priority=5, now=T0 + 1)
@@ -198,9 +220,15 @@ def test_voice_memos_are_queued_for_speech_and_a_finished_one_refreshes_the_days
         monkeypatch.setattr(client.app.state.receiver.vault, "invalidate_index", refreshed.append)
         store = client.app.state.jobs
         assert len(stages.discover(vault, store)) == 1  # the one without speech.json
-        job = client.post("/jobs/lease", json={"worker": "speech@pc", "needs": "gpu", "stages": ["speech"]}, headers=auth).json()["job"]
+        job = client.post(
+            "/jobs/lease", json={"worker": "speech@pc", "needs": "gpu", "stages": ["speech"]}, headers=auth
+        ).json()["job"]
         assert job["inputs"] == {"date": "2026-10-24", "moment": "mo_voice_20261024_214746"}
         # The receiver's own GPU thread never takes it: its code is in the speech environment.
-        assert worker.runnable("gpu", idle_s=AWAY) == ["splat_train"] or "speech" not in worker.runnable("gpu", idle_s=AWAY)
-        done = client.post(f"/jobs/{job['id']}/done", json={"worker": "speech@pc", "outputs": {"turns": 2}}, headers=auth)
+        assert worker.runnable("gpu", idle_s=AWAY) == ["splat_train"] or "speech" not in worker.runnable(
+            "gpu", idle_s=AWAY
+        )
+        done = client.post(
+            f"/jobs/{job['id']}/done", json={"worker": "speech@pc", "outputs": {"turns": 2}}, headers=auth
+        )
         assert done.json()["ok"] and refreshed == ["2026-10-24"]
