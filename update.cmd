@@ -1,6 +1,7 @@
 @echo off
-rem Double-click after an update is pushed. It pulls the update, syncs the receiver's, the eye
-rem tracker's and (once installed) the speech worker's environments, runs the speech check on the
+rem Double-click after an update is pushed. It pulls the update, installs the viewer's packages when
+rem they changed, syncs the receiver's, the eye tracker's and (once installed) the speech worker's
+rem environments, runs the speech check on the
 rem GPU when the speech code changed, restarts the receiver and eye tracker on the new code, waits
 rem for them, and runs doctor. Log: vault\logs\update.log (docs/capture.md, "Updating").
 rem Commands are run with call, so one that is a .cmd (some git installs) returns here.
@@ -21,6 +22,20 @@ if errorlevel 1 (
   goto :end
 )
 call git log --oneline -1 >> "%LOG%" 2>&1
+
+rem The viewer's packages, when they changed (a running viewer.cmd needs restarting after this).
+if not defined OLD goto :sync
+call git diff --quiet %OLD% HEAD -- package-lock.json
+if not errorlevel 1 goto :sync
+echo [%date% %time%] the viewer's packages changed: npm install>> "%LOG%"
+call npm install --no-audit --no-fund >> "%LOG%" 2>&1
+if errorlevel 1 (
+  echo [%date% %time%] npm install failed>> "%LOG%"
+  goto :end
+)
+echo [%date% %time%] restart viewer.cmd to use them>> "%LOG%"
+
+:sync
 
 echo [%date% %time%] sync the receiver>> "%LOG%"
 call uv sync --project services\capture-win >> "%LOG%" 2>&1

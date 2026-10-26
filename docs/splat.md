@@ -181,6 +181,34 @@ diorama drawn for every place of its kind (`components/diorama/ScanStage.tsx`):
 - **Centres in float32** (`extSplats`). In float16, centres 100 m from the origin fall on a grid of
   6–12 cm.
 - **Fill rate.** No MSAA, and at most 1.25 device pixels per CSS pixel.
+- **The camera every frame.** Following, the view reads the time each frame: the video's
+  `currentTime` in the scan's own view, and on the day's stage the playhead carried on between the
+  app's 10 Hz ticks, as the diorama's walker does. Before, the camera moved only when the time
+  arrived: 10 times a second with the day playing, about 4 with the video (`timeupdate`).
+- **The walk at its own speed.** While the stage shows a scan, playback crosses the scan's span at
+  real time × the speed (1×, 4×, 12×), and stops at its start rather than jumping over it. At the
+  day's pace the 10 s test scan went by in two frames.
+- **At rest when still.** Frames are drawn only for 600 ms after the camera, the time, the size or
+  Spark's sort and detail last changed, and every frame while the scene loads.
+
+### Measuring on the GPU
+
+The end-to-end tests draw in software (about 8 frames a second), so they check behaviour, not
+speed. `check-3d.cmd` on the PC runs `scripts/profile-splat.mjs`. It starts its own viewer on port
+3100 (and its own API on 7711 when none answers on 7701), opens the day's scan in headed Edge with
+unthrottled frames, and measures:
+
+- following: 10 s of the day playing over the scan at 4×, frame intervals and the camera's step
+  each frame
+- orbiting: 5 s of dragging
+- at rest: frames drawn in a second of stillness
+
+It writes `vault/logs/splat-perf-<label>.json`. It passes when:
+
+- the browser drew with the NVIDIA GPU
+- following has p95 ≤ 8.3 ms and p99 ≤ 16.7 ms
+- there is no long task over 50 ms
+- no frames are drawn at rest
 
 ## Tests
 

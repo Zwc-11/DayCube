@@ -12,8 +12,16 @@ import type { SplatCameras } from '@daycube/api-client';
  * - level of detail: Spark builds a splat tree in a worker as the scene loads and draws at most
  *   ``LOD_SPLATS`` of it, the nearest finest;
  * - centres in float32 (``extSplats``): float16 centres are 6-12 cm apart 100 m from the origin;
- * - no MSAA, and at most 1.25 device pixels per CSS pixel: splats are drawn by fill rate.
+ * - no MSAA, and at most 1.25 device pixels per CSS pixel: splats are drawn by fill rate;
+ * - the camera reads the time every frame (``clock``), not at the 10 Hz of the app's playback
+ *   ticks or the 4 Hz of a video's timeupdate;
+ * - frames are drawn only while something changes (``DRAW_TAIL_MS`` after the camera, the time,
+ *   the size or the scene's sort and detail last did), so a still view costs nothing.
  */
+
+/** How long frames keep being drawn after the last change: Spark sorts and fetches detail in its
+ * workers, and the frames after a move show their results. */
+export const DRAW_TAIL_MS = 600;
 
 /** Splats drawn per frame. Spark's desktop default is 2.5 M. */
 export const LOD_SPLATS = 2_000_000;
@@ -27,6 +35,9 @@ interface SplatViewProps {
   bounds: { min: [number, number, number]; max: [number, number, number] } | null;
   /** Seconds into the capture (the video's time). */
   t: number;
+  /** The capture's time now, in seconds, read every frame while following: smoother than ``t``,
+   * which arrives with the app's ticks. */
+  clock?: () => number;
   following: boolean;
   onLookAround: () => void;
   label: string;
@@ -35,7 +46,22 @@ interface SplatViewProps {
 type Live = {
   camera: import('three').PerspectiveCamera;
   controls: { target: import('three').Vector3; update: () => void };
+  /** Keep drawing for a while: something changed. */
+  touch: (ms?: number) => void;
+  /** Frames drawn, for the end-to-end tests. */
+  frames: number;
 };
+
+/** The camera where the phone was at ``t``, looking where it looked, kept level. The orbit
+ * controls aim the camera at their target every frame, so the target moves with it. */
+export function follow(v: Live, cameras: SplatCameras, t: number): void {
+  const pose = poseAt(cameras, t);
+  const [x, y, z] = pose.position;
+  v.camera.position.set(x, y, z);
+  v.controls.target.set(x + pose.forward[0] * 3, y + pose.forward[1] * 3, z + pose.forward[2] * 3);
+  v.controls.update();
+  v.touch();
+}
 
 /** ARKit's first poses, before tracking settles, can be far off (on 2026-10-24 the first looked
  * 34 degrees down, a second later 8): the view starts half a second in. */
@@ -66,13 +92,15 @@ export function poseAt(cams: SplatCameras, at: number) {
   return { position, forward: forward.map((v) => v / n) };
 }
 
-export const SplatView: React.FC<SplatViewProps> = ({ url, cameras, bounds, t, following, onLookAround, label }) => {
+export const SplatView: React.FC<SplatViewProps> = ({ url, cameras, bounds, t, clock, following, onLookAround, label }) => {
   const root = useRef<HTMLDivElement>(null);
   const live = useRef<Live | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'failed'>('loading');
   const [progress, setProgress] = useState(0);
   const followRef = useRef(following);
   followRef.current = following;
+  const clockRef = useRef(clock);
+  clockRef.current = clock;
 
   useEffect(() => {
     let alive = true;
@@ -91,7 +119,12 @@ export const SplatView: React.FC<SplatViewProps> = ({ url, cameras, bounds, t, f
       el.appendChild(renderer.domElement);
       const scene = new THREE.Scene();
       scene.background = new THREE.Color('#0b0c0e');
-      const spark = new SparkRenderer({ renderer, lodSplatCount: LOD_SPLATS });
+      let loading = true; // drawn every frame until the scene is in
+      let drawUntil = 0;
+      const touch = (ms = DRAW_TAIL_MS) => {
+        drawUntil = Math.max(drawUntil, performance.now() + ms);
+      };
+      const spark = new SparkRenderer({ renderer, lodSplatCount: LOD_SPLATS, onDirty: () => touch() });
       scene.add(spark);
       // The phone saw its long side upright: a field of view like the video's.
       const camera = new THREE.PerspectiveCamera(cameras ? Math.min(80, cameras.fov_long_deg) : 60, el.clientWidth / Math.max(1, el.clientHeight), 0.05, 3000);
@@ -105,8 +138,10 @@ export const SplatView: React.FC<SplatViewProps> = ({ url, cameras, bounds, t, f
       camera.position.set(from[0], from[1], from[2]);
       controls.target.set(at[0], at[1], at[2]);
       controls.update();
-      live.current = { camera, controls };
-      if (import.meta.env.DEV) (window as unknown as { __splat?: unknown }).__splat = live.current; // for the end-to-end tests
+      controls.addEventListener('change', () => touch());
+      const v: Live = { camera, controls, touch, frames: 0 };
+      live.current = v;
+      if (import.meta.env.DEV) (window as unknown as { __splat?: unknown }).__splat = v; // for the end-to-end tests
       const load = (lod: boolean) =>
         new SplatMesh({
           url,
@@ -118,11 +153,25 @@ export const SplatView: React.FC<SplatViewProps> = ({ url, cameras, bounds, t, f
         });
       let splats = load(true);
       scene.add(splats);
-      renderer.setAnimationLoop(() => renderer.render(scene, camera));
+      let lastT = Number.NaN;
+      renderer.setAnimationLoop((now: number) => {
+        const read = clockRef.current;
+        if (cameras && followRef.current && read) {
+          const at = read();
+          if (at !== lastT) {
+            lastT = at;
+            follow(v, cameras, at);
+          }
+        } else lastT = Number.NaN;
+        if (!loading && now > drawUntil) return;
+        renderer.render(scene, camera);
+        v.frames++;
+      });
       const resize = new ResizeObserver(() => {
         camera.aspect = el.clientWidth / Math.max(1, el.clientHeight);
         camera.updateProjectionMatrix();
         renderer.setSize(el.clientWidth, el.clientHeight);
+        touch();
       });
       resize.observe(el);
       dispose = () => {
@@ -146,6 +195,8 @@ export const SplatView: React.FC<SplatViewProps> = ({ url, cameras, bounds, t, f
         scene.add(splats);
         await splats.initialized;
       }
+      loading = false;
+      touch(2000); // the splat tree's first refinements
       if (alive) setState('ready');
     })().catch((error: unknown) => {
       console.warn('The splat scene did not load:', error);
@@ -158,17 +209,12 @@ export const SplatView: React.FC<SplatViewProps> = ({ url, cameras, bounds, t, f
     };
   }, [url, cameras, bounds]);
 
-  // Following: the camera where the phone was, looking where it looked, kept level. The orbit
-  // controls aim the camera at their target every frame, so the target moves with it.
+  // Following without a clock: the camera moves when ``t`` does.
   useEffect(() => {
     const v = live.current;
-    if (!v || !cameras || !following || state !== 'ready') return;
-    const pose = poseAt(cameras, t);
-    const [x, y, z] = pose.position;
-    v.camera.position.set(x, y, z);
-    v.controls.target.set(x + pose.forward[0] * 3, y + pose.forward[1] * 3, z + pose.forward[2] * 3);
-    v.controls.update();
-  }, [t, following, cameras, state]);
+    if (!v || !cameras || !following || state !== 'ready' || clock) return;
+    follow(v, cameras, t);
+  }, [t, following, cameras, state, clock]);
 
   return (
     <div className="splat" aria-label={label} role="img">

@@ -253,6 +253,7 @@ test("a recording's speakers are named from their chip, and the name shows on wh
 });
 
 test("a visit with a scan shows the scan on the day's stage, the camera walking with the timeline", async ({ page }) => {
+  test.setTimeout(90_000);
   // The fixture's scan (14:15:40, 10 s, in the 14:14-14:24 walk) with a small splat and camera path.
   const { mkdir, writeFile, rm } = await import('node:fs/promises');
   const folder = path.resolve('.daycube-e2e-vault/2026-10-21/moments/mo_scan_20261021_181540');
@@ -297,6 +298,51 @@ test("a visit with a scan shows the scan on the day's stage, the camera walking 
     await page.keyboard.press('ArrowRight');
     await expect.poll(camera).toEqual([0, 0, -9.9]);
     await expect(stage.getByTestId('scan-caption')).toContainText('the timeline is at 14:19, outside the scan');
+    // At rest once the scene has settled: no frames drawn until something changes. Dragging draws.
+    const frames = () => page.evaluate(() => (window as any).__splat.frames as number);
+    await page.waitForTimeout(2800);
+    const rested = await frames();
+    await page.waitForTimeout(700);
+    expect(await frames()).toBe(rested);
+    const box = (await stage.getByTestId('splat-view').boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + 80, box.y + box.height / 2, { steps: 4 });
+    await page.mouse.up();
+    await expect.poll(frames).toBeGreaterThan(rested);
+    await stage.getByRole('button', { name: 'Follow the walk' }).click();
+    // Playing the day through the scan: the walk plays at its own speed (here 1 m of path per second
+    // at 1x), and the camera moves on nearly every frame, not at the 10 Hz of the playback ticks.
+    // A small window, so the software renderer of the tests draws fast enough to tell.
+    await page.getByRole('button', { name: /^\d\d:\d\d LiDAR scan$/ }).first().click();
+    await page.setViewportSize({ width: 960, height: 600 });
+    await page.getByRole('button', { name: 'Play the day' }).click();
+    const samples = await page.evaluate(() => new Promise<[number, number][]>((resolve) => {
+      const out: [number, number][] = [];
+      const tick = (now: number) => {
+        out.push([now, (window as any).__splat.camera.position.z]);
+        if (now - out[0][0] < 2500) requestAnimationFrame(tick);
+        else resolve(out);
+      };
+      requestAnimationFrame(tick);
+    }));
+    await page.getByRole('button', { name: 'Pause playback' }).click();
+    // From the first frame that moved (the scan's start) over the next 1.5 s.
+    const first = samples.findIndex(([, z], k) => k > 0 && Math.abs(z - samples[k - 1][1]) > 1e-6);
+    const run = samples.slice(Math.max(0, first - 1)).filter(([at]) => at - samples[Math.max(0, first - 1)][0] <= 1500);
+    const seconds = (run[run.length - 1][0] - run[0][0]) / 1000;
+    const metres = Math.abs(run[run.length - 1][1] - run[0][1]);
+    const fps = (run.length - 1) / seconds;
+    const moving = run.slice(1).filter(([, z], k) => Math.abs(z - run[k][1]) > 1e-6).length / (run.length - 1);
+    console.log(`playback: ${metres.toFixed(2)} m in ${seconds.toFixed(2)} s at ${fps.toFixed(0)} fps, ${(100 * moving).toFixed(0)}% of frames moving`);
+    expect(first).toBeGreaterThan(-1);
+    // Real time, not the diorama's pace (which crossed the whole 10 m in two frames). The software
+    // renderer here draws about 8 frames a second and delays the ticks, so the bounds are loose;
+    // frame-by-frame smoothness is measured on the PC's GPU (scripts/profile-splat.mjs).
+    expect(metres / seconds).toBeGreaterThan(0.25);
+    expect(metres / seconds).toBeLessThan(2);
+    expect(moving).toBeGreaterThan(0.8);
+    await page.setViewportSize({ width: 1600, height: 1000 });
     // The diorama instead, and back.
     await stage.getByRole('group', { name: 'Scene' }).getByRole('button', { name: 'Diorama' }).click();
     await expect(stage.getByTestId('scan-stage')).toHaveCount(0);

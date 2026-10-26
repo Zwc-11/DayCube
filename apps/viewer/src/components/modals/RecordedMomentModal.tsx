@@ -272,6 +272,8 @@ export const RecordedMomentModal: React.FC<RecordedMomentModalProps> = ({ date, 
     if (mediaRef.current) mediaRef.current.currentTime = s;
   };
   const onTime = (e: React.SyntheticEvent<HTMLMediaElement>) => setT(e.currentTarget.currentTime);
+  // The 3D camera reads the video's time every frame: timeupdate comes about 4 times a second.
+  const readVideo = () => mediaRef.current?.currentTime ?? t;
   const reason = typeof scene.reason === 'string' ? scene.reason : null;
   const untranscribed = typeof scene.transcript === 'string' ? scene.transcript : null;
   // A phone held upright records sideways: the import turns the preview and keyframes upright.
@@ -348,6 +350,7 @@ export const RecordedMomentModal: React.FC<RecordedMomentModalProps> = ({ date, 
                   cameras={moment.splatCameras}
                   bounds={mesh!.bounds}
                   t={t}
+                  clock={readVideo}
                   following={following}
                   onLookAround={() => setFollowing(false)}
                   label={`The scan's surfaces: ${meshSummary(mesh!)}`}
@@ -358,6 +361,7 @@ export const RecordedMomentModal: React.FC<RecordedMomentModalProps> = ({ date, 
                   cameras={moment.splatCameras}
                   bounds={splat!.bounds}
                   t={t}
+                  clock={readVideo}
                   following={following}
                   onLookAround={() => setFollowing(false)}
                   label={`The scan in 3D: ${splat ? splatSummary(splat) : ''}`}
