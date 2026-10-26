@@ -27,6 +27,7 @@ from pathlib import Path
 from ingest.config import Settings
 from ingest.phone import sensor_logger, sources
 from ingest.recon import simulate
+from ingest.skeleton.parsers.types import Fix
 from ingest.splat import brush
 from ingest.splat.run import find_capture, scans
 from ingest.vault import Vault, read_json
@@ -41,6 +42,26 @@ def capture_of(vault: Vault, moment: Path) -> Path | None:
     if (own / "odometry.csv").is_file():
         return own
     return find_capture(vault, moment)
+
+
+def day_fixes(vault: Vault, date: str, t0: float, t1: float) -> tuple[list[Fix], str]:
+    """The phone's GPS from ``t0`` to ``t1`` (epoch seconds), 10 minutes either side: from the kept
+    Sensor Logger recordings, else from the day's skeleton (a day imported before recordings were
+    kept, as 2026-10-24 was, has its fixes only there)."""
+    recordings = sensor_logger.join([sensor_logger.parse(p) for p in sources.sensors_between(vault, t0 - 600, t1 + 600)])
+    fixes = sorted((f for r in recordings for f in r.fixes), key=lambda f: f.t)
+    if fixes:
+        return fixes, "sources/sensors"
+    skeleton = read_json(vault.day_path(date) / "skeleton.geojson") or {}
+    for feature in skeleton.get("features", []):
+        geometry, props = feature.get("geometry") or {}, feature.get("properties") or {}
+        if geometry.get("type") != "Point" or not props.get("t"):
+            continue
+        t = datetime.fromisoformat(props["t"])
+        if t0 - 600 <= t.timestamp() <= t1 + 600:
+            lon, lat = geometry["coordinates"][:2]
+            fixes.append(Fix(t=t, lat=float(lat), lon=float(lon), source=str(props.get("source", "skeleton"))))
+    return sorted(fixes, key=lambda f: f.t), "skeleton.geojson"
 
 
 def trainer(folder: Path, export: Path, *, steps: int, say: object) -> dict:
@@ -78,14 +99,13 @@ def main() -> None:
     meta = read_json(moment / "meta.json") or {}
     t0 = datetime.fromisoformat(meta["t0"]).timestamp()
     duration = float(meta.get("duration_s") or 600)
-    recordings = sensor_logger.join([sensor_logger.parse(p) for p in sources.sensors_between(vault, t0 - 600, t0 + duration + 600)])
-    fixes = sorted((f for r in recordings for f in r.fixes), key=lambda f: f.t)
+    fixes, fixes_from = day_fixes(vault, args.date, t0, t0 + duration)
     out = args.out or vault.root / "logs" / "glasses-sim.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     work = vault.root / "derived" / "glasses-sim" / args.date / moment_id
     header = {"date": args.date, "moment": moment_id, "started": datetime.now().astimezone().isoformat(timespec="seconds"),
-              "gps_fixes": len(fixes), "phone_fit": (read_json(moment / "camera.json") or {}).get("fit")}  # fmt: skip
-    say(f"{moment_id}: {video.name}, {len(fixes)} GPS fixes; work in {work}")
+              "gps_fixes": len(fixes), "gps_from": fixes_from, "phone_fit": (read_json(moment / "camera.json") or {}).get("fit")}  # fmt: skip
+    say(f"{moment_id}: {video.name}, {len(fixes)} GPS fixes from {fixes_from}; work in {work}")
 
     def write(report: dict) -> None:
         out.write_text(json.dumps(header | report, indent=1) + "\n", encoding="utf-8")
