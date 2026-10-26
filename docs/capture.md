@@ -365,7 +365,7 @@ Two more double-clicks sit beside it:
 
 - `viewer.cmd` starts the vault's API and the viewer (`npm run demo`), at http://127.0.0.1:3000,
   logging to `vault\logs\viewer.log`. Closing its window stops them.
-- `check-3d.cmd` measures a scan's 3D view on the PC's GPU (docs/splat.md, "Measuring on the GPU").
+- `check-3d.cmd` measures a scan's 3D view on the PC's GPU, with the NVIDIA GPU and with the one Windows gives the browser by default (docs/splat.md, "Measuring on the GPU").
 
 Everything `update.cmd` does goes to `vault\logs\update.log`. `services/ingest/tests/test_update_cmd.py` runs it in
 Wine's `cmd` with git, uv and the receiver stood in for: each step in each case (speech changed or
