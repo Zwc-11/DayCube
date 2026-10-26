@@ -14,7 +14,8 @@ transcribe = ["faster-whisper>=1.2,<2"]  # voice memos from the phone (docs/phon
 mesh = ["open3d>=0.19,<0.21"]  # a scan's surface as a mesh, from its LiDAR depth (docs/splat.md)
 
 [dependency-groups]
-dev = ["pytest>=8,<10", "ruff>=0.14,<1", "datamodel-code-generator>=0.35,<1"]
+dev = ["pytest>=8,<10", "ruff>=0.14,<1", "datamodel-code-generator>=0.35,<1",
+       "pycolmap>=4.2,<5"]  # tests/test_recon.py (the receiver has it at run time)
 
 [tool.uv.sources]
 daycube-ingest = { workspace = true }
