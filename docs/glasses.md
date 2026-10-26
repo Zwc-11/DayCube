@@ -212,6 +212,66 @@ them in one piece. Still to try, in order:
 - GPS as a pose prior in the bundle adjustment, against the drift
 - MapAnything, the plan's feed-forward option
 
+## One photo (`ingest/recon/single.py`, `eval/single_photo.py`)
+
+Glasses take a photo now and then. One photo can be used in two ways, and both are measured on the
+same scan, whose ARKit poses say where every frame really was. Eight photos are spread along the
+walk, each the sharpest frame within 0.15 s of its place, at least 6 m from either end.
+
+**A. Alone: the photo becomes 3D by itself.**
+
+| Method | What it is | License |
+| --- | --- | --- |
+| `flat` | the photo itself, no 3D: the baseline | — |
+| `lidar` | the phone's LiDAR depth, one splat per pixel: the reference glasses cannot have | — |
+| `depth-pro` | Depth Pro: metric depth from the photo, given its focal length (glasses are calibrated) | Apple research licence: eval only |
+| `dav2-metric` | Depth Anything V2 Metric Outdoor Large: metric depth from the photo | Apache-2.0 per its model card |
+| `sharp` | SHARP: 3D Gaussians from the photo in one pass | Apple research licence: eval only |
+
+- Each depth makes one splat per pixel (at 640×480), sized to the pixel's footprint.
+- SHARP's Gaussians are drawn as opaque discs one sigma across each way, and only those at least
+  30% opaque. That approximates its own blending; `gsplat` would need building on Windows.
+- **Scoring:** each is rendered where the phone really was 0.25, 0.5, 1, 2 and 4 m further along
+  the walk, and compared with the frame the phone took there. Three numbers:
+  - PSNR on the pixels the photo covers;
+  - the flat photo's PSNR on the same pixels;
+  - the share it covers. Pixels with no depth, such as the sky, count as uncovered.
+- **Depth against the LiDAR:** the models' depth is compared with the LiDAR's within 5.5 m, at
+  medium or high confidence. Reported: median relative error, median scale, and the share within
+  25%.
+
+**B. Into the scan: where the photo was taken.**
+
+- **The scan:** the same walk's frames every 0.5 m, with ARKit's poses and LiDAR depth. Frames
+  within 1 s of the photo are left out, so the nearest is about 1.3 m away.
+- **The prior:**
+  1. The scan's path is fitted to the day's GPS (`align.georeference`: clock offset and a 2D
+     similarity).
+  2. The fix at the photo's time is carried back through that fit.
+  3. The 12 scan frames nearest it, within 20 m, are matched with the photo (ALIKED +
+     LightGlue).
+- **The pose:**
+  - the scan's depth makes the matches 3D;
+  - PnP (COLMAP's LO-RANSAC, then refined) gives the photo's pose;
+  - the pose is scored against ARKit: metres, degrees, and the share within 0.25 m and 2°,
+    0.5 m and 5°, 1 m and 10°.
+- **What the scan shows from there:** the nearest three scan frames' depth is drawn at the pose
+  found and at the true pose. Each is compared with the photo, and `vault/derived/single-photo/.../locate/`
+  keeps photo | scan from there | difference.
+
+**Running it:** double-click `check-single-photo.cmd`. The first run downloads the models, about
+6 GB. The report is `vault/logs/single-photo.json`, and the renders stay under
+`vault/derived/single-photo/`.
+
+**On the synthetic walk** (`tests/test_single.py`, true depth as the LiDAR):
+
+- **LiDAR lift:** 24.4–25.1 dB on 74–91% of the frame from 0.25 to 4 m ahead, against 12.4–15.1 dB
+  for the flat photo on the same pixels.
+- **A depth model 30% too deep:** measured as scale 1.30, with none of its pixels within 25%. It
+  renders 16.7 dB at 1 m.
+- **Locating:** all photos within 0.25 m and 2°; median 4 mm and 0.02°. The GPS fit found the
+  3 s clock offset.
+
 ## What it does not show
 
 - **Optics.** These are the phone's frames, not the glasses': a different lens and sensor, and no

@@ -1,14 +1,19 @@
 [project]
 name = "daycube-recon"
 version = "0.1.0"
-description = "Walks rebuilt from images with learned features (ALIKED + LightGlue on the GPU): eval/glasses_sim.py --features aliked"
+description = "Walks rebuilt from images with learned features (ALIKED + LightGlue on the GPU), and single photos lifted to 3D and located in a scan: eval/glasses_sim.py --features aliked, eval/single_photo.py"
 requires-python = ">=3.11,<3.13"
 # Its own environment, like services/speech: PyTorch with CUDA 12.8 (the RTX 5070's sm_120) is not
 # what the receiver needs. The same torch as services/speech, so uv links it from its cache.
 dependencies = [
   "daycube-ingest",
   "torch==2.9.1",
+  "torchvision==0.24.1+cu128 ; sys_platform == 'win32'",  # SHARP's encoder (timm), matching torch
+  "torchvision==0.24.1+cpu ; sys_platform != 'win32'",
   "kornia>=0.8,<1",        # ALIKED, LightGlue (Apache-2.0)
+  "transformers>=5,<6",    # single-photo depth: Depth Pro (Apple research licence), Depth Anything V2 metric (Apache-2.0 card)
+  # SHARP, one photo to 3D Gaussians (Apple research licence: eval only, never in the product path)
+  "sharp @ git+https://github.com/apple/ml-sharp@aed6527499ef91cba3b54c18d49a870f25947190",
   "pycolmap>=4.2,<5",      # COLMAP: verification, mapping (BSD)
   "pillow>=11,<13",
   "numpy>=1.26,<3",
@@ -23,6 +28,10 @@ package = false
 [tool.uv.sources]
 daycube-ingest = { path = "../ingest", editable = true }
 torch = [
+  { index = "pytorch-cu128", marker = "sys_platform == 'win32'" },
+  { index = "pytorch-cpu", marker = "sys_platform != 'win32'" },
+]
+torchvision = [
   { index = "pytorch-cu128", marker = "sys_platform == 'win32'" },
   { index = "pytorch-cpu", marker = "sys_platform != 'win32'" },
 ]
