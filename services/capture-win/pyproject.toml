@@ -16,6 +16,8 @@ dependencies = [
   "winrt-Windows.Storage.Streams>=3; sys_platform == 'win32'",
   # A scan's mesh, made by the receiver's job thread (ingest/splat/mesh.py): 77 MB on Windows.
   "open3d>=0.19,<0.21",
+  # Walks rebuilt from images alone (ingest/recon, eval/glasses_sim.py): COLMAP, BSD, 23 MB on Windows.
+  "pycolmap>=4.2,<5",
 ]
 
 [project.optional-dependencies]
