@@ -22,7 +22,8 @@ def server() -> Iterator[tuple[str, list[dict], dict]]:
             calls.append({"path": self.path, "auth": self.headers["Authorization"], "body": body})
             self.send_response(answer["code"])
             self.end_headers()
-            self.wfile.write(json.dumps(answer.get("body", {})).encode())
+            reply = {"accepted": len(body.get("fixations", [])), "duplicates": 0, "stale": 0, **answer.get("body", {})}
+            self.wfile.write(answer.get("raw", json.dumps(reply).encode()))
 
         def log_message(self, *_: object) -> None:
             pass
@@ -57,6 +58,32 @@ def test_an_unreachable_receiver_keeps_the_queue(tmp_path: Path) -> None:
     receiver = Receiver("http://127.0.0.1:9", tmp_path / ".token", timeout=0.5)
     receiver.add(Fixation(1.0, 1.4, 0.3, 0.5, 6))
     assert receiver.send({"tracking": True}) == "offline" and len(receiver.queue) == 1
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        b"not JSON",
+        b"[]",
+        b"null",
+        b"{}",
+        b'{"accepted":-1,"duplicates":0,"stale":0}',
+        b'{"accepted":0,"duplicates":0,"stale":0}',
+        b'{"accepted":true,"duplicates":0,"stale":0}',
+    ],
+)
+def test_an_invalid_acknowledgement_keeps_fixations_for_retry(server: tuple, tmp_path: Path, reply: bytes) -> None:
+    url, calls, answer = server
+    (tmp_path / ".token").write_text("synthetic")
+    receiver = Receiver(url, tmp_path / ".token")
+    record_id = receiver.add(Fixation(1_800_000_000.0, 1_800_000_000.4, 0.25, 0.5, 6))
+    answer["raw"] = reply
+    assert receiver.send({"tracking": True}) == "refused"
+    assert [row["id"] for row in receiver.queue] == [record_id]
+    assert not receiver.live and not receiver.ring
+    answer.pop("raw")
+    assert receiver.send({"tracking": True}) == "ok" and not receiver.queue
+    assert calls[-1]["body"]["fixations"] == calls[-2]["body"]["fixations"]
 
 
 def test_the_live_point_streams_only_when_the_receiver_asks(server: tuple, tmp_path: Path) -> None:

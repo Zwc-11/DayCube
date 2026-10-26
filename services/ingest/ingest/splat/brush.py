@@ -13,23 +13,34 @@ holds out (PSNR).
 from __future__ import annotations
 
 import hashlib
+import math
 import os
 import platform
 import re
 import shutil
 import subprocess
 import tarfile
+import threading
 import time
 import urllib.request
 import zipfile
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
 
 VERSION = "0.3.0"
 RELEASES = {
-    "Windows": ("brush-app-x86_64-pc-windows-msvc.zip", "b68e3e9cf052d51bf3ee30776fa5a364de7f2ba13b58443128ff797bb7bcfcd6", "brush_app.exe"),
-    "Linux": ("brush-app-x86_64-unknown-linux-gnu.tar.xz", "4f0f9a8785d1951c62df26aae247c02c5bba32b00f40b06df4e1c9b867399e20", "brush_app"),
+    "Windows": (
+        "brush-app-x86_64-pc-windows-msvc.zip",
+        "b68e3e9cf052d51bf3ee30776fa5a364de7f2ba13b58443128ff797bb7bcfcd6",
+        "brush_app.exe",
+    ),
+    "Linux": (
+        "brush-app-x86_64-unknown-linux-gnu.tar.xz",
+        "4f0f9a8785d1951c62df26aae247c02c5bba32b00f40b06df4e1c9b867399e20",
+        "brush_app",
+    ),
 }
 URL = "https://github.com/ArthurBrussee/brush/releases/download/v{version}/{asset}"
 
@@ -144,6 +155,8 @@ def train(
     timeout_s: float = 6 * 3600,
 ) -> Progress:
     """Train on ``dataset`` (its transforms.json) and write ``export/splat.ply``."""
+    if not math.isfinite(timeout_s) or timeout_s <= 0:
+        raise ValueError("Brush timeout must be finite and positive")
     exe = install()
     export.mkdir(parents=True, exist_ok=True)
     args = [
@@ -162,32 +175,59 @@ def train(
     progress = Progress(total=steps)
     started = time.monotonic()
     stream = log.open("w", encoding="utf-8") if log else None
+
+    def read_line(raw: bytes) -> None:
+        line = raw.decode("utf-8", "replace").strip()
+        if not line:
+            return
+        progress.read(line)
+        if stream and not STEP.fullmatch(line) and "load_scene_img" not in line:
+            stream.write(line[:2000] + "\n")
+        progress.lines.append(line[:2000])
+        del progress.lines[:-40]
+
     try:
-        proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env, cwd=str(export))
-        assert proc.stdout is not None
-        buffer = b""
-        last = 0.0
-        while chunk := proc.stdout.read1(65536) if hasattr(proc.stdout, "read1") else proc.stdout.read(4096):
-            buffer += chunk
-            # Progress bars redraw with carriage returns: either ends a line.
-            *done, buffer = re.split(rb"[\r\n]", buffer)
-            for raw in done:
-                line = raw.decode("utf-8", "replace").strip()
-                if not line:
-                    continue
-                progress.read(line)
-                if stream and not STEP.fullmatch(line) and "load_scene_img" not in line:
-                    stream.write(line[:2000] + "\n")  # each image load dumps the dataset's file table (22 KB)
-                progress.lines = (progress.lines + [line])[-40:]
-            now = time.monotonic()
-            if on_progress and now - last > 5:
-                progress.seconds = now - started
-                on_progress(progress)
-                last = now
-            if now - started > timeout_s:
-                proc.kill()
-                raise RuntimeError(f"Brush ran past {timeout_s / 3600:.0f} h; stopped")
-        code = proc.wait()
+        with subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env, cwd=str(export)) as proc:
+            assert proc.stdout is not None
+            expired = threading.Event()
+
+            def stop_overdue() -> None:
+                if proc.poll() is None:
+                    expired.set()
+                    with suppress(ProcessLookupError):
+                        proc.kill()
+
+            watchdog = threading.Timer(timeout_s, stop_overdue)
+            watchdog.daemon = True
+            try:
+                watchdog.start()
+                buffer = b""
+                last = 0.0
+                while chunk := proc.stdout.read1(65536):
+                    buffer += chunk
+                    # Progress bars redraw with carriage returns: either ends a line.
+                    *done, buffer = re.split(rb"[\r\n]", buffer)
+                    for raw in done:
+                        read_line(raw)
+                    # A broken trainer must not retain an unlimited unterminated line.
+                    buffer = buffer[-(128 << 10) :]
+                    now = time.monotonic()
+                    if on_progress and now - last > 5:
+                        progress.seconds = now - started
+                        on_progress(progress)
+                        last = now
+                read_line(buffer)
+                code = proc.wait()
+                if expired.is_set():
+                    raise RuntimeError(f"Brush ran past {timeout_s:g} s; stopped")
+            finally:
+                watchdog.cancel()
+                if proc.poll() is None:
+                    with suppress(ProcessLookupError):
+                        proc.kill()
+                proc.wait(timeout=5)
+                if watchdog.ident is not None:
+                    watchdog.join(timeout=1)
     finally:
         if stream:
             stream.close()

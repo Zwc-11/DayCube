@@ -5,6 +5,30 @@ import { expect, test, type Page } from '@playwright/test';
 
 const REPORTER = fileURLToPath(new URL('../chrome/content.js', import.meta.url));
 
+test('same-size text edits refresh the decoded lines without changing block identity', async ({ page }) => {
+  await page.setContent('<!doctype html><style>p{font:20px monospace}</style><p>First synthetic sentence.</p>');
+  await page.evaluate(() => {
+    Object.assign(window, { reporterMessages: [] });
+    Object.defineProperty(window, 'chrome', { value: { runtime: {
+      id: 'reporter-test', sendMessage: async (message: unknown) => {
+        (window as any).reporterMessages.push(structuredClone(message));
+        return { ok: true, epoch: 0 };
+      }, onMessage: { addListener: () => {} },
+    } } });
+  });
+  await page.addScriptTag({ path: REPORTER });
+  const snapshots = () => page.evaluate(() => (window as any).reporterMessages.filter((m: any) => m.kind === 'blocks'));
+  await expect.poll(async () => (await snapshots()).length).toBe(1);
+  const [before] = await snapshots();
+  await page.locator('p').evaluate(element => { element.firstChild!.textContent = 'Other synthetic sentence.'; });
+  await expect.poll(async () => (await snapshots()).length, { timeout: 5000 }).toBe(2);
+  const [, after] = await snapshots();
+  expect(after.blocks[0].id).toBe(before.blocks[0].id);
+  expect(after.blocks[0].rect).toEqual(before.blocks[0].rect);
+  expect(after.blocks[0].text).toBe('Other synthetic sentence.');
+  expect(after.blocks[0].lines).toEqual([{ rect: before.blocks[0].lines[0].rect, text: 'Other synthetic sentence.' }]);
+});
+
 for (const event of ['focus', 'visibilitychange']) {
   test(`returning via ${event} republishes unchanged block positions`, async ({ page }) => {
     await page.setContent('<!doctype html><p>A short synthetic paragraph for the reporter lifecycle test.</p>');
