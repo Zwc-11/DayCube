@@ -1,19 +1,19 @@
 {
-  "baseline_revision": "a8271d6852fbe49e69ad04bb6befd07fa0f2fe60",
+  "baseline_revision": "eec3e5e3206e6e1e7c14a22a75bb42770461b20b",
   "scope": "Every tracked file, except this generated ledger itself. No vendored source is tracked; dependencies live in ignored environments and lockfiles.",
   "limits": "Structural checks cover every listed file; manual_review only identifies implementations actually examined. Neither is a proof of maximum efficiency, a dependency audit or DeepInfer throughput parity. Missing manual_review is explicitly unreviewed at the semantic level.",
   "counts": {
     "configuration": 41,
     "documentation": 32,
-    "test": 70,
-    "source": 217,
+    "test": 71,
+    "source": 218,
     "asset": 17,
     "fixture": 19,
-    "measurement_or_fixture": 60,
+    "measurement_or_fixture": 62,
     "lockfile": 5,
     "generated": 11
   },
-  "manual_reviews": 200,
+  "manual_reviews": 213,
   "files": [
     {
       "path": ".env.example",
@@ -41,14 +41,14 @@
     },
     {
       "path": ".github/workflows/ci.yml",
-      "sha256": "76c8fd0f5d62ac685312ca67dd56c76962fecde94324a63d642c9cfbdb424f38",
+      "sha256": "0a050ff373081ab7f8cce5031b5a645c1df1e1c1e1186185dc1bd38ab02e9544",
       "category": "configuration",
-      "bytes": 1391,
-      "lines": 39,
+      "bytes": 1581,
+      "lines": 40,
       "structural_check": "UTF-8 text inventory; build/configuration review is separate",
       "manual_review": {
-        "scope": "Targeted phone CI follow-up against 14d398c, 2026-10-25",
-        "notes": "Install the FFmpeg runtime needed by phone fixtures on Linux; leave both platforms enabled and preserve existing checks."
+        "scope": "2026-10-26 continued module review; limits in notes",
+        "notes": "Windows/Linux environment boundaries, deterministic gate, optional media prerequisites, receiver packaging and synthetic browser suites reviewed. Linux package setup has bounded connections/retries and a ten-minute deadline; final remote result is separate from local checks."
       }
     },
     {
@@ -898,10 +898,10 @@
     },
     {
       "path": "docs/codebase-efficiency-2026-10-26.md",
-      "sha256": "eeb60f922720a1f81105ee57b587571c2a33e97ad1c8848171c8566e9300edfc",
+      "sha256": "6392a50e92ce4670d0df51ddca6ae7be465c541335dd757e2c4bb1892438ae6d",
       "category": "documentation",
-      "bytes": 13262,
-      "lines": 187,
+      "bytes": 15655,
+      "lines": 222,
       "structural_check": "UTF-8 text inventory; build/configuration review is separate",
       "previous_review_needs_refresh": {
         "scope": "2026-10-26 algorithm/resource pass; exact scope in notes",
@@ -946,9 +946,9 @@
     },
     {
       "path": "docs/efficiency-review.md",
-      "sha256": "0b5e54b05cbecd319980b8854fa858cba23fa3792349132ee6b5fdcd4d9538dd",
+      "sha256": "9a3f382b2e5d31c9e72d435619cadd8f2966cd6766b136b3574023610e6ecfbd",
       "category": "documentation",
-      "bytes": 14322,
+      "bytes": 14339,
       "lines": 194,
       "structural_check": "UTF-8 text inventory; build/configuration review is separate",
       "previous_review_needs_refresh": {
@@ -1355,6 +1355,24 @@
       "manual_review": {
         "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
         "notes": "Deterministic keyword/vector fixtures, scoped/cold operations, output fingerprints and independent profile; no downloaded embedding model."
+      }
+    },
+    {
+      "path": "eval/benchmark_speaker_assignment.py",
+      "sha256": "d3d2b0a83e43ce3a7b8917fdc166696e9675e4d7db6f240ff36fd522ac8a400b",
+      "category": "source",
+      "bytes": 2938,
+      "lines": 75,
+      "functions": [
+        "main:24 (loops including nested scopes: 7)"
+      ],
+      "review_signals": [
+        "44: check subprocess timeout or explicit process ownership at subprocess.check_output"
+      ],
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "2026-10-26 continued module review; limits in notes",
+        "notes": "Synthetic size sweep, timing/hash boundaries, CPU/traced-memory/profile evidence, before/after source hashes and comparison rejection reviewed. Seven repeats and warm-process limits recorded; no audio/model inputs."
       }
     },
     {
@@ -2174,6 +2192,22 @@
       "category": "measurement_or_fixture",
       "bytes": 483,
       "lines": 31,
+      "structural_check": "JSON parsed"
+    },
+    {
+      "path": "eval/results/speaker-assignment-after-2026-10-26.json",
+      "sha256": "38d0d55aee047baee72a25b670f884121d3067788acda6f266c751e78d677123",
+      "category": "measurement_or_fixture",
+      "bytes": 6229,
+      "lines": 91,
+      "structural_check": "JSON parsed"
+    },
+    {
+      "path": "eval/results/speaker-assignment-before-2026-10-26.json",
+      "sha256": "c72336a14f1310cc14b735fbc1e898940d92da913c0ff8b0d3a4ba29bd596a4b",
+      "category": "measurement_or_fixture",
+      "bytes": 5793,
+      "lines": 91,
       "structural_check": "JSON parsed"
     },
     {
@@ -5188,9 +5222,9 @@
       ],
       "review_signals": [],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
-      "previous_review_needs_refresh": {
-        "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
-        "notes": "Recursive source-stream inventories and aggregate database metadata. Full vault byte/stat walks remain a history-size latency limit."
+      "manual_review": {
+        "scope": "2026-10-26 continued module review; limits in notes",
+        "notes": "Grouped capture-log metadata and size/stat failure handling, explicit source/derived totals and directory discovery reviewed. Walk/stat work scales with vault history; no cache introduced that could conceal external changes."
       }
     },
     {
@@ -5691,7 +5725,11 @@
         "tagged:27 (loops including nested scopes: 2)"
       ],
       "review_signals": [],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "2026-10-26 continued module review; limits in notes",
+        "notes": "Dictionary-based node/link grouping and sorted edge counts, day-note freshness, bounded single-body ETag ownership and lock publication reviewed. Full-history discovery remains scale-dependent. Separate note-row/link queries need a concurrent-snapshot/interleaving test; no concurrency or latency improvement is claimed here."
+      }
     },
     {
       "path": "services/ingest/ingest/notes/markdown.py",
@@ -5799,7 +5837,11 @@
         "local:18 (loops including nested scopes: 0)"
       ],
       "review_signals": [],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "2026-10-26 continued module review; limits in notes",
+        "notes": "Haversine/clamped spherical distance and local metre conversion reviewed; constant work per pair, explicit coordinate units and small-region approximation retained."
+      }
     },
     {
       "path": "services/ingest/ingest/phone/importer.py",
@@ -5849,7 +5891,11 @@
       "review_signals": [
         "61: check text/binary mode and default encoding at errors.read_text"
       ],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "2026-10-26 continued module review; limits in notes",
+        "notes": "Settling stamps, unchanged-failure suppression, explicit skipped items, append-only failure/import logs and archive ownership reviewed. Recursive stamps and complete error-history decoding remain proportional to input/history size; no speed claim or user inbox execution."
+      }
     },
     {
       "path": "services/ingest/ingest/phone/sensor_logger.py",
@@ -5894,7 +5940,11 @@
         "backfill:93 (loops including nested scopes: 2)"
       ],
       "review_signals": [],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "2026-10-26 continued module review; limits in notes",
+        "notes": "Original sensor/audio ownership, UTC keys, selected ZIP member copying, overlap scan and source-index publication reviewed. Whole-index scans and destructive replacement before complete copy remain limits; atomic multi-file import/replacement and concurrent writers need dedicated failure tests."
+      }
     },
     {
       "path": "services/ingest/ingest/phone/stray.py",
@@ -5959,7 +6009,11 @@
       "review_signals": [
         "68: check subprocess timeout or explicit process ownership at subprocess.run"
       ],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "2026-10-26 continued module review; limits in notes",
+        "notes": "UTC/end-vs-start interpretation, original file ownership, optional transcription failure states, timestamp/confidence conversion, subprocess timeout and whole-audio/model allocation reviewed. No decoder or model invoked; per-file model loading and full-audio buffers remain resource limits."
+      }
     },
     {
       "path": "services/ingest/ingest/skeleton/__init__.py",
@@ -7562,7 +7616,11 @@
       "review_signals": [
         "18: check subprocess timeout or explicit process ownership at subprocess.run"
       ],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "2026-10-26 continued module review; limits in notes",
+        "notes": "Owned FFmpeg process timeout, explicit unavailable tool, 16 kHz float32 decode and clip-view ownership reviewed. Whole-audio stdout plus copied NumPy buffers remain a peak-memory cost; no audio decoded."
+      }
     },
     {
       "path": "services/speech/speech/canary.py",
@@ -7594,7 +7652,11 @@
         "run_job:44 (loops including nested scopes: 2)"
       ],
       "review_signals": [],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "2026-10-26 continued module review; limits in notes",
+        "notes": "Linear chronological grouping of VAD spans, minimum speech duration, padding/clamping and job span units reviewed. VAD/model and whole-audio resource costs remain outside the model-free measurements."
+      }
     },
     {
       "path": "services/speech/speech/pipeline.py",
@@ -7651,25 +7713,33 @@
         "languages:67 (loops including nested scopes: 4)"
       ],
       "review_signals": [],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "2026-10-26 continued module review; limits in notes",
+        "notes": "Batched event/emotion/language calls, bounded clip duration, tag parsing and multilingual filler boundaries reviewed. Model lifetimes owned by pipeline; no actual inference or throughput claim."
+      }
     },
     {
       "path": "services/speech/speech/speakers.py",
-      "sha256": "c7b72dae2b9fb063b80521f81f89e31520f8c21bfae0b9723791857f71cac3f1",
+      "sha256": "1a3a4b3d6ad6729a39b3e15d1322d2e1dee6140bdfde0429a97d56c55da7c086",
       "category": "source",
-      "bytes": 5959,
-      "lines": 133,
+      "bytes": 7207,
+      "lines": 159,
       "functions": [
-        "windows:41 (loops including nested scopes: 2)",
-        "cluster:57 (loops including nested scopes: 5)",
-        "assign:79 (loops including nested scopes: 3)",
-        "smooth:96 (loops including nested scopes: 3)",
-        "diarize:114 (loops including nested scopes: 6)",
-        "__init__:25 (loops including nested scopes: 0)",
-        "__call__:31 (loops including nested scopes: 2)"
+        "windows:43 (loops including nested scopes: 2)",
+        "cluster:59 (loops including nested scopes: 5)",
+        "assign:81 (loops including nested scopes: 5)",
+        "smooth:122 (loops including nested scopes: 3)",
+        "diarize:140 (loops including nested scopes: 6)",
+        "__init__:27 (loops including nested scopes: 0)",
+        "__call__:33 (loops including nested scopes: 2)"
       ],
       "review_signals": [],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "2026-10-26 continued module review; limits in notes",
+        "notes": "Batched embeddings, window generation, average-linkage clustering, word votes, nearest-window ties and smoothing reviewed. Indexed chronological assignment is measured with unchanged outputs; invalid/unordered-window fallback retained. Quadratic clustering and model resources need separate scale measurements."
+      }
     },
     {
       "path": "services/speech/speech/vad.py",
@@ -7685,7 +7755,11 @@
         "chunks:72 (loops including nested scopes: 3)"
       ],
       "review_signals": [],
-      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "2026-10-26 continued module review; limits in notes",
+        "notes": "Cached VAD model, linear merge/group operations, language continuity and maximum-duration chunks reviewed. Model cache/concurrent inference ownership and actual VAD resource use remain unmeasured; existing deterministic chunk tests run."
+      }
     },
     {
       "path": "services/speech/speech/worker.py",
@@ -7705,6 +7779,25 @@
       "manual_review": {
         "scope": "2026-10-26 algorithm/resource pass; exact scope in notes",
         "notes": "Mocked HTTP leasing, heartbeat shutdown, explicit failure reports and process-owned model lifetime reviewed. No paid/model canary executed."
+      }
+    },
+    {
+      "path": "services/speech/tests/test_speaker_assignment.py",
+      "sha256": "8e2ac51f23519ee6ac150a390613c2412efea2edb10418516ca2e3e1008c3f24",
+      "category": "test",
+      "bytes": 2991,
+      "lines": 65,
+      "functions": [
+        "reference:8 (loops including nested scopes: 3)",
+        "test_indexed_votes_match_full_scans_on_changing_windows_and_words:24 (loops including nested scopes: 3)",
+        "test_boundaries_degenerate_inputs_and_ties_keep_the_original_result:55 (loops including nested scopes: 0)",
+        "test_an_empty_word_list_stays_empty_and_missing_windows_still_fail_explicitly:62 (loops including nested scopes: 0)"
+      ],
+      "review_signals": [],
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
+      "manual_review": {
+        "scope": "2026-10-26 continued module review; limits in notes",
+        "notes": "Independent original-scan oracle, 160 randomized cases, sorted/unsorted and boundary/tie/degenerate/empty regressions reviewed; no timing assertions or model dependencies."
       }
     },
     {

@@ -1,0 +1,91 @@
+{
+  "revision": "eec3e5e3206e6e1e7c14a22a75bb42770461b20b",
+  "source_hashes": {
+    "services/speech/speech/speakers.py": "1a3a4b3d6ad6729a39b3e15d1322d2e1dee6140bdfde0429a97d56c55da7c086",
+    "eval/benchmark_speaker_assignment.py": "d3d2b0a83e43ce3a7b8917fdc166696e9675e4d7db6f240ff36fd522ac8a400b",
+    "eval/benchmark_notes.py": "5359aa9de867c64fc08f294f95f323e1b4c2103dba8739c3e0982280e77a3aab"
+  },
+  "environment": {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.9",
+    "numpy": "2.4.6",
+    "cpu": "AMD64 Family 26 Model 68 Stepping 0, AuthenticAMD"
+  },
+  "workload": {
+    "recording_seconds": [
+      300,
+      3600,
+      10800
+    ],
+    "sizes": {
+      "300": {
+        "words": 900,
+        "windows": 399
+      },
+      "3600": {
+        "words": 10800,
+        "windows": 4799
+      },
+      "10800": {
+        "words": 32400,
+        "windows": 14399
+      }
+    },
+    "repeats": 7,
+    "warmups": 1
+  },
+  "operations": {
+    "300": {
+      "wall_ms": [
+        0.8407999994233251,
+        0.8085999870672822,
+        0.7938999915495515,
+        0.7835999713279307,
+        0.7858999888412654,
+        0.7810000097379088,
+        0.7828000234439969
+      ],
+      "median_ms": 0.7858999888412654,
+      "p95_ms": 0.8407999994233251,
+      "median_cpu_ms": 0.0,
+      "traced_peak_bytes": 65680,
+      "sha256": "f0d75532397f3a1298b997c730c849f30dc842c2d698c36729da07a7bd036859",
+      "profile": "         6334 function calls in 0.002 seconds\n\n   Ordered by: cumulative time\n   List reduced from 22 to 12 due to restriction <12>\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n        1    0.000    0.000    0.002    0.002 benchmark_speaker_assignment.py:41(<lambda>)\n        1    0.001    0.001    0.002    0.002 speakers.py:81(assign)\n        1    0.000    0.000    0.000    0.000 speakers.py:122(smooth)\n      900    0.000    0.000    0.000    0.000 {method 'argmax' of 'numpy.ndarray' objects}\n     1800    0.000    0.000    0.000    0.000 {built-in method math.isfinite}\n     1800    0.000    0.000    0.000    0.000 {method 'append' of 'list' objects}\n      900    0.000    0.000    0.000    0.000 multiarray.py:906(bincount)\n        2    0.000    0.000    0.000    0.000 fromnumeric.py:1421(searchsorted)\n        2    0.000    0.000    0.000    0.000 fromnumeric.py:48(_wrapfunc)\n        2    0.000    0.000    0.000    0.000 {method 'searchsorted' of 'numpy.ndarray' objects}\n      902    0.000    0.000    0.000    0.000 {built-in method builtins.len}\n        1    0.000    0.000    0.000    0.000 speakers.py:97(<listcomp>)\n\n\n"
+    },
+    "3600": {
+      "wall_ms": [
+        9.478199994191527,
+        9.661100048106164,
+        9.650599968153983,
+        9.376800036989152,
+        9.488399955444038,
+        9.33709996752441,
+        9.348100051283836
+      ],
+      "median_ms": 9.478199994191527,
+      "p95_ms": 9.661100048106164,
+      "median_cpu_ms": 0.0,
+      "traced_peak_bytes": 862856,
+      "sha256": "631ad717fb50cd920158c4fea174d029081e06e3f0b5c06d18826be9da849baf",
+      "profile": "         75634 function calls in 0.021 seconds\n\n   Ordered by: cumulative time\n   List reduced from 22 to 12 due to restriction <12>\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n        1    0.000    0.000    0.021    0.021 benchmark_speaker_assignment.py:41(<lambda>)\n        1    0.013    0.013    0.021    0.021 speakers.py:81(assign)\n        1    0.002    0.002    0.002    0.002 speakers.py:122(smooth)\n    10800    0.002    0.000    0.002    0.000 {method 'argmax' of 'numpy.ndarray' objects}\n    21600    0.001    0.000    0.001    0.000 {method 'append' of 'list' objects}\n    21600    0.001    0.000    0.001    0.000 {built-in method math.isfinite}\n    10800    0.001    0.000    0.001    0.000 multiarray.py:906(bincount)\n        2    0.000    0.000    0.001    0.000 fromnumeric.py:1421(searchsorted)\n        2    0.000    0.000    0.001    0.000 fromnumeric.py:48(_wrapfunc)\n        2    0.001    0.000    0.001    0.000 {method 'searchsorted' of 'numpy.ndarray' objects}\n    10802    0.001    0.000    0.001    0.000 {built-in method builtins.len}\n        1    0.000    0.000    0.000    0.000 speakers.py:98(<listcomp>)\n\n\n"
+    },
+    "10800": {
+      "wall_ms": [
+        31.29739995347336,
+        31.191700021736324,
+        34.51059997314587,
+        36.08770004939288,
+        29.598399996757507,
+        29.67199997510761,
+        28.869800036773086
+      ],
+      "median_ms": 31.191700021736324,
+      "p95_ms": 36.08770004939288,
+      "median_cpu_ms": 31.25,
+      "traced_peak_bytes": 2599480,
+      "sha256": "318c8cfd26d4f03af896a468934d1db286238bb8bd34eaa76b5061a4b4efc360",
+      "profile": "         226834 function calls in 0.069 seconds\n\n   Ordered by: cumulative time\n   List reduced from 22 to 12 due to restriction <12>\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n        1    0.000    0.000    0.069    0.069 benchmark_speaker_assignment.py:41(<lambda>)\n        1    0.042    0.042    0.069    0.069 speakers.py:81(assign)\n        1    0.005    0.005    0.007    0.007 speakers.py:122(smooth)\n    32400    0.006    0.000    0.006    0.000 {method 'argmax' of 'numpy.ndarray' objects}\n    64800    0.003    0.000    0.003    0.000 {built-in method math.isfinite}\n    64800    0.003    0.000    0.003    0.000 {method 'append' of 'list' objects}\n        2    0.000    0.000    0.002    0.001 fromnumeric.py:1421(searchsorted)\n        2    0.000    0.000    0.002    0.001 fromnumeric.py:48(_wrapfunc)\n        2    0.002    0.001    0.002    0.001 {method 'searchsorted' of 'numpy.ndarray' objects}\n    32400    0.002    0.000    0.002    0.000 multiarray.py:906(bincount)\n    32402    0.002    0.000    0.002    0.000 {built-in method builtins.len}\n        1    0.001    0.001    0.001    0.001 speakers.py:97(<listcomp>)\n\n\n"
+    }
+  },
+  "limits": "Synthetic continuous speech at three words/s; warm process, no audio, model, GPU, network or user vault. Measures assignment and its smoothing only, including index setup. Traced peak is not RSS; sampled tails are not production p95 estimates."
+}

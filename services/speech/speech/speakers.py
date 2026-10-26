@@ -9,6 +9,8 @@ clips, 2026-10-25), so clusters merge while their average similarity is above ``
 
 from __future__ import annotations
 
+import math
+from bisect import bisect_left
 from collections.abc import Callable
 
 import numpy as np
@@ -82,14 +84,38 @@ def assign(words: list[dict], spans: list[tuple[float, float]], window_times: li
     starts = np.array([a for a, _ in window_times])
     ends = np.array([b for _, b in window_times])
     mids = (starts + ends) / 2
+    ordered = bool(
+        len(mids)
+        and np.isfinite(mids).all()
+        and (starts < ends).all()
+        and (starts[1:] >= starts[:-1]).all()
+        and (ends[1:] >= ends[:-1]).all()
+    )
+    if ordered:
+        # VAD windows are chronological. Search all word bounds once; only overlapping labels
+        # need a vote. Keep the general scan for unordered or degenerate caller-supplied windows.
+        left = np.searchsorted(ends, [w["start"] for w in words], side="right")
+        right = np.searchsorted(starts, [w["end"] for w in words], side="left")
     out = []
-    for w in words:
-        overlap = np.minimum(ends, w["end"]) - np.maximum(starts, w["start"])
-        hit = labels[overlap > 0]
+    for k, w in enumerate(words):
+        if ordered and w["start"] < w["end"] and math.isfinite(w["start"]) and math.isfinite(w["end"]):
+            hit = labels[left[k] : right[k]]
+        else:
+            overlap = np.minimum(ends, w["end"]) - np.maximum(starts, w["start"])
+            hit = labels[overlap > 0]
         if len(hit):
             out.append(int(np.bincount(hit).argmax()))
         else:
-            out.append(int(labels[int(np.argmin(np.abs(mids - (w["start"] + w["end"]) / 2)))]))
+            middle = (w["start"] + w["end"]) / 2
+            if ordered and math.isfinite(middle):
+                at = bisect_left(mids, middle)
+                nearest = min(at, len(mids) - 1)
+                if at and abs(mids[at - 1] - middle) <= abs(mids[nearest] - middle):
+                    nearest = at - 1
+                nearest = bisect_left(mids, mids[nearest])  # equal distances/midpoints: first window
+            else:
+                nearest = int(np.argmin(np.abs(mids - middle)))
+            out.append(int(labels[nearest]))
     return smooth(out, words)
 
 

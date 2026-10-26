@@ -1,0 +1,91 @@
+{
+  "revision": "eec3e5e3206e6e1e7c14a22a75bb42770461b20b",
+  "source_hashes": {
+    "services/speech/speech/speakers.py": "c7b72dae2b9fb063b80521f81f89e31520f8c21bfae0b9723791857f71cac3f1",
+    "eval/benchmark_speaker_assignment.py": "d3d2b0a83e43ce3a7b8917fdc166696e9675e4d7db6f240ff36fd522ac8a400b",
+    "eval/benchmark_notes.py": "5359aa9de867c64fc08f294f95f323e1b4c2103dba8739c3e0982280e77a3aab"
+  },
+  "environment": {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.9",
+    "numpy": "2.4.6",
+    "cpu": "AMD64 Family 26 Model 68 Stepping 0, AuthenticAMD"
+  },
+  "workload": {
+    "recording_seconds": [
+      300,
+      3600,
+      10800
+    ],
+    "sizes": {
+      "300": {
+        "words": 900,
+        "windows": 399
+      },
+      "3600": {
+        "words": 10800,
+        "windows": 4799
+      },
+      "10800": {
+        "words": 32400,
+        "windows": 14399
+      }
+    },
+    "repeats": 7,
+    "warmups": 1
+  },
+  "operations": {
+    "300": {
+      "wall_ms": [
+        2.470900013577193,
+        2.376000047661364,
+        2.368599991314113,
+        2.388700027950108,
+        2.3757999879308045,
+        2.788799989502877,
+        2.910699986387044
+      ],
+      "median_ms": 2.388700027950108,
+      "p95_ms": 2.910699986387044,
+      "median_cpu_ms": 0.0,
+      "traced_peak_bytes": 54132,
+      "sha256": "f0d75532397f3a1298b997c730c849f30dc842c2d698c36729da07a7bd036859",
+      "profile": "         4509 function calls in 0.003 seconds\n\n   Ordered by: cumulative time\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n        1    0.000    0.000    0.003    0.003 benchmark_speaker_assignment.py:41(<lambda>)\n        1    0.003    0.003    0.003    0.003 speakers.py:79(assign)\n        1    0.000    0.000    0.000    0.000 speakers.py:96(smooth)\n      900    0.000    0.000    0.000    0.000 {method 'argmax' of 'numpy.ndarray' objects}\n     1800    0.000    0.000    0.000    0.000 {method 'append' of 'list' objects}\n      900    0.000    0.000    0.000    0.000 multiarray.py:906(bincount)\n      901    0.000    0.000    0.000    0.000 {built-in method builtins.len}\n        1    0.000    0.000    0.000    0.000 speakers.py:82(<listcomp>)\n        2    0.000    0.000    0.000    0.000 {built-in method numpy.array}\n        1    0.000    0.000    0.000    0.000 speakers.py:83(<listcomp>)\n        1    0.000    0.000    0.000    0.000 {method 'disable' of '_lsprof.Profiler' objects}\n\n\n"
+    },
+    "3600": {
+      "wall_ms": [
+        62.89830000605434,
+        64.72789996769279,
+        69.4002999807708,
+        69.01590002235025,
+        74.31120000546798,
+        64.65760001447052,
+        73.49989999784157
+      ],
+      "median_ms": 69.01590002235025,
+      "p95_ms": 74.31120000546798,
+      "median_cpu_ms": 62.5,
+      "traced_peak_bytes": 728228,
+      "sha256": "631ad717fb50cd920158c4fea174d029081e06e3f0b5c06d18826be9da849baf",
+      "profile": "         54009 function calls in 0.101 seconds\n\n   Ordered by: cumulative time\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n        1    0.000    0.000    0.101    0.101 benchmark_speaker_assignment.py:41(<lambda>)\n        1    0.093    0.093    0.101    0.101 speakers.py:79(assign)\n    10800    0.003    0.000    0.003    0.000 {method 'argmax' of 'numpy.ndarray' objects}\n        1    0.002    0.002    0.003    0.003 speakers.py:96(smooth)\n    21600    0.001    0.000    0.001    0.000 {method 'append' of 'list' objects}\n    10800    0.001    0.000    0.001    0.000 multiarray.py:906(bincount)\n    10801    0.001    0.000    0.001    0.000 {built-in method builtins.len}\n        1    0.000    0.000    0.000    0.000 speakers.py:82(<listcomp>)\n        2    0.000    0.000    0.000    0.000 {built-in method numpy.array}\n        1    0.000    0.000    0.000    0.000 speakers.py:83(<listcomp>)\n        1    0.000    0.000    0.000    0.000 {method 'disable' of '_lsprof.Profiler' objects}\n\n\n"
+    },
+    "10800": {
+      "wall_ms": [
+        382.18610000330955,
+        384.81330004287884,
+        390.8427000278607,
+        502.1640000049956,
+        545.5766000086442,
+        535.1552000502124,
+        546.8274000450037
+      ],
+      "median_ms": 502.1640000049956,
+      "p95_ms": 546.8274000450037,
+      "median_cpu_ms": 484.375,
+      "traced_peak_bytes": 2196052,
+      "sha256": "318c8cfd26d4f03af896a468934d1db286238bb8bd34eaa76b5061a4b4efc360",
+      "profile": "         162009 function calls in 0.607 seconds\n\n   Ordered by: cumulative time\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n        1    0.000    0.000    0.607    0.607 benchmark_speaker_assignment.py:41(<lambda>)\n        1    0.575    0.575    0.607    0.607 speakers.py:79(assign)\n    32400    0.011    0.000    0.011    0.000 {method 'argmax' of 'numpy.ndarray' objects}\n        1    0.009    0.009    0.010    0.010 speakers.py:96(smooth)\n    64800    0.004    0.000    0.004    0.000 {method 'append' of 'list' objects}\n    32400    0.003    0.000    0.003    0.000 multiarray.py:906(bincount)\n    32401    0.003    0.000    0.003    0.000 {built-in method builtins.len}\n        1    0.001    0.001    0.001    0.001 speakers.py:82(<listcomp>)\n        2    0.001    0.000    0.001    0.000 {built-in method numpy.array}\n        1    0.001    0.001    0.001    0.001 speakers.py:83(<listcomp>)\n        1    0.000    0.000    0.000    0.000 {method 'disable' of '_lsprof.Profiler' objects}\n\n\n"
+    }
+  },
+  "limits": "Synthetic continuous speech at three words/s; warm process, no audio, model, GPU, network or user vault. Measures assignment and its smoothing only, including index setup. Traced peak is not RSS; sampled tails are not production p95 estimates."
+}

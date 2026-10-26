@@ -19,9 +19,10 @@ jobs:
           enable-cache: true
       - name: Install MediaPipe and phone import runtimes
         if: runner.os == 'Linux'
+        timeout-minutes: 10
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libegl1 libgles2 ffmpeg
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install -y --no-install-recommends libegl1 libgles2 ffmpeg
       - run: uv sync --locked --python 3.11
       - run: uv sync --locked --project services/gaze --python 3.11
       - run: npm ci
