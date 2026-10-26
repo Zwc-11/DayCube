@@ -290,6 +290,10 @@ test("a visit with a scan shows the scan on the day's stage, the camera walking 
     await expect(stage.getByTestId('scan-stage')).toHaveAttribute('data-state', 'ready');
     await expect(stage.getByTestId('splat-view')).toHaveAttribute('data-state', 'ready', { timeout: 30000 });
     await expect(stage.getByTestId('scan-caption')).toContainText('Scan 14:16–14:16 · LiDAR points, 3,000');
+    // The tests draw in software: the corner says so, and the view draws fewer splats and pixels
+    // (lib/splatBudget.ts).
+    await expect(stage.getByTestId('splat-gpu')).toHaveAttribute('data-kind', 'software');
+    await expect(stage.getByTestId('splat-gpu')).toContainText('Software rendering');
     const camera = () => page.evaluate(() => (window as any).__splat.camera.position.toArray().map((v: number) => +v.toFixed(2)));
     // 14:14, before the scan: where the walk starts (0.5 s in). Five minutes on, after it: where it ends.
     await expect.poll(camera).toEqual([0, 0, -0.5]);

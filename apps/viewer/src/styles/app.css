@@ -3716,6 +3716,19 @@ button.np-link:hover {
 }
 
 /* A visit's scan on the day's stage (components/diorama/ScanStage.tsx). */
+.splat__gpu {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+  padding: 3px 8px;
+  border-radius: var(--radius-s);
+  background: rgba(23, 25, 29, 0.85);
+  color: var(--fg-3);
+  font-size: 11px;
+  cursor: help;
+}
+
 .scan-stage {
   position: absolute;
   inset: 0;

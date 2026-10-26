@@ -1,5 +1,18 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type { SplatCameras } from '@daycube/api-client';
+import {
+  type Budget,
+  type GpuInfo,
+  GpuTimer,
+  MAX_PIXELS,
+  MAX_SPLATS,
+  budgetLabel,
+  classifyGpu,
+  median,
+  nextBudget,
+  rendererName,
+  startBudget,
+} from '../../lib/splatBudget';
 
 /**
  * A scan in 3D: Gaussian splats (the trained scene, or the LiDAR's points as dots) rendered with
@@ -9,10 +22,12 @@ import type { SplatCameras } from '@daycube/api-client';
  *
  * Smooth with millions of splats (a 3 M-splat trail lagged in GaussianSplats3D, which sorted every
  * splat on the CPU each frame, 2026-10-25):
- * - level of detail: Spark builds a splat tree in a worker as the scene loads and draws at most
- *   ``LOD_SPLATS`` of it, the nearest finest;
+ * - level of detail: Spark builds a splat tree in a worker as the scene loads and draws part of
+ *   it, the nearest finest: at most ``LOD_SPLATS``, fewer on a slower GPU, held to a frame time
+ *   (``lib/splatBudget.ts``);
  * - centres in float32 (``extSplats``): float16 centres are 6-12 cm apart 100 m from the origin;
- * - no MSAA, and at most 1.25 device pixels per CSS pixel: splats are drawn by fill rate;
+ * - no MSAA, and at most 1.25 device pixels per CSS pixel (fewer on a slower GPU): splats are
+ *   drawn by fill rate;
  * - the camera reads the time every frame (``clock``), not at the 10 Hz of the app's playback
  *   ticks or the 4 Hz of a video's timeupdate;
  * - frames are drawn only while something changes (``DRAW_TAIL_MS`` after the camera, the time,
@@ -23,8 +38,12 @@ import type { SplatCameras } from '@daycube/api-client';
  * workers, and the frames after a move show their results. */
 export const DRAW_TAIL_MS = 600;
 
-/** Splats drawn per frame. Spark's desktop default is 2.5 M. */
-export const LOD_SPLATS = 2_000_000;
+/** Splats drawn per frame at most. Spark's desktop default is 2.5 M. */
+export const LOD_SPLATS = MAX_SPLATS;
+/** How often the budget follows the measured frame time. */
+const BUDGET_EVERY_MS = 500;
+/** A main-thread block this long right after a drawn frame is the GPU falling behind. */
+const STALL_MS = 100;
 /** Scenes smaller than this are drawn whole, with no splat tree (it is built for large scenes,
  * and Spark 2.3's builder fails on some tiny ones). */
 export const LOD_ABOVE = 500_000;
@@ -50,6 +69,16 @@ type Live = {
   touch: (ms?: number) => void;
   /** Frames drawn, for the end-to-end tests. */
   frames: number;
+  /** What draws, the budget now, and each drawn frame's GPU milliseconds (timer query) or
+   * interval, for `scripts/profile-splat.mjs`. */
+  gpu?: GpuInfo;
+  budget?: Budget;
+  timed?: boolean;
+  frameMs?: number[];
+  /** Long tasks right after a drawn frame (ms), each of which cut the budget. */
+  stalls?: number[];
+  /** The scene as the budget last saw it. */
+  scene?: { splats: number; lod: boolean };
 };
 
 /** The camera where the phone was at ``t``, looking where it looked, kept level. The orbit
@@ -92,11 +121,19 @@ export function poseAt(cams: SplatCameras, at: number) {
   return { position, forward: forward.map((v) => v / n) };
 }
 
+/** The corner's tooltip: which GPU draws, and how to give the browser the faster one. */
+function gpuHint(gpu: GpuInfo): string {
+  const drawn = `Drawn with ${gpu.name || 'an unknown GPU'}; fewer splats a frame keep it smooth.`;
+  if (gpu.kind === 'discrete') return drawn;
+  return `${drawn} On a laptop with an NVIDIA GPU, set this browser to High performance: Windows Settings › System › Display › Graphics.`;
+}
+
 export const SplatView: React.FC<SplatViewProps> = ({ url, cameras, bounds, t, clock, following, onLookAround, label }) => {
   const root = useRef<HTMLDivElement>(null);
   const live = useRef<Live | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'failed'>('loading');
   const [progress, setProgress] = useState(0);
+  const [quality, setQuality] = useState<{ gpu: GpuInfo; budget: Budget } | null>(null);
   const followRef = useRef(following);
   followRef.current = following;
   const clockRef = useRef(clock);
@@ -107,14 +144,24 @@ export const SplatView: React.FC<SplatViewProps> = ({ url, cameras, bounds, t, c
     let dispose = () => undefined as void;
     setState('loading');
     setProgress(0);
+    setQuality(null);
     (async () => {
       const THREE = await import('three');
       const { OrbitControls } = await import('three/examples/jsm/controls/OrbitControls.js');
       const { SparkRenderer, SplatMesh, SplatFileType } = await import('@sparkjsdev/spark');
       const el = root.current;
       if (!alive || !el) return;
-      const renderer = new THREE.WebGLRenderer({ antialias: false, preserveDrawingBuffer: import.meta.env.DEV });
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
+      // powerPreference picks the discrete GPU where the browser lets a page choose (macOS); on
+      // Windows the browser's own GPU setting decides.
+      const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance', preserveDrawingBuffer: import.meta.env.DEV });
+      const gl = renderer.getContext();
+      const gpu = classifyGpu(rendererName(gl));
+      const first = startBudget(gpu.kind, LOD_SPLATS);
+      const timer = GpuTimer.create(gl);
+      // Measured by timer query, a fast GPU may draw more than its kind started with.
+      const ceiling: Budget = timer ? { splats: LOD_SPLATS, pixels: MAX_PIXELS } : first;
+      let budget = first;
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, budget.pixels));
       renderer.setSize(el.clientWidth, el.clientHeight);
       el.appendChild(renderer.domElement);
       const scene = new THREE.Scene();
@@ -124,8 +171,9 @@ export const SplatView: React.FC<SplatViewProps> = ({ url, cameras, bounds, t, c
       const touch = (ms = DRAW_TAIL_MS) => {
         drawUntil = Math.max(drawUntil, performance.now() + ms);
       };
-      const spark = new SparkRenderer({ renderer, lodSplatCount: LOD_SPLATS, onDirty: () => touch() });
+      const spark = new SparkRenderer({ renderer, lodSplatCount: budget.splats, onDirty: () => touch() });
       scene.add(spark);
+      setQuality({ gpu, budget });
       // The phone saw its long side upright: a field of view like the video's.
       const camera = new THREE.PerspectiveCamera(cameras ? Math.min(80, cameras.fov_long_deg) : 60, el.clientWidth / Math.max(1, el.clientHeight), 0.05, 3000);
       camera.up.set(0, 1, 0);
@@ -139,8 +187,16 @@ export const SplatView: React.FC<SplatViewProps> = ({ url, cameras, bounds, t, c
       controls.target.set(at[0], at[1], at[2]);
       controls.update();
       controls.addEventListener('change', () => touch());
-      const v: Live = { camera, controls, touch, frames: 0 };
+      const v: Live = { camera, controls, touch, frames: 0, gpu, budget, timed: Boolean(timer), frameMs: [], stalls: [] };
       live.current = v;
+      const apply = (next: Budget) => {
+        budget = next;
+        v.budget = next;
+        spark.lodSplatCount = next.splats;
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, next.pixels));
+        setQuality({ gpu, budget: next });
+        touch();
+      };
       if (import.meta.env.DEV) (window as unknown as { __splat?: unknown }).__splat = v; // for the end-to-end tests
       const load = (lod: boolean) =>
         new SplatMesh({
@@ -154,6 +210,27 @@ export const SplatView: React.FC<SplatViewProps> = ({ url, cameras, bounds, t, c
       let splats = load(true);
       scene.add(splats);
       let lastT = Number.NaN;
+      // Each drawn frame's GPU time (timer query), else the interval since the frame before when
+      // that one was drawn too; every half second the budget follows their median.
+      let samples: number[] = [];
+      let lastDrawn = Number.NaN;
+      let lastFrameAt = Number.NEGATIVE_INFINITY;
+      let budgetAt = performance.now();
+      // A GPU far behind blocks the page in WebGL calls for seconds at a time, so that few frames
+      // are drawn back to back at all (software rendering here: one frame every 15 s, each
+      // blocking 15 s). A long task within a second of a drawn frame cuts the budget at once.
+      let stalled = 0;
+      const stalls =
+        typeof PerformanceObserver !== 'undefined' && PerformanceObserver.supportedEntryTypes?.includes('longtask')
+          ? new PerformanceObserver((list) => {
+              for (const entry of list.getEntries()) {
+                if (loading || entry.duration < STALL_MS || entry.startTime - lastFrameAt > 1000) continue;
+                stalled = Math.max(stalled, entry.duration);
+                if (import.meta.env.DEV) v.stalls?.push(Math.round(entry.duration));
+              }
+            })
+          : null;
+      stalls?.observe({ type: 'longtask' });
       renderer.setAnimationLoop((now: number) => {
         const read = clockRef.current;
         if (cameras && followRef.current && read) {
@@ -163,9 +240,40 @@ export const SplatView: React.FC<SplatViewProps> = ({ url, cameras, bounds, t, c
             follow(v, cameras, at);
           }
         } else lastT = Number.NaN;
-        if (!loading && now > drawUntil) return;
+        if (!loading && now > drawUntil) {
+          lastDrawn = Number.NaN;
+          return;
+        }
+        timer?.begin();
         renderer.render(scene, camera);
+        timer?.end();
         v.frames++;
+        lastFrameAt = performance.now();
+        const measured = timer ? timer.poll() : Number.isNaN(lastDrawn) ? [] : [now - lastDrawn];
+        lastDrawn = now;
+        if (loading) return;
+        samples.push(...measured);
+        if (import.meta.env.DEV && v.frameMs && v.frameMs.length < 20_000) v.frameMs.push(...measured);
+        const source = splats.extSplats ?? splats.packedSplats;
+        // With a splat tree, Spark keeps the splats in the tree (the base set reads 0).
+        const sceneSplats = Math.max(source?.numSplats ?? 0, source?.lodSplats?.numSplats ?? 0);
+        const measure = { timed: Boolean(timer), ceiling, sceneSplats, lod: Boolean(source?.lodSplats) };
+        v.scene = { splats: measure.sceneSplats, lod: measure.lod };
+        if (stalled) {
+          // As far over the frame time as the page was blocked: the most a step cuts (half).
+          const next = nextBudget(budget, stalled, { ...measure, timed: true });
+          stalled = 0;
+          samples = [];
+          budgetAt = now;
+          if (next !== budget) apply(next);
+          return;
+        }
+        if (now - budgetAt < BUDGET_EVERY_MS) return;
+        budgetAt = now;
+        if (samples.length < 3) return;
+        const next = nextBudget(budget, median(samples), measure);
+        samples = [];
+        if (next !== budget) apply(next);
       });
       const resize = new ResizeObserver(() => {
         camera.aspect = el.clientWidth / Math.max(1, el.clientHeight);
@@ -176,6 +284,8 @@ export const SplatView: React.FC<SplatViewProps> = ({ url, cameras, bounds, t, c
       resize.observe(el);
       dispose = () => {
         renderer.setAnimationLoop(null);
+        timer?.dispose();
+        stalls?.disconnect();
         resize.disconnect();
         controls.dispose();
         splats.dispose();
@@ -229,6 +339,11 @@ export const SplatView: React.FC<SplatViewProps> = ({ url, cameras, bounds, t, c
       {state !== 'ready' && (
         <div className="splat__status" role="status">
           {state === 'failed' ? 'This browser could not draw the scene (it needs WebGL 2).' : `Loading the scene… ${progress}%`}
+        </div>
+      )}
+      {state === 'ready' && quality && (quality.gpu.kind !== 'discrete' || quality.budget.splats < LOD_SPLATS) && (
+        <div className="splat__gpu num" data-testid="splat-gpu" data-kind={quality.gpu.kind} title={gpuHint(quality.gpu)}>
+          {budgetLabel(quality.gpu, quality.budget)}
         </div>
       )}
     </div>

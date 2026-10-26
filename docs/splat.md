@@ -174,13 +174,13 @@ diorama drawn for every place of its kind (`components/diorama/ScanStage.tsx`):
 - **Why not GaussianSplats3D.** GaussianSplats3D 0.4.7 lagged on the 3 M-splat trail. It sorted
   every splat on the CPU each frame without shared memory, and its README says it is no longer in
   active development and recommends Spark.
-- **Level of detail.** Spark builds a splat tree in a worker as a scene loads, and draws at most
-  2 M splats a frame, the nearest finest (`LOD_SPLATS`). Scenes under 500,000 splats are drawn
-  whole: Spark 2.3's tree builder fails on some tiny ones, and if it fails on a large one the view
-  draws every splat instead.
+- **Level of detail.** Spark builds a splat tree in a worker as a scene loads, and draws part of
+  it, the nearest finest: at most 2 M splats a frame (`LOD_SPLATS`), fewer on a slower GPU (below).
+  Scenes under 500,000 splats are drawn whole: Spark 2.3's tree builder fails on some tiny ones,
+  and if it fails on a large one the view draws every splat instead.
 - **Centres in float32** (`extSplats`). In float16, centres 100 m from the origin fall on a grid of
   6–12 cm.
-- **Fill rate.** No MSAA, and at most 1.25 device pixels per CSS pixel.
+- **Fill rate.** No MSAA, and at most 1.25 device pixels per CSS pixel (fewer on a slower GPU).
 - **The camera every frame.** Following, the view reads the time each frame: the video's
   `currentTime` in the scan's own view, and on the day's stage the playhead carried on between the
   app's 10 Hz ticks, as the diorama's walker does. Before, the camera moved only when the time
@@ -190,25 +190,66 @@ diorama drawn for every place of its kind (`components/diorama/ScanStage.tsx`):
   day's pace the 10 s test scan went by in two frames.
 - **At rest when still.** Frames are drawn only for 600 ms after the camera, the time, the size or
   Spark's sort and detail last changed, and every frame while the scene loads.
+- **Fewer splats on a slower GPU** (`lib/splatBudget.ts`). On 2026-10-26 Edge on the PC drew the
+  3 M-splat trail with the Ryzen's integrated Radeon, not the NVIDIA GPU: on a laptop with two GPUs,
+  Windows gives a browser the integrated one unless its graphics setting says High performance. At
+  2 M splats the page then stalled for 1.5–3.4 s at a time, 87 s once. Now:
+  - **The start.** The view reads the GPU's name from WebGL. A discrete GPU starts at 2 M splats
+    and 1.25 device pixels per CSS pixel; an unknown one at 1 M; an integrated one at 500,000 and
+    1; software rendering at 300,000 and 1.
+  - **The frame time.** Each drawn frame's GPU time comes from a timer query
+    (`EXT_disjoint_timer_query_webgl2`) where the browser has one, else from the interval between
+    frames drawn back to back. Every half second the median moves the budget: over 8.75 ms
+    (timed) or 40 ms (intervals), splats are cut toward the share that fits, at most by half and
+    to no fewer than 200,000; then pixels, to no fewer than 0.6. Under 4.2 ms (timed) or 20 ms
+    (intervals) pixels and then splats go back up, by timer to 2 M, by interval only as far as the
+    start.
+  - **Stalls.** A GPU far behind blocks the page in WebGL calls for seconds at a time, so that
+    hardly two frames are drawn back to back. A long task over 100 ms within a second of a drawn
+    frame cuts the budget at once.
+  - **The corner** says what draws, unless it is a discrete GPU at the full budget: for example
+    "Integrated GPU · 0.50 M splats a frame". Its tooltip names the GPU and says where Windows sets
+    a browser to High performance.
+  - **The splat count.** It comes from the splat tree. Once the tree is built, Spark empties the
+    base set, which then reads 0.
 
 ### Measuring on the GPU
 
 The end-to-end tests draw in software (about 8 frames a second), so they check behaviour, not
-speed. `check-3d.cmd` on the PC runs `scripts/profile-splat.mjs`. It starts its own viewer on port
-3100 (and its own API on 7711 when none answers on 7701), opens the day's scan in headed Edge with
-unthrottled frames, and measures:
+speed. `check-3d.cmd` on the PC runs `scripts/profile-splat.mjs` twice:
 
-- following: 10 s of the day playing over the scan at 4×, frame intervals and the camera's step
-  each frame
-- orbiting: 5 s of dragging
-- at rest: frames drawn in a second of stillness
+- with the NVIDIA GPU: Edge started with `--force_high_performance_gpu`, Chromium's switch for
+  the discrete GPU on a laptop with two (the same as `edge://flags/#force-high-performance-gpu`)
+- with the GPU Windows gives Edge by default, as a browser opened by hand gets it
+  (`--gpu default --label splat-igpu`)
 
-It writes `vault/logs/splat-perf-<label>.json`. It passes when:
+Each run starts its own viewer on port 3100 (and its own API on 7711 when none answers on 7701)
+and opens the day's scan in headed Edge with unthrottled frames. It measures:
 
-- the browser drew with the NVIDIA GPU
-- following has p95 ≤ 8.3 ms and p99 ≤ 16.7 ms
+- **Following.** 10 s of the day playing over the scan at 4×: each drawn frame's GPU time (or
+  interval), frames drawn per second, the rAF intervals, and the camera's step each frame.
+- **Orbiting.** 5 s of dragging. Each move waits for the page, so a stalled one gets fewer.
+- **At rest.** Frames drawn in a second of stillness.
+- **The budget.** Where it stood when the scene was ready, and where each phase left it.
+- **The main thread.** Its CPU profile and the functions with the most self time. "(program)" is
+  native code: a page waiting on the GPU spends its stalls there. Buttons get click events, and
+  every wait allows 3 minutes, so a GPU that stalls for seconds still gets measured.
+
+It writes `vault/logs/splat-perf-<label>.json` and `vault/logs/splat-cpu-<label>.cpuprofile`
+(DevTools › Performance › Load profile). It passes when:
+
+- the browser drew with the NVIDIA GPU (with `--gpu high`)
+- following, each drawn frame's GPU time has p95 ≤ 8.3 ms (where the browser has no GPU timer,
+  the interval between frames drawn back to back)
 - there is no long task over 50 ms
 - no frames are drawn at rest
+
+The first run (2026-10-26, 6ecac86, before the budget) is the reason for the budget. Edge drew with
+`AMD Radeon(TM) Graphics (0x13C0)`, and while following and orbiting the page stalled for
+1.5–3.4 s and 87 s; it rested when still. In software rendering here, a frame of the 600,000-splat
+test scene still takes about 8 s at the budget's floor. The rAF intervals of unthrottled frames do
+not measure drawing: the GPU's work queues up and surfaces later as stalls, so the GPU timer is
+what counts.
 
 ## Tests
 
@@ -228,3 +269,13 @@ It writes `vault/logs/splat-perf-<label>.json`. It passes when:
   - the 3D view opens by default
   - the camera stands where the phone was at the video's time
   - dragging switches to looking around, and following resumes
+  - the tests' software rendering is named in the view's corner
+- `apps/viewer/e2e/splat-budget.spec.ts` checks `lib/splatBudget.ts`:
+  - the GPU's kind from ten renderer strings: Radeon integrated and RX, GeForce, Arc, UHD,
+    SwiftShader, Apple
+  - the budget's walk down on the integrated Radeon: splats to 200,000, then pixels to 0.6, then
+    no further
+  - a discrete GPU cut to 1.15 M at 12 ms, held at 6, raised at 3
+  - frame intervals at 8 fps on a scene drawn whole: only pixels go; a 60 Hz refresh changes
+    nothing
+  - a scene smaller than the budget cut from what is drawn
