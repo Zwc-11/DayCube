@@ -26,7 +26,7 @@ from time import monotonic
 from zoneinfo import ZoneInfo
 
 from ..capture import capture_days, capture_stamp, capture_units, read_capture
-from ..capture.synthesize import LOGS
+from ..capture.synthesize import LOGS, has_capture_day
 from ..graph import Graph, extract
 from ..index.build import UNIT_COLUMNS, collect_units, source_stamp
 from ..index.embed import Embedder
@@ -359,7 +359,7 @@ class LifeStore:
                     events = snapshot.events.records
                     renamed = self.vault.place_names()
                     places = {p["id"]: renamed.get(p["id"], p["name"]) for p in snapshot.day["places"]}
-                elif day in capture_days(self.vault):
+                elif has_capture_day(self.vault, day):
                     units, zone = [], self.zone
                 else:
                     raise FileNotFoundError(f"No vault day or capture for {day}")

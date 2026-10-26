@@ -1,0 +1,28 @@
+{
+  "wall_ms": [
+    1320.054000010714,
+    1274.0118000656366,
+    1236.878100084141
+  ],
+  "median_ms": 1274.0118000656366,
+  "p95_ms": 1320.054000010714,
+  "median_cpu_ms": 750.0,
+  "traced_peak_bytes": 436434,
+  "sha256": "fed6d5cef366e40b16f909fbaaad34b4b7c0a4c330be0eb1f0d24dfeee015396",
+  "profile": "         658659 function calls (658241 primitive calls) in 1.965 seconds\n\n   Ordered by: cumulative time\n   List reduced from 245 to 12 due to restriction <12>\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n        1    0.000    0.000    1.966    1.966 benchmark_capture_history.py:56(cold_index)\n        1    0.001    0.001    1.963    1.963 db.py:303(ensure)\n      100    0.002    0.000    1.678    0.017 db.py:347(update)\n  618/408    0.000    0.000    1.286    0.003 {built-in method builtins.next}\n  309/206    0.001    0.000    1.190    0.006 contextlib.py:141(__exit__)\n      206    0.001    0.000    0.868    0.004 db.py:164(connect)\n      206    0.000    0.000    0.769    0.004 db.py:130(_closing)\n      103    0.769    0.007    0.769    0.007 {method 'close' of 'sqlite3.Connection' objects}\n     1661    0.518    0.000    0.518    0.000 {method 'execute' of 'sqlite3.Connection' objects}\n      206    0.000    0.000    0.421    0.002 db.py:249(_write)\n      600    0.005    0.000    0.309    0.001 synthesize.py:138(capture_stamp)\n    17618    0.006    0.000    0.295    0.000 pathlib.py:1008(stat)\n\n\n",
+  "workload": "cold_capture_history",
+  "days": 100,
+  "records_per_day": 1,
+  "warmup_runs": 1,
+  "samples": 3,
+  "python": "3.11.9",
+  "platform": "Windows-10-10.0.26200-SP0",
+  "cpu": "AMD64 Family 26 Model 68 Stepping 0, AuthenticAMD",
+  "revision": "be42f3525b684c54bc276a1f62459f231d07393d",
+  "source_sha256": {
+    "services/ingest/ingest/store/db.py": "46fd2ef57bd7e22425ffb6c42001a4480b51aae3b8fe124f984d4abdc5c27d3d",
+    "services/ingest/ingest/capture/synthesize.py": "a113787c6b9ddf4b2b88de2af88d5ab35a5f723c9436bd87f3a3cbbd206c2f7a",
+    "eval/benchmark_capture_history.py": "c463105125e91a443d64c8a8faddfc5bc7b1a8d4c88b9a11d1a63ed91d49ab41",
+    "eval/benchmark_notes.py": "5359aa9de867c64fc08f294f95f323e1b4c2103dba8739c3e0982280e77a3aab"
+  }
+}

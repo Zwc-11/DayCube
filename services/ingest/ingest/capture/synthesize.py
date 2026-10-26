@@ -101,6 +101,18 @@ def _block_texts(vault: Vault, path: Path) -> tuple[dict, dict]:
     return docs, texts
 
 
+def has_capture_day(vault: Vault, day: str) -> bool:
+    """Whether a single valid date has capture logs, without scanning the history."""
+    if len(day) != 10:
+        return False
+    try:
+        date.fromisoformat(day)
+    except ValueError:
+        return False
+    folder = vault.root / "capture" / day
+    return folder.is_dir() and any(stored(folder / name).exists() for name in LOGS)
+
+
 def capture_days(vault: Vault) -> list[str]:
     """Dates with capture logs, oldest first."""
     folder = vault.root / "capture"

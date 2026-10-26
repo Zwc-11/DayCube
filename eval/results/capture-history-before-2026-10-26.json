@@ -1,0 +1,28 @@
+{
+  "wall_ms": [
+    2135.335099999793,
+    2033.6604999611154,
+    2726.256199995987
+  ],
+  "median_ms": 2135.335099999793,
+  "p95_ms": 2726.256199995987,
+  "median_cpu_ms": 1625.0,
+  "traced_peak_bytes": 437594,
+  "sha256": "fed6d5cef366e40b16f909fbaaad34b4b7c0a4c330be0eb1f0d24dfeee015396",
+  "profile": "         1184159 function calls (1183741 primitive calls) in 2.742 seconds\n\n   Ordered by: cumulative time\n   List reduced from 243 to 12 due to restriction <12>\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n        1    0.000    0.000    2.742    2.742 benchmark_capture_history.py:56(cold_index)\n        1    0.001    0.001    2.739    2.739 db.py:303(ensure)\n      100    0.003    0.000    2.451    0.025 db.py:347(update)\n      101    0.029    0.000    1.078    0.011 synthesize.py:104(capture_days)\n    47418    0.016    0.000    1.060    0.000 pathlib.py:1008(stat)\n    47418    0.969    0.000    1.044    0.000 {built-in method nt.stat}\n  618/408    0.001    0.000    0.982    0.002 {built-in method builtins.next}\n  309/206    0.001    0.000    0.881    0.004 contextlib.py:141(__exit__)\n    30712    0.016    0.000    0.706    0.000 pathlib.py:1230(exists)\n      206    0.001    0.000    0.683    0.003 db.py:164(connect)\n    10100    0.004    0.000    0.594    0.000 {built-in method builtins.any}\n    20200    0.012    0.000    0.592    0.000 synthesize.py:111(<genexpr>)\n\n\n",
+  "workload": "cold_capture_history",
+  "days": 100,
+  "records_per_day": 1,
+  "warmup_runs": 1,
+  "samples": 3,
+  "python": "3.11.9",
+  "platform": "Windows-10-10.0.26200-SP0",
+  "cpu": "AMD64 Family 26 Model 68 Stepping 0, AuthenticAMD",
+  "revision": "be42f3525b684c54bc276a1f62459f231d07393d",
+  "source_sha256": {
+    "services/ingest/ingest/store/db.py": "7873b8018709d38a3f4dfa5a0e66752c2cabcc9ef9f6c78f35c34953cce527f6",
+    "services/ingest/ingest/capture/synthesize.py": "a0b37ba610657f971372db5b6c2d23a71e80eb84a84bb0fdea530f7d4eaab23f",
+    "eval/benchmark_capture_history.py": "c463105125e91a443d64c8a8faddfc5bc7b1a8d4c88b9a11d1a63ed91d49ab41",
+    "eval/benchmark_notes.py": "5359aa9de867c64fc08f294f95f323e1b4c2103dba8739c3e0982280e77a3aab"
+  }
+}

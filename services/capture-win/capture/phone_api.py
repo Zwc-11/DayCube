@@ -74,6 +74,35 @@ def _safe_parts(name: str) -> list[str]:
     return parts
 
 
+def _file_stamp(info: os.stat_result) -> tuple[int, int, int, int, int]:
+    return info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns
+
+
+def _verified_file(path: Path, size: int, expected: str) -> tuple[int, int, int, int, int] | None:
+    """Hash at most MAX_FILE bytes with a bounded buffer; reject files changed while read."""
+    try:
+        with path.open("rb") as handle:
+            before = os.fstat(handle.fileno())
+            if before.st_size != size:
+                return None
+            digest = hashlib.sha256()
+            remaining = size
+            while remaining:
+                block = handle.read(min(1 << 20, remaining))
+                if not block:
+                    return None
+                digest.update(block)
+                remaining -= len(block)
+            if handle.read(1):
+                return None
+            after = os.fstat(handle.fileno())
+        if _file_stamp(before) == _file_stamp(after) and digest.hexdigest() == expected:
+            return _file_stamp(after)
+    except FileNotFoundError:
+        pass
+    return None
+
+
 class Phones:
     """Devices, uploads in progress and heartbeats, in ``vault/capture`` and ``vault/inbox/phone``."""
 
@@ -82,6 +111,7 @@ class Phones:
         self.inbox = vault_root / "inbox" / "phone"
         self.staging = self.inbox / ".staging"
         self.partial = self.inbox / ".partial"
+        self.completed = self.partial / ".completed"
         self.devices_file = vault_root / "capture" / "phone-devices.json"
         self.beats = vault_root / "capture" / "phone-heartbeats.jsonl"
         self.lock = threading.Lock()
@@ -123,7 +153,22 @@ class Phones:
         try:
             return json.loads((self.partial / f"{upload_id}.json").read_text(encoding="utf-8"))
         except FileNotFoundError:
-            raise HTTPException(404, f"No upload {upload_id}") from None
+            try:
+                return json.loads((self.completed / f"{upload_id}.json").read_text(encoding="utf-8"))
+            except FileNotFoundError:
+                raise HTTPException(404, f"No upload {upload_id}") from None
+
+    def _save_completion(self, upload_id: str, device: str, sha256: str) -> None:
+        # Durable receipts let a phone retry after losing the response, even after import.
+        # They are retained like finished.jsonl and grow with completed uploads.
+        self.completed.mkdir(parents=True, exist_ok=True)
+        receipt = self.completed / f"{upload_id}.json"
+        temporary = receipt.with_suffix(".tmp")
+        try:
+            temporary.write_text(json.dumps({"device": device, "sha256": sha256, "done": True}), encoding="utf-8")
+            os.replace(temporary, receipt)
+        finally:
+            temporary.unlink(missing_ok=True)
 
     def start(self, device: str, body: NewUpload) -> dict:
         item = _safe_parts(body.item)
@@ -132,23 +177,40 @@ class Phones:
         _safe_parts(body.name)
         upload_id = hashlib.sha256(f"{device}/{body.item}/{body.name}/{body.sha256}".encode()).hexdigest()[:32]
         target = self.staging.joinpath(device, body.item, *body.name.split("/"))
+        # File hashing is outside the shared lock so one large file does not stall other devices.
+        stamp = _verified_file(target, body.bytes, body.sha256)
         with self.lock:
-            if target.is_file() and target.stat().st_size == body.bytes:
-                return {"id": upload_id, "offset": body.bytes, "done": True}
             self.partial.mkdir(parents=True, exist_ok=True)
             meta = self.partial / f"{upload_id}.json"
+            part = self.partial / f"{upload_id}.part"
+            if meta.exists() and json.loads(meta.read_text(encoding="utf-8"))["bytes"] != body.bytes:
+                raise HTTPException(409, "upload size changed")
+            try:
+                unchanged = stamp is not None and _file_stamp(target.stat()) == stamp
+            except FileNotFoundError:
+                unchanged = False
+            if unchanged:
+                self._save_completion(upload_id, device, body.sha256)
+                part.unlink(missing_ok=True)
+                meta.unlink(missing_ok=True)
+                return {"id": upload_id, "offset": body.bytes, "done": True}
+            # An older receipt cannot acknowledge a new attempt for the same identity.
+            (self.completed / f"{upload_id}.json").unlink(missing_ok=True)
             if not meta.exists():
                 meta.write_text(json.dumps({"device": device, **body.model_dump()}), encoding="utf-8")
-                (self.partial / f"{upload_id}.part").touch()
-            offset = (self.partial / f"{upload_id}.part").stat().st_size
+            if not part.exists():
+                part.touch()
+            offset = part.stat().st_size
         return {"id": upload_id, "offset": offset, "done": False, "chunk": CHUNK}
 
     def put(self, device: str, upload_id: str, offset: int, data: bytes) -> dict:
-        meta = self._meta(upload_id)
-        if meta["device"] != device:
-            raise HTTPException(403, "not this device's upload")
-        part = self.partial / f"{upload_id}.part"
         with self.lock:
+            meta = self._meta(upload_id)
+            if meta["device"] != device:
+                raise HTTPException(403, "not this device's upload")
+            if meta.get("done"):
+                raise HTTPException(409, "upload is already complete")
+            part = self.partial / f"{upload_id}.part"
             have = part.stat().st_size
             if offset != have:
                 raise HTTPException(409, detail={"offset": have})
@@ -159,11 +221,27 @@ class Phones:
             return {"id": upload_id, "offset": have + len(data)}
 
     def complete(self, device: str, upload_id: str) -> dict:
-        meta = self._meta(upload_id)
-        if meta["device"] != device:
-            raise HTTPException(403, "not this device's upload")
-        part = self.partial / f"{upload_id}.part"
         with self.lock:
+            meta = self._meta(upload_id)
+            if meta["device"] != device:
+                raise HTTPException(403, "not this device's upload")
+            if meta.get("done"):
+                return {"id": upload_id, "done": True, "sha256": meta["sha256"]}
+            part = self.partial / f"{upload_id}.part"
+            target = self.staging.joinpath(device, meta["item"], *meta["name"].split("/"))
+            if not part.exists():
+                # The file may have been moved before the receipt write failed.
+                receipt = self.completed / f"{upload_id}.json"
+                if receipt.exists():
+                    completed = json.loads(receipt.read_text(encoding="utf-8"))
+                    if completed.get("device") == device and completed.get("sha256") == meta["sha256"]:
+                        (self.partial / f"{upload_id}.json").unlink()
+                        return {"id": upload_id, "done": True, "sha256": meta["sha256"]}
+                if _verified_file(target, meta["bytes"], meta["sha256"]) is None:
+                    raise HTTPException(409, "upload data missing; start it again")
+                self._save_completion(upload_id, device, meta["sha256"])
+                (self.partial / f"{upload_id}.json").unlink()
+                return {"id": upload_id, "done": True, "sha256": meta["sha256"]}
             size = part.stat().st_size
             if size != meta["bytes"]:
                 raise HTTPException(409, detail={"offset": size, "bytes": meta["bytes"]})
@@ -175,9 +253,9 @@ class Phones:
                 part.unlink()
                 (self.partial / f"{upload_id}.json").unlink()
                 raise HTTPException(422, "sha256 does not match: upload it again")
-            target = self.staging.joinpath(device, meta["item"], *meta["name"].split("/"))
             target.parent.mkdir(parents=True, exist_ok=True)
             os.replace(part, target)
+            self._save_completion(upload_id, device, meta["sha256"])
             (self.partial / f"{upload_id}.json").unlink()
         return {"id": upload_id, "done": True, "sha256": meta["sha256"]}
 
