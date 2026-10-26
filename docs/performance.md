@@ -243,3 +243,11 @@ head prediction was about 10% faster and 1080p frame preparation 30% faster with
 The current 640×480 preparation case showed a small median gain and a slightly worse sampled tail.
 Freshness and recovery checks are separate from the CPU measurements; live accuracy needs calibration.
 
+## Continued codebase review, 2026-10-26
+
+The [continuation report](codebase-continuation-2026-10-26.md) records exact-output camera-map,
+phone-segmentation and voice-clustering comparisons, plus failed-loader resource/draw counters.
+Each named workload retains before/after source provenance and its allocation/latency limits.
+These CPU/browser fixtures do not establish camera FPS, production startup latency, real-GPU
+performance or general DeepInfer parity. Per-file review findings remain visible in the ledger.
+

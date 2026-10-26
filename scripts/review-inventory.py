@@ -35,6 +35,17 @@ BINARY = ASSETS | {
     ".zst",
     ".gz",
 }
+TREATMENTS = {
+    "source": "First-party implementation: current manual notes record the examined algorithms, resources and limits.",
+    "test": "Test or browser harness: current manual notes record coverage, fixtures and environment limitations.",
+    "configuration": "Supporting build/runtime/presentation configuration: current manual notes record behavior and limits.",
+    "generated": "Mechanical output of canonical JSON Schemas; verify regeneration and review producers/consumers, not an independent algorithm audit.",
+    "lockfile": "Resolved dependency inventory and syntax/hash checks; dependency implementations and supply-chain auditing are outside this review.",
+    "asset": "Static UI/media asset: hash and size, with producer/consumer review; no first-party executable algorithm to optimize.",
+    "fixture": "Identifiable sample/synthetic input: inventory/hash and producer/consumer correctness; not live telemetry or performance proof.",
+    "measurement_or_fixture": "Retained measurement or fixture with its original provenance; inventory/parsing does not mean the workload was rerun.",
+    "documentation": "Supporting or historical documentation: inventory and current report updates; historical results retain their original scope.",
+}
 
 
 def category(path: str) -> str:
@@ -162,7 +173,17 @@ process.stdout.write(JSON.stringify(errors));
         + ", except this generated ledger itself. No vendored source is tracked; dependencies live in ignored environments and lockfiles.",
         "limits": "Structural checks cover every listed file; manual_review only identifies implementations actually examined. Neither is a proof of maximum efficiency, a dependency audit or DeepInfer throughput parity. Missing manual_review is explicitly unreviewed at the semantic level.",
         "counts": dict(Counter(entry["category"] for entry in files)),
+        "category_treatments": TREATMENTS,
         "manual_reviews": sum("manual_review" in entry for entry in files),
+        "coverage": {
+            kind: {
+                "files": sum(entry["category"] == kind for entry in files),
+                "current_manual_reviews": sum(
+                    entry["category"] == kind and "manual_review" in entry for entry in files
+                ),
+            }
+            for kind in ("source", "test", "configuration")
+        },
         "files": files,
     }
     target.parent.mkdir(parents=True, exist_ok=True)

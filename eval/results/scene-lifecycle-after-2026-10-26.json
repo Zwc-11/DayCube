@@ -1,14 +1,14 @@
 {
-  "revision": "20c09d4771385ec67500742f31c0ed36bff1ab3a",
+  "revision": "53b1e5757d1a1b572a1a2f949e269198a21b9e2d",
   "source_hashes": {
     "apps/viewer/src/components/modals/MeshView.tsx": "c0211be997c483068d60a968345a3a8f1fabb32b2c3586e16912443934699636",
-    "apps/viewer/src/components/modals/SplatView.tsx": "7c29bcaddfe9bf22342ca831d77a49ca001a309483e252c59cf5a508887b33e1",
+    "apps/viewer/src/components/modals/SplatView.tsx": "3efd2073866cea95c9aeb7c7e3743f4c649fffa0b95c33a73ad9b72591e58e74",
     "apps/viewer/e2e/fixtures/scene-lifecycle.html": "d516730e3ecd2d96235f8233a41ef459f314788f4c8770414b63c05b107fc895",
     "apps/viewer/e2e/fixtures/scene-lifecycle.tsx": "c0237d0fdb36c9d531c9067a4225bddcce7553d48cc76b4077ad47f110a5cc3c",
     "apps/viewer/e2e/fixtures/scene-lifecycle.mjs": "8f953476fd7e1fa8e1a193c613f1477896faf86c117de7c415327f69fce8d194",
     "apps/viewer/src/lib/sceneResources.ts": "5f7305311cf501b4932055fd42e8e8d0487183c076a9e5a29ae1148934e158cb",
     "eval/profile_scene_lifecycle.mjs": "23e975747733ea99af7d9d46e410a9295cbb608e69247583bb62ec491be385f5",
-    "package-lock.json": "2573b1bb5021ef8ebde0c166893696675b9074b318825b3526eda6cff1ab530e"
+    "package-lock.json": "1ee9e3cb7eabb2d79c291240637f26363bee8b99e642c4f1ea9109c87d69f4a2"
   },
   "environment": {
     "platform": "win32",
