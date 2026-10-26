@@ -68,6 +68,11 @@ gate is `npm run check`; CI runs it on Windows and Linux. Browser suites add int
 rendering checks. See the [codebase review](efficiency-review.md) for coverage, measurements
 and unresolved limits. Performance benchmarks remain separate from this gate.
 
+The gate also runs graph-label buffer regressions and model-free speech tests. Speech canaries
+remain opt-in in their own environment; the core environment skips optional speaker clustering
+when scikit-learn is absent. Inventory the tracked review scope with
+`uv run python scripts/review-inventory.py --tracked-only` to preserve unrelated local drafts.
+
 Transport owns stream readers: process complete events incrementally, bound event buffering,
 validate final payloads against canonical contracts, and cancel/release readers on early exit.
 Do not buffer a whole stream before using an early event or repeat a failed request as a

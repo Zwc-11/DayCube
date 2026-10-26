@@ -135,7 +135,9 @@ def test_a_capture_becomes_a_training_set_with_opengl_poses_and_lidar_points(tmp
     # The LiDAR's points are on the ground and the wall they were rendered from.
     points = export.read_ply(tmp_path / "train" / "lidar.ply")
     xyz = np.stack([points["x"], points["y"], points["z"]], 1)
-    on = np.minimum(np.abs(xyz[:, 1] - GROUND_Y), np.minimum(np.abs(xyz[:, 0] - WALL_X), np.abs(xyz[:, 0] - WALL_X - 1.5)))
+    on = np.minimum(
+        np.abs(xyz[:, 1] - GROUND_Y), np.minimum(np.abs(xyz[:, 0] - WALL_X), np.abs(xyz[:, 0] - WALL_X - 1.5))
+    )
     assert len(xyz) > 1000 and np.quantile(on, 0.95) < 0.05
     assert report["init"]["far_points"] > 0  # the wall and ground past 5.5 m
     # The sky shell: far out, above -10 degrees, coloured from frames that see it, part of init.ply.
@@ -188,7 +190,11 @@ def test_splats_for_the_viewer(tmp_path: Path) -> None:
     data["rot_0"] = 2.0  # w, unnormalized
     data["f_dc_0"] = (1.0 - 0.5) / export.SH_C0  # red 1.0
     ply = tmp_path / "splat.ply"
-    header = "ply\nformat binary_little_endian 1.0\nelement vertex 5\n" + "".join(f"property float {f}\n" for f in fields) + "end_header\n"
+    header = (
+        "ply\nformat binary_little_endian 1.0\nelement vertex 5\n"
+        + "".join(f"property float {f}\n" for f in fields)
+        + "end_header\n"
+    )
     ply.write_bytes(header.encode() + data.tobytes())
     info = export.splat_from_gaussians(ply, tmp_path / "scene.splat")
     records = np.frombuffer((tmp_path / "scene.splat").read_bytes(), export.RECORD)
@@ -234,7 +240,9 @@ def fake_brush(folder: Path) -> Path:
     return launcher
 
 
-def test_a_scan_moment_gets_its_lidar_preview_then_its_trained_splat(vault: Vault, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_scan_moment_gets_its_lidar_preview_then_its_trained_splat(
+    vault: Vault, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     from ingest.phone.importer import import_phone
 
     capture = make_capture(tmp_path / "drop" / "scan")
@@ -264,7 +272,9 @@ def test_a_scan_moment_gets_its_lidar_preview_then_its_trained_splat(vault: Vaul
     assert read_json(moment / "scene.json")["splat"]["status"] == "trained"
 
 
-def test_a_failed_training_keeps_the_preview_and_says_why(vault: Vault, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_failed_training_keeps_the_preview_and_says_why(
+    vault: Vault, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     from ingest.phone.importer import import_phone
 
     capture = make_capture(tmp_path / "drop" / "scan")
@@ -272,7 +282,9 @@ def test_a_failed_training_keeps_the_preview_and_says_why(vault: Vault, tmp_path
     moment = next(vault.root.glob("*/moments/mo_scan_*"))
     day = moment.parent.parent
     broken = tmp_path / ("broken.cmd" if os.name == "nt" else "broken")
-    broken.write_text("@echo out of memory\n@exit /b 3\n" if os.name == "nt" else "#!/bin/sh\necho out of memory\nexit 3\n")
+    broken.write_text(
+        "@echo out of memory\n@exit /b 3\n" if os.name == "nt" else "#!/bin/sh\necho out of memory\nexit 3\n"
+    )
     broken.chmod(broken.stat().st_mode | stat.S_IEXEC)
     monkeypatch.setenv("DAYCUBE_BRUSH", str(broken))
     with pytest.raises(RuntimeError, match="out of memory"):
@@ -302,7 +314,12 @@ def test_brush_progress_is_read_from_its_log() -> None:
     assert (p.step, p.splats) == (1800, 2154157)
 
 
-def test_new_scans_get_their_preview_then_train_when_the_pc_is_free(vault: Vault, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_new_scans_get_their_preview_then_train_when_the_pc_is_free(
+    vault: Vault, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from dataclasses import replace
+
+    from ingest.jobs import stages, worker
     from ingest.jobs.stages import discover
     from ingest.jobs.store import Jobs
     from ingest.jobs.worker import run_next
@@ -318,9 +335,27 @@ def test_new_scans_get_their_preview_then_train_when_the_pc_is_free(vault: Vault
     day, night = datetime(2026, 10, 25, 14, 0), datetime(2026, 10, 25, 3, 0)
     quiet = {"say": lambda _: None}
 
+    def fake_mesh(owner: Vault, inputs: dict, say: object) -> dict:
+        # Scheduling is model-free; metric mesh reconstruction has its own optional tests.
+        folder = owner.day_path(inputs["date"]) / "moments" / inputs["moment"]
+        (folder / "mesh").mkdir()
+        (folder / "mesh" / "scene.glb").write_bytes(b"synthetic mesh scheduling fixture")
+        scene = read_json(folder / "scene.json")
+        scene["mesh"] = {"status": "made", "file": "mesh/scene.glb"}
+        owner.write_json(folder / "scene.json", scene)
+        return {"triangles": 1, "median_m": 0.0}
+
+    table = dict(stages.STAGES)
+    table["scan_mesh"] = replace(table["scan_mesh"], ready=lambda: False, run=fake_mesh)
+    monkeypatch.setattr(stages, "STAGES", table)
+    monkeypatch.setattr(worker, "STAGES", table)
+
     assert len(discover(vault, jobs)) == 2 and discover(vault, jobs) == []  # mesh and preview, queued once
-    ran = {run_next(vault, jobs, "cpu", "cpu", **quiet)["stage"] for _ in range(2)}
-    assert ran == {"scan_mesh", "splat_preview"}
+    assert run_next(vault, jobs, "cpu", "cpu", **quiet)["stage"] == "splat_preview"
+    assert run_next(vault, jobs, "cpu", "cpu", **quiet) is None
+    assert jobs.status()["stages"]["scan_mesh"]["queued"] == 1  # optional tool unavailable
+    table["scan_mesh"] = replace(table["scan_mesh"], ready=lambda: True)
+    assert run_next(vault, jobs, "cpu", "cpu", **quiet)["stage"] == "scan_mesh"
     assert read_json(moment / "scene.json")["splat"]["status"] == "lidar"
     assert read_json(moment / "scene.json")["mesh"]["status"] == "made" and (moment / "mesh" / "scene.glb").is_file()
     assert jobs.status()["stages"]["splat_train"]["queued"] == 1  # the preview leads to training

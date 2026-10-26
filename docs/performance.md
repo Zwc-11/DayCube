@@ -1,5 +1,9 @@
 # Performance measurements
 
+The [2026-10-26 codebase pass](codebase-efficiency-2026-10-26.md) adds capture projection,
+graph redraw and job-history measurements, with unchanged-output checks and a refreshed file ledger.
+The report records both gains and unchanged/regressing measurements on the named workloads.
+
 The [2026-10-24 review](review-2026-10-24.md) adds notes/graph/cache measurements and a
 production-build viewer profile. Its renderer and scope limits are recorded with the results.
 

@@ -24,13 +24,14 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from pathlib import Path
 from urllib.parse import urlsplit
 
 from ..time import instant
-from ..vault import Record, Vault, file_stamp, read_text, stored
+from ..vault import Record, Vault, file_stamp, stored, text_lines
 
 LOGS = ("browser.jsonl", "blocks.jsonl", "gaze.jsonl", "attention.jsonl", "reading.jsonl", "windows.jsonl")
 MIN_VISIT_S = 3.0  # shorter spans in front are tab flipping, not visits
@@ -58,21 +59,46 @@ APP_NAMES = {
 LOCK_APPS = frozenset({"lockapp.exe", "logonui.exe"})
 
 
-def _records(path: Path) -> list[Record]:
+def _iter_records(path: Path) -> Iterator[Record]:
     """JSON lines, skipping any that do not parse (a torn append, a hand edit): one bad line must
     not hide a day of capture."""
     if not stored(path).exists():
-        return []
-    out = []
-    for line in read_text(path).split("\n"):
+        return
+    for line in text_lines(path):
         if line.strip():
             try:
                 value = json.loads(line)
             except ValueError:
                 continue
             if isinstance(value, dict):
-                out.append(value)
-    return out
+                yield value
+
+
+def _records(path: Path) -> list[Record]:
+    return list(_iter_records(path))
+
+
+def _block_texts(vault: Vault, path: Path) -> tuple[dict, dict]:
+    """Retain only document metadata and block text, keyed by the physical file and write version."""
+    source = stored(path)
+    key = (source, vault.stamp(path), file_stamp(source))
+    cached = vault.capture_texts.get(path)
+    if cached is not None and cached[0] == key:
+        return cached[1], cached[2]
+    docs: dict = {}
+    texts: dict = {}
+    for record in _iter_records(path):
+        doc = record.get("doc")
+        if not doc:
+            continue
+        docs[doc] = (record.get("url", ""), record.get("title", "") or docs.get(doc, ("", ""))[1])
+        for block in record.get("blocks", []):
+            if block.get("text"):
+                texts[(doc, block["id"])] = (block.get("tag", ""), block["text"])
+    # A concurrent append/replacement cannot become a cache entry for the earlier stamp.
+    if key == (stored(path), vault.stamp(path), file_stamp(stored(path))):
+        vault.capture_texts.put_metadata(path, (key, docs, texts))
+    return docs, texts
 
 
 def capture_days(vault: Vault) -> list[str]:
@@ -178,14 +204,10 @@ def read_capture(vault: Vault, day: str) -> CaptureDay:
     out = CaptureDay(day)
     previous = (date.fromisoformat(day) - timedelta(days=1)).isoformat()
     for path in (vault.root / "capture" / previous / "blocks.jsonl", folder / "blocks.jsonl"):
-        for record in _records(path):
-            doc = record.get("doc")
-            if not doc:
-                continue
-            out.docs[doc] = (record.get("url", ""), record.get("title", "") or out.docs.get(doc, ("", ""))[1])
-            for block in record.get("blocks", []):
-                if block.get("text"):
-                    out.texts[(doc, block["id"])] = (block.get("tag", ""), block["text"])
+        docs, texts = _block_texts(vault, path)
+        for doc, (url, title) in docs.items():
+            out.docs[doc] = (url, title or out.docs.get(doc, ("", ""))[1])
+        out.texts.update(texts)
     browser = sorted(_records(folder / "browser.jsonl"), key=lambda r: instant(r["t"]))
     out.visits = _visits(browser)
     for record in browser:

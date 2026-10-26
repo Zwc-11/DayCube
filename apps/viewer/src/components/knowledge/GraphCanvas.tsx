@@ -1,4 +1,5 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
+import { GraphLabels } from '../../lib/graphLabels';
 import { simHost, type FromSim, type ToSim } from '../../lib/graphSim';
 import { KINDS, loadPositions, radiusOf, savePositions, type GraphModel } from '../../lib/noteGraph';
 
@@ -102,6 +103,9 @@ export const GraphCanvas = forwardRef<GraphHandle, GraphCanvasProps>(function Gr
     sx: new Float32Array(0), // screen positions of locals, as last drawn
     sy: new Float32Array(0),
     sr: new Float32Array(0),
+    labels: new GraphLabels(new Int32Array(0), new Uint32Array(0)),
+    lightUp: new Uint8Array(0),
+    lightUpFor: -2,
     width: new Float32Array(0), // label widths by global index (NaN: not measured)
     widthStrong: new Float32Array(0),
     hover: -1, // global
@@ -226,11 +230,15 @@ export const GraphCanvas = forwardRef<GraphHandle, GraphCanvasProps>(function Gr
       sy[l] = (gy[i] - cam.y) * cam.k + H / 2;
       sr[l] = Math.max(1.4, radiusOf(m.degree[i]) * grow);
     }
-    // Hovered neighbourhood as a set once per frame (degree-sized), not per node.
-    const lightUp = new Uint8Array(lit >= 0 ? m.n : 0);
-    if (lit >= 0) {
-      lightUp[lit] = 1;
-      for (let k = m.adjStart[lit]; k < m.adjStart[lit + 1]; k++) lightUp[m.adj[k]] = 1;
+    // Neighbours change with the hovered node/model, not while its highlight fades.
+    const lightUp = st.lightUp;
+    if (st.lightUpFor !== lit) {
+      lightUp.fill(0);
+      if (lit >= 0) {
+        lightUp[lit] = 1;
+        for (let k = m.adjStart[lit]; k < m.adjStart[lit + 1]; k++) lightUp[m.adj[k]] = 1;
+      }
+      st.lightUpFor = lit;
     }
     const dimmed = (i: number) => (lit >= 0 ? !lightUp[i] : searching ? !matches!.has(i) && i !== sel : false);
     const dimAmount = lit >= 0 ? h : searching ? 1 : 0;
@@ -329,9 +337,10 @@ export const GraphCanvas = forwardRef<GraphHandle, GraphCanvasProps>(function Gr
     }
 
     // Names: those the reader is looking at first, then by links; one fades in as its dot grows.
-    type Label = { l: number; strong: boolean; alpha: number; rank: number };
-    const labels: Label[] = [];
-    for (let l = 0; l < L; l++) {
+    const labels = st.labels;
+    labels.reset();
+    for (let at = 0; at < labels.order.length; at++) {
+      const l = labels.order[at];
       const x = sx[l], y = sy[l];
       if (x < -60 || x > W + 60 || y < -20 || y > H + 30) continue;
       const i = local[l];
@@ -339,9 +348,8 @@ export const GraphCanvas = forwardRef<GraphHandle, GraphCanvasProps>(function Gr
       const grown = Math.min(1, Math.max(0, (sr[l] - 4.2) / 2.6));
       if (!forced && (grown <= 0.02 || dimmed(i))) continue;
       const rank = i === lit ? 4 : i === sel ? 3 : forced ? 2 : 0;
-      labels.push({ l, strong: i === lit || i === sel, alpha: forced ? 1 : grown * (1 - 0.84 * dimAmount), rank });
+      labels.add(l, rank, forced ? 1 : grown * (1 - 0.84 * dimAmount));
     }
-    labels.sort((a, b) => b.rank - a.rank || m.degree[local[b.l]] - m.degree[local[a.l]] || a.l - b.l);
     const cell = 48;
     const cols = Math.ceil((W + 240) / cell) + 1;
     const grid = new Map<number, number[]>();
@@ -350,49 +358,53 @@ export const GraphCanvas = forwardRef<GraphHandle, GraphCanvasProps>(function Gr
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     ctx.lineJoin = 'round';
-    for (const label of labels) {
-      if (drawn >= 400) break;
-      const i = local[label.l];
-      const text = m.titles[i].length > (label.strong ? 64 : 30) ? `${m.titles[i].slice(0, label.strong ? 63 : 29)}…` : m.titles[i];
-      const widths = label.strong ? st.widthStrong : st.width;
-      ctx.font = label.strong ? LABEL_FONT_STRONG : LABEL_FONT;
-      if (!(widths[i] >= 0)) widths[i] = ctx.measureText(text).width;
-      const w = widths[i] + 6;
-      const x0 = sx[label.l] - w / 2;
-      const y0 = sy[label.l] + sr[label.l] + 3;
-      const x1 = x0 + w;
-      const y1 = y0 + (label.strong ? 16 : 15);
-      // Overlap test against labels already placed, through a coarse grid.
-      const c0 = Math.floor((x0 + 120) / cell), c1 = Math.floor((x1 + 120) / cell);
-      const r0 = Math.floor((y0 + 40) / cell), r1 = Math.floor((y1 + 40) / cell);
-      let clear = true;
-      for (let r = r0; r <= r1 && clear; r++) {
-        for (let c = c0; c <= c1 && clear; c++) {
-          for (const b of grid.get(r * cols + c) ?? []) {
-            if (x0 < boxes[b + 2] && x1 > boxes[b] && y0 < boxes[b + 3] && y1 > boxes[b + 1]) {
-              clear = false;
-              break;
+    for (let group = 0; group < 4 && drawn < 400; group++) {
+      for (let k = 0; k < labels.counts[group] && drawn < 400; k++) {
+        const l = labels.items[group * L + k];
+        const rank = labels.rank[l];
+        const strong = rank >= 3;
+        const i = local[l];
+        const text = m.titles[i].length > (strong ? 64 : 30) ? `${m.titles[i].slice(0, strong ? 63 : 29)}…` : m.titles[i];
+        const widths = strong ? st.widthStrong : st.width;
+        ctx.font = strong ? LABEL_FONT_STRONG : LABEL_FONT;
+        if (!(widths[i] >= 0)) widths[i] = ctx.measureText(text).width;
+        const w = widths[i] + 6;
+        const x0 = sx[l] - w / 2;
+        const y0 = sy[l] + sr[l] + 3;
+        const x1 = x0 + w;
+        const y1 = y0 + (strong ? 16 : 15);
+        // Overlap test against labels already placed, through a coarse grid.
+        const c0 = Math.floor((x0 + 120) / cell), c1 = Math.floor((x1 + 120) / cell);
+        const r0 = Math.floor((y0 + 40) / cell), r1 = Math.floor((y1 + 40) / cell);
+        let clear = true;
+        for (let r = r0; r <= r1 && clear; r++) {
+          for (let c = c0; c <= c1 && clear; c++) {
+            for (const b of grid.get(r * cols + c) ?? []) {
+              if (x0 < boxes[b + 2] && x1 > boxes[b] && y0 < boxes[b + 3] && y1 > boxes[b + 1]) {
+                clear = false;
+                break;
+              }
             }
           }
         }
+        if (!clear && rank < 3) continue;
+        const b = boxes.length;
+        boxes.push(x0, y0, x1, y1);
+        for (let r = r0; r <= r1; r++)
+          for (let c = c0; c <= c1; c++) {
+            const key = r * cols + c;
+            const list = grid.get(key);
+            if (list) list.push(b);
+            else grid.set(key, [b]);
+          }
+        ctx.globalAlpha = labels.alpha[l];
+        ctx.strokeStyle = colors.bg;
+        ctx.lineWidth = 3;
+        ctx.strokeText(text, sx[l], y0 + 1);
+        ctx.fillStyle = strong ? colors.fg : rank ? colors.fg : colors.fg2;
+        ctx.fillText(text, sx[l], y0 + 1);
+        drawn++;
       }
-      if (!clear && label.rank < 3) continue;
-      const b = boxes.length;
-      boxes.push(x0, y0, x1, y1);
-      for (let r = r0; r <= r1; r++)
-        for (let c = c0; c <= c1; c++) {
-          const key = r * cols + c;
-          const list = grid.get(key);
-          if (list) list.push(b);
-          else grid.set(key, [b]);
-        }
-      ctx.globalAlpha = label.alpha;
-      ctx.strokeStyle = colors.bg;
-      ctx.lineWidth = 3;
-      ctx.strokeText(text, sx[label.l], y0 + 1);
-      ctx.fillStyle = label.strong ? colors.fg : label.rank ? colors.fg : colors.fg2;
-      ctx.fillText(text, sx[label.l], y0 + 1);
-      drawn++;
     }
     ctx.globalAlpha = 1;
   };
@@ -541,6 +553,7 @@ export const GraphCanvas = forwardRef<GraphHandle, GraphCanvasProps>(function Gr
       st.gy = gy;
       st.width = new Float32Array(model.n).fill(NaN);
       st.widthStrong = new Float32Array(model.n).fill(NaN);
+      st.lightUp = new Uint8Array(model.n);
       if (st.hover >= model.n) st.hover = -1;
     }
     const local: number[] = [];
@@ -560,6 +573,8 @@ export const GraphCanvas = forwardRef<GraphHandle, GraphCanvasProps>(function Gr
     st.sx = new Float32Array(L);
     st.sy = new Float32Array(L);
     st.sr = new Float32Array(L);
+    st.labels = new GraphLabels(st.local, model.degree);
+    st.lightUpFor = -2;
     st.buffer = null;
     const x = new Float64Array(L);
     const y = new Float64Array(L);

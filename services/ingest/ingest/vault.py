@@ -14,6 +14,7 @@ import contextlib
 import copy
 import hashlib
 import heapq
+import io
 import json
 import os
 import re
@@ -22,7 +23,7 @@ import shutil
 import tempfile
 from bisect import bisect_left
 from collections import Counter, defaultdict
-from collections.abc import Container
+from collections.abc import Container, Iterator
 from dataclasses import dataclass
 from datetime import date as Date
 from datetime import datetime, timedelta
@@ -51,6 +52,7 @@ MOMENT_ID = re.compile(r"[A-Za-z0-9_-]+")
 SNAPSHOT_CACHE_BYTES = 64 << 20
 PAYLOAD_CACHE_BYTES = 32 << 20
 METADATA_CACHE_BYTES = 8 << 20  # each secondary cache; includes Python metadata and entry allowance
+CAPTURE_TEXT_CACHE_BYTES = 32 << 20  # decoded text projections, never retained capture geometry
 # Finished days can be compacted: large logs become zstd frames beside their name (events.jsonl
 # -> events.jsonl.zst) and every reader decompresses transparently. Level 10 gets within a few
 # percent of the maximum ratio at a fraction of its time.
@@ -110,6 +112,19 @@ def read_text(path: Path) -> str:
     if source is path:
         return path.read_text(encoding="utf-8")
     return zstandard.ZstdDecompressor().decompress(source.read_bytes()).decode("utf-8")
+
+
+def text_lines(path: Path) -> Iterator[str]:
+    """Iterate UTF-8 lines; validate compacted frames before exposing their records."""
+    source = stored(path)
+    if source == path:
+        with path.open(encoding="utf-8") as text:
+            yield from text
+    else:
+        # Keep the existing whole-frame integrity checks, including truncated frames. A stream
+        # reader can reach EOF without reporting an incomplete frame. Plain live logs stream.
+        with io.StringIO(read_text(path)) as text:
+            yield from text
 
 
 def append_text(path: Path, content: str) -> FileStamp:
@@ -332,6 +347,7 @@ class Vault:
         self._summaries: SegmentedLRU[Path, tuple[tuple, Record]] = SegmentedLRU(METADATA_CACHE_BYTES)
         # day -> key of the inputs the vault database was last confirmed fresh for.
         self.fresh_index: SegmentedLRU[str, tuple] = SegmentedLRU(METADATA_CACHE_BYTES)
+        self.capture_texts: SegmentedLRU[Path, tuple] = SegmentedLRU(CAPTURE_TEXT_CACHE_BYTES)
 
     # -- files -------------------------------------------------------------------------------
 

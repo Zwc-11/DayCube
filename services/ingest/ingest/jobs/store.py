@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     updated REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS jobs_ready ON jobs (status, stage, priority DESC, id);
+CREATE INDEX IF NOT EXISTS jobs_input ON jobs (stage, inputs, id DESC);
 """
 
 
