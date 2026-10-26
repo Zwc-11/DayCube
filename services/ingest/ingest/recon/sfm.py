@@ -9,7 +9,12 @@ tracking where the camera was. The images of one walk, in the order they were ta
 - **Matching.** Each image against the next ``overlap`` (and, quadratically, a few further on):
   a walk sees each place only from the images just before and after.
 - **Mapping.** Incremental (COLMAP's default), or global (GLOMAP, in COLMAP since 4.0). The largest
-  model is kept; the others are walks the matching could not join up.
+  model is kept; the others are walks the matching could not join up. COLMAP's defaults for the
+  first pair of images suit a camera moving around a scene: they refuse a pair whose camera moved
+  mostly along its own view (``init_max_forward_motion`` 0.95), which is every pair of a walk
+  looking ahead, and ask for 16 degrees between their rays. Here any motion is allowed, with
+  ``INIT_MIN_TRI_ANGLE`` degrees: on 2026-10-26 the trail's photos a second apart came out in
+  three pieces of 16 of 129 with the defaults, and a synthetic walk's photos 2 m apart in none.
 
 pycolmap installs from pip on Windows and Linux (wheels for Python 3.10-3.14), CPU only: a few
 hundred images of a walk take minutes.
@@ -24,6 +29,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
+
+INIT_MIN_TRI_ANGLE = 4.0  # degrees between the first pair's rays (COLMAP: 16)
 
 
 @dataclass
@@ -111,6 +118,8 @@ def reconstruct(
     else:
         options = pycolmap.IncrementalPipelineOptions()
         options.multiple_models = True
+        options.mapper.init_max_forward_motion = 1.0  # a walk looks the way it goes
+        options.mapper.init_min_tri_angle = INIT_MIN_TRI_ANGLE
         models = pycolmap.incremental_mapping(database, images, out, options)
     timings["mapping_s"] = round(time.monotonic() - mark, 1)
     if not models:
