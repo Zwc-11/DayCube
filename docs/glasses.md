@@ -185,7 +185,7 @@ ALIKED + LightGlue on the RTX 5070, the same frames, mapper settings and scoring
 | path RMS (p90, largest) | 6.79 m (11.0, 13.7) | 1.14 m (1.60, 2.65) |
 | median / p90 turn error | 18° / 130° | 2.0° / 4.0° |
 | GPS residual, offset, scale | 4.81 m, +13 s, +24.5% | 1.65 m, +4 s, +2.6% |
-| PSNR rebuilt / phone poses (24 held out) | 11.1 / 14.9 dB (10) | 13.0 / 15.6 dB |
+| PSNR rebuilt / phone poses (held-out frames) | 11.1 / 14.9 dB (10) | 13.0 / 15.6 dB (24) |
 | features + matching + mapping | 124 + 732 + 355 s | 26 + 466 + 1,382 s |
 
 - Every frame is placed, in one model over the whole walk. The stream passes three of the four
