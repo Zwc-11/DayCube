@@ -133,6 +133,13 @@ nothing.
   - PSNR 15.2 dB rebuilt against 15.3 dB with the phone's poses (4 held-out frames): the rebuilt
     poses cost 0.1 dB where they exist
   - SIFT matching took 294 s of the 358 s
+- `stream_5fps` (third run, 642 frames at 1280×960, 4,096 features): 245 placed (38%), in 5 models;
+  the largest covers 67.5 m, but it is wrong.
+  - path RMS 6.8 m (p90 11.0 m), median turn 18°, p90 130°: parts of the model are folded or
+    turned around, while its reprojection error is a normal 0.75 px
+  - GPS residual 4.8 m, offset +13 s, scale +24.5%
+  - PSNR 11.1 dB rebuilt against 14.9 dB with the phone's poses (10 held-out frames): 3.8 dB lost
+  - features 124 s, matching 732 s, mapping 355 s
 
 **So far:** occasional stills of a tree-lined trail do not reconstruct with SIFT. The learned
 matcher (ALIKED + LightGlue, `check-glasses-learned.cmd`) is the next run. After it, if needed:
