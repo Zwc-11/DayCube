@@ -141,9 +141,46 @@ nothing.
   - PSNR 11.1 dB rebuilt against 14.9 dB with the phone's poses (10 held-out frames): 3.8 dB lost
   - features 124 s, matching 732 s, mapping 355 s
 
-**So far:** occasional stills of a tree-lined trail do not reconstruct with SIFT. The learned
-matcher (ALIKED + LightGlue, `check-glasses-learned.cmd`) is the next run. After it, if needed:
+**Stream with SIFT, why it is wrong.** The rebuilt and phone positions of its 245 frames were
+compared frame by frame:
+- The error grows steadily from the middle of the model to both ends (10 m at each end, under 1 m in
+  the middle), so the model is bent along the walk rather than broken in one place.
+- Between frames 160 and 190 of the model, consecutive frames are 2.3–5.4 m apart where the
+  phone moved 0.3 m.
+- The likely causes are scale drift over 5 fps steps of 25 cm, and wrong matches with
+  far-off frames: quadratic overlap pairs a frame with others up to 100 s later, on foliage that
+  repeats.
 
+### Fourth run: learned features (2026-10-26, 95f0ad7, `check-glasses-learned.cmd`)
+
+ALIKED + LightGlue on the RTX 5070, the same frames, mapper settings and scoring:
+
+| | `photo_3s` SIFT | `photo_3s` learned | `photo_1s` SIFT | `photo_1s` learned |
+| --- | --- | --- | --- | --- |
+| placed | 0 / 43 | 29 / 43 (67%) | 18 / 129 (14%), 5 models | 115 / 129 (89%), 1 model |
+| walk covered | — | 157.7 m (96%) | 24.0 m | 164.7 m (100%) |
+| path RMS (p90, largest) | — | 1.05 m (1.56, 2.78) | 0.05 m | 1.09 m (1.11, 8.33) |
+| median turn error | — | 2.1° | 2.0° | 2.4° |
+| GPS residual, offset, scale | — | 1.66 m, +5 s, +2.9% | 0.29 m, −1 s, +3.4% | 1.48 m, +4 s, +2.7% |
+| PSNR rebuilt / phone poses | — | 12.7 / 12.8 dB (23 held out) | 15.2 / 15.3 dB (4) | 13.2 / 14.5 dB (24) |
+| features + matching + mapping | 18 + 87 + 0 s | 13 + 26 + 6 s | 57 + 294 + 7 s | 12 + 95 + 66 s |
+
+- Every neighbouring pair of `photo_3s` matched (510 of 510 pairs, 58k matches). With SIFT most
+  had no match.
+- The whole walk is one model from photos a second apart, and nearly all of it from photos 3 s
+  (3.8 m) apart.
+- The path error is about 1 m RMS over 160 m (0.7%). That is over the plan's 0.5 m, though under
+  the phone GPS's own 2.0 m residual against ARKit (`phone_fit`).
+- Scale is within 3% from GPS alone. The clock offset is found within 5 s, where the truth is
+  0 s.
+- Checks: `photo_1s` passes GPS ≤ 3 m and scale ±5%, and misses ≥ 90% placed by one point
+  (89.1%) and path ≤ 0.5 m. `photo_3s` passes GPS and scale only.
+
+**So far:** with learned matching, interval photos from a forest trail reconstruct: one model over
+the whole walk, metric from GPS within 3%. SIFT cannot do this. Still to try, in order:
+
+- the stream with learned features (this run, next)
+- sequential-only pairs for the stream, without far pairs, against the folding above
 - COLMAP's LoMa, from the COLMAP Windows CUDA release
 - MapAnything, the plan's feed-forward option
 
