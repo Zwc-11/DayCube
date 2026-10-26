@@ -240,7 +240,8 @@ measures:
   - the rAF intervals, and the share later than 1.5 refreshes
   - the camera's step each frame
 - **Orbiting.** 5 s of dragging. Each move waits for the page, so a stalled one gets fewer.
-- **At rest.** Frames drawn in a second of stillness.
+- **At rest.** Frames drawn in the second after 1.5 s of stillness (Spark still settling), and in
+  the second after 3 s (the check).
 - **The budget.** Where it stood when the scene was ready, and where each phase left it.
 - **The main thread.** Its CPU profile and the functions with the most self time. "(program)" is
   native code: a page waiting on the GPU spends its stalls there. Buttons get click events, and
@@ -254,7 +255,7 @@ It writes `vault/logs/splat-perf-<label>.json` and `vault/logs/splat-cpu-<label>
   the interval between frames drawn back to back)
 - following, the rAF intervals have p95 ≤ 1.5 refreshes and p99 ≤ 3 refreshes
 - there is no long task over 50 ms
-- no frames are drawn at rest
+- no frames are drawn in the second after 3 s of stillness
 
 `--unthrottled` (`--disable-frame-rate-limit --disable-gpu-vsync`) lets rAF run ahead of the GPU
 instead. The first two measurements used it, and it measured the queue, not drawing.
@@ -285,6 +286,29 @@ instead. The first two measurements used it, and it measured the queue, not draw
 - with a timer, long tasks no longer cut
 - a change waits for two measurements that agree
 - frames come at the refresh
+
+**Run 3** (53b1e57, 13:08, at the display refresh):
+
+| | RTX 5070 (forced) | Integrated Radeon (Windows' default) |
+| --- | --- | --- |
+| Refresh | 5.0 ms (200 Hz) | 3.6 ms |
+| Load | 7 s | 7 s |
+| Budget | 2 M splats, 1.25 px, held | 500,000 → 200,000, 1 px |
+| Following: drawn fps | 218 | 29 |
+| Following: GPU ms p50 / p95 | 2.31 / 2.55 | 33.6 / 39.7 |
+| Following: rAF ms p95 / p99 | 5.2 / 5.4 | 42.9 / 75 |
+| Following: frames late | 0% | 97% |
+| Orbiting: drawn fps, GPU ms p95 | 219, 2.22 | 32, 47.6 |
+| Long tasks | none | none |
+| Frames in the second after 1.5 s still | 35 | 0 |
+| Camera's largest step / median | 2.93 | 2.43 |
+
+- **The RTX 5070 passes every check** except rest at 1.5 s. Spark was still settling then, so the
+  check now counts the second after 3 s.
+- **The integrated GPU has no stalls now**, but at 200,000 splats a frame still takes 34 ms of GPU
+  time: about 30 frames a second is all it gives.
+- The browser therefore has to draw with the NVIDIA GPU, which is the browser's Windows graphics
+  setting (High performance) or `edge://flags/#force-high-performance-gpu`.
 
 In software rendering here, a frame of the 600,000-splat test scene takes about 8 s even at the
 floor.
