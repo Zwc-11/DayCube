@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Check, ChevronRight, Info, Monitor, Pencil, Play, X } from 'lucide-react';
+import { Box, Check, ChevronRight, Info, Monitor, Pencil, Play, X } from 'lucide-react';
 import type { EventPin, Layer } from '../../types/daycube';
 import {
   CATEGORY,
@@ -323,10 +323,18 @@ const EventCard: React.FC<{
               <button
                 type="button"
                 className="btn btn--primary btn--sm"
-                aria-label="Replay moment"
+                aria-label={/^mo_scan_/.test(event.momentId) ? 'Open the scan in 3D' : 'Replay moment'}
                 onClick={() => onOpenMoment(event.momentId!)}
               >
-                <Play size={13} fill="currentColor" aria-hidden /> Replay
+                {/^mo_scan_/.test(event.momentId) ? (
+                  <>
+                    <Box size={13} aria-hidden /> Open in 3D
+                  </>
+                ) : (
+                  <>
+                    <Play size={13} fill="currentColor" aria-hidden /> Replay
+                  </>
+                )}
               </button>
             )}
             {event.screenShotId && (

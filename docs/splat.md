@@ -144,7 +144,20 @@ The capture receiver (`.\capture`) makes the 3D itself, as two jobs:
 
 ## In the viewer
 
-Double-click a scan on the day:
+**On the day's stage.** A visit with a scan shows the scan itself in Place view, in place of the
+diorama drawn for every place of its kind (`components/diorama/ScanStage.tsx`):
+
+- **The scene.** The trained splat; else the mesh; else the LiDAR's points. A scan with none of
+  them (no depth folder) leaves the visit its diorama.
+- **The time.** The camera walks where the phone walked at the timeline's time. Playing or
+  scrubbing the day plays the walk. Before the scan it stands at the walk's start, after it at
+  the end, and the caption says the timeline is outside the scan.
+- **Switching.** **3D scan** and **Diorama**, top left. **Video and scenes** opens the scan's own
+  view below. The scan's card in the side panel says **Open in 3D**.
+- **One scene at a time.** While the scan's own view is open, the stage lets its scene go, so two
+  copies of a 3 M splat scene are never on the GPU at once.
+
+**The scan's own view.** Double-click a scan, or **Open in 3D** on its card:
 
 - **Opening.** With a scene, the scan opens in **3D**, and the recorded video plays in a corner.
 - **Following.** The camera follows the walk at the video's time. It stands where the phone was,
@@ -176,6 +189,9 @@ memory, which would need cross-origin isolation.
     re-import; a failed training keeps the preview and says why)
   - reading Brush's log
 - `apps/viewer/e2e/phone.spec.ts` checks:
+  - on the day: a visit with a scan shows it on the stage, the camera at the walk's start before
+    the scan and at its end after it, switching to the diorama and back; a scan with no scene
+    keeps the diorama
   - the 3D view opens by default
   - the camera stands where the phone was at the video's time
   - dragging switches to looking around, and following resumes

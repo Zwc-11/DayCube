@@ -32,6 +32,8 @@ interface KnowledgePageProps {
   onOpenNote: (path: string | null) => void;
   onOpenDate: (date: string, view: DayView) => void;
   onOpenDays: () => void;
+  /** The DayCube logo: back to a day's page. */
+  onOpenDayPage?: () => void;
 }
 
 const RECORD: Record<string, string> = {
@@ -103,7 +105,7 @@ const wide = () => typeof window !== 'undefined' && window.innerWidth >= WIDE;
  * it. Opening a note anywhere (the graph, the list, a link, a result) shows it on the right and
  * brings it into view on the graph.
  */
-export const KnowledgePage: React.FC<KnowledgePageProps> = ({ note, date, days, onOpenNote, onOpenDate, onOpenDays }) => {
+export const KnowledgePage: React.FC<KnowledgePageProps> = ({ note, date, days, onOpenNote, onOpenDate, onOpenDays, onOpenDayPage }) => {
   const [model, setModel] = useState<GraphModel | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'offline'>('loading');
   const etag = useRef<string | null>(null);
@@ -388,11 +390,12 @@ export const KnowledgePage: React.FC<KnowledgePageProps> = ({ note, date, days, 
           type="button"
           className="brand brand--btn"
           onClick={() => {
+            if (onOpenDayPage) return onOpenDayPage();
             setQuery('');
             setLocal(false);
             graphRef.current?.fit();
           }}
-          aria-label="Whole graph"
+          aria-label={onOpenDayPage ? 'Day pages' : 'Whole graph'}
         >
           <BrandMark />
           <span className="brand__name">DayCube</span>

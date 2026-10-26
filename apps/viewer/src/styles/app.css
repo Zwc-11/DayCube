@@ -3715,6 +3715,48 @@ button.np-link:hover {
   pointer-events: none;
 }
 
+/* A visit's scan on the day's stage (components/diorama/ScanStage.tsx). */
+.scan-stage {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: #0b0c0e;
+}
+
+.scan-stage__bar {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  pointer-events: none;
+}
+
+.scan-stage__bar > * {
+  pointer-events: auto;
+}
+
+.scan-stage__caption {
+  padding: 4px 8px;
+  border-radius: var(--radius-s);
+  background: rgba(23, 25, 29, 0.85);
+  color: var(--fg-2);
+  font-size: 12px;
+}
+
+.stage__scene {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 3;
+  background: rgba(23, 25, 29, 0.9);
+}
+
 .splat__controls {
   position: absolute;
   top: 12px;
