@@ -5,7 +5,6 @@ import {
   type Budget,
   type GpuInfo,
   GpuTimer,
-  MAX_PIXELS,
   MAX_SPLATS,
   budgetLabel,
   classifyGpu,
@@ -162,8 +161,10 @@ export const SplatView: React.FC<SplatViewProps> = ({ url, cameras, bounds, t, c
       const timer = GpuTimer.create(gl);
       resources.own(() => timer?.dispose());
       // Measured by timer query, a fast GPU may draw more than its kind started with.
-      const ceiling: Budget = timer ? { splats: LOD_SPLATS, pixels: MAX_PIXELS } : first;
+      const ceiling = timer ? LOD_SPLATS : first.splats;
       let budget = first;
+      // Set once: a change reallocates every render target (7.8 s of the main thread when the
+      // budget changed it, 2026-10-26).
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, budget.pixels));
       renderer.setSize(el.clientWidth, el.clientHeight);
       el.appendChild(renderer.domElement);
@@ -194,13 +195,13 @@ export const SplatView: React.FC<SplatViewProps> = ({ url, cameras, bounds, t, c
       controls.addEventListener('change', () => touch());
       const v: Live = { camera, controls, touch, frames: 0, gpu, budget, timed: Boolean(timer), frameMs: [], stalls: [] };
       live.current = v;
+      // A new budget shows in the next frame drawn anyway; it does not draw one itself, so the
+      // view still rests when still.
       const apply = (next: Budget) => {
         budget = next;
         v.budget = next;
         spark.lodSplatCount = next.splats;
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, next.pixels));
         if (alive) setQuality({ gpu, budget: next });
-        touch();
       };
       if (import.meta.env.DEV) (window as unknown as { __splat?: unknown }).__splat = v; // for the end-to-end tests
       const load = (lod: boolean) => {
@@ -220,17 +221,22 @@ export const SplatView: React.FC<SplatViewProps> = ({ url, cameras, bounds, t, c
       scene.add(splats);
       let lastT = Number.NaN;
       // Each drawn frame's GPU time (timer query), else the interval since the frame before when
-      // that one was drawn too; every half second the budget follows their median.
+      // that one was drawn too. Every half second their median proposes a budget; it is taken when
+      // the next half second proposes the same direction (each change has Spark choose and upload
+      // its splats again: 8 MB of indices at 2 M splats).
       let samples: number[] = [];
       let lastDrawn = Number.NaN;
       let lastFrameAt = Number.NEGATIVE_INFINITY;
       let budgetAt = performance.now();
-      // A GPU far behind blocks the page in WebGL calls for seconds at a time, so that few frames
-      // are drawn back to back at all (software rendering here: one frame every 15 s, each
-      // blocking 15 s). A long task within a second of a drawn frame cuts the budget at once.
+      let proposed = 0;
+      // Without a timer, a GPU far behind shows as the page blocked in WebGL calls for seconds at
+      // a time, so that few frames are drawn back to back at all (software rendering here: one
+      // frame every 15 s, each blocking 15 s): a long task within a second of a drawn frame cuts
+      // the budget at once. With a timer, the timer decides: a long task can also be Spark
+      // uploading its splats, which the GPU's frame time does not show.
       let stalled = 0;
       const stalls =
-        typeof PerformanceObserver !== 'undefined' && PerformanceObserver.supportedEntryTypes?.includes('longtask')
+        !timer && typeof PerformanceObserver !== 'undefined' && PerformanceObserver.supportedEntryTypes?.includes('longtask')
           ? new PerformanceObserver((list) => {
               for (const entry of list.getEntries()) {
                 if (loading || entry.duration < STALL_MS || entry.startTime - lastFrameAt > 1000) continue;
@@ -285,7 +291,11 @@ export const SplatView: React.FC<SplatViewProps> = ({ url, cameras, bounds, t, c
         if (samples.length < 3) return;
         const next = nextBudget(budget, median(samples), measure);
         samples = [];
-        if (next !== budget) apply(next);
+        const direction = Math.sign(next.splats - budget.splats);
+        if (direction && direction === proposed) {
+          proposed = 0;
+          apply(next);
+        } else proposed = direction;
       });
       const resize = new ResizeObserver(() => {
         camera.aspect = el.clientWidth / Math.max(1, el.clientHeight);

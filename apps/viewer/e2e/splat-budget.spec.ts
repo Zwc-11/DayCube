@@ -21,10 +21,10 @@ test('the splat budget starts from the GPU and follows the frame time', async ({
     const kinds = names.map((name) => m.classifyGpu(name).kind);
 
     // The 3 M-splat trail on the integrated Radeon of 2026-10-26, measured by timer query: splats
-    // down to the floor first, then pixels, then nothing more to give.
-    const trail = { timed: true, ceiling: { splats: m.MAX_SPLATS, pixels: m.MAX_PIXELS }, sceneSplats: 2_994_422, lod: true };
+    // down to the floor, at most halving a step, then nothing more to give (pixels never change).
+    const trail = { timed: true, ceiling: m.MAX_SPLATS, sceneSplats: 2_994_422, lod: true };
     const igpu = [m.startBudget('integrated')];
-    for (const ms of [300, 150, 100, 100, 100]) igpu.push(m.nextBudget(igpu[igpu.length - 1], ms, trail));
+    for (const ms of [300, 150, 100]) igpu.push(m.nextBudget(igpu[igpu.length - 1], ms, trail));
     const stuck = igpu[igpu.length - 1] === igpu[igpu.length - 2];
 
     // A discrete GPU over its frame time, then within it, then well under it.
@@ -32,19 +32,22 @@ test('the splat budget starts from the GPU and follows the frame time', async ({
     for (const ms of [12, 6, 3]) dgpu.push(m.nextBudget(dgpu[dgpu.length - 1], ms, trail));
 
     // No timer (frame intervals): software rendering at 8 frames a second on a scene drawn whole
-    // (no splat tree): only pixels go; and a 60 Hz display at its refresh changes nothing.
+    // (no splat tree) changes nothing; a 60 Hz display at its refresh changes nothing; a slow
+    // interval on a splat tree cuts, and a fast one rises only to where the GPU's kind started.
     const first = m.startBudget('software');
-    const whole = { timed: false, ceiling: first, sceneSplats: 3000, lod: false };
-    const software = [first];
-    for (const ms of [125, 125, 125]) software.push(m.nextBudget(software[software.length - 1], ms, whole));
-    const refresh = m.nextBudget(first, 16.7, whole) === first;
+    const whole = { timed: false, ceiling: first.splats, sceneSplats: 3000, lod: false };
+    const unchanged = m.nextBudget(first, 125, whole) === first;
+    const tree = { timed: false, ceiling: first.splats, sceneSplats: 2_994_422, lod: true };
+    const refresh = m.nextBudget(first, 16.7, tree) === first;
+    const software = [m.nextBudget(first, 125, tree)];
+    software.push(m.nextBudget(software[0], 10, tree), m.nextBudget({ ...first }, 10, tree));
 
     // A scene smaller than the budget: cut from what is drawn, not from the budget.
     const small = m.nextBudget({ splats: 2_000_000, pixels: 1.25 }, 14, { ...trail, sceneSplats: 600_000 });
 
     return {
       kinds,
-      igpu, stuck, dgpu, software, refresh, small,
+      igpu, stuck, dgpu, software, unchanged, refresh, small,
       labels: [m.budgetLabel(m.classifyGpu(names[0]), igpu[0]), m.budgetLabel(m.classifyGpu(names[1]), dgpu[0])],
       median: [m.median([3, 1, 2]), m.median([4, 1, 3, 2])],
     };
@@ -56,9 +59,7 @@ test('the splat budget starts from the GPU and follows the frame time', async ({
     { splats: 500_000, pixels: 1 },
     { splats: 250_000, pixels: 1 },
     { splats: 200_000, pixels: 1 },
-    { splats: 200_000, pixels: 0.75 },
-    { splats: 200_000, pixels: 0.6 },
-    { splats: 200_000, pixels: 0.6 },
+    { splats: 200_000, pixels: 1 },
   ]);
   expect(r.stuck).toBe(true);
   expect(r.dgpu).toEqual([
@@ -67,13 +68,13 @@ test('the splat budget starts from the GPU and follows the frame time', async ({
     { splats: 1_150_000, pixels: 1.25 },
     { splats: 1_400_000, pixels: 1.25 },
   ]);
-  expect(r.software).toEqual([
-    { splats: 300_000, pixels: 1 },
-    { splats: 300_000, pixels: 0.75 },
-    { splats: 300_000, pixels: 0.6 },
-    { splats: 300_000, pixels: 0.6 },
-  ]);
+  expect(r.unchanged).toBe(true);
   expect(r.refresh).toBe(true);
+  expect(r.software).toEqual([
+    { splats: 200_000, pixels: 1 },
+    { splats: 250_000, pixels: 1 },
+    { splats: 300_000, pixels: 1 },
+  ]);
   expect(r.small).toEqual({ splats: 300_000, pixels: 1.25 });
   expect(r.labels).toEqual(['Integrated GPU · 0.50 M splats a frame', 'GPU · 2.0 M splats a frame']);
   expect(r.median).toEqual([2, 2.5]);

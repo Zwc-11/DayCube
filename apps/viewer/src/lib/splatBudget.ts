@@ -4,13 +4,15 @@
  *
  * On a laptop with two GPUs, Windows gives browsers the integrated one unless told otherwise
  * (Settings › System › Display › Graphics). On 2026-10-26 Edge drew the 3 M-splat trail with the
- * Ryzen's integrated Radeon (2 compute units) at the 2 M-splat budget meant for the NVIDIA GPU, and
- * the page stalled for 1.5–3.4 s at a time, 87 s once (`scripts/profile-splat.mjs`). So:
- * - the budget starts from what the GPU is (`classifyGpu`, `startBudget`);
+ * Ryzen's integrated Radeon (2 compute units) at the 2 M-splat budget meant for the NVIDIA GPU
+ * (`scripts/profile-splat.mjs`). The RTX 5070 drew the same frame in 1.9 ms of GPU time. So:
+ * - the budget starts from what the GPU is (`classifyGpu`, `startBudget`), device pixels per CSS
+ *   pixel included; those stay as they start, since changing them reallocates every render target
+ *   (7.8 s of the main thread in the second measurement);
  * - the GPU's time for each drawn frame is measured with a timer query where the browser has one
  *   (`GpuTimer`), else the interval between frames drawn back to back;
- * - every half second the budget moves toward the frame time (`nextBudget`): splats first, then
- *   device pixels per CSS pixel (splats are drawn by fill rate).
+ * - the splat budget moves toward the frame time (`nextBudget`), and only when two measurements in
+ *   a row agree: each change makes Spark choose and upload its splats again.
  */
 
 export type GpuKind = 'discrete' | 'integrated' | 'software' | 'unknown';
@@ -32,7 +34,6 @@ export interface Budget {
 export const MAX_SPLATS = 2_000_000;
 export const MIN_SPLATS = 200_000;
 export const MAX_PIXELS = 1.25;
-export const MIN_PIXELS = 0.6;
 /** GPU milliseconds a drawn frame may take: 120 frames a second leave 8.3 ms, some of it for the
  * page. */
 export const TARGET_MS = 7;
@@ -78,8 +79,8 @@ const round = (splats: number) => Math.round(splats / 50_000) * 50_000;
 export interface Measure {
   /** ``ms`` is GPU time from a timer query, not the interval between frames. */
   timed: boolean;
-  /** The most the budget rises to. */
-  ceiling: Budget;
+  /** The most splats the budget rises to. */
+  ceiling: number;
   /** Splats in the scene, and whether Spark draws it through a splat tree (only then does the
    * splat budget apply; a scene under ``LOD_ABOVE`` is drawn whole). */
   sceneSplats: number;
@@ -87,30 +88,26 @@ export interface Measure {
 }
 
 /**
- * The budget after a half second whose drawn frames took ``ms`` (median). Measured by timer query
- * (``timed``), the frame is held near ``TARGET_MS``; measured by interval, only frames slower than
+ * The budget after measurements whose median was ``ms``. Measured by timer query (``timed``), the
+ * frame is held near ``TARGET_MS``; measured by interval, only frames slower than
  * ``INTERVAL_SLOW_MS`` lower it, and only frames faster than ``INTERVAL_FAST_MS`` raise it, never
- * above where the GPU's kind started it (the ``ceiling`` the caller passes). Splats go first, from
- * what is actually drawn; pixels after, or alone when the scene is drawn whole.
+ * above where the GPU's kind started it (the ``ceiling`` the caller passes). Only splats change,
+ * cut from what is actually drawn, and only for a scene drawn through a splat tree. The same
+ * object comes back when nothing changes.
  */
 export function nextBudget(b: Budget, ms: number, m: Measure): Budget {
-  if (!Number.isFinite(ms) || ms <= 0) return b;
+  if (!Number.isFinite(ms) || ms <= 0 || !m.lod) return b;
   const slow = m.timed ? ms > 1.25 * TARGET_MS : ms > INTERVAL_SLOW_MS;
   const fast = m.timed ? ms < 0.6 * TARGET_MS : ms < INTERVAL_FAST_MS;
   const target = m.timed ? TARGET_MS : INTERVAL_SLOW_MS / 2;
   const drawn = Math.min(b.splats, m.sceneSplats);
-  if (slow) {
-    // Far over: straight to the share of splats that would fit, at most halving; then pixels.
+  if (slow && drawn > MIN_SPLATS) {
+    // Far over: straight to the share of splats that would fit, at most halving.
     const factor = Math.max(0.5, Math.min(0.85, target / ms));
-    if (m.lod && drawn > MIN_SPLATS) return { ...b, splats: Math.max(MIN_SPLATS, round(drawn * factor)) };
-    if (b.pixels > MIN_PIXELS) return { ...b, pixels: Math.max(MIN_PIXELS, +(b.pixels * Math.max(0.75, Math.sqrt(factor))).toFixed(2)) };
-    return b;
+    return { ...b, splats: Math.max(MIN_SPLATS, round(drawn * factor)) };
   }
-  if (fast) {
-    if (b.pixels < m.ceiling.pixels) return { ...b, pixels: Math.min(m.ceiling.pixels, +(b.pixels * 1.15).toFixed(2)) };
-    if (m.lod && b.splats < m.ceiling.splats && b.splats < m.sceneSplats) {
-      return { ...b, splats: Math.min(m.ceiling.splats, round(b.splats * 1.2)) };
-    }
+  if (fast && b.splats < m.ceiling && b.splats < m.sceneSplats) {
+    return { ...b, splats: Math.min(m.ceiling, round(b.splats * 1.2)) };
   }
   return b;
 }
