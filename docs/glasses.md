@@ -126,7 +126,13 @@ nothing.
   - GPS residual 0.33 m, scale +3%
   - PSNR 14.8 dB rebuilt against 15.3 dB with the phone's poses, on the 4 held-out frames inside
 
-- `photo_1s`, forward motion allowed: the largest model 17 of 129.
+- `photo_1s`, forward motion allowed (third run): 18 of 129 placed, in 5 models; the largest covers
+  24.0 m of 164.8.
+  - path RMS 5 cm, median turn 2.0°
+  - GPS residual 0.29 m, offset −1 s (truth 0), scale +3.4%
+  - PSNR 15.2 dB rebuilt against 15.3 dB with the phone's poses (4 held-out frames): the rebuilt
+    poses cost 0.1 dB where they exist
+  - SIFT matching took 294 s of the 358 s
 
 **So far:** occasional stills of a tree-lined trail do not reconstruct with SIFT. The learned
 matcher (ALIKED + LightGlue, `check-glasses-learned.cmd`) is the next run. After it, if needed:
