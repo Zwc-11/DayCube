@@ -26,7 +26,7 @@ export default defineConfig(({ mode }) => ({
   plugins: [react(), daycubeNodeEphemeralPlugin()],
   // Imported only when a scan's mesh opens: bundled up front, or the dev server finds them on that
   // first open and reloads the page.
-  optimizeDeps: { include: ['three/examples/jsm/loaders/GLTFLoader.js', 'three/examples/jsm/controls/OrbitControls.js'] },
+  optimizeDeps: { include: ['three/examples/jsm/loaders/GLTFLoader.js', 'three/examples/jsm/controls/OrbitControls.js', '@sparkjsdev/spark'] },
   build: {
     rollupOptions: {
       output: {

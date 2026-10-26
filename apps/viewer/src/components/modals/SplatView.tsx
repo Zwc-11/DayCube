@@ -3,14 +3,23 @@ import type { SplatCameras } from '@daycube/api-client';
 
 /**
  * A scan in 3D: Gaussian splats (the trained scene, or the LiDAR's points as dots) rendered with
- * GaussianSplats3D on three.js. Following, the camera walks where the phone walked, at the video's
- * time, upright and level whatever way the phone was held; dragging looks around freely from
- * there. The renderer loads only when a scan's 3D view opens.
+ * Spark (World Labs, MIT) on three.js. Following, the camera walks where the phone walked, at the
+ * video's time, upright and level whatever way the phone was held; dragging looks around freely
+ * from there. The renderer loads only when a scan's 3D view opens.
  *
- * The walk is 150 m long: the sort runs in floating point (integer sorting overflows on scenes
- * that size), without shared memory, which would need cross-origin isolation, and the whole scene
- * is shown at once rather than revealed outward from its centre.
+ * Smooth with millions of splats (a 3 M-splat trail lagged in GaussianSplats3D, which sorted every
+ * splat on the CPU each frame, 2026-10-25):
+ * - level of detail: Spark builds a splat tree in a worker as the scene loads and draws at most
+ *   ``LOD_SPLATS`` of it, the nearest finest;
+ * - centres in float32 (``extSplats``): float16 centres are 6-12 cm apart 100 m from the origin;
+ * - no MSAA, and at most 1.25 device pixels per CSS pixel: splats are drawn by fill rate.
  */
+
+/** Splats drawn per frame. Spark's desktop default is 2.5 M. */
+export const LOD_SPLATS = 2_000_000;
+/** Scenes smaller than this are drawn whole, with no splat tree (it is built for large scenes,
+ * and Spark 2.3's builder fails on some tiny ones). */
+export const LOD_ABOVE = 500_000;
 
 interface SplatViewProps {
   url: string;
@@ -23,12 +32,9 @@ interface SplatViewProps {
   label: string;
 }
 
-type Viewer = {
-  camera: { position: { set: (x: number, y: number, z: number) => void }; up: { set: (x: number, y: number, z: number) => void }; lookAt: (x: number, y: number, z: number) => void; fov: number; updateProjectionMatrix: () => void };
-  controls?: { enabled: boolean; target: { set: (x: number, y: number, z: number) => void }; update: () => void };
-  addSplatScene: (url: string, options: Record<string, unknown>) => Promise<void>;
-  start: () => void;
-  dispose: () => Promise<void> | void;
+type Live = {
+  camera: import('three').PerspectiveCamera;
+  controls: { target: import('three').Vector3; update: () => void };
 };
 
 /** ARKit's first poses, before tracking settles, can be far off (on 2026-10-24 the first looked
@@ -62,79 +68,106 @@ export function poseAt(cams: SplatCameras, at: number) {
 
 export const SplatView: React.FC<SplatViewProps> = ({ url, cameras, bounds, t, following, onLookAround, label }) => {
   const root = useRef<HTMLDivElement>(null);
-  const viewer = useRef<Viewer | null>(null);
+  const live = useRef<Live | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'failed'>('loading');
   const [progress, setProgress] = useState(0);
   const followRef = useRef(following);
   followRef.current = following;
 
   useEffect(() => {
-    let live = true;
-    let made: Viewer | null = null;
+    let alive = true;
+    let dispose = () => undefined as void;
     setState('loading');
     setProgress(0);
     (async () => {
-      const GS = await import('@mkkellogg/gaussian-splats-3d');
-      if (!live || !root.current) return;
+      const THREE = await import('three');
+      const { OrbitControls } = await import('three/examples/jsm/controls/OrbitControls.js');
+      const { SparkRenderer, SplatMesh, SplatFileType } = await import('@sparkjsdev/spark');
+      const el = root.current;
+      if (!alive || !el) return;
+      const renderer = new THREE.WebGLRenderer({ antialias: false, preserveDrawingBuffer: import.meta.env.DEV });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
+      renderer.setSize(el.clientWidth, el.clientHeight);
+      el.appendChild(renderer.domElement);
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color('#0b0c0e');
+      const spark = new SparkRenderer({ renderer, lodSplatCount: LOD_SPLATS });
+      scene.add(spark);
+      // The phone saw its long side upright: a field of view like the video's.
+      const camera = new THREE.PerspectiveCamera(cameras ? Math.min(80, cameras.fov_long_deg) : 60, el.clientWidth / Math.max(1, el.clientHeight), 0.05, 3000);
+      camera.up.set(0, 1, 0);
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = false;
       const start = cameras ? poseAt(cameras, 0) : null;
       const centre = bounds ? bounds.min.map((v, k) => (v + bounds.max[k]) / 2) : [0, 0, 0];
       const from = start ? start.position : [centre[0], centre[1] + 20, centre[2] + 20];
       const at = start ? start.position.map((v, k) => v + start.forward[k] * 4) : centre;
-      made = new GS.Viewer({
-        rootElement: root.current,
-        selfDrivenMode: true,
-        useBuiltInControls: true,
-        cameraUp: [0, 1, 0],
-        initialCameraPosition: from,
-        initialCameraLookAt: at,
-        sharedMemoryForWorkers: false,
-        gpuAcceleratedSort: false,
-        integerBasedSort: false,
-        dynamicScene: false,
-        sphericalHarmonicsDegree: 0,
-        // The default reveal grows a visible sphere from the scene's centre a step per frame: the
-        // follow camera can start 115 m out (2026-10-24 at 95 s), beyond it until enough frames
-        // have been drawn, and on a slow renderer never got there.
-        sceneRevealMode: GS.SceneRevealMode.Instant,
-        logLevel: GS.LogLevel.None,
-      }) as unknown as Viewer;
-      viewer.current = made;
-      if (import.meta.env.DEV) (window as unknown as { __splat?: unknown }).__splat = made; // for the end-to-end tests
-      if (cameras) {
-        // The phone saw its long side upright: a field of view like the video's.
-        made.camera.fov = Math.min(80, cameras.fov_long_deg);
-        made.camera.updateProjectionMatrix();
-      }
-      await made.addSplatScene(url, {
-        showLoadingUI: false,
-        progressiveLoad: true,
-        splatAlphaRemovalThreshold: 5,
-        onProgress: (percent: number) => live && setProgress(Math.round(percent)),
+      camera.position.set(from[0], from[1], from[2]);
+      controls.target.set(at[0], at[1], at[2]);
+      controls.update();
+      live.current = { camera, controls };
+      if (import.meta.env.DEV) (window as unknown as { __splat?: unknown }).__splat = live.current; // for the end-to-end tests
+      const load = (lod: boolean) =>
+        new SplatMesh({
+          url,
+          fileType: SplatFileType.SPLAT,
+          lod,
+          lodAbove: LOD_ABOVE,
+          extSplats: true,
+          onProgress: (e: ProgressEvent) => alive && e.lengthComputable && setProgress(Math.round((100 * e.loaded) / e.total)),
+        });
+      let splats = load(true);
+      scene.add(splats);
+      renderer.setAnimationLoop(() => renderer.render(scene, camera));
+      const resize = new ResizeObserver(() => {
+        camera.aspect = el.clientWidth / Math.max(1, el.clientHeight);
+        camera.updateProjectionMatrix();
+        renderer.setSize(el.clientWidth, el.clientHeight);
       });
-      if (!live) return;
-      made.start();
-      setState('ready');
-    })().catch(() => live && setState('failed'));
+      resize.observe(el);
+      dispose = () => {
+        renderer.setAnimationLoop(null);
+        resize.disconnect();
+        controls.dispose();
+        splats.dispose();
+        spark.dispose?.();
+        renderer.dispose();
+        renderer.domElement.remove();
+      };
+      try {
+        await splats.initialized;
+      } catch (error) {
+        // Without the splat tree: drawn whole, slower on a large scene, but drawn.
+        console.warn('The splat tree could not be built; drawing every splat:', error);
+        scene.remove(splats);
+        splats.dispose();
+        if (!alive) return;
+        splats = load(false);
+        scene.add(splats);
+        await splats.initialized;
+      }
+      if (alive) setState('ready');
+    })().catch((error: unknown) => {
+      console.warn('The splat scene did not load:', error);
+      if (alive) setState('failed');
+    });
     return () => {
-      live = false;
-      viewer.current = null;
-      if (made) Promise.resolve(made.dispose()).catch(() => undefined);
+      alive = false;
+      live.current = null;
+      dispose();
     };
   }, [url, cameras, bounds]);
 
   // Following: the camera where the phone was, looking where it looked, kept level. The orbit
   // controls aim the camera at their target every frame, so the target moves with it.
   useEffect(() => {
-    const v = viewer.current;
+    const v = live.current;
     if (!v || !cameras || !following || state !== 'ready') return;
     const pose = poseAt(cameras, t);
     const [x, y, z] = pose.position;
-    const ahead = pose.position.map((p, k) => p + pose.forward[k] * 3) as [number, number, number];
     v.camera.position.set(x, y, z);
-    v.camera.up.set(0, 1, 0);
-    v.controls?.target.set(...ahead);
-    v.camera.lookAt(...ahead);
-    v.controls?.update();
+    v.controls.target.set(x + pose.forward[0] * 3, y + pose.forward[1] * 3, z + pose.forward[2] * 3);
+    v.controls.update();
   }, [t, following, cameras, state]);
 
   return (

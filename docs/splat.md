@@ -168,14 +168,19 @@ diorama drawn for every place of its kind (`components/diorama/ScanStage.tsx`):
 - **Capture panel.** It says what the scene is, for example "1,391,603 LiDAR points; not trained
   yet", or the splat count, the training minutes and the PSNR on frames it never saw.
 
-The whole scene is shown at once. GaussianSplats3D's default reveal grows a visible sphere from
-the scene's centre one step per drawn frame. On a slow renderer it had not reached the follow
-camera 115 m out after a minute, so the view stayed empty.
+**The renderer** is [Spark](https://sparkjs.dev) 2.3 (World Labs, MIT) on the viewer's three.js
+0.186. It loads only when a scan opens in 3D.
 
-The renderer is [GaussianSplats3D](https://github.com/mkkellogg/GaussianSplats3D) 0.4.7 (MIT) on
-the viewer's three.js 0.168. Spark needs three.js 0.180. It loads only when a scan opens in 3D. It
-sorts in floating point, because integer sorting overflows on a 150 m scene, and without shared
-memory, which would need cross-origin isolation.
+- **Why not GaussianSplats3D.** GaussianSplats3D 0.4.7 lagged on the 3 M-splat trail. It sorted
+  every splat on the CPU each frame without shared memory, and its README says it is no longer in
+  active development and recommends Spark.
+- **Level of detail.** Spark builds a splat tree in a worker as a scene loads, and draws at most
+  2 M splats a frame, the nearest finest (`LOD_SPLATS`). Scenes under 500,000 splats are drawn
+  whole: Spark 2.3's tree builder fails on some tiny ones, and if it fails on a large one the view
+  draws every splat instead.
+- **Centres in float32** (`extSplats`). In float16, centres 100 m from the origin fall on a grid of
+  6–12 cm.
+- **Fill rate.** No MSAA, and at most 1.25 device pixels per CSS pixel.
 
 ## Tests
 
