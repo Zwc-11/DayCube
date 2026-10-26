@@ -41,10 +41,14 @@ from . import align, sfm
 MODES: dict[str, dict] = {
     "photo_3s": {"every_s": 3.0, "long_side": 1920, "label": "a photo every 3 s"},
     "photo_1s": {"every_s": 1.0, "long_side": 1920, "label": "a photo every second"},
-    "stream_5fps": {"every_s": 0.2, "long_side": 1280, "label": "the 720p stream at 5 frames a second"},
+    # Frames 25 cm apart share most of what they see: fewer features each, matched 4x faster.
+    "stream_5fps": {"every_s": 0.2, "long_side": 1280, "label": "the 720p stream at 5 frames a second",
+                    "features": 4096},
 }
 HELD_OUT = 24
+MIN_HELD_OUT = 4  # fewer held-out frames inside the rebuilt stretch: no training
 SETTLE_S = 0.5  # ARKit's first poses come before tracking settles
+STILL_S = 0.15  # a photo is the sharpest video frame within this of its time
 OPENGL = np.diag([1.0, -1.0, -1.0, 1.0])  # OpenCV camera axes to OpenGL's (and back)
 DOWN = np.array([0.0, -1.0, 0.0])  # gravity in ARKit's frame (y up)
 
@@ -65,10 +69,22 @@ def read_truth(capture: Path, video: Path) -> Truth:
     return Truth(odo.t[:n], odo.c2w[:n] @ OPENGL, odo.K[:n], width, height)
 
 
-def every(t: np.ndarray, step_s: float, start_s: float = SETTLE_S) -> np.ndarray:
-    """The frames nearest to every ``step_s`` from ``start_s`` on."""
+def every(t: np.ndarray, step_s: float, start_s: float = SETTLE_S, sharp: np.ndarray | None = None,
+          window_s: float = STILL_S) -> np.ndarray:  # fmt: skip
+    """The frames nearest to every ``step_s`` from ``start_s`` on; with ``sharp`` (each frame's
+    sharpness), the sharpest within ``window_s`` of each time instead. A glasses still is exposed on
+    its own and comes out sharp; a video frame of a walk is often blurred."""
     wanted = np.arange(start_s, t[-1] + 1e-9, step_s)
-    picks = np.unique(np.clip(np.searchsorted(t, wanted), 0, len(t) - 1))
+    if sharp is None:
+        picks = np.clip(np.searchsorted(t, wanted), 0, len(t) - 1)
+    else:
+        picks = []
+        for want in wanted:
+            lo, hi = np.searchsorted(t, want - window_s), np.searchsorted(t, want + window_s, side="right")
+            hi = min(hi, len(sharp))
+            picks.append(lo + int(np.argmax(sharp[lo:hi])) if hi > lo else min(lo, len(t) - 1))
+        picks = np.array(picks, dtype=int)
+    picks = np.unique(picks)
     return picks[t[picks] >= start_s - 1e-6]
 
 
@@ -153,17 +169,29 @@ def _metric(c2w: np.ndarray, L: np.ndarray, scale: float) -> np.ndarray:
     return out
 
 
+def _length(points: np.ndarray) -> float:
+    return float(np.linalg.norm(np.diff(points, axis=0), axis=1).sum()) if len(points) > 1 else 0.0
+
+
+def picks_of(name: str, truth: Truth, sharp: np.ndarray | None) -> np.ndarray:
+    """A mode's frames: photos the sharpest near their times, a stream's as they come."""
+    mode = MODES[name]
+    return every(truth.t, mode["every_s"], sharp=sharp if name.startswith("photo") else None)
+
+
 def run_mode(name: str, truth: Truth, video: Path, work: Path, *, fixes: list[Fix], t0: float,
              eval_picks: np.ndarray, train: bool, steps: int, mapper: str,
-             trainer: Callable[..., dict] | None, say: Callable[[str], None]) -> dict:  # fmt: skip
+             trainer: Callable[..., dict] | None, say: Callable[[str], None],
+             sharp: np.ndarray | None = None) -> dict:  # fmt: skip
     mode = MODES[name]
-    picks = every(truth.t, mode["every_s"])
+    picks = picks_of(name, truth, sharp)
     size = _size(truth, mode["long_side"])
     folder = work / name
     say(f"{name}: {len(picks)} frames at {size[0]}x{size[1]} ({mode['label']})")
     dataset.extract(video, picks, folder / "frames", size)
     result: dict = {"label": mode["label"], "images": len(picks), "size": list(size)}
-    model = sfm.reconstruct(folder / "frames", folder / "colmap", mapper=mapper, say=say)
+    model = sfm.reconstruct(folder / "frames", folder / "colmap", mapper=mapper, max_features=mode.get("features", 8192),
+                            say=say)  # fmt: skip
     if model is None:
         result.update(registered=0, registered_share=0.0)
         return result
@@ -171,8 +199,12 @@ def run_mode(name: str, truth: Truth, video: Path, work: Path, *, fixes: list[Fi
     frames = picks[ks]
     true = truth.c2w[frames]
     error = align.trajectory_error(model.c2w, true)
+    # The stretch of the walk the model covers (the largest model: others are pieces apart).
+    first, last = int(frames.min()), int(frames.max())
+    covered = _length(truth.c2w[first : last + 1, :3, 3])
     result.update(
         registered=len(ks), registered_share=round(len(ks) / len(picks), 3), models=model.models,
+        covered_m=round(covered, 1), covered_share=round(covered / max(_length(truth.c2w[:, :3, 3]), 1e-9), 3),
         seconds=model.seconds, timings=model.timings, reprojection_px=model.reprojection_px,
         points=len(model.points), focal_px=round(float(model.K[0]), 1),
         focal_true_px=round(float(np.median(truth.K[frames, 0])) * size[0] / truth.width, 1),
@@ -193,6 +225,13 @@ def run_mode(name: str, truth: Truth, video: Path, work: Path, *, fixes: list[Fi
     images = [folder / "frames" / name_ for name_ in model.names]
     held = sorted((work / "held_out").glob("*.jpg"))
     eval_images = held if size == _size(truth, 1920) else sorted((work / f"held_out_{size[0]}").glob("*.jpg"))
+    # Only held-out frames inside the stretch the model covers can be drawn from it.
+    inside = (eval_picks > first) & (eval_picks < last)
+    if inside.sum() < MIN_HELD_OUT:
+        result["train"] = {"skipped": f"{int(inside.sum())} held-out frames inside the rebuilt stretch"}
+        return result
+    eval_picks = eval_picks[inside]
+    eval_images = [image for image, keep in zip(eval_images, inside, strict=True) if keep]
     # The reconstruction in metres, and the held-out frames carried into it.
     rebuilt = _metric(model.c2w, L, scale)
     carried = _metric(_carry(error["sim"], truth.c2w[eval_picks]), L, scale)
@@ -205,6 +244,7 @@ def run_mode(name: str, truth: Truth, video: Path, work: Path, *, fixes: list[Fi
                      truth.c2w[eval_picks], np.median(k_true, 0), align.apply(error["sim"], model.points),
                      model.colours)  # fmt: skip
     result["train"] = {
+        "held_out": len(eval_picks),
         "recon": trainer(recon, folder / "splat_recon", steps=steps, say=say),
         "phone": trainer(phone, folder / "splat_phone", steps=steps, say=say),
     }
@@ -224,7 +264,11 @@ def simulate(capture: Path, video: Path, work: Path, *, fixes: list[Fix], t0: fl
     modes = modes or list(MODES)
     truth = read_truth(capture, video)
     work.mkdir(parents=True, exist_ok=True)
-    photos = [every(truth.t, MODES[m]["every_s"]) for m in modes if m.startswith("photo")]
+    sharp = None
+    if any(m.startswith("photo") for m in modes):
+        say("Scoring the video's frames for sharpness (photos are the sharpest near their times)")
+        sharp = dataset.sharpness(video, truth.width, truth.height)
+    photos = [picks_of(m, truth, sharp) for m in modes if m.startswith("photo")]
     eval_picks = held_out(truth.t, avoid=photos)
     report: dict = {
         "frames": len(truth.t), "duration_s": round(float(truth.t[-1]), 1),
@@ -239,7 +283,8 @@ def simulate(capture: Path, video: Path, work: Path, *, fixes: list[Fix], t0: fl
             dataset.extract(video, eval_picks, work / name, size)
     for name in modes:
         report["modes"][name] = run_mode(name, truth, video, work, fixes=fixes, t0=t0, eval_picks=eval_picks,
-                                         train=train, steps=steps, mapper=mapper, trainer=trainer, say=say)  # fmt: skip
+                                         train=train, steps=steps, mapper=mapper, trainer=trainer, say=say,
+                                         sharp=sharp)  # fmt: skip
         report["checks"] = checks(report)
         if on_result:
             on_result(report)

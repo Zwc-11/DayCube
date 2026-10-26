@@ -182,6 +182,11 @@ def test_frames_are_picked_as_glasses_would_take_them() -> None:
     assert np.allclose(t[photos], [0.5, 3.5, 6.5, 9.5, 12.5, 15.5, 18.5], atol=1 / 30)
     held = simulate.held_out(t, 6, avoid=[photos, simulate.every(t, 1.0)])
     assert len(held) == 6 and not set(held) & set(photos) and not set(held) & set(simulate.every(t, 1.0))
+    # Stills are sharp: the sharpest video frame within 0.15 s of each photo's time.
+    sharp = np.ones(len(t))
+    sharp[[18, 108]] = 9.0  # 0.6 s and 3.6 s; 3.7 s (111) is past the window
+    sharp[111] = 99.0
+    assert list(simulate.every(t, 3.0, sharp=sharp)[:2]) == [18, 108]
 
 
 def test_images_alone_rebuild_the_walk_and_the_gps_makes_it_metric(walk: Path, tmp_path: Path,

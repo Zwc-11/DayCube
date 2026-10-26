@@ -12,11 +12,16 @@ camera path is known: a Stray Scanner scan, where ARKit gives the phone's pose f
 
 **1. Cut the video as glasses would take it** (`simulate.MODES`):
 
-| Mode | Frames | Size |
-| --- | --- | --- |
-| `photo_3s` | a photo every 3 s | the video's (1920×1440) |
-| `photo_1s` | a photo every second | 1920×1440 |
-| `stream_5fps` | the live stream, 5 frames a second | 1280×960 (720p's size) |
+| Mode | Frames | Size | SIFT features |
+| --- | --- | --- | --- |
+| `photo_3s` | a photo every 3 s | the video's (1920×1440) | 8,192 |
+| `photo_1s` | a photo every second | 1920×1440 | 8,192 |
+| `stream_5fps` | the live stream, 5 frames a second | 1280×960 (720p's size) | 4,096 |
+
+- **Photos are sharp.** A photo is the sharpest video frame within 0.15 s of its time, since a
+  glasses still is exposed on its own. Stream frames are taken as they come, blur and all.
+- **Matching cost.** Matching costs the square of the features. At 8,192, the stream's 642 frames
+  matched at 5.5 s a frame on the PC's CPU; frames 25 cm apart need fewer.
 
 **2. Rebuild from the images alone** (`sfm.py`, COLMAP 4.2 through pycolmap, BSD):
 
@@ -28,8 +33,11 @@ camera path is known: a Stray Scanner scan, where ARKit gives the phone's pose f
 **3. Score against the phone's path** (`align.py`):
 
 - A similarity fit (Umeyama) from the rebuilt camera centres to ARKit's.
-- Reported: the share of images placed, the path error (RMS, 90th percentile, largest; metres),
-  and the cameras' turn error (degrees).
+- Reported:
+  - the share of images placed
+  - the stretch of the walk the largest model covers (metres and share)
+  - the path error (RMS, 90th percentile, largest; metres)
+  - the cameras' turn error (degrees)
 
 **4. Put it on the map with GPS only**:
 
@@ -46,9 +54,12 @@ each:
 - **Rebuilt:** the rebuilt poses, in metres from the GPS scale, with COLMAP's points as the start.
 - **Phone:** the phone's own poses and intrinsics, the best those images could do.
 
-Both are scored on the same 24 held-out frames that no photo mode trains on. Brush reads them from
-`transforms_val.json`. Each frame is given its true pose, carried into each reconstruction's frame
-by the fit. The difference (`psnr_cost_db`) is what the rebuilt poses cost.
+Both are scored on the held-out frames that no photo mode trains on (24 over the walk), keeping
+only those inside the stretch the model covers. Brush reads them from `transforms_val.json`.
+
+- Each frame is given its true pose, carried into each reconstruction's frame by the fit.
+- With fewer than 4 inside, training is skipped.
+- The difference (`psnr_cost_db`) is what the rebuilt poses cost.
 
 ## Running it
 
@@ -69,6 +80,35 @@ It uses the day's first scan (`--date 2026-10-24` by default). It writes:
 - path error ≤ 0.5 m RMS
 - GPS residual ≤ 3 m
 - scale within ±5%
+
+## First run (2026-10-26, the 2026-10-24 trail)
+
+The walk was 164.8 m in 129 s, with 3,862 frames and 1,324 GPS fixes. Its GPS came from the day's
+`skeleton.geojson`, since the day was imported before Sensor Logger recordings were kept. This run
+picked photos at their exact times, not the sharpest frame near them.
+
+**`photo_3s`** (43 photos, about 3.8 m apart): nothing placed.
+
+- Neighbours matched in a chain: 41 pairs, 31 photos connected.
+- No pair had enough inliers to start a model, even with relaxed constraints.
+
+**`photo_1s`** (129 photos, about 1.3 m apart): 16 placed (12%), in 3 models.
+
+- The largest covers 17.8 m of the walk.
+- Where it exists, it is accurate: 4 cm path RMS, 1.65° median turn, focal 1,316 px against the
+  true 1,334.
+- The GPS fit over 17.8 m is not reliable: a +3 s offset where the truth is 0, and a −5.4% scale.
+- PSNR was 9.2 dB both ways. It is not meaningful: the 24 held-out frames were spread over the
+  whole walk, most outside the model. Held-out frames are now limited to the model's stretch.
+
+**`stream_5fps`**: stopped while matching (at 8,192 features, 5.5 s a frame); now 4,096.
+
+**So far:** occasional stills of a tree-lined trail do not reconstruct with SIFT. Next comes a dense
+stream, and on stills a learned matcher, which the pip build of pycolmap lacks (no ONNX):
+
+- ALIKED + LightGlue, or COLMAP's LoMa, from the COLMAP Windows CUDA release or a PyTorch
+  environment
+- MapAnything, the plan's feed-forward option
 
 ## What it does not show
 
