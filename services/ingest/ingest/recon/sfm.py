@@ -65,10 +65,12 @@ def reconstruct(
     overlap: int = 10,
     mapper: str = "incremental",
     max_image_size: int = 1600,
+    max_features: int = 8192,
     say: Callable[[str], None] = print,
 ) -> Model | None:
     """Reconstruct the images in ``images`` (taken in file-name order) into ``work``. None when
-    no model could be made."""
+    no model could be made. ``max_features``: SIFT features per image; matching costs their
+    square (a 5 fps stream of 642 frames: 5.5 s a frame at 8,192 on the PC's CPU)."""
     import pycolmap
 
     names = sorted(p.name for p in images.iterdir() if p.suffix.lower() in {".jpg", ".jpeg", ".png"})
@@ -85,6 +87,7 @@ def reconstruct(
     reader.camera_model = "PINHOLE"
     extraction = pycolmap.FeatureExtractionOptions()
     extraction.max_image_size = max_image_size
+    extraction.sift.max_num_features = max_features
     say(f"Features in {len(names)} images")
     pycolmap.extract_features(database, images, image_names=names, camera_mode=pycolmap.CameraMode.SINGLE,
                               reader_options=reader, extraction_options=extraction)  # fmt: skip
