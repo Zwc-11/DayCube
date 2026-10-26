@@ -1,5 +1,5 @@
 {
-  "baseline_revision": "53b1e5757d1a1b572a1a2f949e269198a21b9e2d",
+  "baseline_revision": "e506abf35fdab9171646da9a449579fca0bf6b9b",
   "scope": "Every tracked file, except this generated ledger itself. No vendored source is tracked; dependencies live in ignored environments and lockfiles.",
   "limits": "Structural checks cover every listed file; manual_review only identifies implementations actually examined. Neither is a proof of maximum efficiency, a dependency audit or DeepInfer throughput parity. Missing manual_review is explicitly unreviewed at the semantic level.",
   "counts": {
@@ -1119,10 +1119,10 @@
     },
     {
       "path": "docs/codebase-continuation-2026-10-26.md",
-      "sha256": "2a6191b0803338ed287c2893e4ce5655f4d51aa40031e7011b418824b07c7d91",
+      "sha256": "47a792ddc4f373fc0d4e1eb282447fe59be441b53ffa2d081d1f67f5914a45b0",
       "category": "documentation",
-      "bytes": 16303,
-      "lines": 231,
+      "bytes": 16585,
+      "lines": 234,
       "structural_check": "UTF-8 text inventory; build/configuration review is separate"
     },
     {
@@ -1333,10 +1333,10 @@
     },
     {
       "path": "docs/splat.md",
-      "sha256": "d22071c1cab633e977e7a70099447039ea05730101adeeae24441278fc2267ab",
+      "sha256": "d222eaa936dada7e0f37e9d3a2ac357ba30651935b13e91856d29f7fd56cce31",
       "category": "documentation",
-      "bytes": 19647,
-      "lines": 324,
+      "bytes": 20861,
+      "lines": 348,
       "structural_check": "UTF-8 text inventory; build/configuration review is separate"
     },
     {
@@ -3669,14 +3669,14 @@
     },
     {
       "path": "scripts/profile-splat.mjs",
-      "sha256": "5384377234b1cadfea36b7022d05a986b679c4d59cac516013dba28d14e2e7b5",
+      "sha256": "241d67b6a1df2fd71f207b4c826b57bf1ffa4dcd9fe6aa8adfbd6bf37fdf6299",
       "category": "source",
-      "bytes": 12900,
-      "lines": 255,
+      "bytes": 13273,
+      "lines": 262,
       "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
       "manual_review": {
         "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
-        "notes": "Read complete original profiler plus concurrent 5541a4c/53b1e57 changes: GPU query vs interval metrics, refresh baseline, CPU self-time and fixed-refresh default. Defaults still target real vault/service and log caption/CPU report in vault; not run by this continuation. Needs source hashes, synthetic input isolation, bounded requests and stricter argument/output validation before a reproducible synthetic GPU comparison. Existing remote-session measurements are not independently verified here."
+        "notes": "Read complete original profiler plus concurrent 5541a4c/53b1e57 changes: GPU query vs interval metrics, refresh baseline, CPU self-time and fixed-refresh default. Defaults still target real vault/service and log caption/CPU report in vault; not run by this continuation. Needs source hashes, synthetic input isolation, bounded requests and stricter argument/output validation before a reproducible synthetic GPU comparison. Existing remote-session measurements are not independently verified here. Read the later 502f004 settling/rest interval change and syntax-checked the complete script; no real-vault workload invoked."
       }
     },
     {
