@@ -275,7 +275,7 @@
       // block moves on the page (an image above it loaded): line rectangles are page coordinates.
       const box = element.getBoundingClientRect();
       const layout = `${Math.round(box.width)}:${Math.round(box.top + scrollY)}:${devicePixelRatio}:${text.length}`;
-      if (sentLines.get(id) !== layout) {
+      if (sent.get(id) !== text || sentLines.get(id) !== layout) {
         block.lines = linesOf(group.nodes, deadline);
         measured.set(id, block.lines);
         layouts.push([id, layout]);

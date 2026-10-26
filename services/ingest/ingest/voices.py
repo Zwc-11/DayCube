@@ -33,6 +33,7 @@ from .vault import Vault, atomic_text, read_json
 SAME = 0.5  # average cosine similarity above which two groups of voiceprints are one voice
 KEEP_ID = 0.6  # similarity to a voice of the last build for it to keep that voice's id
 ME = "person:me"
+ROW_MAX_FROM = 1024  # row bookkeeping costs more than a matrix scan on the measured small galleries
 
 
 def _prints(vault_root: Path) -> list[dict]:
@@ -61,8 +62,16 @@ def cluster(prints: np.ndarray, recordings: list[str], *, same: float = SAME) ->
     size = np.ones(n)
     member = np.arange(n)
     sim[clash] = -np.inf
+    indexed = n >= ROW_MAX_FROM
+    if indexed:
+        row_best = np.argmax(sim, axis=1)
+        row_score = sim[np.arange(n), row_best].copy()
     while True:
-        a, b = np.unravel_index(int(np.argmax(sim)), sim.shape)
+        if indexed:
+            a = int(np.argmax(row_score))
+            b = int(row_best[a])
+        else:
+            a, b = np.unravel_index(int(np.argmax(sim)), sim.shape)
         if sim[a, b] <= same:
             break
         row = (size[a] * sim[a] + size[b] * sim[b]) / (size[a] + size[b])
@@ -73,6 +82,18 @@ def cluster(prints: np.ndarray, recordings: list[str], *, same: float = SAME) ->
         size[a] += size[b]
         sim[b], sim[:, b] = -np.inf, -np.inf
         member[member == b] = a
+        if indexed:
+            # Only two rows/columns changed. Refresh invalidated winners; every other row only
+            # compares the new column. First-index ties match a full row-major np.argmax.
+            changed = sim[:, a]
+            stale = (row_best == a) | (row_best == b) | np.isnan(changed) | np.isnan(row_score)
+            stale[a] = stale[b] = True
+            for i in np.flatnonzero(stale):
+                row_best[i] = np.argmax(sim[i])
+                row_score[i] = sim[i, row_best[i]]
+            better = (changed > row_score) | ((changed == row_score) & (a < row_best))
+            row_best[better] = a
+            row_score[better] = changed[better]
     order = {g: k for k, g in enumerate(sorted(set(member.tolist())))}
     return [order[m] for m in member.tolist()]
 
@@ -141,7 +162,12 @@ def update(vault: Vault) -> dict:
             next_id += 1
         used.add(voice["id"])
     ranked = sorted(voices, key=lambda v: -len(v["recordings"]))
-    you = ranked[0] if len(ranked[0]["recordings"]) >= 2 and (len(ranked) == 1 or len(ranked[0]["recordings"]) > len(ranked[1]["recordings"])) else None
+    you = (
+        ranked[0]
+        if len(ranked[0]["recordings"]) >= 2
+        and (len(ranked) == 1 or len(ranked[0]["recordings"]) > len(ranked[1]["recordings"]))
+        else None
+    )
     for voice in voices:
         voice["is_you"] = voice is you
         if voice["is_you"] and not voice["name"]:
@@ -185,7 +211,9 @@ def update(vault: Vault) -> dict:
     for k, voice in enumerate(voices):
         voice["least_alike"] = round(float(min(prints[m]["print"] @ voice["print"] for m in voice["members"])), 3)
         j = int(np.argmax(between[k])) if len(voices) > 1 else None
-        voice["closest"] = {"voice": voices[j]["id"], "similarity": round(float(between[k, j]), 3)} if j is not None else None
+        voice["closest"] = (
+            {"voice": voices[j]["id"], "similarity": round(float(between[k, j]), 3)} if j is not None else None
+        )
     gallery = {"same": SAME, "voices": [
         {"id": v["id"], "name": v["name"], "is_you": v["is_you"], "recordings": v["recordings"],
          "least_alike": v["least_alike"], "closest": v["closest"], "print": [round(float(x), 5) for x in v["print"]]}

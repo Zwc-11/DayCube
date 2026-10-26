@@ -1,8 +1,9 @@
 import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { Footprints, X } from 'lucide-react';
-import type { MomentCamera, MomentSpeech, SceneMesh, SceneSplat } from '@daycube/api-client';
+import type { MomentSpeech, SceneMesh, SceneSplat } from '@daycube/api-client';
 import { backendBridge } from '../../lib/backendBridge';
 import { Dialog } from '../ui';
+import { CameraMap } from './CameraMap';
 
 /** A moment recorded on the phone and imported into the vault (a voice memo, a LiDAR scan): its
  * own media, transcript and camera path, not the sample reconstruction. */
@@ -176,47 +177,6 @@ const SpeakerChips: React.FC<{ speakers: Speaker[]; onName: (label: string, pers
         </span>
       ) : null}
     </div>
-  );
-};
-
-/** The camera's path seen from above, metres east and north of where it began, with where it is
- * at ``t`` and the way it looks. */
-const CameraMap: React.FC<{ camera: MomentCamera; t: number }> = ({ camera, t }) => {
-  const placed = camera.points.filter((p) => p.lat !== undefined && p.lon !== undefined);
-  const view = useMemo(() => {
-    if (placed.length < 2) return null;
-    const lat0 = placed[0].lat as number;
-    const lon0 = placed[0].lon as number;
-    const k = Math.cos((lat0 * Math.PI) / 180);
-    const xy = placed.map((p) => [((p.lon as number) - lon0) * 111320 * k, ((p.lat as number) - lat0) * 110574] as const);
-    const xs = xy.map((p) => p[0]);
-    const ys = xy.map((p) => p[1]);
-    const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
-    const span = Math.max(x1 - x0, y1 - y0, 10);
-    return { xy, x0, y1, span, metres: Math.round(span), tall: Math.max(y1 - y0, 10) / span };
-  }, [placed]);
-  if (!view) return null;
-  const size = 200;
-  const pad = 12;
-  const height = Math.max(60, Math.round(pad * 2 + (size - 2 * pad) * view.tall));
-  const at = (p: readonly [number, number]) =>
-    [pad + ((p[0] - view.x0) / view.span) * (size - 2 * pad), pad + ((view.y1 - p[1]) / view.span) * (size - 2 * pad)] as const;
-  let i = placed.findIndex((p) => p.t >= t);
-  if (i < 0) i = placed.length - 1;
-  const [cx, cy] = at(view.xy[i]);
-  const heading = ((placed[i].heading_deg ?? 0) * Math.PI) / 180;
-  const line = view.xy.map((p) => at(p).join(',')).join(' ');
-  return (
-    <figure style={{ margin: 0 }} aria-label="Where the camera went">
-      <svg width={size} height={height} role="img" aria-label={`Camera path, ${view.metres} m across`}>
-        <polyline points={line} fill="none" stroke="var(--fg-3)" strokeWidth={1.5} />
-        <line x1={cx} y1={cy} x2={cx + 14 * Math.sin(heading)} y2={cy - 14 * Math.cos(heading)} stroke="var(--accent, #8dba9f)" strokeWidth={2} />
-        <circle cx={cx} cy={cy} r={4} fill="var(--accent, #8dba9f)" />
-      </svg>
-      <figcaption className="faint num" style={{ fontSize: 11 }}>
-        {view.metres} m across{camera.fit ? `, on the map to ${camera.fit.rmse_m} m` : ''}
-      </figcaption>
-    </figure>
   );
 };
 

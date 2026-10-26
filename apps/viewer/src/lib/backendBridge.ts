@@ -314,7 +314,7 @@ export class BackendBridge {
           ? stageWalk(spots, t0Hours, t1Hours, events, {
               wakesHere,
               sleepsHere,
-              conf: Math.min(...bLayer.path.map((p) => p.pos_conf), 0.4),
+              conf: bLayer.path.reduce((confidence, p) => Math.min(confidence, p.pos_conf), 0.4),
             })
           : drawn.map((p) => ({
               // Metres from the visit's middle (shrunk to fit, `frame.scale`), around the stage's middle.

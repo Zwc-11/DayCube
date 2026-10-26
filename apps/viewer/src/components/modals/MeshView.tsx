@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type { SplatCameras } from '@daycube/api-client';
+import { SceneResources, disposeMaterials, disposeObject } from '../../lib/sceneResources';
 import { DRAW_TAIL_MS, poseAt } from './SplatView';
 
 /**
@@ -48,7 +49,7 @@ export const MeshView: React.FC<MeshViewProps> = ({ url, cameras, bounds, t, clo
 
   useEffect(() => {
     let alive = true;
-    let dispose = () => undefined as void;
+    const resources = new SceneResources();
     setState('loading');
     (async () => {
       const THREE = await import('three');
@@ -57,6 +58,7 @@ export const MeshView: React.FC<MeshViewProps> = ({ url, cameras, bounds, t, clo
       const el = root.current;
       if (!alive || !el) return;
       const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+      resources.own(() => { renderer.dispose(); renderer.domElement.remove(); });
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
       renderer.setSize(el.clientWidth, el.clientHeight);
       el.appendChild(renderer.domElement);
@@ -65,6 +67,7 @@ export const MeshView: React.FC<MeshViewProps> = ({ url, cameras, bounds, t, clo
       const camera = new THREE.PerspectiveCamera(cameras ? Math.min(80, cameras.fov_long_deg) : 60, el.clientWidth / el.clientHeight, 0.05, 2000);
       camera.up.set(0, 1, 0);
       const controls = new OrbitControls(camera, renderer.domElement);
+      resources.own(() => controls.dispose());
       controls.enableDamping = false;
       const start = cameras ? poseAt(cameras, 0) : null;
       const centre = bounds ? bounds.min.map((v, k) => (v + bounds.max[k]) / 2) : [0, 0, 0];
@@ -82,20 +85,24 @@ export const MeshView: React.FC<MeshViewProps> = ({ url, cameras, bounds, t, clo
       live.current = v;
       if (import.meta.env.DEV) (window as unknown as { __mesh?: unknown }).__mesh = live.current; // for the end-to-end tests
       const gltf = await new GLTFLoader().loadAsync(url);
+      resources.own(() => disposeObject(gltf.scene));
       if (!alive) return;
+      const originals = new Set<import('three').Material>();
+      const releaseOriginals = resources.own(() => disposeMaterials(originals));
       gltf.scene.traverse((node) => {
         const mesh = node as import('three').Mesh;
         if (mesh.isMesh) {
-          const old = mesh.material as import('three').Material;
+          for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) originals.add(material);
           mesh.material = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide });
-          old.dispose();
         }
       });
+      releaseOriginals();
       scene.add(gltf.scene);
       let frame = 0;
       let lastT = Number.NaN;
       const draw = (now: number) => {
         frame = requestAnimationFrame(draw);
+        if (document.visibilityState !== 'visible') return;
         const read = clockRef.current;
         if (cameras && followRef.current && read) {
           const at = read();
@@ -109,6 +116,7 @@ export const MeshView: React.FC<MeshViewProps> = ({ url, cameras, bounds, t, clo
         v.frames++;
       };
       touch(1000);
+      resources.own(() => cancelAnimationFrame(frame));
       frame = requestAnimationFrame(draw);
       const resize = new ResizeObserver(() => {
         camera.aspect = el.clientWidth / Math.max(1, el.clientHeight);
@@ -116,27 +124,18 @@ export const MeshView: React.FC<MeshViewProps> = ({ url, cameras, bounds, t, clo
         renderer.setSize(el.clientWidth, el.clientHeight);
         touch();
       });
+      resources.own(() => resize.disconnect());
       resize.observe(el);
-      dispose = () => {
-        cancelAnimationFrame(frame);
-        resize.disconnect();
-        controls.dispose();
-        gltf.scene.traverse((node) => {
-          const mesh = node as import('three').Mesh;
-          if (mesh.isMesh) {
-            mesh.geometry.dispose();
-            (mesh.material as import('three').Material).dispose();
-          }
-        });
-        renderer.dispose();
-        renderer.domElement.remove();
-      };
       setState('ready');
-    })().catch(() => alive && setState('failed'));
+    })().catch(() => {
+      resources.dispose();
+      live.current = null;
+      if (alive) setState('failed');
+    });
     return () => {
       alive = false;
       live.current = null;
-      dispose();
+      resources.dispose();
     };
   }, [url, cameras, bounds]);
 

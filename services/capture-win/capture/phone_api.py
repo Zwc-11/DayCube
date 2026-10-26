@@ -118,6 +118,8 @@ class Phones:
 
     # -- uploads --------------------------------------------------------------------------
     def _meta(self, upload_id: str) -> dict:
+        if re.fullmatch(r"[0-9a-f]{32}", upload_id) is None:
+            raise HTTPException(422, "invalid upload id")
         try:
             return json.loads((self.partial / f"{upload_id}.json").read_text(encoding="utf-8"))
         except FileNotFoundError:
@@ -264,9 +266,11 @@ def router(phones: Phones, vault_token: Any) -> APIRouter:
 
     @api.put("/uploads/{upload_id}")
     async def put(upload_id: str, offset: int, request: Request, who: str = Depends(device)) -> dict:
-        data = await request.body()
-        if len(data) > CHUNK:
-            raise HTTPException(413, f"chunks of at most {CHUNK} bytes")
+        data = bytearray()
+        async for chunk in request.stream():
+            if len(data) + len(chunk) > CHUNK:
+                raise HTTPException(413, f"chunks of at most {CHUNK} bytes")
+            data.extend(chunk)
         return phones.put(who, upload_id, offset, data)
 
     @api.post("/uploads/{upload_id}/complete")

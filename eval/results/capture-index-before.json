@@ -1,0 +1,103 @@
+{
+  "kind": "synthetic-capture-index",
+  "environment": {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.9",
+    "cpu": "AMD64 Family 26 Model 68 Stepping 0, AuthenticAMD"
+  },
+  "revision": "021c1b5be31d391bd6647cc936e9c18005fe4081",
+  "dirty": true,
+  "source_hashes": {
+    "services/ingest/ingest/capture/synthesize.py": "6f91e50df8b444da30dcf96f0862d775ba497fa13a249e11333b3590ca7b333a",
+    "services/ingest/ingest/vault.py": "611b6604cdefca9882e4a10959ff2881aaa8c9a847225040e2fa506ddae7dc8a",
+    "services/ingest/ingest/store/db.py": "04608fcef5a7cbb08347021b5e9e1d681114db9aaf47ea61e7a9b642f15c8a34",
+    "services/ingest/ingest/graph/extract.py": "c5685dfb0500858d86c70877553e4fcf86770407fc72236d44507db90729ea9f",
+    "services/ingest/ingest/cache.py": "a6d45ba6f665b32f26b3dfdf69c0a9fbe801dec5fb4975b15a09b33753cf832c",
+    "eval/benchmark_capture_index.py": "cf528d27ba18db0edc6bf9cd00abebde160d404513e68f4d7617b3dcf4c0df2d",
+    "eval/benchmark_notes.py": "5359aa9de867c64fc08f294f95f323e1b4c2103dba8739c3e0982280e77a3aab"
+  },
+  "workload": {
+    "sizes": {
+      "2026-10-23": {
+        "blocks_bytes": 33000000,
+        "browser": 9000,
+        "gaze": 14000,
+        "reads": 300,
+        "dwells": 20
+      },
+      "2026-10-24": {
+        "blocks_bytes": 5000000,
+        "browser": 1400,
+        "gaze": 3300,
+        "reads": 300,
+        "dwells": 20
+      }
+    },
+    "log_bytes": {
+      "capture/2026-10-23/attention.jsonl": 9340,
+      "capture/2026-10-23/blocks.jsonl": 33008753,
+      "capture/2026-10-23/browser.jsonl": 1712957,
+      "capture/2026-10-23/gaze.jsonl": 2886560,
+      "capture/2026-10-23/reading.jsonl": 189912,
+      "capture/2026-10-24/attention.jsonl": 9340,
+      "capture/2026-10-24/blocks.jsonl": 5020006,
+      "capture/2026-10-24/browser.jsonl": 266395,
+      "capture/2026-10-24/gaze.jsonl": 680400,
+      "capture/2026-10-24/reading.jsonl": 189894
+    },
+    "seed": 20261024,
+    "repeats": 11,
+    "warmups": 1,
+    "question": "word17 word99 site3"
+  },
+  "operations": {
+    "index_capture_day_cold": {
+      "wall_ms": [
+        706.356099981349,
+        704.4523999793455,
+        697.2001999965869,
+        704.0666999528185,
+        684.7957000136375,
+        756.9952000048943,
+        765.3212000150234,
+        735.939700040035,
+        759.7532000509091,
+        745.4995000152849,
+        779.692400014028
+      ],
+      "median_ms": 735.939700040035,
+      "p95_ms": 779.692400014028,
+      "median_cpu_ms": 734.375,
+      "traced_peak_bytes": 209515477,
+      "sha256": "8f4927b16bb61dcfbecea3c141ce5911c07b80fb399bd5fa00ed26e5c137f3b6",
+      "profile": "         823212 function calls (823208 primitive calls) in 0.841 seconds\n\n   Ordered by: cumulative time\n   List reduced from 248 to 12 due to restriction <12>\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n        1    0.006    0.006    0.843    0.843 benchmark_capture_index.py:205(index_cold)\n        1    0.000    0.000    0.837    0.837 db.py:321(update)\n        1    0.074    0.074    0.712    0.712 synthesize.py:128(read_capture)\n        6    0.011    0.002    0.607    0.101 synthesize.py:41(_records)\n    12484    0.006    0.000    0.542    0.000 __init__.py:299(loads)\n    12484    0.010    0.000    0.534    0.000 decoder.py:332(decode)\n    12484    0.518    0.000    0.518    0.000 decoder.py:343(raw_decode)\n        1    0.000    0.000    0.040    0.040 extract.py:135(extract)\n        1    0.002    0.002    0.040    0.040 extract.py:201(_capture)\n        6    0.000    0.000    0.036    0.006 vault.py:107(read_text)\n        6    0.000    0.000    0.036    0.006 pathlib.py:1053(read_text)\n        6    0.032    0.005    0.036    0.006 {method 'read' of '_io.TextIOWrapper' objects}\n\n\n"
+    },
+    "search_while_capturing": {
+      "wall_ms": [
+        693.5975999804214,
+        696.8157000374049,
+        700.3637000452727,
+        719.4487000233494,
+        751.5284999972209,
+        703.0788999982178,
+        716.9162999489345,
+        738.1459000171162,
+        693.2049000170082,
+        753.5947000142187,
+        997.7264999761246
+      ],
+      "median_ms": 716.9162999489345,
+      "p95_ms": 997.7264999761246,
+      "median_cpu_ms": 687.5,
+      "traced_peak_bytes": 209515149,
+      "sha256": "e452e05b220e400d3da48c065851782d0f355afd9a90f577d828b48bbfded414",
+      "profile": "         831470 function calls (831446 primitive calls) in 0.965 seconds\n\n   Ordered by: cumulative time\n   List reduced from 311 to 12 due to restriction <12>\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n        1    0.000    0.000    0.967    0.967 benchmark_capture_index.py:213(search_while_capturing)\n        1    0.000    0.000    0.966    0.966 retrieve.py:48(retrieve)\n        1    0.006    0.006    0.959    0.959 db.py:277(ensure)\n        1    0.000    0.000    0.947    0.947 db.py:321(update)\n        1    0.086    0.086    0.781    0.781 synthesize.py:128(read_capture)\n        6    0.011    0.002    0.657    0.110 synthesize.py:41(_records)\n    12540    0.007    0.000    0.581    0.000 __init__.py:299(loads)\n    12540    0.013    0.000    0.572    0.000 decoder.py:332(decode)\n    12540    0.551    0.000    0.551    0.000 decoder.py:343(raw_decode)\n        1    0.000    0.000    0.051    0.051 extract.py:135(extract)\n        1    0.003    0.003    0.051    0.051 extract.py:201(_capture)\n        6    0.000    0.000    0.044    0.007 vault.py:107(read_text)\n\n\n"
+    }
+  },
+  "verified_units_sha256": "50467edc167f82cf65fd883f47ea56cd4ab148b03d400cbc15126715fe116940",
+  "verified_unit_count": 1312,
+  "retained": {
+    "capture_log_cache_charged_bytes": 0
+  },
+  "limits": "Synthetic logs sized like one real day; contents are not representative of real pages. Warm filesystem, in-process calls (no HTTP), keyword search only (no embedding model). measure() runs 1 warmup + repeats + 1 tracemalloc + 1 cProfile call, so the search workload appends to the logs on every call and later samples see slightly longer logs. Traced peak is not RSS; the cache charge is an accounting bound, not process memory."
+}
