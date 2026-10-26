@@ -1,5 +1,5 @@
 {
-  "baseline_revision": "6ecac8627ac3d5ea538404e2515670b24e073e17",
+  "baseline_revision": "a8271d6852fbe49e69ad04bb6befd07fa0f2fe60",
   "scope": "Every tracked file, except this generated ledger itself. No vendored source is tracked; dependencies live in ignored environments and lockfiles.",
   "limits": "Structural checks cover every listed file; manual_review only identifies implementations actually examined. Neither is a proof of maximum efficiency, a dependency audit or DeepInfer throughput parity. Missing manual_review is explicitly unreviewed at the semantic level.",
   "counts": {
@@ -898,10 +898,10 @@
     },
     {
       "path": "docs/codebase-efficiency-2026-10-26.md",
-      "sha256": "266e17101e894754063fea1fb2f8b2396af05ca891af7911a34a7effdcf80c6b",
+      "sha256": "eeb60f922720a1f81105ee57b587571c2a33e97ad1c8848171c8566e9300edfc",
       "category": "documentation",
-      "bytes": 12709,
-      "lines": 180,
+      "bytes": 13262,
+      "lines": 187,
       "structural_check": "UTF-8 text inventory; build/configuration review is separate",
       "previous_review_needs_refresh": {
         "scope": "2026-10-26 algorithm/resource pass; exact scope in notes",
@@ -7001,24 +7001,24 @@
     },
     {
       "path": "services/ingest/tests/test_phone_api.py",
-      "sha256": "d3072dd8faa84de08a14d9203105163daa5c6463e2015954a3608759c90fa7c7",
+      "sha256": "b937943abb268dc03fb51dbf7038ede0457b637603b0ab22ad09887c603759ad",
       "category": "test",
-      "bytes": 8021,
-      "lines": 152,
+      "bytes": 8149,
+      "lines": 154,
       "functions": [
-        "client:17 (loops including nested scopes: 0)",
-        "_pair:25 (loops including nested scopes: 0)",
-        "_upload:33 (loops including nested scopes: 1)",
-        "test_only_a_paired_phone_uploads_and_its_token_is_not_kept:50 (loops including nested scopes: 0)",
-        "test_an_upload_resumes_checks_its_offset_and_hash_and_is_acknowledged_again:72 (loops including nested scopes: 1)",
-        "test_a_scan_uploaded_file_by_file_becomes_a_scan_moment_with_no_command:114 (loops including nested scopes: 2)",
-        "test_heartbeats_are_kept_for_doctor:138 (loops including nested scopes: 0)"
+        "client:18 (loops including nested scopes: 0)",
+        "_pair:26 (loops including nested scopes: 0)",
+        "_upload:34 (loops including nested scopes: 1)",
+        "test_only_a_paired_phone_uploads_and_its_token_is_not_kept:51 (loops including nested scopes: 0)",
+        "test_an_upload_resumes_checks_its_offset_and_hash_and_is_acknowledged_again:73 (loops including nested scopes: 1)",
+        "test_a_scan_uploaded_file_by_file_becomes_a_scan_moment_with_no_command:116 (loops including nested scopes: 2)",
+        "test_heartbeats_are_kept_for_doctor:140 (loops including nested scopes: 0)"
       ],
       "review_signals": [
-        "60: check text/binary mode and default encoding at (vault.root / 'capture' / 'phone-devices.json').read_text",
-        "146: check text/binary mode and default encoding at (vault.root / 'capture' / 'phone-devices.json').read_text",
-        "135: check text/binary mode and default encoding at moments[0].read_text",
-        "148: check text/binary mode and default encoding at (vault.root / 'capture' / 'phone-heartbeats.jsonl').read_text"
+        "61: check text/binary mode and default encoding at (vault.root / 'capture' / 'phone-devices.json').read_text",
+        "148: check text/binary mode and default encoding at (vault.root / 'capture' / 'phone-devices.json').read_text",
+        "137: check text/binary mode and default encoding at moments[0].read_text",
+        "150: check text/binary mode and default encoding at (vault.root / 'capture' / 'phone-heartbeats.jsonl').read_text"
       ],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
     },
