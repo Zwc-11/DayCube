@@ -20,7 +20,13 @@ Each visit has its median position, its fixes and the activity's agreement as co
 from __future__ import annotations
 
 import statistics
+from array import array
+from bisect import bisect_left, bisect_right
+from collections.abc import Iterable
 from dataclasses import dataclass, field
+from itertools import pairwise
+from math import isfinite
+from typing import Generic, TypeVar
 
 from ..skeleton.parsers.types import Fix
 from .geo import metres
@@ -37,6 +43,22 @@ OUTDOOR_FOOT = 0.4
 OUTDOOR_M = 75.0
 HOME_M = 150.0
 VEHICLE_MPS = 6.0
+T = TypeVar("T")
+
+
+class _Samples(Generic[T]):
+    """A per-recording time index. Unordered inputs keep their original filtering/order policy."""
+
+    def __init__(self, rows: list[T], times: Iterable[float]) -> None:
+        self.rows, self.times = rows, array("d", times)
+        self.ordered = all(isfinite(t) for t in self.times) and all(a <= b for a, b in pairwise(self.times))
+
+    def window(self, start: float, end: float) -> list[T]:
+        if not start <= end:
+            return []
+        if self.ordered:
+            return self.rows[bisect_left(self.times, start) : bisect_right(self.times, end)]
+        return [row for row, t in zip(self.rows, self.times, strict=True) if start <= t <= end]
 
 
 @dataclass
@@ -60,6 +82,8 @@ def segment(recording: Recording) -> list[Span]:
     t0, t1 = int(recording.t0), int(recording.t1) + 1
     labels = _labels(recording, t0, t1)
     trips = _trips(labels, t0)
+    fixes = _Samples(recording.fixes, (f.t.timestamp() for f in recording.fixes))
+    steps = _Samples(recording.steps, (t for t, _ in recording.steps))
     spans: list[Span] = []
     cursor = float(recording.t0)
     for a, b, mode, conf in trips:
@@ -74,10 +98,10 @@ def segment(recording: Recording) -> list[Span]:
     spans = [s for s in spans if s.t1 > s.t0]
     out: list[Span] = []
     for span in spans:
-        span.fixes = [f for f in recording.fixes if span.t0 <= f.t.timestamp() <= span.t1]
+        span.fixes = fixes.window(span.t0, span.t1)
         out += _split(span, labels, t0) if span.kind == "stay" else [span]
     for span in out:
-        _describe(span, labels, t0, recording)
+        _describe(span, labels, t0, steps)
     _kinds([s for s in out if s.kind == "stay"], recording)
     return out
 
@@ -144,6 +168,7 @@ def _trips(labels: list[str | None], t0: int) -> list[tuple[float, float, str, f
 
 def _split(span: Span, labels: list[str | None], t0: int) -> list[Span]:
     """A stay with still periods at places far apart: stay, walk, stay."""
+    fixes = _Samples(span.fixes, (f.t.timestamp() for f in span.fixes))
     stills: list[tuple[float, float]] = []
     start = None
     for k in range(int(span.t0) - t0, min(int(span.t1) - t0, len(labels))):
@@ -158,7 +183,7 @@ def _split(span: Span, labels: list[str | None], t0: int) -> list[Span]:
     for a, b in stills:
         if b - a < STILL_SPLIT_S:
             continue
-        here = [f for f in span.fixes if a <= f.t.timestamp() <= b]
+        here = fixes.window(a, b)
         if here:
             places.append((a, b, statistics.median(f.lat for f in here), statistics.median(f.lon for f in here)))
     out, cursor = [], span.t0
@@ -169,11 +194,11 @@ def _split(span: Span, labels: list[str | None], t0: int) -> list[Span]:
             cursor = a1
     out.append(Span("stay", cursor, span.t1))
     for piece in out:
-        piece.fixes = [f for f in span.fixes if piece.t0 <= f.t.timestamp() <= piece.t1]
+        piece.fixes = fixes.window(piece.t0, piece.t1)
     return out
 
 
-def _describe(span: Span, labels: list[str | None], t0: int, recording: Recording) -> None:
+def _describe(span: Span, labels: list[str | None], t0: int, steps: _Samples[tuple[float, int]]) -> None:
     fixes = span.fixes
     if fixes:
         span.lat = statistics.median(f.lat for f in fixes)
@@ -183,8 +208,8 @@ def _describe(span: Span, labels: list[str | None], t0: int, recording: Recordin
         span.distance_m = sum(metres(a.lat, a.lon, b.lat, b.lon) for a, b in zip(fixes, fixes[1:], strict=False))
     known = [m for m in labels[max(int(span.t0) - t0, 0) : max(int(span.t1) - t0, 0)] if m]
     span.foot = sum(m == "foot" for m in known) / len(known) if known else 0.0
-    steps = [s for t, s in recording.steps if span.t0 <= t <= span.t1]
-    span.steps = steps[-1] - steps[0] if len(steps) >= 2 else None
+    samples = steps.window(span.t0, span.t1)
+    span.steps = samples[-1][1] - samples[0][1] if len(samples) >= 2 else None
     if span.kind == "stay":
         span.conf = round(min(0.95, 0.5 + 0.45 * min(len(fixes), 30) / 30), 3)
 

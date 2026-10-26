@@ -1,0 +1,86 @@
+{
+  "revision": "96d20e94f5e4c76d117261fdc8daba2265b28d1c",
+  "source_hashes": {
+    "services/ingest/ingest/phone/visits.py": "ac7ed459e48ec4557578bb3ad341b0b6de7184898e19db7672889d8aa5cb1346",
+    "services/ingest/ingest/phone/sensor_logger.py": "81206a8b4d375350e2c2623b596667f543da806f7c877c06ec3a528e5a42279a",
+    "services/ingest/ingest/phone/geo.py": "56ceb251e8477bde8c005f0ea497208070b308cf6f62986a0e087cc58a5725a4",
+    "services/ingest/ingest/skeleton/parsers/types.py": "c7f2e93023ff238f3f3635af8ff11e6a4314c00c86b693fe6ae96733990c18c7",
+    "eval/benchmark_phone_segments.py": "fe9ff29d854ce79d80c4aa32937bcaf6d2b4fdf481444c2500c79543bbf6f379",
+    "eval/benchmark_notes.py": "5359aa9de867c64fc08f294f95f323e1b4c2103dba8739c3e0982280e77a3aab"
+  },
+  "environment": {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.9",
+    "cpu": "AMD64 Family 26 Model 68 Stepping 0, AuthenticAMD"
+  },
+  "workload": {
+    "hours": [
+      2,
+      8,
+      24
+    ],
+    "fix_hz": 1,
+    "activity_period_s": 900,
+    "repeats": 7,
+    "warmups": 1
+  },
+  "operations": {
+    "2": {
+      "wall_ms": [
+        17.41070009302348,
+        16.952000092715025,
+        23.113299976103008,
+        19.464400014840066,
+        17.7657000022009,
+        21.309399977326393,
+        21.43600000999868
+      ],
+      "median_ms": 19.464400014840066,
+      "p95_ms": 23.113299976103008,
+      "median_cpu_ms": 15.625,
+      "traced_peak_bytes": 314360,
+      "sha256": "afc9bae1249a4020a3d5ddbae14aa46d66b52e94f738ee8e0fcb894f11885378",
+      "profile": "         316643 function calls in 0.079 seconds\n\n   Ordered by: cumulative time\n   List reduced from 59 to 12 due to restriction <12>\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n        1    0.000    0.000    0.082    0.082 benchmark_phone_segments.py:71(work)\n        1    0.000    0.000    0.082    0.082 visits.py:80(segment)\n        8    0.000    0.000    0.044    0.005 visits.py:201(_describe)\n    14409    0.022    0.000    0.034    0.000 geo.py:10(metres)\n       32    0.003    0.000    0.024    0.001 {built-in method builtins.sorted}\n       20    0.001    0.000    0.020    0.001 {built-in method builtins.sum}\n     7216    0.002    0.000    0.020    0.000 visits.py:206(<genexpr>)\n        6    0.002    0.000    0.019    0.003 visits.py:52(__init__)\n     7208    0.002    0.000    0.018    0.000 visits.py:208(<genexpr>)\n        1    0.010    0.010    0.017    0.017 visits.py:135(_trips)\n       12    0.002    0.000    0.008    0.001 {built-in method builtins.all}\n     7202    0.002    0.000    0.006    0.000 visits.py:85(<genexpr>)\n\n\n"
+    },
+    "8": {
+      "wall_ms": [
+        70.20320009905845,
+        68.93770000897348,
+        71.01660000625998,
+        68.02900007460266,
+        67.29839998297393,
+        71.90360000822693,
+        70.22029999643564
+      ],
+      "median_ms": 70.20320009905845,
+      "p95_ms": 71.90360000822693,
+      "median_cpu_ms": 62.5,
+      "traced_peak_bytes": 1124690,
+      "sha256": "341a68a68100e334a765dfc1c75e36c2b62482af4048668299026fd20c4c0fbf",
+      "profile": "         1268675 function calls in 0.247 seconds\n\n   Ordered by: cumulative time\n   List reduced from 59 to 12 due to restriction <12>\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n        1    0.000    0.000    0.256    0.256 benchmark_phone_segments.py:71(work)\n        1    0.000    0.000    0.255    0.255 visits.py:80(segment)\n       32    0.000    0.000    0.139    0.004 visits.py:201(_describe)\n    57633    0.073    0.000    0.109    0.000 geo.py:10(metres)\n      128    0.007    0.000    0.074    0.001 {built-in method builtins.sorted}\n       80    0.005    0.000    0.069    0.001 {built-in method builtins.sum}\n    28832    0.007    0.000    0.061    0.000 visits.py:208(<genexpr>)\n    28864    0.006    0.000    0.061    0.000 visits.py:206(<genexpr>)\n       18    0.006    0.000    0.057    0.003 visits.py:52(__init__)\n        1    0.030    0.030    0.052    0.052 visits.py:135(_trips)\n       36    0.007    0.000    0.024    0.001 {built-in method builtins.all}\n       16    0.001    0.000    0.019    0.001 visits.py:169(_split)\n\n\n"
+    },
+    "24": {
+      "wall_ms": [
+        282.93200000189245,
+        288.06880000047386,
+        287.17619995586574,
+        270.7822999218479,
+        287.6686000963673,
+        286.0215000109747,
+        291.7272000340745
+      ],
+      "median_ms": 287.17619995586574,
+      "p95_ms": 291.7272000340745,
+      "median_cpu_ms": 281.25,
+      "traced_peak_bytes": 3276854,
+      "sha256": "e906b16c0c0b6aa8de37826a422b7bdf35d04ab212d74a342fd3a567aced7a67",
+      "profile": "         3807427 function calls in 0.981 seconds\n\n   Ordered by: cumulative time\n   List reduced from 59 to 12 due to restriction <12>\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n        1    0.000    0.000    1.018    1.018 benchmark_phone_segments.py:71(work)\n        1    0.001    0.001    1.017    1.017 visits.py:80(segment)\n       96    0.001    0.000    0.537    0.006 visits.py:201(_describe)\n   172897    0.279    0.000    0.416    0.000 geo.py:10(metres)\n      384    0.029    0.000    0.290    0.001 {built-in method builtins.sorted}\n      240    0.017    0.000    0.264    0.001 {built-in method builtins.sum}\n    86592    0.027    0.000    0.238    0.000 visits.py:206(<genexpr>)\n    86496    0.030    0.000    0.235    0.000 visits.py:208(<genexpr>)\n       50    0.027    0.001    0.233    0.005 visits.py:52(__init__)\n        1    0.126    0.126    0.214    0.214 visits.py:135(_trips)\n      100    0.031    0.000    0.105    0.001 {built-in method builtins.all}\n       48    0.004    0.000    0.076    0.002 visits.py:169(_split)\n\n\n"
+    }
+  },
+  "full_output_sha256": {
+    "2": "d47a1fb4fe488198d3fbf6a7474dc9a30c938e3d724714f6007219d0c0dc6678",
+    "8": "97d3c78079d4cb69246582ade5eea7ce6da0425d7188018e0e366a53189c1dd2",
+    "24": "0293b35b32971fad4f946a248608e348c0f2d3dacf98c320409843086da4ff55"
+  },
+  "limits": "Warm process; synthetic alternating stays/drives, one fix and step sample per second. Measures segmentation plus small span summaries, excluding fixture creation, hashing and full Fix serialization. Full outputs (including source fixes, order and timestamp offsets) are compared outside timing. No import publication, network, media, model or user data; traced peak is not RSS."
+}

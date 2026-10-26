@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type { SplatCameras } from '@daycube/api-client';
+import { SceneResources } from '../../lib/sceneResources';
 import {
   type Budget,
   type GpuInfo,
@@ -141,7 +142,7 @@ export const SplatView: React.FC<SplatViewProps> = ({ url, cameras, bounds, t, c
 
   useEffect(() => {
     let alive = true;
-    let dispose = () => undefined as void;
+    const resources = new SceneResources();
     setState('loading');
     setProgress(0);
     setQuality(null);
@@ -154,10 +155,12 @@ export const SplatView: React.FC<SplatViewProps> = ({ url, cameras, bounds, t, c
       // powerPreference picks the discrete GPU where the browser lets a page choose (macOS); on
       // Windows the browser's own GPU setting decides.
       const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance', preserveDrawingBuffer: import.meta.env.DEV });
+      resources.own(() => { renderer.dispose(); renderer.domElement.remove(); });
       const gl = renderer.getContext();
       const gpu = classifyGpu(rendererName(gl));
       const first = startBudget(gpu.kind, LOD_SPLATS);
       const timer = GpuTimer.create(gl);
+      resources.own(() => timer?.dispose());
       // Measured by timer query, a fast GPU may draw more than its kind started with.
       const ceiling: Budget = timer ? { splats: LOD_SPLATS, pixels: MAX_PIXELS } : first;
       let budget = first;
@@ -172,12 +175,14 @@ export const SplatView: React.FC<SplatViewProps> = ({ url, cameras, bounds, t, c
         drawUntil = Math.max(drawUntil, performance.now() + ms);
       };
       const spark = new SparkRenderer({ renderer, lodSplatCount: budget.splats, onDirty: () => touch() });
+      resources.own(() => spark.dispose?.());
       scene.add(spark);
       setQuality({ gpu, budget });
       // The phone saw its long side upright: a field of view like the video's.
       const camera = new THREE.PerspectiveCamera(cameras ? Math.min(80, cameras.fov_long_deg) : 60, el.clientWidth / Math.max(1, el.clientHeight), 0.05, 3000);
       camera.up.set(0, 1, 0);
       const controls = new OrbitControls(camera, renderer.domElement);
+      resources.own(() => controls.dispose());
       controls.enableDamping = false;
       const start = cameras ? poseAt(cameras, 0) : null;
       const centre = bounds ? bounds.min.map((v, k) => (v + bounds.max[k]) / 2) : [0, 0, 0];
@@ -194,12 +199,12 @@ export const SplatView: React.FC<SplatViewProps> = ({ url, cameras, bounds, t, c
         v.budget = next;
         spark.lodSplatCount = next.splats;
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, next.pixels));
-        setQuality({ gpu, budget: next });
+        if (alive) setQuality({ gpu, budget: next });
         touch();
       };
       if (import.meta.env.DEV) (window as unknown as { __splat?: unknown }).__splat = v; // for the end-to-end tests
-      const load = (lod: boolean) =>
-        new SplatMesh({
+      const load = (lod: boolean) => {
+        const mesh = new SplatMesh({
           url,
           fileType: SplatFileType.SPLAT,
           lod,
@@ -207,7 +212,11 @@ export const SplatView: React.FC<SplatViewProps> = ({ url, cameras, bounds, t, c
           extSplats: true,
           onProgress: (e: ProgressEvent) => alive && e.lengthComputable && setProgress(Math.round((100 * e.loaded) / e.total)),
         });
-      let splats = load(true);
+        const release = resources.own(() => { scene.remove(mesh); mesh.dispose(); });
+        return { mesh, release };
+      };
+      let loaded = load(true);
+      let splats = loaded.mesh;
       scene.add(splats);
       let lastT = Number.NaN;
       // Each drawn frame's GPU time (timer query), else the interval since the frame before when
@@ -230,8 +239,11 @@ export const SplatView: React.FC<SplatViewProps> = ({ url, cameras, bounds, t, c
               }
             })
           : null;
+      resources.own(() => stalls?.disconnect());
       stalls?.observe({ type: 'longtask' });
+      resources.own(() => renderer.setAnimationLoop(null));
       renderer.setAnimationLoop((now: number) => {
+        if (document.visibilityState !== 'visible') return;
         const read = clockRef.current;
         if (cameras && followRef.current && read) {
           const at = read();
@@ -281,27 +293,17 @@ export const SplatView: React.FC<SplatViewProps> = ({ url, cameras, bounds, t, c
         renderer.setSize(el.clientWidth, el.clientHeight);
         touch();
       });
+      resources.own(() => resize.disconnect());
       resize.observe(el);
-      dispose = () => {
-        renderer.setAnimationLoop(null);
-        timer?.dispose();
-        stalls?.disconnect();
-        resize.disconnect();
-        controls.dispose();
-        splats.dispose();
-        spark.dispose?.();
-        renderer.dispose();
-        renderer.domElement.remove();
-      };
       try {
         await splats.initialized;
       } catch (error) {
         // Without the splat tree: drawn whole, slower on a large scene, but drawn.
         console.warn('The splat tree could not be built; drawing every splat:', error);
-        scene.remove(splats);
-        splats.dispose();
+        loaded.release();
         if (!alive) return;
-        splats = load(false);
+        loaded = load(false);
+        splats = loaded.mesh;
         scene.add(splats);
         await splats.initialized;
       }
@@ -310,12 +312,14 @@ export const SplatView: React.FC<SplatViewProps> = ({ url, cameras, bounds, t, c
       if (alive) setState('ready');
     })().catch((error: unknown) => {
       console.warn('The splat scene did not load:', error);
+      resources.dispose();
+      live.current = null;
       if (alive) setState('failed');
     });
     return () => {
       alive = false;
       live.current = null;
-      dispose();
+      resources.dispose();
     };
   }, [url, cameras, bounds]);
 

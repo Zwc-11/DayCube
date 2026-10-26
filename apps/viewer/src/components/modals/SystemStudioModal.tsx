@@ -187,11 +187,11 @@ const PrivacySection: React.FC<SettingsProps> = ({
           </>
         ) : (
           <>
-            <h4 className="card__title">Capture is off</h4>
+            <h4 className="card__title">Capture status unavailable</h4>
             <p className="card__text" style={{ margin: 0 }}>
-              The Windows capture service isn't running, so nothing new is being recorded. It's opt-in; see{' '}
-              <code style={{ fontFamily: FONTS.mono, fontSize: 12 }}>services/capture-win/README.md</code> to set it
-              up.
+              This viewer cannot read the receiver's recording status. Check the DayCube extension to see
+              whether recording is on or paused. Setup instructions are in{' '}
+              <code style={{ fontFamily: FONTS.mono, fontSize: 12 }}>services/capture-win/README.md</code>.
             </p>
           </>
         )}
@@ -308,9 +308,9 @@ const PrivacySection: React.FC<SettingsProps> = ({
       <div className="card">
         <h4 className="card__title">What is kept</h4>
         <ul className="card__text" style={{ margin: 0, paddingLeft: 18 }}>
-          <li>Screens are reduced to 480 px thumbnails and their text; full frames are discarded.</li>
+          <li>Screen text, page and window metadata, and gaze fixations are kept while recording.</li>
           <li>Webcam frames are used for gaze and never stored.</li>
-          <li>Faces of people who haven't consented are blurred in moments.</li>
+          <li>Phone recordings keep their original media; automatic face blurring is unavailable.</li>
           <li>The local API only listens on 127.0.0.1 and sends no-store cache headers.</li>
         </ul>
       </div>
