@@ -26,6 +26,7 @@ if "%1"=="sync" exit /b %UV_SYNC_RC%
 if "%1"=="run" (echo {"ok": true}& exit /b %CANARY_RC%)
 exit /b 0
 """,
+    "npm.cmd": '@echo off\necho npm %*>> "%CALLS%"\nexit /b %NPM_RC%\n',
     "ping.cmd": '@echo off\necho ping %*>> "%CALLS%"\n',
     "timeout.cmd": '@echo off\necho timeout %*>> "%CALLS%"\n',
 }
@@ -41,7 +42,7 @@ def crlf(text: str) -> bytes:
 
 
 def run(
-    root: Path, *, speech: bool = True, pull: int = 0, diff: int = 1, sync: int = 0, canary: int = 0
+    root: Path, *, speech: bool = True, pull: int = 0, diff: int = 1, sync: int = 0, canary: int = 0, npm: int = 0
 ) -> tuple[list[str], str]:
     (root / "bin").mkdir(parents=True)
     (root / "update.cmd").write_bytes(crlf((ROOT / "update.cmd").read_text()))
@@ -52,7 +53,8 @@ def run(
         (root / "services" / "speech" / ".venv").mkdir(parents=True)
     win = lambda p: "Z:" + str(p).replace("/", "\\")  # noqa: E731
     env = {**os.environ, "WINEDEBUG": "-all", "WINEPATH": win(root / "bin"), "CALLS": win(root / "calls.log"),
-           "GIT_PULL_RC": str(pull), "GIT_DIFF_RC": str(diff), "UV_SYNC_RC": str(sync), "CANARY_RC": str(canary)}  # fmt: skip
+           "GIT_PULL_RC": str(pull), "GIT_DIFF_RC": str(diff), "UV_SYNC_RC": str(sync), "CANARY_RC": str(canary),
+           "NPM_RC": str(npm)}  # fmt: skip
     subprocess.run(["wine", "cmd", "/c", win(root / "update.cmd")], env=env, capture_output=True, timeout=300)
     calls = []
     for line in (root / "calls.log").read_text(errors="replace").splitlines():
@@ -64,7 +66,11 @@ def run(
     return calls, (root / "vault" / "logs" / "update.log").read_text(errors="replace")
 
 
-START = ["git rev-parse", "git pull", "git log", "sync capture-win", "sync gaze"]
+PULLED = ["git rev-parse", "git pull", "git log"]
+SYNCS = ["sync capture-win", "sync gaze"]
+# The stand-in git answers every diff alike: a changed lockfile with changed speech code, or neither.
+START = [*PULLED, "git diff", "npm install", *SYNCS]
+SAME = [*PULLED, "git diff", *SYNCS]
 END = ["capture restart", "ping -n", "capture doctor", "timeout /t"]
 
 
@@ -72,12 +78,13 @@ END = ["capture restart", "ping -n", "capture doctor", "timeout /t"]
     ("case", "options", "calls", "logged"),
     [
         ("speech changed", {}, [*START, "sync speech", "git diff", "speech check", *END], "speech check: ok"),
-        ("speech unchanged", {"diff": 0}, [*START, "sync speech", "git diff", *END], "doctor"),
+        ("nothing changed", {"diff": 0}, [*SAME, "sync speech", "git diff", *END], "doctor"),
         ("no speech worker", {"speech": False}, [*START, *END], "doctor"),
         ("speech check fails", {"canary": 1}, [*START, "sync speech", "git diff", "speech check", *END],
          "speech check: FAILED"),
         ("pull fails", {"pull": 1}, ["git rev-parse", "git pull", "timeout /t"], "git pull failed"),
-        ("sync fails", {"sync": 1}, [*START[:4], "timeout /t"], "sync of the receiver failed"),
+        ("sync fails", {"sync": 1}, [*START[:6], "timeout /t"], "sync of the receiver failed"),
+        ("npm install fails", {"npm": 1}, [*START[:5], "timeout /t"], "npm install failed"),
     ],
 )  # fmt: skip
 def test_update_cmd(tmp_path: Path, case: str, options: dict, calls: list[str], logged: str) -> None:

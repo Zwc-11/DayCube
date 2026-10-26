@@ -1,7 +1,9 @@
-import React, { Suspense, lazy, useEffect, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import { Footprints, Maximize2 } from 'lucide-react';
 import type { SceneMesh, SceneSplat, SplatCameras } from '@daycube/api-client';
 import { backendBridge } from '../../lib/backendBridge';
+import { PLAYBACK_TICK_MS, type PlayClock, type Walk, advancePlayhead, daySchedule } from '../../lib/walkRoute';
+import type { Layer } from '../../types/daycube';
 
 /**
  * A visit's own 3D world on the day's stage: the scan made there (a trained splat, else its
@@ -30,6 +32,15 @@ export function hoursOf(iso: string): number {
  * timeline's ``tod`` (hours): before it, its start; after it, its end. */
 export function captureSeconds(tod: number, startHours: number, duration: number): number {
   return Math.min(Math.max((tod - startHours) * 3600, 0), Math.max(duration, 0));
+}
+
+/** The playhead after ``seconds`` of playback while a scan is on the stage: over the scan's
+ * span (hours), the walk plays at its own speed times ``speed``; elsewhere at the day's pace, which
+ * stops at the scan's start rather than jumping over its seconds. */
+export function advanceOverScan(walks: Walk[], tod: number, seconds: number, speed: number, span: [number, number] | null): number {
+  if (span && tod >= span[0] && tod < span[1]) return Math.min(span[1], tod + (seconds * speed) / 3600);
+  const next = advancePlayhead(walks, tod, seconds, speed);
+  return span && tod < span[0] && next > span[0] ? span[0] : next;
 }
 
 /** The best 3D a scan has: the trained splat, else its mesh, else the LiDAR's points; null with none. */
@@ -66,15 +77,39 @@ interface ScanStageProps {
   momentId: string;
   /** The timeline's time, in hours. */
   tod: number;
+  /** Playback, so the camera moves every frame between the app's 10 Hz ticks (as the diorama's
+   * walker does). */
+  playing: boolean;
+  speed: number;
+  layers: Layer[];
   /** The scan has no 3D scene (no depth, nothing made yet): the stage shows the diorama. */
   onNoScene: (momentId: string) => void;
   /** Open the scan's own view: its video, the walk on the map, the other scenes. */
   onOpen: (momentId: string) => void;
+  /** The scan's span in hours once known, for the app's playback (``advanceOverScan``). */
+  onSpan?: (span: [number, number] | null) => void;
 }
 
-export const ScanStage: React.FC<ScanStageProps> = ({ date, momentId, tod, onNoScene, onOpen }) => {
+export const ScanStage: React.FC<ScanStageProps> = ({ date, momentId, tod, playing, speed, layers, onNoScene, onOpen, onSpan }) => {
   const [loaded, setLoaded] = useState<Loaded | null | 'loading'>('loading');
   const [following, setFollowing] = useState(true);
+  const play = useRef<PlayClock>({ tod, at: performance.now(), playing, speed, walks: [] }).current;
+  if (play.tod !== tod) {
+    play.tod = tod;
+    play.at = performance.now();
+  }
+  play.playing = playing;
+  play.speed = speed;
+  play.walks = daySchedule(layers);
+  const span = useRef({ start: 0, duration: 0 });
+  if (loaded && loaded !== 'loading') span.current = { start: loaded.start, duration: loaded.duration };
+  const readTime = useCallback(() => {
+    const { start, duration } = span.current;
+    // Between the app's ticks, carried on as the app will carry it.
+    const elapsed = play.playing ? Math.min(PLAYBACK_TICK_MS, Math.max(0, performance.now() - play.at)) / 1000 : 0;
+    const now = elapsed ? advanceOverScan(play.walks, play.tod, elapsed, play.speed, [start, start + duration / 3600]) : play.tod;
+    return captureSeconds(now, start, duration);
+  }, [play]);
 
   useEffect(() => {
     let live = true;
@@ -90,7 +125,9 @@ export const ScanStage: React.FC<ScanStageProps> = ({ date, momentId, tod, onNoS
           onNoScene(momentId);
           return;
         }
-        setLoaded({ scene, cameras: m.splatCameras, start: hoursOf(m.meta.t0), duration: m.meta.duration_s });
+        const start = hoursOf(m.meta.t0);
+        setLoaded({ scene, cameras: m.splatCameras, start, duration: m.meta.duration_s });
+        onSpan?.([start, start + m.meta.duration_s / 3600]);
       },
       () => {
         if (!live) return;
@@ -100,8 +137,9 @@ export const ScanStage: React.FC<ScanStageProps> = ({ date, momentId, tod, onNoS
     );
     return () => {
       live = false;
+      onSpan?.(null);
     };
-  }, [date, momentId, onNoScene]);
+  }, [date, momentId, onNoScene, onSpan]);
 
   if (loaded === null) return null;
   if (loaded === 'loading') {
@@ -123,6 +161,7 @@ export const ScanStage: React.FC<ScanStageProps> = ({ date, momentId, tod, onNoS
           cameras={loaded.cameras}
           bounds={loaded.scene.bounds}
           t={t}
+          clock={readTime}
           following={following}
           onLookAround={() => setFollowing(false)}
           label={`The scan made here in 3D: ${loaded.scene.label}`}

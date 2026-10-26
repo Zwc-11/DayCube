@@ -354,14 +354,22 @@ show it working there.
 Double-click `update.cmd` in the repository folder after an update is pushed. It:
 
 1. pulls it (`git pull --ff-only`), and stops there if that fails
-2. syncs the receiver's, the eye tracker's and, once installed, the speech worker's environments
-3. runs the speech check on the GPU (`python -m speech canary`) when `services/speech` changed
-4. restarts the receiver and eye tracker on the new code, and waits 45 s for them
-5. runs `doctor`, and shows its rows in the window for a minute
+2. runs `npm install` when the viewer's packages changed (`package-lock.json`); a running
+   `viewer.cmd` then needs closing and opening again
+3. syncs the receiver's, the eye tracker's and, once installed, the speech worker's environments
+4. runs the speech check on the GPU (`python -m speech canary`) when `services/speech` changed
+5. restarts the receiver and eye tracker on the new code, and waits 45 s for them
+6. runs `doctor`, and shows its rows in the window for a minute
 
-Everything goes to `vault\logs\update.log`. `services/ingest/tests/test_update_cmd.py` runs it in
+Two more double-clicks sit beside it:
+
+- `viewer.cmd` starts the vault's API and the viewer (`npm run demo`), at http://127.0.0.1:3000,
+  logging to `vault\logs\viewer.log`. Closing its window stops them.
+- `check-3d.cmd` measures a scan's 3D view on the PC's GPU (docs/splat.md, "Measuring on the GPU").
+
+Everything `update.cmd` does goes to `vault\logs\update.log`. `services/ingest/tests/test_update_cmd.py` runs it in
 Wine's `cmd` with git, uv and the receiver stood in for: each step in each case (speech changed or
-not, no speech worker, a failed pull, sync or check), and that it gets to the end.
+not, no speech worker, a failed pull, install, sync or check), and that it gets to the end.
 
 After `git pull`, `python -m capture restart` stops the running receiver and eye tracker and
 starts them on the new code (`install-autostart` does it too when the running receiver is older;

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type { SplatCameras } from '@daycube/api-client';
-import { poseAt } from './SplatView';
+import { DRAW_TAIL_MS, poseAt } from './SplatView';
 
 /**
  * A scan's surfaces as a mesh (the LiDAR's depth fused at ARKit's poses, coloured from the video):
@@ -14,6 +14,8 @@ interface MeshViewProps {
   cameras: SplatCameras | null;
   bounds: { min: [number, number, number]; max: [number, number, number] } | null;
   t: number;
+  /** The capture's time now, in seconds, read every frame while following (see SplatView). */
+  clock?: () => number;
   following: boolean;
   onLookAround: () => void;
   label: string;
@@ -22,14 +24,27 @@ interface MeshViewProps {
 type Live = {
   camera: import('three').PerspectiveCamera;
   controls: { target: import('three').Vector3; update: () => void; enabled: boolean };
+  touch: (ms?: number) => void;
+  frames: number;
 };
 
-export const MeshView: React.FC<MeshViewProps> = ({ url, cameras, bounds, t, following, onLookAround, label }) => {
+function follow(v: Live, cameras: SplatCameras, t: number): void {
+  const pose = poseAt(cameras, t);
+  const [x, y, z] = pose.position;
+  v.camera.position.set(x, y, z);
+  v.controls.target.set(x + pose.forward[0] * 3, y + pose.forward[1] * 3, z + pose.forward[2] * 3);
+  v.controls.update();
+  v.touch();
+}
+
+export const MeshView: React.FC<MeshViewProps> = ({ url, cameras, bounds, t, clock, following, onLookAround, label }) => {
   const root = useRef<HTMLDivElement>(null);
   const live = useRef<Live | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'failed'>('loading');
   const followRef = useRef(following);
   followRef.current = following;
+  const clockRef = useRef(clock);
+  clockRef.current = clock;
 
   useEffect(() => {
     let alive = true;
@@ -58,7 +73,13 @@ export const MeshView: React.FC<MeshViewProps> = ({ url, cameras, bounds, t, fol
       camera.position.set(from[0], from[1], from[2]);
       controls.target.set(at[0], at[1], at[2]);
       controls.update();
-      live.current = { camera, controls };
+      let drawUntil = 0;
+      const touch = (ms = DRAW_TAIL_MS) => {
+        drawUntil = Math.max(drawUntil, performance.now() + ms);
+      };
+      controls.addEventListener('change', () => touch());
+      const v: Live = { camera, controls, touch, frames: 0 };
+      live.current = v;
       if (import.meta.env.DEV) (window as unknown as { __mesh?: unknown }).__mesh = live.current; // for the end-to-end tests
       const gltf = await new GLTFLoader().loadAsync(url);
       if (!alive) return;
@@ -72,15 +93,28 @@ export const MeshView: React.FC<MeshViewProps> = ({ url, cameras, bounds, t, fol
       });
       scene.add(gltf.scene);
       let frame = 0;
-      const draw = () => {
+      let lastT = Number.NaN;
+      const draw = (now: number) => {
         frame = requestAnimationFrame(draw);
+        const read = clockRef.current;
+        if (cameras && followRef.current && read) {
+          const at = read();
+          if (at !== lastT) {
+            lastT = at;
+            follow(v, cameras, at);
+          }
+        } else lastT = Number.NaN;
+        if (now > drawUntil) return;
         renderer.render(scene, camera);
+        v.frames++;
       };
-      draw();
+      touch(1000);
+      frame = requestAnimationFrame(draw);
       const resize = new ResizeObserver(() => {
         camera.aspect = el.clientWidth / Math.max(1, el.clientHeight);
         camera.updateProjectionMatrix();
         renderer.setSize(el.clientWidth, el.clientHeight);
+        touch();
       });
       resize.observe(el);
       dispose = () => {
@@ -108,13 +142,9 @@ export const MeshView: React.FC<MeshViewProps> = ({ url, cameras, bounds, t, fol
 
   useEffect(() => {
     const v = live.current;
-    if (!v || !cameras || !following || state !== 'ready') return;
-    const pose = poseAt(cameras, t);
-    const [x, y, z] = pose.position;
-    v.camera.position.set(x, y, z);
-    v.controls.target.set(x + pose.forward[0] * 3, y + pose.forward[1] * 3, z + pose.forward[2] * 3);
-    v.controls.update();
-  }, [t, following, cameras, state]);
+    if (!v || !cameras || !following || state !== 'ready' || clock) return;
+    follow(v, cameras, t);
+  }, [t, following, cameras, state, clock]);
 
   return (
     <div className="splat" aria-label={label} role="img">

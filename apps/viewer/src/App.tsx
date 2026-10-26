@@ -7,13 +7,13 @@ import {
   type SceneCameraApi,
 } from './components/diorama/DioramaCanvas3D';
 import { DioramaCanvas2D } from './components/diorama/DioramaCanvas2D';
-import { ScanStage } from './components/diorama/ScanStage';
+import { ScanStage, advanceOverScan } from './components/diorama/ScanStage';
 import { EvidenceCardPanel } from './components/panels/EvidenceCardPanel';
 import type { SettingsSection } from './components/modals/SystemStudioModal';
 import { type ApiCallLog, backendBridge } from './lib/backendBridge';
 import { usePageVisible } from './lib/usePageVisible';
 import { makeLayerLookup } from './lib/timeIndex';
-import { PLAYBACK_TICK_MS, advancePlayhead, daySchedule } from './lib/walkRoute';
+import { PLAYBACK_TICK_MS, daySchedule } from './lib/walkRoute';
 import { type DaySummary, type LoadedDay, SAMPLE_DATE, refreshDay } from './lib/days';
 import { TopBar, type ViewMode } from './components/shell/TopBar';
 import { Itinerary } from './components/shell/Itinerary';
@@ -121,6 +121,12 @@ export const App: React.FC<AppProps> = ({ date, day, days, onOpenDate, onOpenNot
   // have no 3D scene fall back to the diorama.
   const [sceneChoice, setSceneChoice] = useState<'scan' | 'diorama'>('scan');
   const [noScene, setNoScene] = useState<ReadonlySet<string>>(() => new Set());
+  // The span of the scan on the stage (hours), while one is shown: playback runs at the walk's own
+  // speed over it (components/diorama/ScanStage.tsx).
+  const scanSpanRef = useRef<[number, number] | null>(null);
+  const setScanSpan = useCallback((span: [number, number] | null) => {
+    scanSpanRef.current = span;
+  }, []);
   const [askOpen, setAskOpen] = useState(false);
   const [activeMomentId, setActiveMomentId] = useState<string | null>(null);
   const [activeScreenShotId, setActiveScreenShotId] = useState<string | null>(null);
@@ -244,7 +250,7 @@ export const App: React.FC<AppProps> = ({ date, day, days, onOpenDate, onOpenNot
     if (!playing || suspended) return;
     const interval = window.setInterval(() => {
       setTod((prev) => {
-        const next = advancePlayhead(walks, prev, PLAYBACK_TICK_MS / 1000, playSpeed);
+        const next = advanceOverScan(walks, prev, PLAYBACK_TICK_MS / 1000, playSpeed, scanSpanRef.current);
         return next > dayEnd ? dayStart : next;
       });
     }, PLAYBACK_TICK_MS);
@@ -415,7 +421,8 @@ export const App: React.FC<AppProps> = ({ date, day, days, onOpenDate, onOpenNot
             activeMomentId ? (
               <div className="scan-stage" aria-hidden />
             ) : (
-              <ScanStage date={date} momentId={scanId} tod={tod} onNoScene={markNoScene} onOpen={setActiveMomentId} />
+              <ScanStage date={date} momentId={scanId} tod={tod} playing={playing && !suspended} speed={playSpeed} layers={layers}
+                         onNoScene={markNoScene} onOpen={setActiveMomentId} onSpan={setScanSpan} />
             )
           ) : engineMode === 'three' ? (
             <DioramaCanvas3D
