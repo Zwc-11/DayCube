@@ -163,6 +163,13 @@ Final local validation on the integrated branch:
   Vite reports large Three.js/Spark chunks (964 kB/2.49 MB uncompressed). They remain lazy scene
   dependencies; this pass does not claim faster 3D startup or hardware-GPU performance.
 
+The first published Windows check exposed a missing prerequisite marker on the phone API's
+synthetic scan-upload integration test: its shared video fixture invokes FFmpeg, while that runner
+does not install it. Only that media test now requires both FFmpeg and ffprobe, consistently with
+the existing optional-media tests. Pairing, upload integrity/resume and heartbeat tests still run
+without those tools. The scan test passes locally with the tools and skips explicitly without them;
+Linux CI installs the tools and retains the integration coverage.
+
 Repeat separately from correctness gates:
 
 ```powershell

@@ -4,6 +4,7 @@ out as a scan moment with no command."""
 
 import hashlib
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -111,6 +112,7 @@ def test_an_upload_resumes_checks_its_offset_and_hash_and_is_acknowledged_again(
     assert client.post("/phone/uploads", json=bad, headers=headers).json()["offset"] == 0
 
 
+@pytest.mark.skipif(not shutil.which("ffmpeg") or not shutil.which("ffprobe"), reason="needs FFmpeg and ffprobe")
 def test_a_scan_uploaded_file_by_file_becomes_a_scan_moment_with_no_command(
     client: TestClient, vault: Vault, tmp_path: Path
 ) -> None:
