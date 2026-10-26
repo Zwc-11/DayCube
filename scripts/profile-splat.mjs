@@ -212,11 +212,17 @@ try {
 
   const { profile } = await cdp.send('Profiler.stop');
 
-  // At rest: frames drawn in the second after a second and a half of stillness.
-  await page.waitForTimeout(1500);
-  const before = await page.evaluate(() => window.__splat.frames);
-  await page.waitForTimeout(1000);
-  const restFrames = (await page.evaluate(() => window.__splat.frames)) - before;
+  // At rest: frames drawn in the second after 1.5 s of stillness, and in the second after 3 s.
+  // Spark keeps sorting and refining for a moment after the camera stops (35 frames in the first
+  // second on the RTX 5070, 2026-10-26); the end-to-end tests also wait about 3 s.
+  const framesIn = async (afterMs) => {
+    await page.waitForTimeout(afterMs);
+    const before = await page.evaluate(() => window.__splat.frames);
+    await page.waitForTimeout(1000);
+    return (await page.evaluate(() => window.__splat.frames)) - before;
+  };
+  const settlingFrames = await framesIn(1500);
+  const restFrames = await framesIn(500);
 
   const gpuName = drawn.gpu?.name ?? null;
   // Following's frame cost: GPU time where there is a timer; else the interval between frames
@@ -228,6 +234,7 @@ try {
     gpu: gpuName, gpu_kind: drawn.gpu?.kind ?? null, frame_ms_from: drawn.timed ? 'GPU timer query' : 'interval between drawn frames',
     caption, load_s: fixed(loadSeconds, 1), budget_when_ready: drawn.budget,
     following, orbiting: orbit,
+    settling_frames_per_s: settlingFrames,
     rest_frames_per_s: restFrames,
     main_thread_self_ms: hotFunctions(profile),
     checks: {
