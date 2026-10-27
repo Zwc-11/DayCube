@@ -6,12 +6,14 @@ import { type DaySummary, type LoadedDay, cachedDay, isIsoDate, listDays, loadDa
 // The graph of notes is the home page; three.js and a day's scene load when a day opens in 3D.
 const App = lazy(() => import('./App'));
 const KnowledgePage = lazy(() => import('./components/knowledge/KnowledgePage'));
+const MemoriesPage = lazy(() => import('./components/memories/MemoriesPage'));
 
 type DayView = 'notes' | '3d';
 
 type Route =
   | { page: 'graph'; note: string | null; date: string | null }
   | { page: 'days' }
+  | { page: 'memories'; memory: string | null }
   | { page: 'day'; date: string };
 
 const Loading: React.FC = () => (
@@ -29,12 +31,17 @@ const readRoute = (): Route => {
   const view = q.get('view');
   const note = q.get('note');
   if (view === 'days') return { page: 'days' };
+  if (view === 'memories') {
+    const memory = q.get('memory');
+    return { page: 'memories', memory: memory && /^\d{4}-\d{2}-\d{2}\/mem_[0-9a-f]{12}$/.test(memory) ? memory : null };
+  }
   if (isIsoDate(date) && view !== 'notes') return { page: 'day', date };
   return { page: 'graph', note: note && /\.md$/i.test(note) ? note : null, date: isIsoDate(date) ? date : null };
 };
 
 const urlOf = (route: Route): string => {
   if (route.page === 'days') return '?view=days';
+  if (route.page === 'memories') return route.memory ? `?view=memories&memory=${route.memory}` : '?view=memories';
   if (route.page === 'day') return `?date=${route.date}`;
   if (route.note) return `?note=${encodeURIComponent(route.note)}`;
   if (route.date) return `?date=${route.date}&view=notes`;
@@ -115,7 +122,16 @@ export const Root: React.FC = () => {
   }, [date, openDate]);
 
   if (route.page === 'days') {
-    return <DayCalendar days={days} today={localToday()} onOpen={openFromCalendar} onHome={() => openDate(null)} onDayPage={openDayPage} />;
+    return <DayCalendar days={days} today={localToday()} onOpen={openFromCalendar} onHome={() => openDate(null)} onDayPage={openDayPage}
+                        onMemories={() => go({ page: 'memories', memory: null })} />;
+  }
+  if (route.page === 'memories') {
+    return (
+      <Suspense fallback={<Loading />}>
+        <MemoriesPage open={route.memory} onOpen={(memory) => go({ page: 'memories', memory })} onHome={openDayPage}
+                      onGraph={() => openDate(null)} />
+      </Suspense>
+    );
   }
   if (route.page === 'graph') {
     return (

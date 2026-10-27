@@ -3796,3 +3796,101 @@ button.np-link:hover {
   box-shadow: var(--shadow-pop);
   object-fit: contain;
 }
+
+/* Memories: photos you can step into (components/memories). */
+.memories__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  padding: 16px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+.memories__item {
+  position: relative;
+  padding: 0;
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+  border-radius: 10px;
+  overflow: hidden;
+  background: #0b0c0e;
+  cursor: pointer;
+  aspect-ratio: 4 / 3;
+}
+.memories__item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.4s ease;
+}
+.memories__item:hover img,
+.memories__item:focus-visible img {
+  transform: scale(1.04);
+}
+.memories__date {
+  position: absolute;
+  left: 8px;
+  bottom: 6px;
+  font-size: 12px;
+  color: var(--fg);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+.memory {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: #0b0c0e;
+  touch-action: none;
+  cursor: grab;
+}
+.memory:active {
+  cursor: grabbing;
+}
+.memory__canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.memory__photo {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+  transition: opacity 1.2s ease, transform 1.6s ease;
+  z-index: 1;
+}
+.memory__photo--gone {
+  opacity: 0;
+  transform: scale(1.06);
+}
+.memory__close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 0;
+  background: rgba(0, 0, 0, 0.45);
+  color: var(--fg);
+  cursor: pointer;
+}
+.memory__status {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  z-index: 2;
+  font-size: 12px;
+  color: var(--fg-2);
+}
+.memory__status--failed {
+  color: #e79482;
+}
