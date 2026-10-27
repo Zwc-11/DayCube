@@ -89,10 +89,16 @@ def test_the_lidar_lift_renders_the_walk_ahead_and_a_wrong_scale_is_measured(sca
         assert lidar["ahead"][d]["psnr"] > lidar["ahead"][d]["psnr_flat"] + 4
     assert lidar["ahead"]["1"]["psnr"] > 22
     assert flat["ahead"]["1"]["coverage"] == 1.0
+    # Drawn from its own pose, a lifted photo is the photo (the sky, with no depth, uncovered).
+    assert lidar["ahead"]["0"]["psnr"] > 40 and lidar["ahead"]["0"]["coverage"] > 0.85
     # 30% too deep: measured against the LiDAR, and the render is worse for it.
     assert scaled["depth_vs_lidar"]["scale"] == pytest.approx(1.3, abs=0.03)
     assert scaled["depth_vs_lidar"]["delta_1_25"] < 0.2
     assert scaled["ahead"]["1"]["psnr"] < lidar["ahead"]["1"]["psnr"] - 2
+    # Its shape is right: scaled to the LiDAR's depth, it renders as the LiDAR does.
+    assert scaled["depth_vs_lidar"]["abs_rel_scaled"] < 0.02
+    rescaled = report["lift"]["depth-pro+lidar-scale"]
+    assert rescaled["ahead"]["1"]["psnr"] > lidar["ahead"]["1"]["psnr"] - 1
     assert list((tmp_path / "work" / "lift").glob("*_lidar_1m.jpg"))
 
 
@@ -106,8 +112,11 @@ def test_a_photo_is_located_in_the_scan_where_the_camera_stood(scan: Path, tmp_p
     assert located["placed"] == located["photos"] == 4
     assert located["median_position_m"] < 0.1 and located["median_rotation_deg"] < 1.0
     assert located["within"]["0.25m_2deg"] == 1.0
+    assert set(located["variants"]) == set(single.VARIANTS)
+    assert all(v["within_0.25m_2deg"] == 1.0 for v in located["variants"].values())
     for row in located["per_photo"]:
         assert row["candidates"] > 0 and row["inliers"] >= 30 and row["prior_error_m"] < 2
+        assert row["reliable"] > 0  # the walls are within the LiDAR's range
         # The scan drawn from the pose found is as good as from the true pose.
         assert row["psnr_scan"] > row["psnr_scan_at_truth"] - 1.5
     assert len(list((tmp_path / "work" / "locate").glob("*.jpg"))) == 4

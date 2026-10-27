@@ -232,13 +232,16 @@ walk, each the sharpest frame within 0.15 s of its place, at least 6 m from eith
 - SHARP's Gaussians are drawn as opaque discs one sigma across each way, and only those at least
   30% opaque. That approximates its own blending; `gsplat` would need building on Windows.
 - **Scoring:** each is rendered where the phone really was 0.25, 0.5, 1, 2 and 4 m further along
-  the walk, and compared with the frame the phone took there. Three numbers:
+  the walk, and compared with the frame the phone took there. At 0 m (its own pose) a lift must
+  give back the photo: a check of the renderer and the conventions. Three numbers:
   - PSNR on the pixels the photo covers;
   - the flat photo's PSNR on the same pixels;
   - the share it covers. Pixels with no depth, such as the sky, count as uncovered.
-- **Depth against the LiDAR:** the models' depth is compared with the LiDAR's within 5.5 m, at
-  medium or high confidence. Reported: median relative error, median scale, and the share within
-  25%.
+- **Depth against the LiDAR:** the models' depth (and SHARP's Gaussians') is compared with the
+  LiDAR's within 5.5 m, at medium or high confidence. Reported: median relative error, the same
+  with the scale fixed (shape alone), median scale, and the share within 25%.
+- **`+lidar-scale`:** each model again with its depth scaled to the LiDAR's for that photo. That
+  is its shape alone; glasses could take the scale from GPS or from a scan of the place.
 
 **B. Into the scan: where the photo was taken.**
 
@@ -252,7 +255,9 @@ walk, each the sharpest frame within 0.15 s of its place, at least 6 m from eith
      LightGlue).
 - **The pose:**
   - the scan's depth makes the matches 3D;
-  - PnP (COLMAP's LO-RANSAC, then refined) gives the photo's pose;
+  - PnP (COLMAP's LO-RANSAC, then refined) gives the photo's pose, three ways: all points with
+    COLMAP's 12 px threshold, all points with 4 px (the one reported first), and only points
+    from the LiDAR's reliable depth with 4 px;
   - the pose is scored against ARKit: metres, degrees, and the share within 0.25 m and 2°,
     0.5 m and 5°, 1 m and 10°.
 - **What the scan shows from there:** the nearest three scan frames' depth is drawn at the pose
@@ -265,10 +270,12 @@ walk, each the sharpest frame within 0.15 s of its place, at least 6 m from eith
 
 **On the synthetic walk** (`tests/test_single.py`, true depth as the LiDAR):
 
-- **LiDAR lift:** 24.4–25.1 dB on 74–91% of the frame from 0.25 to 4 m ahead, against 12.4–15.1 dB
-  for the flat photo on the same pixels.
-- **A depth model 30% too deep:** measured as scale 1.30, with none of its pixels within 25%. It
-  renders 16.7 dB at 1 m.
+- **LiDAR lift:** 24.7–25.1 dB on 74–91% of the frame from 0.25 to 4 m ahead, against 12.4–15.1 dB
+  for the flat photo on the same pixels. At its own pose it gives back the photo exactly.
+- **A depth model 30% too deep:** measured as scale 1.30 (shape error 0.1%), with none of its
+  pixels within 25%. It renders 16.7 dB at 1 m, and 24.1 dB with its scale fixed.
+- **The self-check found a renderer bug.** A 1 px footprint rounded up to a 3×3 square, which
+  blurred every render: 28.9 dB at the photo's own pose, now exact.
 - **Locating:** all photos within 0.25 m and 2°; median 4 mm and 0.02°. The GPS fit found the
   3 s clock offset.
 
