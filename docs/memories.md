@@ -34,13 +34,40 @@ Drop photos into `vault\inbox\memories` and double-click `make-memories.cmd`.
   timing;
 - `original.<ext>`, for a photo from the inbox.
 
+A memory made from a scan's frame also records its `world`:
+
+- the scan moment;
+- the photo's camera pose in the scan's world (4 × 4, OpenGL axes, the frame of the scan's splat
+  and `cameras.json`);
+- `scale`, the scan's metres per SHARP metre. This is the median of the LiDAR's depth over the
+  nearest Gaussian's, at reliable LiDAR pixels. On the trail SHARP's depth was about half the
+  LiDAR's.
+
 The API lists them at `GET /memories` and serves `photo.jpg` and `memory.splat` at
 `GET /memories/{date}/{id}/{file}`.
 
 ## Seeing them
 
 Open `http://127.0.0.1:3000/?view=memories`, or **Memories** on the calendar page.
-`components/memories/MemoryView.tsx` renders the scene with Spark:
+`components/memories/MemoryView.tsx` renders the scene with Spark, one of two ways.
+
+**In its place's world** (a photo from a scan):
+
+- The scan's splat is the world around you: the trained splat, else the LiDAR's points.
+- The memory stands where the photo was taken, at the LiDAR's scale.
+- You start where the photo was taken, with its roll kept, so the view lines up with the photo.
+
+| Input | What it does |
+| --- | --- |
+| Drag | looks all the way round, ±80° up and down |
+| WASD or arrows | walk at 1.4 m/s (Shift ×3); Q and E move down and up |
+| Wheel | 0.35 m forward or back a notch |
+| Walking away | the photo's own scene fades out between 1.2 and 3 m from where it was taken, and the scan alone carries on |
+| Clicking another photo of the scan | goes to it; each floats 0.9 m ahead of where it was taken, facing back |
+| Double-click | returns to where the photo was taken |
+
+**On its own** (any other photo): the space around it is a gradient of the photo's own top and
+bottom colours, dimmed.
 
 | Input | What it does |
 | --- | --- |
@@ -75,3 +102,10 @@ metric scale was off by 3× there, so the scale has to come from elsewhere.
   - it reaches ready and draws a picture of many colours;
   - the mouse moves the view within its bound, and the step in stays within its bound;
   - Escape closes it.
+  - In a world (a room of splats as the scan):
+    - it starts where the photo was taken, with the other photo as a marker;
+    - walking 3.2 m fades the memory out;
+    - dragging turns past 2 radians;
+    - double-click returns, the memory sharp again.
+- `test_memory.py` also covers the LiDAR scale (a wall SHARP put at 2 m and the LiDAR at 4 m
+  gives 2), and the listing's world. A moment name that would leave its day is ignored.

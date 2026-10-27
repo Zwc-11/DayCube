@@ -48,7 +48,7 @@ export const MemoriesPage: React.FC<MemoriesPageProps> = ({ open, onOpen, onHome
       </main>
       {shown && (
         <Suspense fallback={null}>
-          <MemoryView memory={shown} onClose={() => onOpen(null)} />
+          <MemoryView memory={shown} others={memories ?? []} onClose={() => onOpen(null)} onSwitch={(m) => onOpen(memoryKey(m))} />
         </Suspense>
       )}
     </div>

@@ -8,6 +8,38 @@ import path from 'node:path';
 const DATE = '2026-10-21';
 const ID = 'mem_0123456789ab';
 const folder = path.resolve(`.daycube-e2e-vault/${DATE}/memories/${ID}`);
+// Two photos from a scan, standing in its world: a room of splats, as a scan's splat would be.
+const WORLD_MOMENT = 'mo_scan_e2e_world';
+const worldMoment = path.resolve(`.daycube-e2e-vault/${DATE}/moments/${WORLD_MOMENT}`);
+const IN_WORLD = ['mem_aaaaaaaaaaaa', 'mem_bbbbbbbbbbbb'];
+
+function records(list: number[][]): Buffer {
+  const out = Buffer.alloc(list.length * 32);
+  list.forEach(([x, y, z, s, r, g, b], n) => {
+    const o = n * 32;
+    [x, y, z, s, s, s].forEach((v, k) => out.writeFloatLE(v, o + 4 * k));
+    [r, g, b, 240].forEach((v, k) => out.writeUInt8(Math.round(v), o + 24 + k));
+    [255, 128, 128, 128].forEach((v, k) => out.writeUInt8(v, o + 28 + k));
+  });
+  return out;
+}
+
+/** A 8 m room: floor and four walls, each its own colour ramp. */
+function room(): Buffer {
+  const list: number[][] = [];
+  for (let i = 0; i <= 80; i += 1) {
+    for (let j = 0; j <= 80; j += 1) {
+      const a = i / 80 * 8 - 4;
+      const b = j / 80 * 4;
+      list.push([a, 0, j / 80 * 8 - 4, 0.06, 90 + i, 120, 80 + j]); // floor
+      list.push([a, b, -4, 0.06, 200, 60 + i * 2, 60]); // far wall
+      list.push([a, b, 4, 0.06, 60, 60 + i * 2, 200]); // wall behind
+      list.push([-4, b, a, 0.06, 60 + i * 2, 200, 120]); // left
+      list.push([4, b, a, 0.06, 220, 120, 60 + i * 2]); // right
+    }
+  }
+  return records(list);
+}
 
 function splats(): Buffer {
   const records: number[][] = [];
@@ -30,7 +62,29 @@ function splats(): Buffer {
   return out;
 }
 
+function writeMemory(id: string, world: object | null): void {
+  const at = path.resolve(`.daycube-e2e-vault/${DATE}/memories/${id}`);
+  rmSync(at, { recursive: true, force: true });
+  mkdirSync(at, { recursive: true });
+  writeFileSync(path.join(at, 'memory.splat'), splats());
+  const made = spawnSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=size=640x480', '-frames:v', '1', path.join(at, 'photo.jpg')]);
+  expect(made.status).toBe(0);
+  writeFileSync(path.join(at, 'memory.json'), JSON.stringify({
+    photo: 'photo.jpg', splat: 'memory.splat', width: 640, height: 480, fx: 500, fov_y_deg: 51.3, splats: 5200,
+    depth_m: { median: 3, p10: 1.7, p90: 3 }, model: 'sharp', made: `2026-10-26T23:0${id.slice(-1) === 'a' ? 1 : 2}:00-04:00`,
+    ...(world ? { world } : {}),
+  }));
+}
+
 test.beforeAll(() => {
+  rmSync(worldMoment, { recursive: true, force: true });
+  mkdirSync(path.join(worldMoment, 'splat'), { recursive: true });
+  writeFileSync(path.join(worldMoment, 'splat', 'world.splat'), room());
+  writeFileSync(path.join(worldMoment, 'scene.json'), JSON.stringify({ splat: { status: 'lidar', lidar: 'splat/world.splat', bounds: null } }));
+  // Standing in the room 1.5 m up, looking down -z; the second 2 m further on.
+  const pose = (z: number) => [[1, 0, 0, 0], [0, 1, 0, 1.5], [0, 0, 1, z], [0, 0, 0, 1]];
+  writeMemory(IN_WORLD[0], { moment: WORLD_MOMENT, pose: pose(1), scale: 1, scale_from: 'lidar' });
+  writeMemory(IN_WORLD[1], { moment: WORLD_MOMENT, pose: pose(-1), scale: 1, scale_from: 'lidar' });
   rmSync(folder, { recursive: true, force: true });
   mkdirSync(folder, { recursive: true });
   writeFileSync(path.join(folder, 'memory.splat'), splats());
@@ -42,20 +96,24 @@ test.beforeAll(() => {
   }));
 });
 
-test.afterAll(() => rmSync(folder, { recursive: true, force: true }));
+test.afterAll(() => {
+  rmSync(folder, { recursive: true, force: true });
+  rmSync(worldMoment, { recursive: true, force: true });
+  for (const id of IN_WORLD) rmSync(path.resolve(`.daycube-e2e-vault/${DATE}/memories/${id}`), { recursive: true, force: true });
+});
 
 test('a memory opens as its photo, fades into 3D and follows the mouse', async ({ page }) => {
   await page.goto('/?view=memories');
   const item = page.getByTestId('memory-item');
-  await expect(item).toHaveCount(1);
-  await item.click();
+  await expect(item).toHaveCount(3);
+  await page.goto(`/?view=memories&memory=${DATE}/${ID}`);
   await expect(page).toHaveURL(new RegExp(`view=memories&memory=${DATE}/${ID}`));
   const view = page.getByTestId('memory-view');
   await expect(view).toHaveAttribute('data-state', 'ready', { timeout: 60_000 });
   await expect.poll(() => page.evaluate(() => (window as any).__memory?.frames ?? 0), { timeout: 30_000 }).toBeGreaterThan(3);
   expect(await page.evaluate(() => (window as any).__memory.splats)).toBe(5200);
   // Something is drawn: the canvas is not one colour.
-  const colours = await page.evaluate(() => {
+  const colours = () => page.evaluate(() => {
     const canvas = document.querySelector('.memory__canvas') as HTMLCanvasElement;
     const copy = document.createElement('canvas');
     copy.width = 64;
@@ -67,7 +125,7 @@ test('a memory opens as its photo, fades into 3D and follows the mouse', async (
     for (let k = 0; k < data.length; k += 4) seen.add(`${data[k] >> 4},${data[k + 1] >> 4},${data[k + 2] >> 4}`);
     return seen.size;
   });
-  expect(colours).toBeGreaterThan(20);
+  await expect.poll(colours, { timeout: 30_000 }).toBeGreaterThan(20);
   // The mouse to the right: the view moves right, within its bound (12% of 3 m).
   const box = (await view.boundingBox())!;
   await page.mouse.move(box.x + box.width * 0.95, box.y + box.height / 2);
@@ -80,4 +138,34 @@ test('a memory opens as its photo, fades into 3D and follows the mouse', async (
   await page.keyboard.press('Escape');
   await expect(page).toHaveURL(/view=memories$/);
   await expect(view).toHaveCount(0);
+});
+
+test('a photo from a scan stands in its world: look round, walk away, and the others are there', async ({ page }) => {
+  test.setTimeout(180_000); // software rendering here draws about a frame a second
+  await page.goto(`/?view=memories&memory=${DATE}/${IN_WORLD[0]}`);
+  const view = page.getByTestId('memory-view');
+  await expect(view).toHaveAttribute('data-state', 'ready', { timeout: 90_000 });
+  const live = () => page.evaluate(() => (window as any).__memory);
+  await expect.poll(async () => (await live())?.frames ?? 0, { timeout: 30_000 }).toBeGreaterThan(3);
+  const first = await live();
+  expect(first.mode).toBe('world');
+  expect(first.world).toBe(81 * 81 * 5);
+  expect(first.markers).toBe(1); // the other photo of the scan
+  expect(first.pose.y).toBeCloseTo(1.5, 1); // where the photo was taken
+  expect(first.memoryOpacity).toBeCloseTo(1, 2);
+  // Walk ahead more than 3 m: the photo's own scene fades, the world stays.
+  await page.keyboard.down('w');
+  await expect.poll(async () => (await live()).pose.z, { timeout: 60_000 }).toBeLessThan(1 - 3.2);
+  await page.keyboard.up('w');
+  await expect.poll(async () => (await live()).memoryOpacity, { timeout: 20_000 }).toBeLessThan(0.05);
+  // Dragging turns all the way round, not just a little.
+  const box = (await view.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 600, box.y + box.height / 2, { steps: 10 });
+  await page.mouse.up();
+  await expect.poll(async () => Math.abs((await live()).pose.yaw), { timeout: 30_000 }).toBeGreaterThan(2);
+  // Double-click: back where the photo was taken, its scene sharp again.
+  await page.mouse.dblclick(box.x + 10, box.y + box.height - 10);
+  await expect.poll(async () => (await live()).memoryOpacity, { timeout: 30_000 }).toBeGreaterThan(0.95);
 });

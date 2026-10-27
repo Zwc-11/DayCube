@@ -107,3 +107,32 @@ def test_the_api_lists_and_serves_memories(client: TestClient, vault: Vault, tmp
     for bad in (f"/memories/2026-10-20/{ident}/memory.json", "/memories/2026-10-20/mem_..%2F..%2Fx/photo.jpg",
                 "/memories/2026-10-20/mem_000000000000/photo.jpg"):  # fmt: skip
         assert client.get(bad).status_code == 404
+
+
+def test_the_lidar_sets_a_memorys_scale_in_its_scan() -> None:
+    # SHARP put a wall 2 m away; the LiDAR measured it at 4 m: the scan's metres are twice SHARP's.
+    rgb = np.zeros((480, 640, 3), np.uint8)
+    g = plane(rgb, 500.0, depth=2.0)
+    lidar = np.full((192, 256), 4.0, np.float32)
+    confidence = np.full((192, 256), 2, np.uint8)
+    assert memory.lidar_scale(g["means"], np.array([500.0, 500.0, 319.5, 239.5]), 640, lidar, confidence) == pytest.approx(2.0)
+    confidence[:] = 0  # nothing reliable: no scale
+    assert memory.lidar_scale(g["means"], np.array([500.0, 500.0, 319.5, 239.5]), 640, lidar, confidence) is None
+
+
+def test_a_memory_from_a_scan_lists_its_world(client: TestClient, vault: Vault) -> None:
+    rgb = np.random.default_rng(4).integers(0, 255, (240, 320, 3), dtype=np.uint8)
+    pose = np.eye(4).tolist()
+    moment = vault.root / "2026-10-20" / "moments" / "mo_scan_test"
+    moment.mkdir(parents=True)
+    (moment / "scene.json").write_text(json.dumps({"splat": {"trained": "splat/scene.splat", "lidar": "splat/lidar.splat",
+                                                              "bounds": None}}))  # fmt: skip
+    for name, world in (("placed", "mo_scan_test"), ("escaping", "../2026-10-20")):
+        memory.make(rgb, 300.0, vault.root / "2026-10-20" / "memories" / memory.memory_id(name.encode()),
+                    predict=lambda image, f: plane(image, f),
+                    world=lambda g, world=world: {"moment": world, "pose": pose, "scale": 2.0, "scale_from": "lidar"})  # fmt: skip
+    listed = {m["id"]: m for m in client.get("/memories").json()}
+    placed = listed[memory.memory_id(b"placed")]["world"]
+    assert placed["splat"] == "moments/mo_scan_test/splat/scene.splat" and placed["trained"] is True
+    assert placed["scale"] == 2.0 and placed["pose"] == pose
+    assert "world" not in listed[memory.memory_id(b"escaping")]  # a moment name that leaves its day is ignored
