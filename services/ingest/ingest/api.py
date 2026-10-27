@@ -369,7 +369,19 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
             except (OSError, ValueError):
                 continue
             keep = ("width", "height", "fx", "fov_y_deg", "splats", "depth_m", "model", "made", "source")
-            out.append({"date": meta_path.parents[2].name, "id": meta_path.parent.name, **{k: meta.get(k) for k in keep}})
+            date = meta_path.parents[2].name
+            item = {"date": date, "id": meta_path.parent.name, **{k: meta.get(k) for k in keep}}
+            # A photo from a scan stands in that scan's world: its splat (trained, else the LiDAR's)
+            # and where the photo was taken in it.
+            world = meta.get("world")
+            if isinstance(world, dict) and re.fullmatch(r"[\w.-]+", str(world.get("moment", ""))):
+                scene = read_json(vault.root / date / "moments" / world["moment"] / "scene.json") or {}
+                splat = scene.get("splat") if isinstance(scene.get("splat"), dict) else {}
+                name = splat.get("trained") or splat.get("lidar")
+                if name:
+                    item["world"] = {**world, "splat": f"moments/{world['moment']}/{name}", "trained": bool(splat.get("trained")),
+                                     "bounds": splat.get("bounds")}  # fmt: skip
+            out.append(item)
         return sorted(out, key=lambda m: (m["date"], str(m.get("made"))), reverse=True)
 
     @app.get("/memories/{date}/{ident}/{name}")

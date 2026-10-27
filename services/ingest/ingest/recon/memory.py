@@ -120,8 +120,11 @@ def load_photo(path: Path) -> tuple[np.ndarray, float, datetime]:
 
 
 def make(rgb: np.ndarray, f_px: float, folder: Path, *, predict: Callable[[np.ndarray, float], dict],
-         source: dict | None = None) -> dict:  # fmt: skip
-    """One memory from an RGB photo with its focal length (pixels at that size), into ``folder``."""
+         source: dict | None = None, world: Callable[[dict], dict | None] | None = None) -> dict:  # fmt: skip
+    """One memory from an RGB photo with its focal length (pixels at that size), into ``folder``.
+    ``world``: for a photo whose place was scanned, where it stands in the scan (``pose``, the
+    camera to the scan's world, OpenGL axes) and ``scale`` (the scan's metres per SHARP metre),
+    from the predicted Gaussians."""
     from PIL import Image
 
     folder.mkdir(parents=True, exist_ok=True)
@@ -146,6 +149,7 @@ def make(rgb: np.ndarray, f_px: float, folder: Path, *, predict: Callable[[np.nd
         "depth_m": {"median": round(float(np.median(depth[near_mask] if near_mask.any() else depth)), 3),
                     "p10": round(float(np.percentile(depth, 10)), 3), "p90": round(float(np.percentile(depth, 90)), 3)},
         "model": "sharp", "seconds": round(seconds, 2),
+        **({"world": placed} if world and (placed := world(g)) else {}),
         "made": datetime.now().astimezone().isoformat(timespec="seconds"),
         **({"source": source} if source else {}),
     }  # fmt: skip
@@ -174,36 +178,58 @@ def from_inbox(vault: object, predict: Callable, say: Callable[[str], None] = pr
     return made
 
 
+def lidar_scale(means_cv: np.ndarray, K: np.ndarray, width: int, lidar: np.ndarray, confidence: np.ndarray) -> float | None:
+    """The scan's metres per SHARP metre for one frame: the LiDAR's depth over the nearest Gaussian's
+    at each reliable LiDAR pixel, the median (on the 2026-10-24 trail SHARP's depth was about half
+    the LiDAR's)."""
+    from . import single
+
+    small = (lidar.shape[1], lidar.shape[0])
+    seen = single.depth_of_points(means_cv, single.scale_K(np.asarray(K, float), small[0] / width), small)
+    good = np.isfinite(seen) & (confidence >= 1) & (lidar > 0.2) & (lidar < single.LIDAR_RANGE_M)
+    if good.sum() < 200:
+        return None
+    return round(float(np.median(lidar[good] / seen[good])), 4)
+
+
 def from_scan(vault: object, date: str, count: int, predict: Callable, say: Callable[[str], None] = print) -> list[dict]:
-    """The sharpest frame in each of ``count`` stretches of the day's first scan, as memories."""
+    """The sharpest frame in each of ``count`` stretches of the day's first scan, as memories placed
+    in the scan: each with its camera pose in the scan's world and the LiDAR's scale."""
     from ..splat import dataset
     from ..splat.run import find_capture, scans
     from ..vault import read_json
-    from . import simulate
+    from . import simulate, single
 
     moment_id = next(iter(scans(vault, date)), None)  # type: ignore[arg-type]
     if moment_id is None:
         return []
     moment = vault.day_path(date) / "moments" / moment_id  # type: ignore[attr-defined]
     capture = moment / "capture" if (moment / "capture" / "odometry.csv").is_file() else find_capture(vault, moment)
-    scene = read_json(moment / "scene.json") or {}
-    video = moment / scene["video"] if (moment / str(scene.get("video"))).is_file() else capture / "rgb.mp4"
-    truth = simulate.read_truth(capture, video)
-    sharp = dataset.sharpness(video, truth.width, truth.height)[: len(truth.t)]
-    usable = truth.t >= simulate.SETTLE_S
-    picks = dataset.choose(sharp, count, usable)
-    frames, found = dataset.frames_at(video, picks, (truth.width, truth.height))
+    scene_json = read_json(moment / "scene.json") or {}
+    video = moment / scene_json["video"] if (moment / str(scene_json.get("video"))).is_file() else capture / "rgb.mp4"
+    scene = single.read_scene(capture, video)
+    sharp = dataset.sharpness(video, scene.width, scene.height)[: len(scene.t)]
+    picks = dataset.choose(sharp, count, scene.t >= simulate.SETTLE_S)
+    frames, found = dataset.frames_at(video, picks, (scene.width, scene.height))
+    lidar = single.lidar_of(capture, scene, [int(i) for i in picks])
     meta_t0 = (read_json(moment / "meta.json") or {}).get("t0")
     made = []
     for k, i in enumerate(picks):
         if not found[k]:
             continue
-        rgb = frames[k]
-        ident = memory_id(f"{moment_id}:{int(i)}".encode())
-        say(f"{moment_id} frame {int(i)} ({truth.t[i]:.1f} s)")
+        i = int(i)
+        ident = memory_id(f"{moment_id}:{i}".encode())
+        say(f"{moment_id} frame {i} ({scene.t[i]:.1f} s)")
         folder = vault.day_path(date) / "memories" / ident  # type: ignore[attr-defined]
-        source = {"moment": moment_id, "frame": int(i), "t_s": round(float(truth.t[i]), 2), "t0": meta_t0}
-        meta = make(rgb, float(truth.K[i][0]), folder, predict=predict, source=source)
+        source = {"moment": moment_id, "frame": i, "t_s": round(float(scene.t[i]), 2), "t0": meta_t0}
+        pose = scene.c2w[i] @ simulate.OPENGL  # OpenCV camera axes to OpenGL's, as the scan's splat and cameras
+
+        def world(g: dict, i: int = i, pose: np.ndarray = pose) -> dict:
+            scale = lidar_scale(g["means"], scene.K[i], scene.width, *lidar[i]) if i in lidar else None
+            return {"moment": moment_id, "pose": [[round(float(v), 6) for v in row] for row in pose], "scale": scale or 1.0,
+                    "scale_from": "lidar" if scale else "none"}  # fmt: skip
+
+        meta = make(frames[k], float(scene.K[i][0]), folder, predict=predict, source=source, world=world)
         made.append({"date": date, "id": ident} | meta)
     return made
 

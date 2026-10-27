@@ -13,12 +13,30 @@ export interface Memory {
   model: string;
   made: string;
   source?: Record<string, unknown> | null;
+  /** A photo from a scan: the scan's world it stands in. */
+  world?: MemoryWorld;
+}
+
+export interface MemoryWorld {
+  moment: string;
+  /** The photo's camera in the scan's world: 4 x 4, rows, OpenGL axes (x right, y up, z back). */
+  pose: number[][];
+  /** The scan's metres per metre of the memory's own scene (fitted to the LiDAR). */
+  scale: number;
+  scale_from: 'lidar' | 'none';
+  /** The scan's splat, under its day (served at /api/vault/<date>/<splat>). */
+  splat: string;
+  trained: boolean;
+  bounds: { min: [number, number, number]; max: [number, number, number] } | null;
 }
 
 export const memoryKey = (m: Pick<Memory, 'date' | 'id'>): string => `${m.date}/${m.id}`;
 
 export const memoryUrl = (m: Pick<Memory, 'date' | 'id'>, name: 'photo.jpg' | 'memory.splat'): string =>
   `/api/memories/${m.date}/${m.id}/${name}`;
+
+export const worldUrl = (m: Memory): string | null =>
+  m.world ? `/api/vault/${m.date}/${m.world.splat.split('/').map(encodeURIComponent).join('/')}` : null;
 
 /** Newest first; null when the vault is not reachable. */
 export async function listMemories(signal?: AbortSignal): Promise<Memory[] | null> {

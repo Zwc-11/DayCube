@@ -3894,3 +3894,21 @@ button.np-link:hover {
 .memory__status--failed {
   color: #e79482;
 }
+.memory__hint {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 2;
+  font-size: 12px;
+  color: var(--fg-2);
+  background: rgba(0, 0, 0, 0.35);
+  padding: 4px 10px;
+  border-radius: 999px;
+  pointer-events: none;
+  animation: memory-hint 6s ease forwards;
+}
+@keyframes memory-hint {
+  0%, 70% { opacity: 1; }
+  100% { opacity: 0; }
+}
