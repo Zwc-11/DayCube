@@ -37,6 +37,7 @@ from .vault import Record, Vault, read_json
 
 log = logging.getLogger("daycube.api")
 
+MEMORY_FILES = {"photo.jpg": "image/jpeg", "memory.splat": "application/octet-stream"}
 MEDIA_SUFFIXES = frozenset({".jpg", ".jpeg", ".png", ".svg", ".mp4", ".wav", ".m4a", ".mp3", ".glb", ".ply", ".spz", ".splat"})
 # Types the platform may not know (Windows has no .m4a in its registry by default).
 MEDIA_TYPES = {
@@ -356,6 +357,33 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
             media_type=MEDIA_TYPES.get(candidate.suffix.lower()),
             headers={"X-Content-Type-Options": "nosniff", "Content-Security-Policy": "default-src 'none'; sandbox"},
         )
+
+    # Memories: photos you can step into (ingest/recon/memory.py), in their day's ``memories``.
+    @app.get("/memories")
+    def memories() -> list[Record]:
+        """Newest first: each memory's day, id and what the viewer needs to show it."""
+        out = []
+        for meta_path in vault.root.glob("????-??-??/memories/mem_*/memory.json"):
+            try:
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            keep = ("width", "height", "fx", "fov_y_deg", "splats", "depth_m", "model", "made", "source")
+            out.append({"date": meta_path.parents[2].name, "id": meta_path.parent.name, **{k: meta.get(k) for k in keep}})
+        return sorted(out, key=lambda m: (m["date"], str(m.get("made"))), reverse=True)
+
+    @app.get("/memories/{date}/{ident}/{name}")
+    def memory_file(date: str, ident: str, name: str) -> FileResponse:
+        if (
+            not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date)
+            or not re.fullmatch(r"mem_[0-9a-f]{12}", ident)
+            or name not in MEMORY_FILES
+        ):
+            raise HTTPException(404, "Memory not found")
+        path = vault.safe_path(f"{date}/memories/{ident}/{name}")
+        if not path.is_file():
+            raise HTTPException(404, "Memory not found")
+        return FileResponse(path, media_type=MEMORY_FILES[name], headers={"X-Content-Type-Options": "nosniff"})
 
     @app.post("/ask", dependencies=[Depends(authorize)], response_model=None)
     def answer(body: AskRequest, stream: bool = False) -> Record | StreamingResponse:
