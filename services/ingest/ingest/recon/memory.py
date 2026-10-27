@@ -268,6 +268,7 @@ def from_scan(
     scene_json = read_json(moment / "scene.json") or {}
     video = moment / scene_json["video"] if (moment / str(scene_json.get("video"))).is_file() else capture / "rgb.mp4"
     scene = single.read_scene(capture, video)
+    say(f"scan {date} {moment_id}: {len(scene.t)} frames; scoring sharpness")
     sharp = dataset.sharpness(video, scene.width, scene.height)[: len(scene.t)]
     picks = dataset.choose(sharp, count, scene.t >= simulate.SETTLE_S)
     frames, found = dataset.frames_at(video, picks, (scene.width, scene.height))
