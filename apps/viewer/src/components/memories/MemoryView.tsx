@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { SceneResources } from '../../lib/sceneResources';
 import { MAX_SPLATS, classifyGpu, rendererName, startBudget } from '../../lib/splatBudget';
-import { type Memory, memoryUrl, worldUrl } from '../../lib/memories';
+import { type Memory, memoryUrl, quarterTurns, uprightFovY, worldScale, worldUrl } from '../../lib/memories';
 
 /**
  * A memory: one photo, rebuilt in 3D by SHARP, that you step into. It opens as the flat photo,
@@ -103,7 +103,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ memory, others = [], onC
       const spark = new SparkRenderer({ renderer, lodSplatCount: budget.splats });
       resources.own(() => spark.dispose?.());
       scene.add(spark);
-      const camera = new THREE.PerspectiveCamera(memory.fov_y_deg, el.clientWidth / Math.max(1, el.clientHeight), 0.02, 3000);
+      const camera = new THREE.PerspectiveCamera(uprightFovY(memory), el.clientWidth / Math.max(1, el.clientHeight), 0.02, 3000);
       camera.rotation.order = 'YXZ';
       const d = Math.min(50, Math.max(0.5, memory.depth_m?.median ?? 3));
       const world = memory.world;
@@ -120,7 +120,8 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ memory, others = [], onC
       if (world) {
         pose.set(...(world.pose.flat() as [number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number]));
         mesh.matrixAutoUpdate = false;
-        mesh.matrix.copy(pose).multiply(new THREE.Matrix4().makeScale(world.scale, world.scale, world.scale));
+        const scale = worldScale(memory, others);
+        mesh.matrix.copy(pose).multiply(new THREE.Matrix4().makeScale(scale, scale, scale));
       }
       scene.add(mesh);
       let worldMesh: InstanceType<typeof SplatMesh> | null = null;
@@ -179,7 +180,6 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ memory, others = [], onC
       const start = new THREE.Euler().setFromQuaternion(homeTurn, 'YXZ');
       const now: Pose = { x: home.x, y: home.y, z: home.z, yaw: start.y, pitch: start.x };
       const target: Pose = { ...now };
-      const roll = start.z;
       let parallax = { x: 0, y: 0 };
       let dragging: { x: number; y: number; yaw: number; pitch: number; moved: number } | null = null;
       const keys = new Set<string>();
@@ -307,8 +307,10 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ memory, others = [], onC
         for (const key of ['x', 'y', 'z', 'yaw', 'pitch'] as const) now[key] += (target[key] - now[key]) * k;
         camera.position.set(now.x, now.y, now.z);
         if (world) {
-          // The photo's roll is kept, so where it was taken the view lines up with the photo.
-          camera.rotation.set(now.pitch, now.yaw, roll);
+          // Upright in the world (ARKit's y is up), looking where the photo looked: a phone held
+          // upright filmed its scan's frames a quarter turn round, and keeping that roll showed the
+          // world on its side. The photo's own scene turns with the world, so it lines up.
+          camera.rotation.set(now.pitch, now.yaw, 0);
           const away = camera.position.distanceTo(home);
           mesh.opacity = clamp(1 - (away - FADE_FROM) / (FADE_TO - FADE_FROM), 0, 1);
           mesh.visible = mesh.opacity > 0.01;
@@ -323,6 +325,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ memory, others = [], onC
           (window as unknown as { __memory?: unknown }).__memory = {
             state: Number.isNaN(started) ? 'loading' : 'ready', mode: world ? 'world' : 'alone', frames, pose: { ...now },
             splats: mesh.numSplats, world: worldMesh ? worldMesh.numSplats : null, memoryOpacity: mesh.opacity, markers: markers.length,
+            roll: camera.rotation.z, fov: camera.fov,
           };
         }
       });
@@ -343,13 +346,14 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ memory, others = [], onC
   }, [memory, others]);
 
   const aspect = memory.width / Math.max(1, memory.height);
+  const turns = quarterTurns(memory);
   return (
     <div className={`memory${inWorld ? ' memory--world' : ''}`} ref={root} data-testid="memory-view" data-state={state}>
       <img
-        className={`memory__photo${state === 'ready' ? ' memory__photo--gone' : ''}`}
+        className={`memory__photo${turns % 2 ? ' memory__photo--turned' : ''}${state === 'ready' ? ' memory__photo--gone' : ''}`}
         src={memoryUrl(memory, 'photo.jpg')}
         alt=""
-        style={{ aspectRatio: String(aspect) }}
+        style={{ aspectRatio: String(aspect), ['--turn' as string]: `${-90 * turns}deg` }}
         draggable={false}
       />
       <button type="button" className="memory__close" onClick={onClose} aria-label="Close">

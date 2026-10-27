@@ -83,7 +83,10 @@ test.beforeAll(() => {
   writeFileSync(path.join(worldMoment, 'scene.json'), JSON.stringify({ splat: { status: 'lidar', lidar: 'splat/world.splat', bounds: null } }));
   // Standing in the room 1.5 m up, looking down -z; the second 2 m further on.
   const pose = (z: number) => [[1, 0, 0, 0], [0, 1, 0, 1.5], [0, 0, 1, z], [0, 0, 0, 1]];
-  writeMemory(IN_WORLD[0], { moment: WORLD_MOMENT, pose: pose(1), scale: 1, scale_from: 'lidar' });
+  // The first filmed with the phone held upright: its frame a quarter turn round (the camera's
+  // right is the world's up), as an iPhone's scan records it.
+  const upright = [[0, -1, 0, 0], [1, 0, 0, 1.5], [0, 0, 1, 1], [0, 0, 0, 1]];
+  writeMemory(IN_WORLD[0], { moment: WORLD_MOMENT, pose: upright, scale: 1, scale_from: 'lidar' });
   writeMemory(IN_WORLD[1], { moment: WORLD_MOMENT, pose: pose(-1), scale: 1, scale_from: 'lidar' });
   rmSync(folder, { recursive: true, force: true });
   mkdirSync(folder, { recursive: true });
@@ -153,6 +156,18 @@ test('a photo from a scan stands in its world: look round, walk away, and the ot
   expect(first.markers).toBe(1); // the other photo of the scan
   expect(first.pose.y).toBeCloseTo(1.5, 1); // where the photo was taken
   expect(first.memoryOpacity).toBeCloseTo(1, 2);
+  // Shown upright, not on its side; its field of view is the photo's width (640 px at f 500).
+  expect(first.roll).toBeCloseTo(0, 5);
+  expect(first.fov).toBeCloseTo((2 * Math.atan(320 / 500) * 180) / Math.PI, 1);
+  expect(Math.abs(first.pose.yaw)).toBeLessThan(1e-3);
+  await page.goto(`/?view=memories`);
+  await expect(page.getByTestId('memory-item')).toHaveCount(3);
+  const turned = page.getByTestId('memory-item').locator('img');
+  const turns = await turned.evaluateAll((imgs) => imgs.map((i) => (i as HTMLElement).style.getPropertyValue('--turn')));
+  expect(turns.sort()).toEqual(['-90deg', '0deg', '0deg']);
+  await page.goto(`/?view=memories&memory=${DATE}/${IN_WORLD[0]}`);
+  await expect(view).toHaveAttribute('data-state', 'ready', { timeout: 90_000 });
+  await expect.poll(async () => (await live())?.frames ?? 0, { timeout: 30_000 }).toBeGreaterThan(3);
   // Walk ahead more than 3 m: the photo's own scene fades, the world stays.
   await page.keyboard.down('w');
   await expect.poll(async () => (await live()).pose.z, { timeout: 60_000 }).toBeLessThan(1 - 3.2);

@@ -35,6 +35,47 @@ export const memoryKey = (m: Pick<Memory, 'date' | 'id'>): string => `${m.date}/
 export const memoryUrl = (m: Pick<Memory, 'date' | 'id'>, name: 'photo.jpg' | 'memory.splat'): string =>
   `/api/memories/${m.date}/${m.id}/${name}`;
 
+/**
+ * Degrees the photo is turned from upright in its world: world up as seen in the photo, measured
+ * from the photo's up towards its right. A phone held upright records its scan's frames a quarter
+ * turn round (90 or -90), so the photo is shown turned back by this. 0 for a memory on its own.
+ */
+export function photoRoll(m: Pick<Memory, 'world'>): number {
+  const p = m.world?.pose;
+  if (!p) return 0;
+  return (Math.atan2(p[1][0], p[1][1]) * 180) / Math.PI; // world y in the camera's x (right) and y (up)
+}
+
+/** The photo's roll in quarter turns, for showing its picture upright: -1, 0, 1 or 2. */
+export const quarterTurns = (m: Pick<Memory, 'world'>): number => {
+  const q = Math.round(photoRoll(m) / 90);
+  return q === -2 ? 2 : q;
+};
+
+/** Vertical field of view, degrees, of the photo shown upright (a turned photo's is its width's). */
+export function uprightFovY(m: Pick<Memory, 'world' | 'width' | 'height' | 'fx' | 'fov_y_deg'>): number {
+  if (quarterTurns(m) % 2 === 0) return m.fov_y_deg;
+  return (2 * Math.atan(m.width / 2 / m.fx) * 180) / Math.PI;
+}
+
+/**
+ * The scan's metres per metre of the memory's scene. A frame whose LiDAR had too few reliable
+ * pixels has none of its own: it takes the median of the other photos of the same scan (on the
+ * trail they ranged 0.7 to 2.6, median about 2), else 1.
+ */
+export function worldScale(m: Memory, others: Memory[]): number {
+  if (!m.world) return 1;
+  if (m.world.scale_from === 'lidar') return m.world.scale;
+  const moment = m.world.moment;
+  const scales = others
+    .filter((o) => o.world?.moment === moment && o.world.scale_from === 'lidar' && o.id !== m.id)
+    .map((o) => o.world!.scale)
+    .sort((a, b) => a - b);
+  if (!scales.length) return m.world.scale || 1;
+  const mid = scales.length >> 1;
+  return scales.length % 2 ? scales[mid] : (scales[mid - 1] + scales[mid]) / 2;
+}
+
 export const worldUrl = (m: Memory): string | null =>
   m.world ? `/api/vault/${m.date}/${m.world.splat.split('/').map(encodeURIComponent).join('/')}` : null;
 

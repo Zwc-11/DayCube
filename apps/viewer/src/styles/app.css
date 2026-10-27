@@ -3821,11 +3821,14 @@ button.np-link:hover {
   height: 100%;
   object-fit: cover;
   display: block;
+  /* A scan's frame from a phone held upright is a quarter turn round: turned back, and enlarged
+     to cover the 4:3 tile once turned. */
+  transform: rotate(var(--turn, 0deg)) scale(var(--fit, 1));
   transition: transform 0.4s ease;
 }
 .memories__item:hover img,
 .memories__item:focus-visible img {
-  transform: scale(1.04);
+  transform: rotate(var(--turn, 0deg)) scale(calc(var(--fit, 1) * 1.04));
 }
 .memories__date {
   position: absolute;
@@ -3865,9 +3868,19 @@ button.np-link:hover {
   transition: opacity 1.2s ease, transform 1.6s ease;
   z-index: 1;
 }
+.memory__photo {
+  transform: rotate(var(--turn, 0deg));
+}
+.memory__photo--turned {
+  /* Turned a quarter, its width is upright: as tall as the screen at most. */
+  width: auto;
+  height: auto;
+  max-width: 100vh;
+  max-height: 100vw;
+}
 .memory__photo--gone {
   opacity: 0;
-  transform: scale(1.06);
+  transform: rotate(var(--turn, 0deg)) scale(1.06);
 }
 .memory__close {
   position: absolute;
