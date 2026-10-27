@@ -91,6 +91,9 @@ def test_the_lidar_lift_renders_the_walk_ahead_and_a_wrong_scale_is_measured(sca
     assert flat["ahead"]["1"]["coverage"] == 1.0
     # Drawn from its own pose, a lifted photo is the photo (the sky, with no depth, uncovered).
     assert lidar["ahead"]["0"]["psnr"] > 40 and lidar["ahead"]["0"]["coverage"] > 0.85
+    # The video's frames and the poses are in step: the frame's own pose draws it best.
+    offsets = lidar["pose_offset_frames"]
+    assert max(offsets, key=offsets.get) == "0"
     # 30% too deep: measured against the LiDAR, and the render is worse for it.
     assert scaled["depth_vs_lidar"]["scale"] == pytest.approx(1.3, abs=0.03)
     assert scaled["depth_vs_lidar"]["delta_1_25"] < 0.2
@@ -113,6 +116,7 @@ def test_a_photo_is_located_in_the_scan_where_the_camera_stood(scan: Path, tmp_p
     assert located["median_position_m"] < 0.1 and located["median_rotation_deg"] < 1.0
     assert located["within"]["0.25m_2deg"] == 1.0
     assert set(located["variants"]) == set(single.VARIANTS)
+    assert all(row["variant"] == "lidar_4px" for row in located["per_photo"])
     assert all(v["within_0.25m_2deg"] == 1.0 for v in located["variants"].values())
     for row in located["per_photo"]:
         assert row["candidates"] > 0 and row["inliers"] >= 30 and row["prior_error_m"] < 2
