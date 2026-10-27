@@ -279,6 +279,59 @@ walk, each the sharpest frame within 0.15 s of its place, at least 6 m from eith
 - **Locating:** all photos within 0.25 m and 2°; median 4 mm and 0.02°. The GPS fit found the
   3 s clock offset.
 
+### On the trail (2026-10-26, 1389b86, 8 photos)
+
+**A. Alone.** PSNR on the pixels covered / the flat photo on the same pixels / share covered:
+
+| | 0.25 m on | 1 m on | 4 m on |
+| --- | --- | --- | --- |
+| `flat` | 11.7 dB | 10.9 dB | 10.9 dB |
+| `lidar` | 13.3 / 11.7 / 91% | 12.6 / 11.5 / 76% | 11.5 / 10.9 / 65% |
+| `depth-pro` | 12.6 / 11.7 / 91% | 11.7 / 11.5 / 71% | 10.8 / 11.3 / 56% |
+| `depth-pro+lidar-scale` | 13.3 / 11.7 / 90% | 12.4 / 11.5 / 71% | 11.6 / 11.0 / 66% |
+| `dav2-metric` | 13.3 / 11.7 / 85% | 12.4 / 11.5 / 73% | 11.6 / 10.9 / 67% |
+| `dav2-metric+lidar-scale` | 12.9 / 11.7 / 93% | 12.0 / 11.6 / 74% | 11.0 / 11.1 / 58% |
+| `sharp` | 12.2 / 11.7 / 100% | 11.0 / 10.9 / 87% | 10.9 / 10.8 / 76% |
+| `sharp+lidar-scale` | 12.6 / 11.7 / 100% | 11.7 / 11.0 / 92% | 11.3 / 10.8 / 85% |
+
+- **One photo gains 1–2 dB over itself up to 1 m, and almost nothing at 4 m.** That holds even
+  with the phone's own LiDAR depth, which covers 76% of the view 1 m on and 65% 4 m on. This
+  trail's ceiling is low: Brush trained on 1,260 frames scores 15.3 dB on held-out frames.
+- **The models' metric scale is wrong here, and their shape is right.** Against the LiDAR within
+  5.5 m:
+
+  | Model | Depth vs the LiDAR's | Shape error with the scale fixed |
+  | --- | --- | --- |
+  | Depth Pro | 0.53× | 4.1% |
+  | SHARP | 0.49× | 4.4% |
+  | Depth Anything V2 metric | 2.99× | 11.5% |
+
+  Depth Pro's own guess of the focal length was 15% long; the run gives it the true one. On a
+  glasses photo, the scale has to come from somewhere other than the image: GPS steps, a scan of
+  the place, or the IMU.
+- **SHARP is understated by the renderer.** Drawn at its own pose it gives back 16.2 dB, where an
+  exact lift gives the photo itself. Opaque discs lose its blending, so its numbers are a lower
+  bound; `gsplat` would draw it properly.
+- **The frames and poses are in step.** The frame 0.5 m on is drawn best with its own pose or the
+  next one: 13.5 and 13.6 dB, against 12.1–13.0 dB three frames either side.
+
+**B. Into the scan** (329 scan frames every 0.5 m, the nearest 1 s from the photo left out):
+
+| PnP on | Median error | Within 0.5 m and 5° | Within 0.25 m and 2° |
+| --- | --- | --- | --- |
+| all scan points, 12 px (COLMAP's default) | 0.97 m, 2.9° | 3 of 8 | 1 of 8 |
+| all scan points, 4 px | 0.78 m, 2.9° | 4 of 8 | 2 of 8 |
+| **the LiDAR's reliable depth, 4 px** | **0.11 m, 2.0°** | **7 of 8** | **4 of 8** |
+
+- **Reported first:** 8 of 8 placed, median 0.14 m and 2.2°.
+- **The one miss:** photo 7 looked over an open stretch. It had 3 matches on reliable depth, so
+  it fell back to all points and landed 1.31 m off.
+- **Against the GPS alone:** the GPS put the photos at a median 0.50 m, in the top view only. The
+  scan makes that about 3.5 times closer and adds the direction the camera faced.
+- **Speed on the RTX 5070:** 1.4 s per photo, after 5.5 s for the scan's keypoints.
+- **Not shown:** the scan here is the same walk, seconds away, in the same light. A photo from
+  another day, season or time of day will match fewer points.
+
 ## What it does not show
 
 - **Optics.** These are the phone's frames, not the glasses': a different lens and sensor, and no
