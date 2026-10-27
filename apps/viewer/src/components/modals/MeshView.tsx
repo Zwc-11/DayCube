@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type { SplatCameras } from '@daycube/api-client';
 import { SceneResources, disposeMaterials, disposeObject } from '../../lib/sceneResources';
-import { DRAW_TAIL_MS, poseAt } from './SplatView';
+import { DRAW_TAIL_MS } from './SplatView';
+import { createCameraPose, poseAt, type CameraPose } from '../../lib/cameraPose';
 
 /**
  * A scan's surfaces as a mesh (the LiDAR's depth fused at ARKit's poses, coloured from the video):
@@ -23,6 +24,7 @@ interface MeshViewProps {
 }
 
 type Live = {
+  pose: CameraPose;
   camera: import('three').PerspectiveCamera;
   controls: { target: import('three').Vector3; update: () => void; enabled: boolean };
   touch: (ms?: number) => void;
@@ -30,7 +32,7 @@ type Live = {
 };
 
 function follow(v: Live, cameras: SplatCameras, t: number): void {
-  const pose = poseAt(cameras, t);
+  const pose = poseAt(cameras, t, v.pose);
   const [x, y, z] = pose.position;
   v.camera.position.set(x, y, z);
   v.controls.target.set(x + pose.forward[0] * 3, y + pose.forward[1] * 3, z + pose.forward[2] * 3);
@@ -81,7 +83,7 @@ export const MeshView: React.FC<MeshViewProps> = ({ url, cameras, bounds, t, clo
         drawUntil = Math.max(drawUntil, performance.now() + ms);
       };
       controls.addEventListener('change', () => touch());
-      const v: Live = { camera, controls, touch, frames: 0 };
+      const v: Live = { camera, controls, touch, frames: 0, pose: createCameraPose() };
       live.current = v;
       if (import.meta.env.DEV) (window as unknown as { __mesh?: unknown }).__mesh = live.current; // for the end-to-end tests
       const gltf = await new GLTFLoader().loadAsync(url);

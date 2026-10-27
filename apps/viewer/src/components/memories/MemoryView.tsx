@@ -158,7 +158,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ memory, others = [], onC
         const loader = new THREE.TextureLoader();
         for (const other of others) {
           if (!other.world || other.world.moment !== world.moment || other.id === memory.id) continue;
-          const at = new THREE.Matrix4().set(...(other.world.pose.flat() as Parameters<THREE.Matrix4['set']>));
+          const at = new THREE.Matrix4().set(...(other.world.pose.flat() as Parameters<import('three').Matrix4['set']>));
           const height = 0.42;
           const geometry = new THREE.PlaneGeometry((height * other.width) / Math.max(1, other.height), height);
           const texture = loader.load(memoryUrl(other, 'photo.jpg'));
