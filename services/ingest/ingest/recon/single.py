@@ -44,7 +44,7 @@ from ..skeleton.parsers.types import Fix
 from ..splat import dataset
 from . import align, simulate
 
-AHEAD_M = (0.25, 0.5, 1.0, 2.0, 4.0)  # where the photo is rendered, along the walk from it
+AHEAD_M = (0.0, 0.25, 0.5, 1.0, 2.0, 4.0)  # where the photo is rendered, along the walk from it (0: its own pose)
 PHOTOS = 8
 WIDTH = 640  # rendered and scored at this width (480 tall for a 4:3 video)
 MARGIN_M = 6.0  # photos this far from either end of the walk, so 4 m ahead exists
@@ -129,7 +129,8 @@ def render(cloud: Cloud, c2w: np.ndarray, K: np.ndarray, size: tuple[int, int]) 
     u = torch.round(cam[:, 0] / zs * fx + cx).long()
     v = torch.round(cam[:, 1] / zs * fy + cy).long()
     footprint = torch.as_tensor(cloud.size_m, dtype=torch.float32, device=dev) * fx / zs
-    radius = torch.clamp(torch.ceil(footprint / 2 - 0.5), 0, MAX_RADIUS_PX).long()
+    # A square of 2r + 1 px covers the footprint (the tolerance keeps a 1 px footprint at one pixel).
+    radius = torch.clamp(torch.ceil((footprint - 1) / 2 - 0.01), 0, MAX_RADIUS_PX).long()
     keep = (
         (z > 0.05) & (u >= -MAX_RADIUS_PX) & (u < w + MAX_RADIUS_PX) & (v >= -MAX_RADIUS_PX) & (v < h + MAX_RADIUS_PX)
     )
@@ -178,9 +179,11 @@ def depth_vs_lidar(depth: np.ndarray, lidar: np.ndarray, confidence: np.ndarray)
     if good.sum() < 200:
         return None
     ratio = small[good] / lidar[good]
+    scale = float(np.median(ratio))
     return {
         "abs_rel": round(float(np.median(np.abs(ratio - 1))), 3),
-        "scale": round(float(np.median(ratio)), 3),
+        "abs_rel_scaled": round(float(np.median(np.abs(ratio / scale - 1))), 3),  # shape alone, the scale fixed
+        "scale": round(scale, 3),
         "delta_1_25": round(float(np.mean(np.maximum(ratio, 1 / ratio) < 1.25)), 3),
         "pixels": int(good.sum()),
     }
@@ -207,9 +210,13 @@ def depth_model(name: str) -> DepthModel:
         if name == "depth-pro":
             # Canonical inverse depth: the depth is f / (it x width), with the focal length the
             # photo's own (glasses are calibrated), not the one the model guesses.
+            fov = getattr(out, "field_of_view", None)
+            if fov is not None:
+                run.focal_ratio = float(0.5 * w / math.tan(0.5 * math.radians(float(fov.reshape(-1)[0])))) / float(K[0])
             return (float(K[0]) / (torch.clamp(resized, min=1e-4) * w)).cpu().numpy()
         return resized.cpu().numpy()
 
+    run.focal_ratio = None
     return run
 
 
@@ -236,7 +243,23 @@ class Sharp:
         colours = linearRGB2sRGB(g.colors[0]).clamp(0, 1).cpu().numpy()[keep]
         sizes = 2 * g.singular_values[0].mean(-1).cpu().numpy()[keep]  # a disc across one sigma each way
         xyz = means @ c2w[:3, :3].T + c2w[:3, 3]
+        self.means = means  # in the camera's frame, for its depth
         return Cloud(xyz.astype(np.float32), np.round(colours * 255).astype(np.uint8), sizes.astype(np.float32))
+
+
+def depth_of_points(cam: np.ndarray, K: np.ndarray, size: tuple[int, int]) -> np.ndarray:
+    """The nearest depth of camera-frame points (OpenCV axes) at each pixel of ``size``
+    (width, height) with intrinsics ``K``; NaN where none falls."""
+    w, h = size
+    z = cam[:, 2]
+    front = z > 0.05
+    u = np.round(cam[front, 0] / z[front] * K[0] + K[2]).astype(int)
+    v = np.round(cam[front, 1] / z[front] * K[1] + K[3]).astype(int)
+    inside = (u >= 0) & (u < w) & (v >= 0) & (v < h)
+    out = np.full(h * w, np.inf)
+    np.minimum.at(out, v[inside] * w + u[inside], z[front][inside])
+    out[~np.isfinite(out)] = np.nan
+    return out.reshape(h, w)
 
 
 @dataclass
@@ -353,14 +376,18 @@ def pose_error(est: np.ndarray, true: np.ndarray) -> tuple[float, float]:
     return dp, angle
 
 
-def locate(K: np.ndarray, size: tuple[int, int], found: tuple, scan_found: list[tuple], scan_xyz: list[np.ndarray],
-           candidates: list[int], features: object) -> dict:  # fmt: skip
-    """Where a photo was taken: its keypoints (``found``) matched with the candidate scan frames', those
-    made 3D by the scan's depth (``scan_xyz[j][k]``: keypoint k's world point, NaN without
-    depth), and PnP (LO-RANSAC, then refined). Returns the pose (OpenCV axes) and counts."""
-    import pycolmap
+# PnP variants: which scan points, and the RANSAC threshold (px at the working size). COLMAP's
+# default is 12 px; the scan's depth beyond the LiDAR's range is ARKit's estimate.
+VARIANTS = {"all_12px": (False, 12.0), "all_4px": (False, 4.0), "lidar_4px": (True, 4.0)}
+PRIMARY = "all_4px"
 
-    p2, p3 = [], []
+
+def correspondences(found: tuple, scan_found: list[tuple], scan_xyz: list[np.ndarray], scan_reliable: list[np.ndarray],
+                    candidates: list[int], features: object) -> tuple[np.ndarray, np.ndarray, np.ndarray]:  # fmt: skip
+    """A photo's keypoints matched with the candidate scan frames' (``scan_xyz[j][k]``: keypoint
+    k's world point, NaN without depth): 2D points, their 3D points, and whether each 3D point is
+    from the LiDAR's reliable depth."""
+    p2, p3, ok3 = [], [], []
     query = features.pixels(found)  # type: ignore[attr-defined]
     for j in candidates:
         index = features.match(found, scan_found[j])  # type: ignore[attr-defined]
@@ -370,18 +397,30 @@ def locate(K: np.ndarray, size: tuple[int, int], found: tuple, scan_found: list[
         ok = np.isfinite(xyz).all(1)
         p2.append(query[index[ok, 0]])
         p3.append(xyz[ok])
-    if not p2 or sum(len(p) for p in p2) < 12:
-        return {"matches": sum(len(p) for p in p2), "inliers": 0}
-    pts2, pts3 = np.concatenate(p2).astype(np.float64), np.concatenate(p3).astype(np.float64)
+        ok3.append(scan_reliable[j][index[ok, 1]])
+    if not p2:
+        return np.zeros((0, 2)), np.zeros((0, 3)), np.zeros(0, bool)
+    return np.concatenate(p2).astype(np.float64), np.concatenate(p3).astype(np.float64), np.concatenate(ok3)
+
+
+def pnp(pts2: np.ndarray, pts3: np.ndarray, K: np.ndarray, size: tuple[int, int], max_error: float) -> dict:
+    """The camera's pose from 2D-3D matches: LO-RANSAC with ``max_error`` px, then refined
+    (COLMAP). Returns the pose (OpenCV axes) and the inliers."""
+    import pycolmap
+
+    if len(pts2) < 12:
+        return {"inliers": 0}
     fx, fy, cx, cy = K
     # COLMAP's pixel centres are at .5.
     camera = pycolmap.Camera(model="PINHOLE", width=size[0], height=size[1], params=[fx, fy, cx + 0.5, cy + 0.5])
-    result = pycolmap.estimate_and_refine_absolute_pose(pts2 + 0.5, pts3, camera)
+    options = pycolmap.AbsolutePoseEstimationOptions()
+    options.ransac.max_error = max_error
+    result = pycolmap.estimate_and_refine_absolute_pose(pts2 + 0.5, pts3, camera, options)
     if result is None:
-        return {"matches": len(pts2), "inliers": 0}
+        return {"inliers": 0}
     w2c = np.eye(4)
     w2c[:3, :4] = np.asarray(result["cam_from_world"].matrix())
-    return {"matches": len(pts2), "inliers": int(result["num_inliers"]), "c2w": np.linalg.inv(w2c)}
+    return {"inliers": int(result["num_inliers"]), "c2w": np.linalg.inv(w2c)}
 
 
 def _save(path: Path, *images: np.ndarray) -> None:
@@ -430,8 +469,11 @@ def run(capture: Path, video: Path, work: Path, *, fixes: list[Fix] | None = Non
     # A. Lift.
     for method in methods:
         started = time.monotonic()
-        rows: dict[float, list[dict]] = {d: [] for d in AHEAD_M}
+        # A variant per method, and for the models also their depth scaled to the LiDAR's (their
+        # shape alone; glasses could take the scale from GPS or from a scan of the place).
+        rows: dict[str, dict[float, list[dict]]] = {}
         depth_rows = []
+        focal_ratios = []
         try:
             if method in DEPTH_MODELS and method not in models:
                 say(f"Loading {method}")
@@ -451,54 +493,80 @@ def run(capture: Path, video: Path, work: Path, *, fixes: list[Fix] | None = Non
                 continue
             photo = frames[i]
             K = scene.K_work(i)
-            cloud = None
-            if method == "lidar":
+            clouds: dict[str, Cloud | None] = {}
+            if method == "flat":
+                clouds["flat"] = None
+            elif method == "lidar":
                 if i not in lidar:
                     continue
-                d, c = lidar[i]
-                cloud = lift(photo, upsample(d, size), K, scene.c2w[i])
+                clouds["lidar"] = lift(photo, upsample(lidar[i][0], size), K, scene.c2w[i])
             elif method in DEPTH_MODELS:
                 depth_full = models[method](photo_full[i], scene.K[i])
-                if i in lidar:
-                    depth_rows.append(depth_vs_lidar(depth_full, *lidar[i]))
+                if getattr(models[method], "focal_ratio", None):
+                    focal_ratios.append(models[method].focal_ratio)
                 depth = torch.nn.functional.interpolate(torch.as_tensor(depth_full, dtype=torch.float32)[None, None],
                                                         size=(size[1], size[0]), mode="area")[0, 0].numpy()  # fmt: skip
-                cloud = lift(photo, depth, K, scene.c2w[i])
+                clouds[method] = lift(photo, depth, K, scene.c2w[i])
+                compared = depth_vs_lidar(depth_full, *lidar[i]) if i in lidar else None
+                if compared:
+                    depth_rows.append(compared)
+                    clouds[f"{method}+lidar-scale"] = lift(photo, depth / compared["scale"], K, scene.c2w[i])
             elif method == "sharp":
-                cloud = models["sharp"].cloud(photo_full[i], float(scene.K[i][0]), scene.c2w[i])
-            for d in AHEAD_M:
-                j = targets[(i, d)]
-                if j is None or j not in frames:
-                    continue
-                truth = frames[j]
-                if method == "flat":
-                    rows[d].append({"coverage": 1.0, "psnr": psnr(photo, truth), "psnr_flat": psnr(photo, truth)})
-                    continue
-                image, covered = render(cloud, scene.c2w[j], scene.K_work(j), size)
-                rows[d].append({"coverage": round(float(covered.mean()), 3), "psnr": psnr(image, truth, covered),
-                                "psnr_flat": psnr(photo, truth, covered)})  # fmt: skip
-                if d in (1.0, 4.0):
-                    _save(work / "lift" / f"{k:02d}_{method}_{d:g}m.jpg", photo, image, truth)
-        summary = {
-            "label": METHODS.get(method, method),
-            "seconds_per_photo": round((time.monotonic() - started) / max(1, len(chosen)), 2),
-            "ahead": {f"{d:g}": {"photos": len(r), "coverage": _median([x["coverage"] for x in r]),
-                                 "psnr": _median([x["psnr"] for x in r]), "psnr_flat": _median([x["psnr_flat"] for x in r])}
-                      for d, r in rows.items()},
-        }  # fmt: skip
+                sharp = models["sharp"]
+                clouds["sharp"] = sharp.cloud(photo_full[i], float(scene.K[i][0]), scene.c2w[i])
+                if i in lidar:
+                    small = (dataset.DEPTH_W, dataset.DEPTH_H)
+                    seen = depth_of_points(sharp.means, scale_K(scene.K[i], dataset.DEPTH_W / scene.width), small)
+                    compared = depth_vs_lidar(np.nan_to_num(seen, nan=0.0), *lidar[i])
+                    if compared:
+                        depth_rows.append(compared)
+                        c = clouds["sharp"]
+                        centre = scene.c2w[i, :3, 3]
+                        scaled = Cloud(((c.xyz - centre) / compared["scale"] + centre).astype(np.float32), c.rgb,
+                                       c.size_m / compared["scale"])  # fmt: skip
+                        clouds["sharp+lidar-scale"] = scaled
+            for name, cloud in clouds.items():
+                table = rows.setdefault(name, {d: [] for d in AHEAD_M})
+                for d in AHEAD_M:
+                    j = i if d == 0 else targets[(i, d)]
+                    if j is None or j not in frames:
+                        continue
+                    truth = frames[j]
+                    if cloud is None:
+                        table[d].append({"coverage": 1.0, "psnr": psnr(photo, truth), "psnr_flat": psnr(photo, truth)})
+                        continue
+                    image, covered = render(cloud, scene.c2w[j], scene.K_work(j), size)
+                    table[d].append({"coverage": round(float(covered.mean()), 3), "psnr": psnr(image, truth, covered),
+                                     "psnr_flat": psnr(photo, truth, covered)})  # fmt: skip
+                    if d in (1.0, 4.0):
+                        _save(work / "lift" / f"{k:02d}_{name}_{d:g}m.jpg", photo, image, truth)
+        seconds = round((time.monotonic() - started) / max(1, len(chosen)), 2)
         depth_rows = [r for r in depth_rows if r]
-        if depth_rows:
-            summary["depth_vs_lidar"] = {
-                key: _median([r[key] for r in depth_rows]) for key in ("abs_rel", "scale", "delta_1_25")
-            }
-        report["lift"][method] = summary
+        for name, table in rows.items():
+            summary = {
+                "label": METHODS.get(name, f"{METHODS.get(method, method)}, depth scaled to the LiDAR's"),
+                "seconds_per_photo": seconds,
+                "ahead": {f"{d:g}": {"photos": len(r), "coverage": _median([x["coverage"] for x in r]),
+                                     "psnr": _median([x["psnr"] for x in r]),
+                                     "psnr_flat": _median([x["psnr_flat"] for x in r])}
+                          for d, r in table.items()},
+            }  # fmt: skip
+            if depth_rows and name == method:
+                summary["depth_vs_lidar"] = {
+                    key: _median([r[key] for r in depth_rows]) for key in ("abs_rel", "abs_rel_scaled", "scale", "delta_1_25")
+                }
+            if focal_ratios and name == method:
+                summary["focal_guessed_over_true"] = _median(focal_ratios)
+            report["lift"][name] = summary
+        if not rows:
+            report["lift"][method] = {"label": METHODS.get(method, method), "error": "no photo could be lifted"}
         if method in DEPTH_MODELS or method == "sharp":
             models.pop(method, None)  # free the GPU for the next one
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
         if on_result:
             on_result(report)
-        say(f"{method}: done ({summary['seconds_per_photo']} s a photo)")
+        say(f"{method}: done ({seconds} s a photo)")
 
     # B. Locate in the scan.
     if locate_too:
@@ -524,7 +592,7 @@ def _locate(scene: Scene, capture: Path, video: Path, chosen: list[int], frames:
     images, found = dataset.frames_at(video, scan, size)
     features = features or learned.Features()
     started = time.monotonic()
-    scan_found, scan_xyz = [], []
+    scan_found, scan_xyz, scan_reliable = [], [], []
     for k, i in enumerate(scan):
         item = features.detect(images[k])  # type: ignore[attr-defined]
         scan_found.append(item)
@@ -539,6 +607,7 @@ def _locate(scene: Scene, capture: Path, video: Path, chosen: list[int], frames:
         xyz = cam @ scene.c2w[i, :3, :3].T + scene.c2w[i, :3, 3]
         xyz[(z < 0.2) | (z > 15.0)] = np.nan
         scan_xyz.append(xyz)
+        scan_reliable.append((conf[v, u] >= 1) & (z < LIDAR_RANGE_M))
     keypoint_s = time.monotonic() - started
     prior = gps_prior(scene, scan, t0, fixes) if fixes and t0 is not None else None
     rng = np.random.default_rng(7)
@@ -553,37 +622,55 @@ def _locate(scene: Scene, capture: Path, video: Path, chosen: list[int], frames:
         order = [int(j) for j in np.argsort(dist) if away[j] and dist[j] <= PRIOR_RADIUS_M][:NEAREST]
         K = scene.K_work(i)
         found_q = features.detect(frames[i])  # type: ignore[attr-defined]
-        got = locate(K, size, found_q, scan_found, scan_xyz, order, features)
-        row = {"frame": int(i), "candidates": len(order), "matches": got["matches"], "inliers": got["inliers"],
+        pts2, pts3, reliable = correspondences(found_q, scan_found, scan_xyz, scan_reliable, order, features)
+        row = {"frame": int(i), "candidates": len(order), "matches": len(pts2), "reliable": int(reliable.sum()),
                "prior_error_m": round(float(np.linalg.norm(guess - scene.top(i))), 2)}  # fmt: skip
-        if "c2w" in got:
-            dp, dr = pose_error(got["c2w"], scene.c2w[i])
-            row |= {"position_m": round(dp, 3), "rotation_deg": round(dr, 2)}
-            # What the scan shows from there: the nearest scan frames' depth, drawn at the pose found.
-            near = np.argsort(np.linalg.norm(scene.c2w[scan, :3, 3] - got["c2w"][:3, 3], axis=1))[:3]
-            clouds = [lift(images[n], upsample(depth[int(scan[n])][0], size), scene.K_work(int(scan[n])), scene.c2w[scan[n]])
-                      for n in near]  # fmt: skip
-            cloud = Cloud(*(np.concatenate([getattr(c, f) for c in clouds]) for f in ("xyz", "rgb", "size_m")))
-            image, covered = render(cloud, got["c2w"], K, size)
-            at_truth, covered_truth = render(cloud, scene.c2w[i], K, size)
-            row |= {"scan_coverage": round(float(covered.mean()), 3), "psnr_scan": psnr(image, frames[i], covered),
-                    "psnr_scan_at_truth": psnr(at_truth, frames[i], covered_truth)}  # fmt: skip
-            diff = np.abs(image.astype(int) - frames[i].astype(int)).clip(0, 255).astype(np.uint8)
-            _save(work / "locate" / f"{k:02d}.jpg", frames[i], image, diff)
+        for variant, (only_reliable, max_error) in VARIANTS.items():
+            keep = reliable if only_reliable else np.ones(len(pts2), bool)
+            got = pnp(pts2[keep], pts3[keep], K, size, max_error)
+            cell = {"inliers": got["inliers"]}
+            if "c2w" in got:
+                dp, dr = pose_error(got["c2w"], scene.c2w[i])
+                cell |= {"position_m": round(dp, 3), "rotation_deg": round(dr, 2)}
+            row[variant] = cell
+            if variant == PRIMARY and "c2w" in got:
+                row |= cell
+                # What the scan shows from there: the nearest scan frames' depth, drawn at the pose found.
+                near = np.argsort(np.linalg.norm(scene.c2w[scan, :3, 3] - got["c2w"][:3, 3], axis=1))[:3]
+                clouds = [lift(images[n], upsample(depth[int(scan[n])][0], size), scene.K_work(int(scan[n])),
+                               scene.c2w[scan[n]]) for n in near]  # fmt: skip
+                cloud = Cloud(*(np.concatenate([getattr(c, f) for c in clouds]) for f in ("xyz", "rgb", "size_m")))
+                image, covered = render(cloud, got["c2w"], K, size)
+                at_truth, covered_truth = render(cloud, scene.c2w[i], K, size)
+                row |= {"scan_coverage": round(float(covered.mean()), 3), "psnr_scan": psnr(image, frames[i], covered),
+                        "psnr_scan_at_truth": psnr(at_truth, frames[i], covered_truth)}  # fmt: skip
+                diff = np.abs(image.astype(int) - frames[i].astype(int)).clip(0, 255).astype(np.uint8)
+                _save(work / "locate" / f"{k:02d}.jpg", frames[i], image, diff)
         row["seconds"] = round(time.monotonic() - started, 2)
         rows.append(row)
-        say(f"photo {k + 1}: {row.get('position_m', 'not placed')} m, {row.get('rotation_deg', '-')} deg, "
-            f"{row['inliers']} of {row['matches']} matches")  # fmt: skip
+        say(f"photo {k + 1}: " + ", ".join(f"{v} {row[v].get('position_m', '-')} m {row[v].get('rotation_deg', '-')} deg"
+                                           for v in VARIANTS) + f"; {row['matches']} matches")  # fmt: skip
     placed = [r for r in rows if "position_m" in r]
 
-    def within(m: float, deg: float) -> float:
-        return round(sum(r["position_m"] <= m and r["rotation_deg"] <= deg for r in placed) / max(1, len(rows)), 3)
+    def within(m: float, deg: float, cells: list[dict] | None = None) -> float:
+        cells = [r for r in (cells if cells is not None else placed) if "position_m" in r]
+        return round(sum(r["position_m"] <= m and r["rotation_deg"] <= deg for r in cells) / max(1, len(rows)), 3)
+
+    variants = {
+        v: {"median_position_m": _median([r[v].get("position_m") for r in rows]),
+            "median_rotation_deg": _median([r[v].get("rotation_deg") for r in rows]),
+            "within_0.5m_5deg": within(0.5, 5, [r[v] for r in rows]),
+            "within_0.25m_2deg": within(0.25, 2, [r[v] for r in rows])}
+        for v in VARIANTS
+    }  # fmt: skip
 
     return {
         "scan_frames": len(scan), "scan_step_m": MAP_STEP_M, "exclude_s": EXCLUDE_S,
         "prior": "gps" if prior is not None else f"simulated ({GPS_SIGMA_M} m)",
         "gps_fit": {k: v for k, v in (getattr(prior, "fit", None) or {}).items() if k != "latlon"} or None,
-        "keypoints_s": round(keypoint_s, 1), "placed": len(placed), "photos": len(rows),
+        "keypoints_s": round(keypoint_s, 1), "primary": PRIMARY, "variants": variants,
+        "median_prior_error_m": _median([r["prior_error_m"] for r in rows]),
+        "placed": len(placed), "photos": len(rows),
         "median_position_m": _median([r["position_m"] for r in placed]),
         "median_rotation_deg": _median([r["rotation_deg"] for r in placed]),
         "within": {"0.25m_2deg": within(0.25, 2), "0.5m_5deg": within(0.5, 5), "1m_10deg": within(1.0, 10)},
