@@ -223,3 +223,12 @@ def test_a_memory_from_a_scan_lists_its_world(client: TestClient, vault: Vault) 
     assert placed["splat"] == "moments/mo_scan_test/splat/scene.splat" and placed["trained"] is True
     assert placed["scale"] == 2.0 and placed["pose"] == pose
     assert "world" not in listed[memory.memory_id(b"escaping")]  # a moment name that leaves its day is ignored
+
+
+def test_a_video_shorter_than_its_poses_still_gives_its_sharpest_frames() -> None:
+    # The trail's video decoded to 3861 frames, its poses one more: the last pose has no score.
+    from ingest.splat import dataset
+
+    scores = np.arange(10, dtype=float)
+    picks = dataset.choose(scores, 3, np.ones(11, bool))
+    assert len(picks) == 3 and picks.max() == 9

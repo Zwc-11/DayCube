@@ -131,10 +131,13 @@ def sharpness(video: Path, width: int, height: int) -> np.ndarray:
 
 
 def choose(scores: np.ndarray, target: int, usable: np.ndarray) -> np.ndarray:
-    """The sharpest frame of each of ``target`` equal windows of the usable frames."""
-    frames = np.nonzero(usable)[0]
+    """The sharpest frame of each of ``target`` equal windows of the usable frames. A video can
+    decode to fewer frames than its poses: frames without a score are not usable."""
+    frames = np.nonzero(usable[: len(scores)])[0]
     edges = np.linspace(0, len(frames), min(target, len(frames)) + 1).astype(int)
-    picked = [int(frames[a + np.argmax(scores[frames[a:b]])]) for a, b in zip(edges[:-1], edges[1:], strict=True) if b > a]
+    picked = [
+        int(frames[a + np.argmax(scores[frames[a:b]])]) for a, b in zip(edges[:-1], edges[1:], strict=True) if b > a
+    ]
     return np.array(picked, dtype=int)
 
 
@@ -191,7 +194,9 @@ def extract(video: Path, picks: np.ndarray, images: Path, size: tuple[int, int])
     return small
 
 
-def frames_at(video: Path, picks: np.ndarray, size: tuple[int, int] = (DEPTH_W, DEPTH_H)) -> tuple[np.ndarray, np.ndarray]:
+def frames_at(
+    video: Path, picks: np.ndarray, size: tuple[int, int] = (DEPTH_W, DEPTH_H)
+) -> tuple[np.ndarray, np.ndarray]:
     """The picked frames (decoded frame numbers, counted as in ``sharpness``) at ``size``, RGB, and
     whether each was decoded (a video can decode a frame short of its packet count)."""
     width, height = size
@@ -272,7 +277,9 @@ def voxel_merge(xyz: np.ndarray, rgb: np.ndarray, size: float, cap: int) -> tupl
 
 def write_ply(path: Path, xyz: np.ndarray, rgb: np.ndarray) -> None:
     """A binary point cloud: x, y, z as floats, red, green, blue as bytes."""
-    record = np.zeros(len(xyz), dtype=[("x", "<f4"), ("y", "<f4"), ("z", "<f4"), ("red", "u1"), ("green", "u1"), ("blue", "u1")])
+    record = np.zeros(
+        len(xyz), dtype=[("x", "<f4"), ("y", "<f4"), ("z", "<f4"), ("red", "u1"), ("green", "u1"), ("blue", "u1")]
+    )
     record["x"], record["y"], record["z"] = xyz.T
     record["red"], record["green"], record["blue"] = rgb.T
     header = ("ply\nformat binary_little_endian 1.0\n"
@@ -343,7 +350,9 @@ def sky_shell(
     return points[seen].astype(np.float32), colours[seen], radius
 
 
-def depth_error(points: np.ndarray, K: np.ndarray, c2w: np.ndarray, depth_m: np.ndarray, good: np.ndarray, s: float) -> float | None:
+def depth_error(
+    points: np.ndarray, K: np.ndarray, c2w: np.ndarray, depth_m: np.ndarray, good: np.ndarray, s: float
+) -> float | None:
     """Median relative difference between the depth world points should have in a frame and the
     depth its LiDAR measured there (``good``: pixels to trust). None when too few land in it."""
     u, v, inside = project(points, K, c2w, s)
@@ -377,8 +386,18 @@ def tilted(c2w: np.ndarray, degrees: float) -> np.ndarray:
 MIRROR = np.diag([1.0, -1.0, -1.0, 1.0])
 
 
-def colour_error(u: np.ndarray, v: np.ndarray, z: np.ndarray, colours: np.ndarray, K_from: np.ndarray, c2w_from: np.ndarray,
-                 image: np.ndarray, K_to: np.ndarray, c2w_to: np.ndarray, s: float) -> float | None:
+def colour_error(
+    u: np.ndarray,
+    v: np.ndarray,
+    z: np.ndarray,
+    colours: np.ndarray,
+    K_from: np.ndarray,
+    c2w_from: np.ndarray,
+    image: np.ndarray,
+    K_to: np.ndarray,
+    c2w_to: np.ndarray,
+    s: float,
+) -> float | None:
     """Mean colour difference of depth pixels of one frame carried into another (both poses as
     given), against that frame's colours there."""
     points = unproject(u, v, z, K_from, c2w_from, s)
@@ -413,7 +432,9 @@ def check(samples: list[dict], s: float) -> dict:
             later.append(b)
         if c:
             tilt.append(max(c))
-        c = colour_error(x["u"], x["v"], x["z"], x["colours"], x["K_from"], x["c2w_from"], x["image_to"], x["K_to"], x["c2w_to"], s)
+        c = colour_error(
+            x["u"], x["v"], x["z"], x["colours"], x["K_from"], x["c2w_from"], x["image_to"], x["K_to"], x["c2w_to"], s
+        )
         m = colour_error(x["u"], x["v"], x["z"], x["colours"], x["K_from"], x["c2w_from"] @ MIRROR, x["image_to"], x["K_to"],
                          x["c2w_to"] @ MIRROR, s)  # fmt: skip
         if c is not None and m is not None:
@@ -535,7 +556,9 @@ def build(
         init = {"points": int(len(merged)), "from_points": int(len(xyz)), "voxel_m": round(used, 4), "far_points": 0}
         write_ply(out / "lidar.ply", merged, merged_rgb)  # the LiDAR's own returns, for the preview
         if far:
-            fxyz, frgb, far_used = voxel_merge(np.concatenate(far), np.concatenate(far_colours).astype(np.float64), far_voxel_m, far_points)
+            fxyz, frgb, far_used = voxel_merge(
+                np.concatenate(far), np.concatenate(far_colours).astype(np.float64), far_voxel_m, far_points
+            )
             write_ply(out / "far.ply", fxyz, frgb)
             merged = np.concatenate([merged, fxyz])
             merged_rgb = np.concatenate([merged_rgb, frgb])
@@ -550,9 +573,11 @@ def build(
             init["sky_points"] = int(len(sxyz))
             init["sky_radius_m"] = round(radius, 1)
         write_ply(out / "init.ply", merged, merged_rgb)
-        say(f"Starting cloud: {init['points']:,} LiDAR points from {len(xyz):,} (voxel {used * 100:.1f} cm),"
+        say(
+            f"Starting cloud: {init['points']:,} LiDAR points from {len(xyz):,} (voxel {used * 100:.1f} cm),"
             f" {init['far_points']:,} beyond its range and {init.get('sky_points', 0):,} on the sky"
-            f" {init.get('sky_radius_m', 0):.0f} m out")
+            f" {init.get('sky_radius_m', 0):.0f} m out"
+        )
 
     transforms = {"camera_model": "OPENCV", "frames": frames}
     if init:
@@ -564,7 +589,10 @@ def build(
         "frames": len(picks),
         "size": list(size),
         "video_frames": n,
-        "sharpness": {"kept_median": round(float(np.median(scores[picks])), 1), "all_median": round(float(np.median(scores)), 1)},
+        "sharpness": {
+            "kept_median": round(float(np.median(scores[picks])), 1),
+            "all_median": round(float(np.median(scores)), 1),
+        },
         "path_m": round(float(np.linalg.norm(np.diff(odo.c2w[:n, :3, 3], axis=0), axis=1).sum()), 1),
         "extent_m": [round(float(v), 1) for v in span.max(0) - span.min(0)],
         "init": init,
