@@ -76,6 +76,14 @@ def run(args: argparse.Namespace) -> None:
 
     inbox = PhoneInbox(settings.vault_root)  # phone exports dropped into vault/inbox/phone
     inbox.start()
+    from .memories import MemoryMaker, recon_python
+
+    maker = None
+    if (recon := recon_python()) is not None:
+        maker = MemoryMaker(settings.vault_root, recon)  # photos in vault/inbox/memories, with SHARP
+        maker.start()
+    else:
+        log.info("memories not made: run `uv sync --project services/recon` (docs/memories.md)")
     from .jobs import JobRunner
     from .supervise import WorkerSupervisor, speech_python
 
@@ -107,6 +115,8 @@ def run(args: argparse.Namespace) -> None:
         if librarian is not None:
             librarian.stop()
         inbox.stop()
+        if maker is not None:
+            maker.stop()
         for runner in runners:
             runner.stop()
         if speech is not None:

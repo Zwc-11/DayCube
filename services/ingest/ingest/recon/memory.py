@@ -15,10 +15,13 @@ Each memory is a folder in its day, ``vault/<day>/memories/<id>/``:
 - ``original.<ext>``: the file as it came, for one dropped in the inbox.
 
 Photos come from ``vault/inbox/memories`` (any JPEG, PNG or iPhone HEIC; the day from its EXIF
-time, else the file's), or from the sharpest frames of a day's scans (``--scan``).
+time, else the file's), or from the sharpest frames of a day's scans (``--scan DATE``, or
+``--scan latest``: the newest day with a scan whose capture is still there). The receiver runs this
+on its own (``capture/memories.py``); a photo that cannot be read is moved to
+``vault/inbox/memories/failed`` with the reason in ``<name>.txt``.
 
-    uv run --project services/recon python -m ingest.recon.memory [--inbox] [--scan 2026-10-24]
-        [--count 6] [photo ...]
+    uv run --project services/recon python -m ingest.recon.memory [--inbox] [--scan latest]
+        [--count 6] [--if-none] [photo ...]
 """
 
 from __future__ import annotations
@@ -40,6 +43,7 @@ PHOTO_SIDE = 1600
 OPACITY = 0.05  # Gaussians fainter than this are left out
 CAP = 1_500_000  # at most this many, the most visible first (48 MB)
 SUFFIXES = {".jpg", ".jpeg", ".png", ".heic", ".heif", ".webp"}
+SETTLED_S = 10.0  # a photo changed more recently than this may still be being copied in: left for later
 
 # OpenCV camera axes (SHARP's: x right, y down, z forward) to the viewer's (y up, z back): a half
 # turn about x. A Gaussian's rotation q becomes F q, with F = (w 0, x 1, y 0, z 0).
@@ -161,24 +165,75 @@ def memory_id(data: bytes) -> str:
     return "mem_" + hashlib.blake2b(data, digest_size=6).hexdigest()
 
 
+def inbox_photos(vault_root: Path, settled_s: float = SETTLED_S) -> list[Path]:
+    inbox = vault_root / "inbox" / "memories"
+    if not inbox.is_dir():
+        return []
+    now = time.time()
+    return sorted(p for p in inbox.iterdir()
+                  if p.is_file() and p.suffix.lower() in SUFFIXES and now - p.stat().st_mtime >= settled_s)  # fmt: skip
+
+
 def from_inbox(vault: object, predict: Callable, say: Callable[[str], None] = print) -> list[dict]:
-    """Every photo in ``vault/inbox/memories``: a memory in the day it was taken, the photo moved in."""
+    """Every photo in ``vault/inbox/memories``: a memory in the day it was taken, the photo moved in.
+    One that cannot be read goes to ``failed/``, the reason beside it, so it is not tried again
+    every time; a failure in SHARP itself (the GPU busy, say) stops the run, the photos left for the
+    next."""
     inbox = vault.root / "inbox" / "memories"  # type: ignore[attr-defined]
     inbox.mkdir(parents=True, exist_ok=True)
     made = []
-    for path in sorted(p for p in inbox.iterdir() if p.is_file() and p.suffix.lower() in SUFFIXES):
-        rgb, f_px, when = load_photo(path)
+    for path in inbox_photos(vault.root):  # type: ignore[attr-defined]
+        try:
+            rgb, f_px, when = load_photo(path)
+        except Exception as error:  # noqa: BLE001 - set aside with its reason; the others go on
+            failed = inbox / "failed"
+            failed.mkdir(exist_ok=True)
+            shutil.move(str(path), failed / path.name)
+            (failed / f"{path.name}.txt").write_text(f"{type(error).__name__}: {error}\n", encoding="utf-8")
+            say(f"{path.name}: not read ({type(error).__name__}: {error}), moved to failed")
+            continue
         ident = memory_id(path.read_bytes())
         date = when.strftime("%Y-%m-%d")
         folder = vault.day_path(date, must_exist=False) / "memories" / ident  # type: ignore[attr-defined]
         say(f"{path.name}: {rgb.shape[1]}x{rgb.shape[0]}, taken {when:%Y-%m-%d %H:%M}")
-        meta = make(rgb, f_px, folder, predict=predict, source={"file": path.name, "taken": when.isoformat(timespec="seconds")})
+        meta = make(
+            rgb, f_px, folder, predict=predict, source={"file": path.name, "taken": when.isoformat(timespec="seconds")}
+        )
         shutil.move(str(path), folder / f"original{path.suffix.lower()}")
         made.append({"date": date, "id": ident} | meta)
     return made
 
 
-def lidar_scale(means_cv: np.ndarray, K: np.ndarray, width: int, lidar: np.ndarray, confidence: np.ndarray) -> float | None:
+def latest_scan(vault: object) -> str | None:
+    """The newest day with a scan whose capture (video, poses and depth) is still there."""
+    from ..splat.run import find_capture
+
+    for scene in sorted(vault.root.glob("????-??-??/moments/mo_scan_*/scene.json"), reverse=True):  # type: ignore[attr-defined]
+        moment = scene.parent
+        if (moment / "capture" / "odometry.csv").is_file() or find_capture(vault, moment) is not None:  # type: ignore[arg-type]
+            return moment.parent.parent.name
+    return None
+
+
+def have_memories(vault_root: Path) -> bool:
+    return any(vault_root.glob("????-??-??/memories/mem_*/memory.json"))
+
+
+class Lazy:
+    """SHARP, loaded (2.8 GB, a few seconds) only when a photo is actually made."""
+
+    def __init__(self, load: Callable[[], Callable]) -> None:
+        self.load, self.predict = load, None
+
+    def __call__(self, rgb: np.ndarray, f_px: float) -> dict:
+        if self.predict is None:
+            self.predict = self.load()
+        return self.predict(rgb, f_px)
+
+
+def lidar_scale(
+    means_cv: np.ndarray, K: np.ndarray, width: int, lidar: np.ndarray, confidence: np.ndarray
+) -> float | None:
     """The scan's metres per SHARP metre for one frame: the LiDAR's depth over the nearest Gaussian's
     at each reliable LiDAR pixel, the median (on the 2026-10-24 trail SHARP's depth was about half
     the LiDAR's)."""
@@ -192,19 +247,24 @@ def lidar_scale(means_cv: np.ndarray, K: np.ndarray, width: int, lidar: np.ndarr
     return round(float(np.median(lidar[good] / seen[good])), 4)
 
 
-def from_scan(vault: object, date: str, count: int, predict: Callable, say: Callable[[str], None] = print) -> list[dict]:
-    """The sharpest frame in each of ``count`` stretches of the day's first scan, as memories placed
+def from_scan(
+    vault: object, date: str, count: int, predict: Callable, say: Callable[[str], None] = print
+) -> list[dict]:
+    """The sharpest frame in each of ``count`` stretches of the day's first scan with its capture, as memories placed
     in the scan: each with its camera pose in the scan's world and the LiDAR's scale."""
     from ..splat import dataset
     from ..splat.run import find_capture, scans
     from ..vault import read_json
     from . import simulate, single
 
-    moment_id = next(iter(scans(vault, date)), None)  # type: ignore[arg-type]
-    if moment_id is None:
+    capture = moment = moment_id = None
+    for moment_id in scans(vault, date):  # type: ignore[arg-type]
+        moment = vault.day_path(date) / "moments" / moment_id  # type: ignore[attr-defined]
+        capture = moment / "capture" if (moment / "capture" / "odometry.csv").is_file() else find_capture(vault, moment)  # type: ignore[arg-type]
+        if capture is not None:
+            break
+    if capture is None or moment is None:
         return []
-    moment = vault.day_path(date) / "moments" / moment_id  # type: ignore[attr-defined]
-    capture = moment / "capture" if (moment / "capture" / "odometry.csv").is_file() else find_capture(vault, moment)
     scene_json = read_json(moment / "scene.json") or {}
     video = moment / scene_json["video"] if (moment / str(scene_json.get("video"))).is_file() else capture / "rgb.mp4"
     scene = single.read_scene(capture, video)
@@ -241,14 +301,20 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Photos you can step into (SHARP)")
     parser.add_argument("photos", nargs="*", type=Path)
     parser.add_argument("--inbox", action="store_true", help="Every photo in vault/inbox/memories")
-    parser.add_argument("--scan", metavar="DATE", help="The sharpest frames of the day's first scan")
+    parser.add_argument(
+        "--scan", metavar="DATE", help="The sharpest frames of the day's first scan ('latest': the newest)"
+    )
     parser.add_argument("--count", type=int, default=6)
     parser.add_argument("--if-none", action="store_true", help="With --scan: only when the vault has no memories yet")
     args = parser.parse_args()
     vault = Vault(Settings().vault_root)
     say = lambda line: print(f"[{time.strftime('%H:%M:%S')}] {line}", flush=True)  # noqa: E731
-    say("Loading SHARP")
-    predict = Sharp()
+
+    def load() -> Sharp:
+        say("Loading SHARP")
+        return Sharp()
+
+    predict = Lazy(load)
     made = []
     for path in args.photos:
         rgb, f_px, when = load_photo(path)
@@ -259,12 +325,16 @@ def main() -> None:
         made.append({"date": date, "id": ident} | meta)
     if args.inbox:
         made += from_inbox(vault, predict, say)
-    if args.scan:
-        have = any(vault.root.glob("????-??-??/memories/*/memory.json"))
-        if not (args.if_none and have):
-            made += from_scan(vault, args.scan, args.count, predict, say)
+    if args.scan and not (args.if_none and have_memories(vault.root)):
+        date = latest_scan(vault) if args.scan == "latest" else args.scan
+        if date is None:
+            say("no scan with its capture in the vault")
+        else:
+            made += from_scan(vault, date, args.count, predict, say)
     for m in made:
-        print(f"memory {m['date']}/{m['id']}: {m['splats']} splats, scene {m['depth_m']['median']} m away, {m['seconds']} s")
+        print(
+            f"memory {m['date']}/{m['id']}: {m['splats']} splats, scene {m['depth_m']['median']} m away, {m['seconds']} s"
+        )
     print(f"{len(made)} memories made")
 
 

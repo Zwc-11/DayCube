@@ -5,11 +5,14 @@ PyTorch and its weights; a stand-in predicts a known scene here."""
 from __future__ import annotations
 
 import json
+import os
+import time
 from datetime import datetime
 from pathlib import Path
 
 import numpy as np
 import pytest
+from capture import memories as maker
 from fastapi.testclient import TestClient
 from ingest.recon import memory
 from ingest.splat import export
@@ -38,8 +41,9 @@ def plane(rgb: np.ndarray, f_px: float, depth: float = 3.0) -> dict:
             "rgb": rgb[::8, ::8].reshape(-1, 3) / 255.0, "alpha": np.full(n, 0.9)}  # fmt: skip
 
 
-def photo(path: Path, when: datetime, focal_35mm: int = 26) -> Path:
-    """A JPEG as a phone writes one: EXIF time and 35 mm-equivalent focal length."""
+def photo(path: Path, when: datetime, focal_35mm: int = 26, age_s: float = 60.0) -> Path:
+    """A JPEG as a phone writes one: EXIF time and 35 mm-equivalent focal length; copied in
+    ``age_s`` ago."""
     rng = np.random.default_rng(0)
     image = Image.fromarray(rng.integers(0, 255, (300, 400, 3), dtype=np.uint8))
     exif = Image.Exif()
@@ -47,7 +51,19 @@ def photo(path: Path, when: datetime, focal_35mm: int = 26) -> Path:
     sub[0x9003] = when.strftime("%Y:%m:%d %H:%M:%S")  # DateTimeOriginal
     sub[0xA405] = focal_35mm  # FocalLengthIn35mmFilm
     image.save(path, exif=exif)
+    then = time.time() - age_s
+    os.utime(path, (then, then))
     return path
+
+
+def scan(vault: Vault, date: str, moment: str, *, capture: bool) -> None:
+    """A scan moment; with its capture (poses and depth) beside it, or with the capture gone."""
+    folder = vault.root / date / "moments" / moment
+    folder.mkdir(parents=True)
+    (folder / "scene.json").write_text(json.dumps({"kind": "camera-path"}))
+    if capture:
+        (folder / "capture" / "depth").mkdir(parents=True)
+        (folder / "capture" / "odometry.csv").write_text("timestamp\n")
 
 
 def test_the_photos_camera_axes_become_the_viewers() -> None:
@@ -87,11 +103,80 @@ def test_inbox_photos_go_to_the_day_they_were_taken(tmp_path: Path) -> None:
     rgb, f_px, when = memory.load_photo(inbox / "IMG_0001.jpg")
     assert when == datetime(2026, 10, 25, 14, 30)
     assert f_px == pytest.approx(26 / 36 * 400)  # 26 mm-equivalent across 400 px
+    photo(inbox / "IMG_0002.jpg", datetime(2026, 10, 25, 15, 0), age_s=0)  # still being copied in
+    (inbox / "IMG_0003.jpg").write_bytes(b"not a photo")
+    os.utime(inbox / "IMG_0003.jpg", (time.time() - 60, time.time() - 60))
     made = memory.from_inbox(vault, lambda image, f: plane(image, f), say=lambda _: None)
     assert len(made) == 1 and made[0]["date"] == "2026-10-25"
     folder = vault.root / "2026-10-25" / "memories" / made[0]["id"]
     assert (folder / "memory.splat").is_file() and (folder / "original.jpg").is_file()
-    assert not list(inbox.iterdir())  # moved in, so it is not made again
+    # Moved in, so it is not made again; the one being copied waits; the unreadable one is set aside.
+    assert sorted(p.name for p in inbox.iterdir()) == ["IMG_0002.jpg", "failed"]
+    assert sorted(p.name for p in (inbox / "failed").iterdir()) == ["IMG_0003.jpg", "IMG_0003.jpg.txt"]
+
+
+def test_sharp_is_loaded_only_for_a_photo_to_make() -> None:
+    loads = []
+    lazy = memory.Lazy(lambda: loads.append(1) or (lambda image, f: plane(image, f)))
+    assert loads == []
+    lazy(np.zeros((16, 16, 3), np.uint8), 10.0)
+    lazy(np.zeros((16, 16, 3), np.uint8), 10.0)
+    assert loads == [1]
+
+
+def test_the_latest_scan_is_the_newest_with_its_capture(tmp_path: Path) -> None:
+    vault = Vault(tmp_path / "vault")
+    vault.initialize()
+    assert memory.latest_scan(vault) is None
+    scan(vault, "2026-10-20", "mo_scan_a", capture=True)
+    scan(vault, "2026-10-24", "mo_scan_b", capture=True)
+    scan(vault, "2026-10-26", "mo_scan_c", capture=False)  # its capture deleted: nothing to make it from
+    assert memory.latest_scan(vault) == "2026-10-24"
+
+
+def test_the_receiver_makes_memories_without_a_click(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    vault = Vault(tmp_path / "vault")
+    vault.initialize()
+    runs: list[list[str]] = []
+
+    class Child:
+        def __init__(self, command: list[str], **kw: object) -> None:
+            runs.append(command)
+            self.code = codes.pop(0)
+
+        def wait(self, timeout: float | None = None) -> int:
+            return self.code
+
+        def poll(self) -> int:
+            return self.code
+
+    codes = [0, 1, 0]
+    monkeypatch.setattr(maker.subprocess, "Popen", Child)
+    m = maker.MemoryMaker(vault.root, Path("python"))
+    assert m.step() is None  # nothing to make
+    # A scan and no memories: the scan's frames, once per start.
+    scan(vault, "2026-10-24", "mo_scan_b", capture=True)
+    assert m.step() == 0 and runs[-1][1:] == [
+        "-m",
+        "ingest.recon.memory",
+        "--scan",
+        "latest",
+        "--count",
+        "6",
+        "--if-none",
+    ]
+    assert m.step() is None
+    # A photo being copied in waits; once it has settled, it is made.
+    inbox = vault.root / "inbox" / "memories"
+    inbox.mkdir(parents=True)
+    photo(inbox / "IMG_0001.jpg", datetime(2026, 10, 25, 14, 30), age_s=0)
+    assert m.step() is None
+    now = time.time() + maker.SETTLED_S + 1
+    assert m.step(now) == 1 and runs[-1][3:] == ["--inbox"]
+    # It failed: not tried again every minute, but after the back-off.
+    assert m.step(now + 60) is None
+    assert m.step(now + maker.BACKOFF_S + 1) == 0 and len(runs) == 3
+    assert "receiver: -m ingest.recon.memory --inbox" in (vault.root / "logs" / "memories.log").read_text()
 
 
 def test_the_api_lists_and_serves_memories(client: TestClient, vault: Vault, tmp_path: Path) -> None:
@@ -115,7 +200,9 @@ def test_the_lidar_sets_a_memorys_scale_in_its_scan() -> None:
     g = plane(rgb, 500.0, depth=2.0)
     lidar = np.full((192, 256), 4.0, np.float32)
     confidence = np.full((192, 256), 2, np.uint8)
-    assert memory.lidar_scale(g["means"], np.array([500.0, 500.0, 319.5, 239.5]), 640, lidar, confidence) == pytest.approx(2.0)
+    assert memory.lidar_scale(
+        g["means"], np.array([500.0, 500.0, 319.5, 239.5]), 640, lidar, confidence
+    ) == pytest.approx(2.0)
     confidence[:] = 0  # nothing reliable: no scale
     assert memory.lidar_scale(g["means"], np.array([500.0, 500.0, 319.5, 239.5]), 640, lidar, confidence) is None
 
