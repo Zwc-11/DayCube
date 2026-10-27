@@ -63,7 +63,13 @@ Open `http://127.0.0.1:3000/?view=memories`, or **Memories** on the calendar pag
 
 - The scan's splat is the world around you: the trained splat, else the LiDAR's points.
 - The memory stands where the photo was taken, at the LiDAR's scale.
-- You start where the photo was taken, with its roll kept, so the view lines up with the photo.
+- You start where the photo was taken, looking where it looked, upright in the world (ARKit's y is
+  up). An iPhone held upright records its scan's frames a quarter turn round (the trail's six were
+  turned -88° to -97°): keeping that roll showed the world on its side. The field of view is the
+  photo's upright height, so the turned frame's width (71.5° on the trail).
+- The grid and the opening photo show a turned frame turned back (`photoRoll` in
+  `lib/memories.ts`); the other photos' frames in the world are on planes turned with their
+  cameras, so they are upright already.
 
 | Input | What it does |
 | --- | --- |

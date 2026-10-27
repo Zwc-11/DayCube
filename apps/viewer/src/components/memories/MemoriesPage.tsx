@@ -1,7 +1,7 @@
 import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { Waypoints } from 'lucide-react';
 import { BrandMark } from '../shell/TopBar';
-import { type Memory, listMemories, memoryKey, memoryUrl } from '../../lib/memories';
+import { type Memory, listMemories, memoryKey, memoryUrl, quarterTurns } from '../../lib/memories';
 
 const MemoryView = lazy(() => import('./MemoryView'));
 
@@ -41,7 +41,8 @@ export const MemoriesPage: React.FC<MemoriesPageProps> = ({ open, onOpen, onHome
         {memories?.map((m) => (
           <button key={memoryKey(m)} type="button" className="memories__item" onClick={() => onOpen(memoryKey(m))}
                   aria-label={`Memory of ${m.date}`} data-testid="memory-item">
-            <img src={memoryUrl(m, 'photo.jpg')} alt="" loading="lazy" draggable={false} />
+            <img src={memoryUrl(m, 'photo.jpg')} alt="" loading="lazy" draggable={false}
+                 style={{ ['--turn' as string]: `${-90 * quarterTurns(m)}deg`, ['--fit' as string]: quarterTurns(m) % 2 ? '1.34' : '1' }} />
             <span className="memories__date">{m.date}</span>
           </button>
         ))}
