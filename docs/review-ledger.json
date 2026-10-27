@@ -1,16 +1,16 @@
 {
-  "baseline_revision": "be42f3525b684c54bc276a1f62459f231d07393d",
+  "baseline_revision": "2ffd223a35e7745723d416b894f1c96012cdc687",
   "scope": "Every tracked file, except this generated ledger itself. No vendored source is tracked; dependencies live in ignored environments and lockfiles.",
   "limits": "Structural checks cover every listed file; manual_review only identifies implementations actually examined. Neither is a proof of maximum efficiency, a dependency audit or DeepInfer throughput parity. Missing manual_review is explicitly unreviewed at the semantic level.",
   "counts": {
-    "configuration": 44,
-    "documentation": 35,
-    "test": 86,
-    "source": 231,
+    "configuration": 49,
+    "documentation": 38,
+    "test": 92,
+    "source": 246,
     "asset": 17,
     "fixture": 19,
-    "measurement_or_fixture": 78,
-    "lockfile": 5,
+    "measurement_or_fixture": 80,
+    "lockfile": 6,
     "generated": 11
   },
   "category_treatments": {
@@ -24,19 +24,19 @@
     "measurement_or_fixture": "Retained measurement or fixture with its original provenance; inventory/parsing does not mean the workload was rerun.",
     "documentation": "Supporting or historical documentation: inventory and current report updates; historical results retain their original scope."
   },
-  "manual_reviews": 361,
+  "manual_reviews": 356,
   "coverage": {
     "source": {
-      "files": 231,
-      "current_manual_reviews": 231
+      "files": 246,
+      "current_manual_reviews": 229
     },
     "test": {
-      "files": 86,
+      "files": 92,
       "current_manual_reviews": 86
     },
     "configuration": {
-      "files": 44,
-      "current_manual_reviews": 44
+      "files": 49,
+      "current_manual_reviews": 41
     }
   },
   "files": [
@@ -289,6 +289,14 @@
       }
     },
     {
+      "path": "apps/viewer/e2e/memories.spec.ts",
+      "sha256": "439c7f93acfddf65e41a29d262b24452337f9fb0510885c003cefa5afea81acf",
+      "category": "test",
+      "bytes": 10324,
+      "lines": 186,
+      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately"
+    },
+    {
       "path": "apps/viewer/e2e/performance.spec.ts",
       "sha256": "e058db8ce689b875ff0398f523cef107f4a41c4da6cb8328451883435a43b64e",
       "category": "test",
@@ -410,12 +418,12 @@
     },
     {
       "path": "apps/viewer/src/Root.tsx",
-      "sha256": "74ae99d9e3cea9fb53e1c168fad49f5ccf5caccfc4d124fd87ccdb9823395c2b",
+      "sha256": "3646bd5e72f0ddd0565dbfe6e358025d4e1f2ef1559a6163a2b5fc8558b1b382",
       "category": "source",
-      "bytes": 5673,
-      "lines": 142,
+      "bytes": 6477,
+      "lines": 158,
       "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
-      "manual_review": {
+      "previous_review_needs_refresh": {
         "scope": "2026-10-26 algorithm/resource pass; exact scope in notes",
         "notes": "Lazy scene and note entry, route/date lookup ownership and async load cleanup surveyed; no changes to visual design."
       }
@@ -479,12 +487,12 @@
     },
     {
       "path": "apps/viewer/src/components/home/DayCalendar.tsx",
-      "sha256": "f8385988300c5261c169cfe2d107e4fd0c69790271e783cf1a54c5e146c07ffa",
+      "sha256": "8e316494cc80a5212bb5abdea6b656f1fffc660df62530bd6ae48d45aef96325",
       "category": "source",
-      "bytes": 8280,
-      "lines": 206,
+      "bytes": 8571,
+      "lines": 213,
       "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
-      "manual_review": {
+      "previous_review_needs_refresh": {
         "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
         "notes": "Read complete module: per-input day map, UTC date/month arithmetic, bounded month cells and glyphs, lazy dialog, keyboard navigation and ref deletion. Date lookup is O(1); days sorted oldest first by BackendBridge. No performance rewrite justified for at most 31 visible dates."
       }
@@ -550,6 +558,26 @@
       }
     },
     {
+      "path": "apps/viewer/src/components/memories/MemoriesPage.tsx",
+      "sha256": "d76c1986735415961c25c385ec5bec167cd41752801c17105ed7f5283c14e83f",
+      "category": "source",
+      "bytes": 2624,
+      "lines": 59,
+      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately"
+    },
+    {
+      "path": "apps/viewer/src/components/memories/MemoryView.tsx",
+      "sha256": "ced7fadbbdf2b3b94f7b203a943647124756e4229d627302e216cb28807241c0",
+      "category": "source",
+      "bytes": 18546,
+      "lines": 369,
+      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
+      "manual_review": {
+        "scope": "typecheck failure and matrix call review only, 2026-10-27",
+        "notes": "Corrected a dynamic-import type namespace assertion; emitted behavior unchanged. Not a new complete memory renderer audit."
+      }
+    },
+    {
       "path": "apps/viewer/src/components/modals/AskBarModal.tsx",
       "sha256": "c368ada66110e15a55b23882c11c5cf49fbfd6abfeb587c9c687026cd3529580",
       "category": "source",
@@ -599,14 +627,14 @@
     },
     {
       "path": "apps/viewer/src/components/modals/MeshView.tsx",
-      "sha256": "c0211be997c483068d60a968345a3a8f1fabb32b2c3586e16912443934699636",
+      "sha256": "9a0fbef082630d532033ab7da7cb7d7d2ac7d56e061d901c1de65a892dfe0fc7",
       "category": "source",
-      "bytes": 6759,
-      "lines": 167,
+      "bytes": 7056,
+      "lines": 169,
       "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
       "manual_review": {
-        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
-        "notes": "Read complete module: lazy glTF/controls/renderer, metric camera following and demand draw loop. Reproduced renderer leaks on rejection/close during load; resources now register when acquired, late objects dispose immediately, shared geometry/material/texture ownership is explicit, and hidden callbacks do not draw. Normal scan playback and failure/late-load browser checks pass. CPU image-bitmap ownership is a remaining loader-internals check."
+        "scope": "scoped changed-path review, 2026-10-27",
+        "notes": "Reviewed camera-follow call and per-live-view ownership of reusable pose. Synthetic browser playback/lifecycle checks cover integration; not a new complete rendering audit."
       }
     },
     {
@@ -647,14 +675,14 @@
     },
     {
       "path": "apps/viewer/src/components/modals/SplatView.tsx",
-      "sha256": "3efd2073866cea95c9aeb7c7e3743f4c649fffa0b95c33a73ad9b72591e58e74",
+      "sha256": "afc40181a5c7db5e25b96247a2e1efbbb88457f3fafb7988e56899430df93201",
       "category": "source",
-      "bytes": 16452,
-      "lines": 367,
+      "bytes": 15922,
+      "lines": 341,
       "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
       "manual_review": {
-        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
-        "notes": "Read complete loader/follow/display module and concurrent adaptive-budget changes through 53b1e57. SceneResources owns renderer, timer query pool, Spark, controls, meshes, animation loop and observer immediately, covering failure and late completion. Browser lifecycle/phone/budget cases pass. GPU pixel ratio is fixed per mount, LOD budget changes require two agreeing windows and do not force drawing. poseAt and frame telemetry still allocate; development stall history lacks a count cap and hidden/resume sample timing needs further coverage. Real GPU/RSS/worker cleanup is not established by method counters."
+        "scope": "scoped changed-path review, 2026-10-27",
+        "notes": "Reviewed shared pose extraction and per-live-view output ownership. Existing budget and drawing logic preserved; not a new full GPU audit."
       }
     },
     {
@@ -802,6 +830,18 @@
       }
     },
     {
+      "path": "apps/viewer/src/lib/cameraPose.ts",
+      "sha256": "72ac1574bcedc74ed9481bb6d8d29cc9e2c0e18ab451b897a4765f01d24d276c",
+      "category": "source",
+      "bytes": 1351,
+      "lines": 36,
+      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
+      "manual_review": {
+        "scope": "scoped changed-path review, 2026-10-27",
+        "notes": "Complete interpolation implementation reviewed against previous arithmetic, search ties, output identity and input immutability; measured synthetic before/after."
+      }
+    },
+    {
       "path": "apps/viewer/src/lib/days.ts",
       "sha256": "c34d7898e1c9bf8f5a84bca7f77ade77eb7bf14cb916e91f642e748c2c1a248c",
       "category": "source",
@@ -884,6 +924,14 @@
         "scope": "algorithm/resource/contract review; presentation limits explicit in notes",
         "notes": "Escaped text-first Markdown, link target filtering, block/inline scanning and wiki-note navigation. Browser fixture verifies scripts never execute."
       }
+    },
+    {
+      "path": "apps/viewer/src/lib/memories.ts",
+      "sha256": "7928c182a979e7878b3a55af3cad7e78471d317e9f66df25d019e260dce13884",
+      "category": "source",
+      "bytes": 3689,
+      "lines": 91,
+      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately"
     },
     {
       "path": "apps/viewer/src/lib/noteGraph.ts",
@@ -983,12 +1031,12 @@
     },
     {
       "path": "apps/viewer/src/styles/app.css",
-      "sha256": "1f61a457e0874fd487b8f289474cf9d90ee6875268c32716b7bfcfba02000fcd",
+      "sha256": "ab79e826d62d88da2f13d7ae8fa9ae9c945b3767bf3507250b19625584793263",
       "category": "configuration",
-      "bytes": 64479,
-      "lines": 3798,
+      "bytes": 67190,
+      "lines": 3927,
       "structural_check": "UTF-8 text inventory; build/configuration review is separate",
-      "manual_review": {
+      "previous_review_needs_refresh": {
         "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
         "notes": "Read complete design tokens, responsive layout, controls, overlays, modal/knowledge/scan styles and reduced-motion rules. Preserved all styling. Backdrop blur, shadows and shimmer/background-position animation can add compositor/paint work; no CSS change or GPU speed claim without a trace. Virtual tree rows use fixed absolute positions and viewport clipping. Read the concurrent 13-line splat GPU label addition; preserved its layout and colors."
       }
@@ -1100,6 +1148,30 @@
         "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
         "notes": "Read complete original and concurrent dual-GPU profiler launcher: explicit high/default GPU modes, separate labels, own viewer and headed browser. Unconditional npm install is not checked before profiling; uses real-vault profiler defaults and fixed waits. Not executed during this continuation. Synthetic reproducible profiling needs locked dependencies and explicit fixture selection."
       }
+    },
+    {
+      "path": "check-glasses-learned.cmd",
+      "sha256": "7938133c23a35e7d4fdb4c06cbb92053f719751e811ecf9e12cc22104ee9ae7a",
+      "category": "configuration",
+      "bytes": 1349,
+      "lines": 27,
+      "structural_check": "UTF-8 text inventory; build/configuration review is separate"
+    },
+    {
+      "path": "check-glasses.cmd",
+      "sha256": "6dc490d11bb5ba53ff3bd4940124f4dc7cbd8b2168d332cb629f05d530aad1c3",
+      "category": "configuration",
+      "bytes": 1217,
+      "lines": 21,
+      "structural_check": "UTF-8 text inventory; build/configuration review is separate"
+    },
+    {
+      "path": "check-single-photo.cmd",
+      "sha256": "d3f136fbcc55bded4b0e95b817c86172ee8d526359e861c63c36e907491f7c80",
+      "category": "configuration",
+      "bytes": 1338,
+      "lines": 28,
+      "structural_check": "UTF-8 text inventory; build/configuration review is separate"
     },
     {
       "path": "docs/algorithm-review-2026-10-24.md",
@@ -1218,6 +1290,14 @@
       "structural_check": "UTF-8 text inventory; build/configuration review is separate"
     },
     {
+      "path": "docs/efficiency-pass-2026-10-27.md",
+      "sha256": "b172ea8e68fb8050ad930a38ed52b893d7fb17ae0d4abca3317ba0571fc71cf8",
+      "category": "documentation",
+      "bytes": 5001,
+      "lines": 76,
+      "structural_check": "UTF-8 text inventory; build/configuration review is separate"
+    },
+    {
       "path": "docs/efficiency-review.md",
       "sha256": "5bb1721d9604fc5e6ae08e5a80b5c05b4e7b4a19c59ac5e51c06e745a3275f53",
       "category": "documentation",
@@ -1263,6 +1343,14 @@
       "category": "documentation",
       "bytes": 9038,
       "lines": 124,
+      "structural_check": "UTF-8 text inventory; build/configuration review is separate"
+    },
+    {
+      "path": "docs/glasses.md",
+      "sha256": "336a92c8d3a5ba44364f6daa602136fac1c0c3149aa15382114bc9c0854058a5",
+      "category": "documentation",
+      "bytes": 20437,
+      "lines": 363,
       "structural_check": "UTF-8 text inventory; build/configuration review is separate"
     },
     {
@@ -1322,6 +1410,14 @@
       "category": "asset",
       "bytes": 272797,
       "structural_check": "Binary fixture/media or asset hash and size; producer/consumer review is separate"
+    },
+    {
+      "path": "docs/memories.md",
+      "sha256": "06051fc700e12484528eb1c6280fce2b8ca53dfc00ac76f2318b1a1d6a0a490a",
+      "category": "documentation",
+      "bytes": 6529,
+      "lines": 125,
+      "structural_check": "UTF-8 text inventory; build/configuration review is separate"
     },
     {
       "path": "docs/notes.md",
@@ -1409,6 +1505,18 @@
       "manual_review": {
         "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
         "notes": "Authored and reviewed named React update/allocation benchmark: own isolated Vite/browser, warmups and repeated commits, final exact SVG fingerprint and collected-object allocation sampling. 600/12000/50000 poses and fixed viewport/browser are recorded; cumulative sampled allocation is not retained heap. Baseline source remains in 93764d2."
+      }
+    },
+    {
+      "path": "eval/benchmark_camera_pose.mjs",
+      "sha256": "98eafa17fad29721c16c4fa84035724f396cc6b7c69b65114839b7e1ea314deb",
+      "category": "source",
+      "bytes": 2929,
+      "lines": 57,
+      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
+      "manual_review": {
+        "scope": "scoped changed-path review, 2026-10-27",
+        "notes": "Synthetic Node benchmark with source hashes, CPU and wall samples, checksums and retained identity probe; not GPU, RSS or website FPS evidence."
       }
     },
     {
@@ -1963,6 +2071,23 @@
       }
     },
     {
+      "path": "eval/glasses_sim.py",
+      "sha256": "fd8c8ef10ca438d30059a0f3dba798a7ee5295fa15f4f2d759872a336ba65696",
+      "category": "source",
+      "bytes": 7151,
+      "lines": 131,
+      "functions": [
+        "say:36 (loops including nested scopes: 0)",
+        "capture_of:40 (loops including nested scopes: 0)",
+        "day_fixes:47 (loops including nested scopes: 4)",
+        "trainer:67 (loops including nested scopes: 0)",
+        "main:79 (loops including nested scopes: 1)",
+        "write:112 (loops including nested scopes: 0)"
+      ],
+      "review_signals": [],
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+    },
+    {
       "path": "eval/head_bench.py",
       "sha256": "771b0566a99fb2cca89ef13a9a0d5bf2c8027173ac70d96cf027e30b95a7c595",
       "category": "source",
@@ -2243,6 +2368,22 @@
       "category": "measurement_or_fixture",
       "bytes": 6926,
       "lines": 241,
+      "structural_check": "JSON parsed"
+    },
+    {
+      "path": "eval/results/camera-pose-after-2026-10-27.json",
+      "sha256": "dc66012a67bcffe64a8eb18148352a8567d0af90da3c2fd5dc19cf44c2a5c301",
+      "category": "measurement_or_fixture",
+      "bytes": 1251,
+      "lines": 51,
+      "structural_check": "JSON parsed"
+    },
+    {
+      "path": "eval/results/camera-pose-before-2026-10-27.json",
+      "sha256": "5bacdf1bb0261b750f59569f603c4f61b757f0a67e4902ca7444eef07af7d1ea",
+      "category": "measurement_or_fixture",
+      "bytes": 1270,
+      "lines": 51,
       "structural_check": "JSON parsed"
     },
     {
@@ -2864,6 +3005,20 @@
       }
     },
     {
+      "path": "eval/single_photo.py",
+      "sha256": "95bad511bae2715825a414af7b76d71d10a4c18e2b6d88d621fc670f92b1e2cc",
+      "category": "source",
+      "bytes": 4517,
+      "lines": 88,
+      "functions": [
+        "say:33 (loops including nested scopes: 0)",
+        "main:37 (loops including nested scopes: 3)",
+        "write:67 (loops including nested scopes: 0)"
+      ],
+      "review_signals": [],
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+    },
+    {
       "path": "eval/stare_learning.py",
       "sha256": "f68b88a06bd182968a30cdc913aabeb240f01cbbc28d3107722466208c82a9b7",
       "category": "source",
@@ -3354,6 +3509,14 @@
       }
     },
     {
+      "path": "make-memories.cmd",
+      "sha256": "fbd0a159cc8cd6793f85392197e2ad82f3411a04055c9b6aa81c6baca4c01eb5",
+      "category": "configuration",
+      "bytes": 1343,
+      "lines": 29,
+      "structural_check": "UTF-8 text inventory; build/configuration review is separate"
+    },
+    {
       "path": "package-lock.json",
       "sha256": "1ee9e3cb7eabb2d79c291240637f26363bee8b99e642c4f1ea9109c87d69f4a2",
       "category": "lockfile",
@@ -3363,14 +3526,14 @@
     },
     {
       "path": "package.json",
-      "sha256": "a49bccf121d635ce1c752a987bd44444c7f680af5184668fdc44382ffe0fa0c4",
+      "sha256": "6ab2930ec0ea4f5d05e8a11f2c30dbca27d55bb7956058da936f14d10d6060d3",
       "category": "configuration",
-      "bytes": 2292,
+      "bytes": 2347,
       "lines": 44,
       "structural_check": "JSON parsed",
       "manual_review": {
-        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
-        "notes": "Read complete workspace check/build/test scripts, separate gaze/speech environments, contracts/transport and browser gates. Added scene-resource and camera-map unit checks to the existing viewer gate. Expensive profiling commands stay separate and no cloud/native model work is required by the core check."
+        "scope": "scoped changed-path review, 2026-10-27",
+        "notes": "Viewer pose regression added to existing deterministic gate; other scripts preserved."
       }
     },
     {
@@ -3655,14 +3818,14 @@
     },
     {
       "path": "pyproject.toml",
-      "sha256": "c7317b5ba340c692eada271ea3356766abb0ae05a28fb9c9a9e1ac72134094d6",
+      "sha256": "637bd9e572ecedc36bb65da874c101c3c3e68a9ffa59a2bca4714da82dfa5876",
       "category": "configuration",
-      "bytes": 1565,
-      "lines": 48,
+      "bytes": 1683,
+      "lines": 54,
       "structural_check": "TOML parsed",
       "manual_review": {
-        "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
-        "notes": "Read complete root workspace, optional AI/media/native dependencies, deterministic suite boundary and Ruff families. Gaze/capture/speech use separate environments to avoid incompatible native/model stacks. Core check intentionally does not install or run cloud/GPU workloads."
+        "scope": "scoped changed-path review, 2026-10-27",
+        "notes": "Pillow added to dev dependencies because existing new tests import it during collection; runtime extras preserved."
       }
     },
     {
@@ -3759,6 +3922,18 @@
       }
     },
     {
+      "path": "scripts/camera-pose.test.mjs",
+      "sha256": "7f55b0605b928defceb67216f38f4513026feb510d8147b001497786c1817150",
+      "category": "test",
+      "bytes": 2712,
+      "lines": 52,
+      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately",
+      "manual_review": {
+        "scope": "scoped changed-path review, 2026-10-27",
+        "notes": "Reference comparison covers settling, endpoints, ties, nonfinite queries, zero directions, reusable outputs and independent snapshots."
+      }
+    },
+    {
       "path": "scripts/check-capture-package.py",
       "sha256": "b484f3637714f022800aa341875b8b440dc198408eb672c6c34d173587078b23",
       "category": "source",
@@ -3827,6 +4002,14 @@
         "scope": "2026-10-26 algorithm/resource pass; exact scope in notes",
         "notes": "Independent legacy-order oracle, tie/priority cases, buffer reuse and replaced/empty model bounds."
       }
+    },
+    {
+      "path": "scripts/memories.test.mjs",
+      "sha256": "4769f5e3d19e3a2c2cf3d860f4575eea387669c2a504749b1f0613118e19d0b0",
+      "category": "test",
+      "bytes": 2437,
+      "lines": 44,
+      "structural_check": "TypeScript parser (JS/TS/TSX); project typechecks and tests recorded separately"
     },
     {
       "path": "scripts/profile-splat.mjs",
@@ -3938,34 +4121,34 @@
     },
     {
       "path": "services/capture-win/capture/__main__.py",
-      "sha256": "03e3a21dce8b2990ac10f063d1a938b7930f31782594f11616dc181e6391f897",
+      "sha256": "a4508beee134e91be9809d3c59dcede95eef6dff7ef8bb23408af49bda007789",
       "category": "source",
-      "bytes": 18022,
-      "lines": 411,
+      "bytes": 18424,
+      "lines": 421,
       "functions": [
         "_logging:21 (loops including nested scopes: 1)",
         "_split:36 (loops including nested scopes: 1)",
         "run:45 (loops including nested scopes: 3)",
-        "import_phone:119 (loops including nested scopes: 3)",
-        "screen_file:132 (loops including nested scopes: 0)",
-        "screen:136 (loops including nested scopes: 4)",
-        "check_screen:169 (loops including nested scopes: 1)",
-        "_status:205 (loops including nested scopes: 0)",
-        "_restart:215 (loops including nested scopes: 0)",
-        "restart_receiver:236 (loops including nested scopes: 0)",
-        "install_autostart:243 (loops including nested scopes: 0)",
-        "uninstall_autostart:260 (loops including nested scopes: 0)",
-        "autostart_status:267 (loops including nested scopes: 0)",
-        "doctor:274 (loops including nested scopes: 0)",
-        "ring:281 (loops including nested scopes: 0)",
-        "import_history:315 (loops including nested scopes: 2)",
-        "main:337 (loops including nested scopes: 0)"
+        "import_phone:129 (loops including nested scopes: 3)",
+        "screen_file:142 (loops including nested scopes: 0)",
+        "screen:146 (loops including nested scopes: 4)",
+        "check_screen:179 (loops including nested scopes: 1)",
+        "_status:215 (loops including nested scopes: 0)",
+        "_restart:225 (loops including nested scopes: 0)",
+        "restart_receiver:246 (loops including nested scopes: 0)",
+        "install_autostart:253 (loops including nested scopes: 0)",
+        "uninstall_autostart:270 (loops including nested scopes: 0)",
+        "autostart_status:277 (loops including nested scopes: 0)",
+        "doctor:284 (loops including nested scopes: 0)",
+        "ring:291 (loops including nested scopes: 0)",
+        "import_history:325 (loops including nested scopes: 2)",
+        "main:347 (loops including nested scopes: 0)"
       ],
       "review_signals": [
-        "301: check text/binary mode and default encoding at build_opener(ProxyHandler({})).open"
+        "311: check text/binary mode and default encoding at build_opener(ProxyHandler({})).open"
       ],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
-      "manual_review": {
+      "previous_review_needs_refresh": {
         "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
         "notes": "Read complete CLI and startup/shutdown sequence: lazy optional imports, separate service environments, explicit pause/restart/screen commands and finally-based normal shutdown. Startup resources acquired before uvicorn's try are not all protected from a later startup exception; thread stop requests do not cancel active native jobs. No service command was run against the user's vault."
       }
@@ -4269,6 +4452,28 @@
       }
     },
     {
+      "path": "services/capture-win/capture/memories.py",
+      "sha256": "83d56f00f3e9a0eb80e10d632687ba4ee24744b278de74f5c8d5d27df7e65e67",
+      "category": "source",
+      "bytes": 5800,
+      "lines": 135,
+      "functions": [
+        "recon_python:33 (loops including nested scopes: 1)",
+        "waiting:41 (loops including nested scopes: 1)",
+        "have_memories:53 (loops including nested scopes: 0)",
+        "have_scans:57 (loops including nested scopes: 0)",
+        "__init__:62 (loops including nested scopes: 0)",
+        "plan:70 (loops including nested scopes: 0)",
+        "step:82 (loops including nested scopes: 0)",
+        "run:119 (loops including nested scopes: 1)",
+        "stop:131 (loops including nested scopes: 0)"
+      ],
+      "review_signals": [
+        "101: check subprocess timeout or explicit process ownership at subprocess.Popen"
+      ],
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+    },
+    {
       "path": "services/capture-win/capture/phone_api.py",
       "sha256": "8085da5c6960a9d2849979bad4bd4887d98a9c7b26352311c4924b62a6606dbb",
       "category": "source",
@@ -4503,22 +4708,22 @@
     },
     {
       "path": "services/capture-win/pyproject.toml",
-      "sha256": "5d550666ad926db63f9000a658bd20b56860594de5899259060240cd223adc05",
+      "sha256": "2d16503bdbe72dca3802225362e8399c1edb36a7bc708a5359d79219ad3cd309",
       "category": "configuration",
-      "bytes": 1697,
-      "lines": 47,
+      "bytes": 1823,
+      "lines": 49,
       "structural_check": "TOML parsed",
-      "manual_review": {
+      "previous_review_needs_refresh": {
         "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
         "notes": "Read complete Windows OCR/native optional dependency markers, editable ingest boundary and explicit wheel/sdist package inclusion. ignore-vcs avoids the repository runtime capture ignore hiding source. Package-content validation remains relevant; no optional model/native stage automatically executed by this review."
       }
     },
     {
       "path": "services/capture-win/uv.lock",
-      "sha256": "fac5dc9dd7eb2f3b895a3c9021e7a4c98cd93c22c7b1011f1de4597d69a28f75",
+      "sha256": "a4cc3a3dfd0f6caba1d1b8aad9f76cb2c0bb3b42fb55d46eb8a205567d5e0b6e",
       "category": "lockfile",
-      "bytes": 338836,
-      "lines": 2119,
+      "bytes": 342129,
+      "lines": 2141,
       "structural_check": "TOML parsed"
     },
     {
@@ -5623,57 +5828,59 @@
     },
     {
       "path": "services/ingest/ingest/api.py",
-      "sha256": "4efecfafeb3e8a8a549fe795904773d600a7f4ea22d673f3cf4e3f926d58fb76",
+      "sha256": "ef0e8e2351441192135834303297cc9f7dd052260ba9afbfb882956e86a10b6d",
       "category": "source",
-      "bytes": 22756,
-      "lines": 517,
+      "bytes": 25123,
+      "lines": 557,
       "functions": [
-        "sse:84 (loops including nested scopes: 0)",
-        "create_app:88 (loops including nested scopes: 16)",
-        "warm_up:104 (loops including nested scopes: 0)",
-        "lifespan:115 (loops including nested scopes: 0)",
-        "authorize:139 (loops including nested scopes: 0)",
-        "missing:144 (loops including nested scopes: 0)",
-        "invalid:148 (loops including nested scopes: 0)",
-        "model_changed:152 (loops including nested scopes: 0)",
-        "contract_error:156 (loops including nested scopes: 0)",
-        "health:160 (loops including nested scopes: 0)",
-        "days:177 (loops including nested scopes: 4)",
-        "day:199 (loops including nested scopes: 1)",
-        "events:209 (loops including nested scopes: 0)",
-        "skeleton:213 (loops including nested scopes: 0)",
-        "graph:217 (loops including nested scopes: 0)",
-        "epoch:220 (loops including nested scopes: 0)",
-        "knowledge_graph:231 (loops including nested scopes: 0)",
-        "entity:244 (loops including nested scopes: 0)",
-        "search:251 (loops including nested scopes: 0)",
-        "knowledge:263 (loops including nested scopes: 0)",
-        "notes_graph:269 (loops including nested scopes: 1)",
-        "note:280 (loops including nested scopes: 0)",
-        "data_center:285 (loops including nested scopes: 0)",
-        "gaze_learning:293 (loops including nested scopes: 1)",
-        "write_notes:307 (loops including nested scopes: 1)",
-        "list_notes:315 (loops including nested scopes: 1)",
-        "moment:323 (loops including nested scopes: 1)",
-        "asset:345 (loops including nested scopes: 0)",
-        "answer:361 (loops including nested scopes: 1)",
-        "add_events:377 (loops including nested scopes: 1)",
-        "run_job:383 (loops including nested scopes: 0)",
-        "ingest_day:397 (loops including nested scopes: 2)",
-        "job_snapshot:426 (loops including nested scopes: 0)",
-        "job:432 (loops including nested scopes: 1)",
-        "rename:453 (loops including nested scopes: 0)",
-        "confirm:465 (loops including nested scopes: 1)",
-        "delete_hours:490 (loops including nested scopes: 0)",
-        "capture_control:496 (loops including nested scopes: 0)",
-        "pause:507 (loops including nested scopes: 0)",
-        "resume:511 (loops including nested scopes: 0)",
-        "generate:366 (loops including nested scopes: 1)",
-        "generate:439 (loops including nested scopes: 1)"
+        "sse:85 (loops including nested scopes: 0)",
+        "create_app:89 (loops including nested scopes: 18)",
+        "warm_up:105 (loops including nested scopes: 0)",
+        "lifespan:116 (loops including nested scopes: 0)",
+        "authorize:140 (loops including nested scopes: 0)",
+        "missing:145 (loops including nested scopes: 0)",
+        "invalid:149 (loops including nested scopes: 0)",
+        "model_changed:153 (loops including nested scopes: 0)",
+        "contract_error:157 (loops including nested scopes: 0)",
+        "health:161 (loops including nested scopes: 0)",
+        "days:178 (loops including nested scopes: 4)",
+        "day:200 (loops including nested scopes: 1)",
+        "events:210 (loops including nested scopes: 0)",
+        "skeleton:214 (loops including nested scopes: 0)",
+        "graph:218 (loops including nested scopes: 0)",
+        "epoch:221 (loops including nested scopes: 0)",
+        "knowledge_graph:232 (loops including nested scopes: 0)",
+        "entity:245 (loops including nested scopes: 0)",
+        "search:252 (loops including nested scopes: 0)",
+        "knowledge:264 (loops including nested scopes: 0)",
+        "notes_graph:270 (loops including nested scopes: 1)",
+        "note:281 (loops including nested scopes: 0)",
+        "data_center:286 (loops including nested scopes: 0)",
+        "gaze_learning:294 (loops including nested scopes: 1)",
+        "write_notes:308 (loops including nested scopes: 1)",
+        "list_notes:316 (loops including nested scopes: 1)",
+        "moment:324 (loops including nested scopes: 1)",
+        "asset:346 (loops including nested scopes: 0)",
+        "memories:363 (loops including nested scopes: 2)",
+        "memory_file:388 (loops including nested scopes: 0)",
+        "answer:401 (loops including nested scopes: 1)",
+        "add_events:417 (loops including nested scopes: 1)",
+        "run_job:423 (loops including nested scopes: 0)",
+        "ingest_day:437 (loops including nested scopes: 2)",
+        "job_snapshot:466 (loops including nested scopes: 0)",
+        "job:472 (loops including nested scopes: 1)",
+        "rename:493 (loops including nested scopes: 0)",
+        "confirm:505 (loops including nested scopes: 1)",
+        "delete_hours:530 (loops including nested scopes: 0)",
+        "capture_control:536 (loops including nested scopes: 0)",
+        "pause:547 (loops including nested scopes: 0)",
+        "resume:551 (loops including nested scopes: 0)",
+        "generate:406 (loops including nested scopes: 1)",
+        "generate:479 (loops including nested scopes: 1)"
       ],
       "review_signals": [],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
-      "manual_review": {
+      "previous_review_needs_refresh": {
         "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
         "notes": "Read complete module: request bounds/authentication, typed core records, snapshot/ETag replay, indexed search/note enrichment, bounded process-local index jobs with same-day coalescing, locked mutation snapshots, asset containment and bounded capture-control HTTP calls. Auxiliary moment payloads read whole files and lack canonical response validation. Warm-up is one daemon thread without shutdown cancellation; full-history discovery and concurrent client memory remain limits. Capture capability is explicitly false, distinct from actual receiver state."
       }
@@ -6731,6 +6938,171 @@
       }
     },
     {
+      "path": "services/ingest/ingest/recon/__init__.py",
+      "sha256": "39a8fff60a10a4b0f348b29faefb66907366151fcb2e5f56bc4170cb65b6567a",
+      "category": "source",
+      "bytes": 201,
+      "lines": 3,
+      "functions": [],
+      "review_signals": [],
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+    },
+    {
+      "path": "services/ingest/ingest/recon/align.py",
+      "sha256": "1903ecd1464375cc49ee125ed4219f92044205cc41805b92e0a45f05e1dc42a5",
+      "category": "source",
+      "bytes": 6487,
+      "lines": 138,
+      "functions": [
+        "umeyama:29 (loops including nested scopes: 0)",
+        "apply:47 (loops including nested scopes: 0)",
+        "rotation_angle_deg:52 (loops including nested scopes: 0)",
+        "trajectory_error:58 (loops including nested scopes: 0)",
+        "level:82 (loops including nested scopes: 0)",
+        "georeference:97 (loops including nested scopes: 4)"
+      ],
+      "review_signals": [],
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+    },
+    {
+      "path": "services/ingest/ingest/recon/learned.py",
+      "sha256": "98cf20ba44cd4915007d914de843c283b5d42494d4af458a42dba7aad8f96e76",
+      "category": "source",
+      "bytes": 6148,
+      "lines": 135,
+      "functions": [
+        "available:25 (loops including nested scopes: 0)",
+        "sequential_pairs:34 (loops including nested scopes: 3)",
+        "match:95 (loops including nested scopes: 4)",
+        "__init__:53 (loops including nested scopes: 0)",
+        "detect:62 (loops including nested scopes: 0)",
+        "pixels:79 (loops including nested scopes: 0)",
+        "match:83 (loops including nested scopes: 0)"
+      ],
+      "review_signals": [
+        "112: check text/binary mode and default encoding at pycolmap.Database.open",
+        "129: check text/binary mode and default encoding at pairs_file.write_text",
+        "103: check text/binary mode and default encoding at pycolmap.Database.open",
+        "110: check text/binary mode and default encoding at Image.open"
+      ],
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+    },
+    {
+      "path": "services/ingest/ingest/recon/memory.py",
+      "sha256": "e92332369b1f99f290f4b82ddf56753a35a8abc67d5f036dc4a1ad2d1a7aa9e1",
+      "category": "source",
+      "bytes": 16495,
+      "lines": 343,
+      "functions": [
+        "to_viewer:53 (loops including nested scopes: 0)",
+        "records:59 (loops including nested scopes: 0)",
+        "load_photo:99 (loops including nested scopes: 0)",
+        "make:126 (loops including nested scopes: 0)",
+        "memory_id:164 (loops including nested scopes: 0)",
+        "inbox_photos:168 (loops including nested scopes: 1)",
+        "from_inbox:177 (loops including nested scopes: 1)",
+        "latest_scan:207 (loops including nested scopes: 1)",
+        "have_memories:218 (loops including nested scopes: 0)",
+        "lidar_scale:234 (loops including nested scopes: 0)",
+        "from_scan:250 (loops including nested scopes: 5)",
+        "main:298 (loops including nested scopes: 2)",
+        "__init__:73 (loops including nested scopes: 0)",
+        "__call__:83 (loops including nested scopes: 0)",
+        "__init__:225 (loops including nested scopes: 0)",
+        "__call__:228 (loops including nested scopes: 0)",
+        "load:314 (loops including nested scopes: 0)",
+        "world:288 (loops including nested scopes: 2)"
+      ],
+      "review_signals": [
+        "108: check text/binary mode and default encoding at Image.open"
+      ],
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+    },
+    {
+      "path": "services/ingest/ingest/recon/sfm.py",
+      "sha256": "2f67b0080d00d4ef514b8990aa68f8d17b908786665ebc09230917590bd38ad6",
+      "category": "source",
+      "bytes": 6784,
+      "lines": 150,
+      "functions": [
+        "available:52 (loops including nested scopes: 0)",
+        "_cam_from_world:60 (loops including nested scopes: 0)",
+        "reconstruct:68 (loops including nested scopes: 7)"
+      ],
+      "review_signals": [
+        "144: check text/binary mode and default encoding at best.write_text"
+      ],
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+    },
+    {
+      "path": "services/ingest/ingest/recon/simulate.py",
+      "sha256": "d72737ece945fa8f860afd1e85756b4e6cf1282a984e8f9e0e85ca89a428d80f",
+      "category": "source",
+      "bytes": 15553,
+      "lines": 307,
+      "functions": [
+        "read_truth:65 (loops including nested scopes: 0)",
+        "every:72 (loops including nested scopes: 1)",
+        "held_out:91 (loops including nested scopes: 3)",
+        "_size:111 (loops including nested scopes: 0)",
+        "_link:116 (loops including nested scopes: 0)",
+        "_frame:124 (loops including nested scopes: 3)",
+        "_dataset:133 (loops including nested scopes: 2)",
+        "_carry:154 (loops including nested scopes: 0)",
+        "_metric:164 (loops including nested scopes: 0)",
+        "_length:172 (loops including nested scopes: 0)",
+        "picks_of:176 (loops including nested scopes: 0)",
+        "run_mode:182 (loops including nested scopes: 4)",
+        "simulate:257 (loops including nested scopes: 5)",
+        "checks:294 (loops including nested scopes: 1)"
+      ],
+      "review_signals": [
+        "149: check text/binary mode and default encoding at (folder / 'transforms.json').write_text",
+        "150: check text/binary mode and default encoding at (folder / 'transforms_val.json').write_text"
+      ],
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+    },
+    {
+      "path": "services/ingest/ingest/recon/single.py",
+      "sha256": "43a30430c1444a8c6b13c1bab997436cd7d2827d9ca0e82a6945c2d3e41ce1e0",
+      "category": "source",
+      "bytes": 35460,
+      "lines": 700,
+      "functions": [
+        "device:79 (loops including nested scopes: 0)",
+        "scale_K:94 (loops including nested scopes: 0)",
+        "lift:100 (loops including nested scopes: 0)",
+        "render:114 (loops including nested scopes: 3)",
+        "psnr:162 (loops including nested scopes: 0)",
+        "depth_vs_lidar:173 (loops including nested scopes: 0)",
+        "depth_model:193 (loops including nested scopes: 0)",
+        "depth_of_points:251 (loops including nested scopes: 0)",
+        "read_scene:292 (loops including nested scopes: 0)",
+        "pick_photos:301 (loops including nested scopes: 1)",
+        "ahead:317 (loops including nested scopes: 0)",
+        "lidar_of:323 (loops including nested scopes: 6)",
+        "upsample:338 (loops including nested scopes: 0)",
+        "gps_prior:346 (loops including nested scopes: 3)",
+        "pose_error:372 (loops including nested scopes: 0)",
+        "correspondences:386 (loops including nested scopes: 1)",
+        "pnp:407 (loops including nested scopes: 0)",
+        "_save:427 (loops including nested scopes: 0)",
+        "_median:434 (loops including nested scopes: 1)",
+        "run:439 (loops including nested scopes: 21)",
+        "_locate:594 (loops including nested scopes: 26)",
+        "run:202 (loops including nested scopes: 0)",
+        "__init__:227 (loops including nested scopes: 0)",
+        "cloud:237 (loops including nested scopes: 0)",
+        "work:280 (loops including nested scopes: 0)",
+        "K_work:283 (loops including nested scopes: 0)",
+        "top:286 (loops including nested scopes: 0)",
+        "prior:362 (loops including nested scopes: 0)",
+        "within:674 (loops including nested scopes: 2)"
+      ],
+      "review_signals": [],
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+    },
+    {
       "path": "services/ingest/ingest/skeleton/__init__.py",
       "sha256": "2bd1c8b7999de35a408af55e04d80c69f711d7df583eb77e281b62091af919c7",
       "category": "source",
@@ -6858,43 +7230,43 @@
     },
     {
       "path": "services/ingest/ingest/splat/dataset.py",
-      "sha256": "bdfc51b94fe5f2be7c6dd9f9d3f40dd3526d06fdba3627b4c857b8a61c50122d",
+      "sha256": "3cd9bac9f5a27d0aa4ae2865b8068d7e118536a6a5c6eaf6b1e4742da4ffd944",
       "category": "source",
-      "bytes": 29417,
-      "lines": 572,
+      "bytes": 29701,
+      "lines": 600,
       "functions": [
         "rotation:61 (loops including nested scopes: 0)",
         "read_odometry:75 (loops including nested scopes: 6)",
         "_video_size:102 (loops including nested scopes: 0)",
         "sharpness:111 (loops including nested scopes: 1)",
         "choose:133 (loops including nested scopes: 1)",
-        "extract:141 (loops including nested scopes: 2)",
-        "frames_at:194 (loops including nested scopes: 2)",
-        "read_maps:226 (loops including nested scopes: 1)",
-        "unproject:242 (loops including nested scopes: 0)",
-        "back_project:252 (loops including nested scopes: 0)",
-        "voxel_merge:258 (loops including nested scopes: 3)",
-        "write_ply:273 (loops including nested scopes: 0)",
-        "project:287 (loops including nested scopes: 0)",
-        "sky_shell:301 (loops including nested scopes: 1)",
-        "depth_error:346 (loops including nested scopes: 0)",
-        "turned:360 (loops including nested scopes: 0)",
-        "tilted:369 (loops including nested scopes: 0)",
-        "colour_error:380 (loops including nested scopes: 0)",
-        "check:392 (loops including nested scopes: 2)",
-        "build:436 (loops including nested scopes: 10)"
+        "extract:144 (loops including nested scopes: 2)",
+        "frames_at:197 (loops including nested scopes: 2)",
+        "read_maps:231 (loops including nested scopes: 1)",
+        "unproject:247 (loops including nested scopes: 0)",
+        "back_project:257 (loops including nested scopes: 0)",
+        "voxel_merge:263 (loops including nested scopes: 3)",
+        "write_ply:278 (loops including nested scopes: 0)",
+        "project:294 (loops including nested scopes: 0)",
+        "sky_shell:308 (loops including nested scopes: 1)",
+        "depth_error:353 (loops including nested scopes: 0)",
+        "turned:369 (loops including nested scopes: 0)",
+        "tilted:378 (loops including nested scopes: 0)",
+        "colour_error:389 (loops including nested scopes: 0)",
+        "check:411 (loops including nested scopes: 2)",
+        "build:457 (loops including nested scopes: 10)"
       ],
       "review_signals": [
         "115: check subprocess timeout or explicit process ownership at subprocess.Popen",
-        "154: check subprocess timeout or explicit process ownership at subprocess.Popen",
-        "160: check subprocess timeout or explicit process ownership at subprocess.Popen",
-        "201: check subprocess timeout or explicit process ownership at subprocess.Popen",
-        "282: check text/binary mode and default encoding at path.open",
-        "231: check subprocess timeout or explicit process ownership at subprocess.run",
+        "157: check subprocess timeout or explicit process ownership at subprocess.Popen",
+        "163: check subprocess timeout or explicit process ownership at subprocess.Popen",
+        "206: check subprocess timeout or explicit process ownership at subprocess.Popen",
+        "289: check text/binary mode and default encoding at path.open",
+        "236: check subprocess timeout or explicit process ownership at subprocess.run",
         "103: check subprocess timeout or explicit process ownership at subprocess.run"
       ],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
-      "manual_review": {
+      "previous_review_needs_refresh": {
         "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
         "notes": "Read complete dataset, pose, image/depth and point preparation paths: batched NumPy transforms, streaming FFmpeg images, selected image passes, adaptive voxel merge and synthetic sky. Sharpness and encoder/decoder error paths need independent deadlines and bounded joins; some native work can block despite normal cleanup. Full maps/cloud arrays and sky-by-camera visibility remain memory/scale limits. No native reconstruction was run on user recordings."
       }
@@ -7787,6 +8159,41 @@
       }
     },
     {
+      "path": "services/ingest/tests/test_memory.py",
+      "sha256": "d649cdc11ed0aeb78d87bd7a4c1a119335b6711560f634dacf8e18e482f256b9",
+      "category": "test",
+      "bytes": 11421,
+      "lines": 234,
+      "functions": [
+        "rotation:23 (loops including nested scopes: 0)",
+        "plane:32 (loops including nested scopes: 0)",
+        "photo:44 (loops including nested scopes: 0)",
+        "scan:59 (loops including nested scopes: 0)",
+        "test_the_photos_camera_axes_become_the_viewers:69 (loops including nested scopes: 1)",
+        "test_a_photo_becomes_a_memory:85 (loops including nested scopes: 0)",
+        "test_inbox_photos_go_to_the_day_they_were_taken:97 (loops including nested scopes: 2)",
+        "test_sharp_is_loaded_only_for_a_photo_to_make:118 (loops including nested scopes: 0)",
+        "test_the_latest_scan_is_the_newest_with_its_capture:127 (loops including nested scopes: 0)",
+        "test_the_receiver_makes_memories_without_a_click:137 (loops including nested scopes: 0)",
+        "test_the_api_lists_and_serves_memories:182 (loops including nested scopes: 2)",
+        "test_the_lidar_sets_a_memorys_scale_in_its_scan:197 (loops including nested scopes: 0)",
+        "test_a_memory_from_a_scan_lists_its_world:210 (loops including nested scopes: 2)",
+        "test_a_video_shorter_than_its_poses_still_gives_its_sharpest_frames:228 (loops including nested scopes: 0)",
+        "__init__:143 (loops including nested scopes: 0)",
+        "wait:147 (loops including nested scopes: 0)",
+        "poll:150 (loops including nested scopes: 0)"
+      ],
+      "review_signals": [
+        "63: check text/binary mode and default encoding at (folder / 'scene.json').write_text",
+        "215: check text/binary mode and default encoding at (moment / 'scene.json').write_text",
+        "66: check text/binary mode and default encoding at (folder / 'capture' / 'odometry.csv').write_text",
+        "179: check text/binary mode and default encoding at (vault.root / 'logs' / 'memories.log').read_text",
+        "93: check text/binary mode and default encoding at Image.open",
+        "94: check text/binary mode and default encoding at (tmp_path / 'm' / 'memory.json').read_text"
+      ],
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+    },
+    {
       "path": "services/ingest/tests/test_notes.py",
       "sha256": "0d8b11d65afd9c777795c0b73fff496a9bd2eb0310fa79dc3fa070673ca16384",
       "category": "test",
@@ -8064,6 +8471,39 @@
       }
     },
     {
+      "path": "services/ingest/tests/test_recon.py",
+      "sha256": "c2d898b55a5f9c8472b6f702249a79da915bf1e2140c5eb13d2fd74649493185",
+      "category": "test",
+      "bytes": 13935,
+      "lines": 264,
+      "functions": [
+        "_pose:36 (loops including nested scopes: 0)",
+        "_hash:49 (loops including nested scopes: 0)",
+        "_noise:53 (loops including nested scopes: 1)",
+        "_render:67 (loops including nested scopes: 0)",
+        "_quat:94 (loops including nested scopes: 0)",
+        "make_walk:108 (loops including nested scopes: 2)",
+        "gps:128 (loops including nested scopes: 1)",
+        "walk:146 (loops including nested scopes: 0)",
+        "test_a_similarity_is_recovered_and_gravity_levels:150 (loops including nested scopes: 0)",
+        "test_the_gps_fit_finds_the_clock_offset_and_not_the_gps_standing_still:169 (loops including nested scopes: 2)",
+        "test_frames_are_picked_as_glasses_would_take_them:179 (loops including nested scopes: 0)",
+        "test_images_alone_rebuild_the_walk_and_the_gps_makes_it_metric:192 (loops including nested scopes: 1)",
+        "test_the_training_sets_carry_the_held_out_frames_into_each_reconstruction:214 (loops including nested scopes: 5)",
+        "test_sequential_pairs_are_the_next_few_and_quadratically_further:250 (loops including nested scopes: 1)",
+        "test_learned_features_rebuild_photos_2_m_apart:257 (loops including nested scopes: 0)",
+        "trainer:220 (loops including nested scopes: 1)",
+        "nearest:240 (loops including nested scopes: 0)"
+      ],
+      "review_signals": [
+        "112: check subprocess timeout or explicit process ownership at subprocess.run",
+        "124: check text/binary mode and default encoding at (folder / 'odometry.csv').write_text",
+        "221: check text/binary mode and default encoding at (folder / 'transforms.json').read_text",
+        "222: check text/binary mode and default encoding at (folder / 'transforms_val.json').read_text"
+      ],
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
+    },
+    {
       "path": "services/ingest/tests/test_retrieval_races.py",
       "sha256": "38e83772e3c7eefeebb0b444a2dc9870345fe608c280d58a389365a20f1b2850",
       "category": "test",
@@ -8153,6 +8593,27 @@
         "scope": "Targeted screen/caching correctness review; d8f8391 baseline with a526d52 preserved",
         "notes": "Six new deterministic cases exercise document reentry, simultaneous title/movement, failed delivery, screenshot occlusion/stale selections and cleanup on normal/failed OCR startup; existing screen suite passes."
       }
+    },
+    {
+      "path": "services/ingest/tests/test_single.py",
+      "sha256": "be4f42f93a5288f6bcfb5121acd179c4bf074ee647617ecd5c070b3bddd2ea25",
+      "category": "test",
+      "bytes": 7323,
+      "lines": 136,
+      "functions": [
+        "_depth:22 (loops including nested scopes: 0)",
+        "scan:40 (loops including nested scopes: 1)",
+        "test_a_plane_drawn_from_its_own_camera_is_itself:67 (loops including nested scopes: 0)",
+        "test_the_lidar_lift_renders_the_walk_ahead_and_a_wrong_scale_is_measured:82 (loops including nested scopes: 3)",
+        "test_a_photo_is_located_in_the_scan_where_the_camera_stood:108 (loops including nested scopes: 3)",
+        "test_pose_errors:129 (loops including nested scopes: 0)",
+        "__init__:57 (loops including nested scopes: 0)",
+        "__call__:62 (loops including nested scopes: 0)"
+      ],
+      "review_signals": [
+        "45: check text/binary mode and default encoding at (folder / 'odometry.csv').read_text"
+      ],
+      "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report"
     },
     {
       "path": "services/ingest/tests/test_snapshot.py",
@@ -8323,23 +8784,23 @@
     },
     {
       "path": "services/ingest/tests/test_update_cmd.py",
-      "sha256": "246527ac84fcbcf9bc1a2081cb092df37968112a13ac9761d228df70ddd28a8f",
+      "sha256": "1b5a3fca70c2990e68cf073c1eeed1645bf8c95d18f500c24c165b959009a706",
       "category": "test",
-      "bytes": 4010,
-      "lines": 93,
+      "bytes": 4283,
+      "lines": 98,
       "functions": [
         "crlf:40 (loops including nested scopes: 0)",
         "run:44 (loops including nested scopes: 2)",
-        "test_update_cmd:90 (loops including nested scopes: 0)"
+        "test_update_cmd:95 (loops including nested scopes: 0)"
       ],
       "review_signals": [
-        "58: check subprocess timeout or explicit process ownership at subprocess.run",
-        "66: check text/binary mode and default encoding at (root / 'vault' / 'logs' / 'update.log').read_text",
-        "48: check text/binary mode and default encoding at (ROOT / 'update.cmd').read_text",
-        "60: check text/binary mode and default encoding at (root / 'calls.log').read_text"
+        "61: check subprocess timeout or explicit process ownership at subprocess.run",
+        "69: check text/binary mode and default encoding at (root / 'vault' / 'logs' / 'update.log').read_text",
+        "49: check text/binary mode and default encoding at (ROOT / 'update.cmd').read_text",
+        "63: check text/binary mode and default encoding at (root / 'calls.log').read_text"
       ],
       "structural_check": "Python AST parsed; Ruff and suite results recorded in the review report",
-      "manual_review": {
+      "previous_review_needs_refresh": {
         "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
         "notes": "Read complete Wine command stubs and pull/npm/sync/canary failure matrix. It runs copied scripts in scratch directories with a five-minute subprocess deadline, never real Git updates or capture restart. Skipped without Wine; native Windows cmd acceptance remains a separate environment requirement."
       }
@@ -8413,6 +8874,22 @@
         "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
         "notes": "Read complete synthetic speaker constraints, deterministic gallery IDs, correction persistence and 1500-vector purity test. Removed a machine-time assertion from correctness; named seven-repeat performance workloads now live separately. Real voiceprint quality and gallery RSS remain unmeasured."
       }
+    },
+    {
+      "path": "services/recon/pyproject.toml",
+      "sha256": "c221d1cd9408ae4d86886b0cef715e963e6d3439275d575a63aa01f5f4d9af8e",
+      "category": "configuration",
+      "bytes": 1831,
+      "lines": 47,
+      "structural_check": "TOML parsed"
+    },
+    {
+      "path": "services/recon/uv.lock",
+      "sha256": "697c85942271277cbaee22fb152045e3116aaa7443edbecf95b31a1b5f049aa5",
+      "category": "lockfile",
+      "bytes": 266793,
+      "lines": 1802,
+      "structural_check": "TOML parsed"
     },
     {
       "path": "services/speech/pyproject.toml",
@@ -8731,22 +9208,22 @@
     },
     {
       "path": "update.cmd",
-      "sha256": "85ec52d1bd2ee8c1eb71df2370ef10b8b641e6871969905ada6ea67631a81782",
+      "sha256": "36957e63d124d2dc5c3bfd422944d307ed9070897fe06cbcd93b44b510026cac",
       "category": "configuration",
-      "bytes": 3245,
-      "lines": 87,
+      "bytes": 3605,
+      "lines": 97,
       "structural_check": "UTF-8 text inventory; build/configuration review is separate",
-      "manual_review": {
+      "previous_review_needs_refresh": {
         "scope": "Complete file implementation/resource/contract or supporting-configuration review; findings and limits below.",
         "notes": "Read complete fast-forward update, dependency diff, environment sync, optional explicit speech canary, restart and diagnostic flow. Fixed waits and per-command logs are clear but restart failure is not a global abort and update can trigger a model workload. Not executed; Wine-stub tests are skipped on this Windows environment."
       }
     },
     {
       "path": "uv.lock",
-      "sha256": "735f8d23b8ecec356d906b614bb104a17ce62da17656b280654dfea606d505e2",
+      "sha256": "938b25c868d7597adc7cfb85233bc7378cc3206a7d7491a1c463ac192acd319e",
       "category": "lockfile",
-      "bytes": 526634,
-      "lines": 3057,
+      "bytes": 530001,
+      "lines": 3081,
       "structural_check": "TOML parsed"
     },
     {

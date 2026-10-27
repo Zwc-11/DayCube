@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type { SplatCameras } from '@daycube/api-client';
 import { SceneResources } from '../../lib/sceneResources';
+import { createCameraPose, poseAt, type CameraPose } from '../../lib/cameraPose';
+export { poseAt } from '../../lib/cameraPose';
 import {
   type Budget,
   type GpuInfo,
@@ -63,6 +65,7 @@ interface SplatViewProps {
 }
 
 type Live = {
+  pose: CameraPose;
   camera: import('three').PerspectiveCamera;
   controls: { target: import('three').Vector3; update: () => void };
   /** Keep drawing for a while: something changed. */
@@ -84,41 +87,12 @@ type Live = {
 /** The camera where the phone was at ``t``, looking where it looked, kept level. The orbit
  * controls aim the camera at their target every frame, so the target moves with it. */
 export function follow(v: Live, cameras: SplatCameras, t: number): void {
-  const pose = poseAt(cameras, t);
+  const pose = poseAt(cameras, t, v.pose);
   const [x, y, z] = pose.position;
   v.camera.position.set(x, y, z);
   v.controls.target.set(x + pose.forward[0] * 3, y + pose.forward[1] * 3, z + pose.forward[2] * 3);
   v.controls.update();
   v.touch();
-}
-
-/** ARKit's first poses, before tracking settles, can be far off (on 2026-10-24 the first looked
- * 34 degrees down, a second later 8): the view starts half a second in. */
-const SETTLE_S = 0.5;
-
-/** The pose at time t, between the two nearest kept poses. */
-export function poseAt(cams: SplatCameras, at: number) {
-  const ts = cams.t;
-  const t = Math.max(at, ts[0] + SETTLE_S);
-  let lo = 0;
-  let hi = ts.length - 1;
-  if (t <= ts[0]) hi = 0;
-  else if (t >= ts[hi]) lo = hi;
-  else {
-    while (hi - lo > 1) {
-      const mid = (lo + hi) >> 1;
-      if (ts[mid] <= t) lo = mid;
-      else hi = mid;
-    }
-  }
-  const a = Math.min(lo, hi);
-  const b = Math.max(lo, hi);
-  const f = b > a ? (t - ts[a]) / (ts[b] - ts[a]) : 0;
-  const mix = (p: number[], q: number[]) => p.map((v, k) => v + (q[k] - v) * f);
-  const position = mix(cams.position[a], cams.position[b]);
-  const forward = mix(cams.forward[a], cams.forward[b]);
-  const n = Math.hypot(forward[0], forward[1], forward[2]) || 1;
-  return { position, forward: forward.map((v) => v / n) };
 }
 
 /** The corner's tooltip: which GPU draws, and how to give the browser the faster one. */
@@ -193,7 +167,7 @@ export const SplatView: React.FC<SplatViewProps> = ({ url, cameras, bounds, t, c
       controls.target.set(at[0], at[1], at[2]);
       controls.update();
       controls.addEventListener('change', () => touch());
-      const v: Live = { camera, controls, touch, frames: 0, gpu, budget, timed: Boolean(timer), frameMs: [], stalls: [] };
+      const v: Live = { camera, controls, touch, frames: 0, pose: createCameraPose(), gpu, budget, timed: Boolean(timer), frameMs: [], stalls: [] };
       live.current = v;
       // A new budget shows in the next frame drawn anyway; it does not draw one itself, so the
       // view still rests when still.

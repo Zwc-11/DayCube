@@ -545,6 +545,7 @@ vector = [
 [package.dev-dependencies]
 dev = [
     { name = "datamodel-code-generator" },
+    { name = "pillow" },
     { name = "pycolmap" },
     { name = "pytest" },
     { name = "ruff" },
@@ -569,6 +570,7 @@ provides-extras = ["ai", "vector", "modal", "skeleton", "moments", "transcribe",
 [package.metadata.requires-dev]
 dev = [
     { name = "datamodel-code-generator", specifier = ">=0.35,<1" },
+    { name = "pillow", specifier = ">=11,<13" },
     { name = "pycolmap", specifier = ">=4.2,<5" },
     { name = "pytest", specifier = ">=8,<10" },
     { name = "ruff", specifier = ">=0.14,<1" },
