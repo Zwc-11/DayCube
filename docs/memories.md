@@ -5,16 +5,24 @@ fades into its 3D scene as the view moves a little way in.
 
 ## Making them
 
-Drop photos into `vault\inbox\memories` and double-click `make-memories.cmd`.
+Drop photos into `vault\inbox\memories`. The receiver makes them on its own
+(`services/capture-win/capture/memories.py`); `make-memories.cmd` does the same by hand.
 
+- Every minute the receiver looks in the inbox. Photos that have not changed for 10 s are made, in
+  a child process of `services/recon`'s environment (no window, below-normal priority), its output
+  appended to `vault\logs\memories.log`. SHARP is loaded only when there is a photo to make.
 - JPEG, PNG and iPhone HEIC are read.
 - Each photo is filed under the day it was taken, from its EXIF time, else the file's.
-- The first time, with nothing in the inbox, the sharpest frames of the 2026-10-24 trail scan are
-  used instead.
+- A photo that cannot be read is moved to `vault\inbox\memories\failed`, the reason beside it in
+  `<name>.txt`. A failure in SHARP itself (the GPU busy) leaves the photos in the inbox, and the
+  receiver tries again 30 minutes later.
+- With no memories in the vault yet, the sharpest frames of the newest scan whose capture is still
+  there (`--scan latest`) are made into memories, once per receiver start.
+- Unlike a scan's training, this does not wait for the PC to be free: it is about 6 s a photo.
 
 `ingest/recon/memory.py`, in `services/recon`'s environment:
 
-    uv run --project services/recon python -m ingest.recon.memory [--inbox] [--scan DATE --count N] [photo ...]
+    uv run --project services/recon python -m ingest.recon.memory [--inbox] [--scan DATE|latest --count N] [--if-none] [photo ...]
 
 **How a photo becomes a scene:**
 
