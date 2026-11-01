@@ -1,9 +1,16 @@
 import {
-  askResultSchema, dataCenterSchema, dayNotesSchema, gazeLearningSchema, dayResponseSchema, entitySchema, eventSchema, graphSchema,
-  knowledgeGraphSchema, momentSchema, noteGraphSchema, noteSchema, searchResultSchema, skeletonSchema, transcriptSchema,
-  type AskResult, type DataCenter, type Day, type GazeLearning, type DayNotes, type DayResponse, type Entity, type Event,
-  type KnowledgeGraph, type Note, type NoteGraph, type SearchResult,
+  askResultSchema, dataCenterSchema, dayNotesSchema, dayReviewSchema, gazeLearningSchema, dayResponseSchema, entitySchema,
+  eventSchema, graphSchema, knowledgeGraphSchema, momentSchema, noteGraphSchema, noteSchema, searchResultSchema, skeletonSchema,
+  transcriptSchema,
+  type AskResult, type DataCenter, type Day, type DayReview, type GazeLearning, type DayNotes, type DayResponse, type Entity,
+  type Event, type KnowledgeGraph, type Note, type NoteGraph, type SearchResult,
 } from '@daycube/schemas';
+
+/** A correction of what a window or page, or a whole app or site, is: `category` absent leaves it,
+ *  `project: null` means none, `clear` goes back to the rules. */
+export interface LabelCorrection {
+  date: string; key: string; category?: string; project?: string | null; clear?: boolean;
+}
 import { consumeSse } from './sse.mjs';
 
 export class ApiError extends Error {
@@ -186,6 +193,18 @@ export class DaycubeClient {
     const query = new URLSearchParams({ q });
     if (date) query.set('date', date);
     return searchResultSchema.parse(await this.request(`/search?${query}`, { signal }));
+  }
+  /** The day's end-of-day review (null until written), its timeline and the categories to relabel with. */
+  async dayReview(date: string, signal?: AbortSignal): Promise<DayReview> {
+    return dayReviewSchema.parse(await this.request(`/day/${encodeURIComponent(date)}/review`, { signal }));
+  }
+  /** Write the day's review now (a draft while the day is under way); needs the vault token. */
+  async summarizeDay(date: string): Promise<DayReview> {
+    return dayReviewSchema.parse(await this.request(`/day/${encodeURIComponent(date)}/review`, { method: 'POST' }));
+  }
+  /** Correct a category or project; the day's timeline and review follow. Needs the vault token. */
+  async relabel(correction: LabelCorrection): Promise<DayReview> {
+    return dayReviewSchema.parse(await this.request('/labels', { method: 'POST', body: JSON.stringify(correction) }));
   }
   notes() { return this.request('/notes') as Promise<{ path: string; title: string; identity: string | null }[]>; }
   writeNotes(date: string) {

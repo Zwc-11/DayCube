@@ -1,6 +1,7 @@
-import { DaycubeClient, ApiError } from '@daycube/api-client';
+import { DaycubeClient, ApiError, type LabelCorrection } from '@daycube/api-client';
 import type {
-  AskResult as SchemaAskResult, DataCenter, DayNotes, DayResponse, Entity, GazeLearning, KnowledgeGraph, Note, SearchResult, NoteGraph,
+  AskResult as SchemaAskResult, DataCenter, DayNotes, DayResponse, DayReview, Entity, GazeLearning, KnowledgeGraph, Note,
+  SearchResult, NoteGraph,
 } from '@daycube/schemas';
 import {
   AskResult,
@@ -661,6 +662,44 @@ export class BackendBridge {
   /** Search as you type. Not logged: one request per keystroke would flood the request log. */
   search(q: string, date: string | null, signal?: AbortSignal): Promise<SearchResult> {
     return this.client.search(q, date, signal);
+  }
+
+  /** The day's end-of-day review and timeline, or null offline. */
+  dayReview(date: string) {
+    return this.read<DayReview>(
+      `/api/day/${date}/review`,
+      () => this.client.dayReview(date),
+      (d) => `${d.segments.length} segments, ${d.review ? `${d.review.kind} review` : 'no review yet'}`
+    );
+  }
+
+  /** A write that returns the day's review view; throws, with the reason, when it is not saved. */
+  private async reviewWrite(endpoint: string, run: () => Promise<DayReview>, summary: (d: DayReview) => string): Promise<DayReview> {
+    const t0 = performance.now();
+    try {
+      if (!this.token) throw new ApiError(401, 'Connect your vault token in Settings › Connection to change the review.');
+      const view = await run();
+      this.emitLog({ method: 'POST', endpoint, status: 200, latencyMs: performance.now() - t0, mode: 'live-backend', summary: summary(view) });
+      return view;
+    } catch (error) {
+      this.emitLog({
+        method: 'POST', endpoint, status: error instanceof ApiError ? error.status : 503,
+        latencyMs: performance.now() - t0, mode: 'live-backend', summary: 'Change was not saved',
+      });
+      throw error;
+    }
+  }
+
+  /** Write the day's review now (needs the vault token). */
+  summarizeDay(date: string): Promise<DayReview> {
+    return this.reviewWrite(`/api/day/${date}/review`, () => this.client.summarizeDay(date),
+      (d) => (d.result ? `Review ${d.result.why}` : 'Review written'));
+  }
+
+  /** Correct what a window, page, app or site is (needs the vault token). */
+  relabel(correction: LabelCorrection): Promise<DayReview> {
+    return this.reviewWrite('/api/labels', () => this.client.relabel(correction),
+      () => `${correction.key} → ${correction.clear ? 'the rules' : correction.category ?? correction.project ?? 'no project'}`);
   }
 
   /** Write a day's linked notes into vault/notes (needs the vault token); returns the notes written. */

@@ -14,6 +14,11 @@ takes them as it takes exports dropped there by hand (docs/phone.md).
   scan folder. Its files collect in ``inbox/phone/.staging/<device>/<item>``.
   ``POST /phone/items/complete {item}`` moves it into the inbox in one step. A scan whose upload
   pauses half way is never imported half made: the inbox imports what has stopped changing.
+- **App events.** ``POST /phone/events`` takes ``{"app": "Instagram", "event": "opened", "t": ...}``
+  (or a list of them) from iOS Shortcuts personal automations ("When Instagram is opened / closed")
+  and appends them to ``vault/capture/<date>/phone-events.jsonl``: the day's review counts pickups
+  and minutes per app from them. The same event sent twice is kept once; nothing is kept while
+  recording is paused. The recipe is in docs/phone.md.
 - **Heartbeats.** ``POST /phone/heartbeat`` carries battery, free storage, recording state and the
   upload queue. The last one per device is kept for doctor, and all of them are appended to
   ``vault/capture/phone-heartbeats.jsonl``.
@@ -29,12 +34,14 @@ import secrets
 import shutil
 import threading
 import time
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 CHUNK = 4 * 1024 * 1024
 MAX_FILE = 8 * 1024**3
@@ -54,6 +61,12 @@ class NewUpload(BaseModel):
 
 class Item(BaseModel):
     item: str = Field(min_length=1, max_length=128)
+
+
+class AppEvent(BaseModel):
+    app: str = Field(min_length=1, max_length=80)  # as the automation names it: "Instagram"
+    event: Literal["opened", "closed"]
+    t: AwareDatetime | None = None  # Shortcuts' "Current Date" in ISO 8601; the time received when left out
 
 
 class Heartbeat(BaseModel):
@@ -106,8 +119,9 @@ def _verified_file(path: Path, size: int, expected: str) -> tuple[int, int, int,
 class Phones:
     """Devices, uploads in progress and heartbeats, in ``vault/capture`` and ``vault/inbox/phone``."""
 
-    def __init__(self, vault_root: Path) -> None:
+    def __init__(self, vault_root: Path, zone: str = "America/Toronto") -> None:
         self.root = vault_root
+        self.zone = ZoneInfo(zone)
         self.inbox = vault_root / "inbox" / "phone"
         self.staging = self.inbox / ".staging"
         self.partial = self.inbox / ".partial"
@@ -290,6 +304,46 @@ class Phones:
                 )
         return {"item": item, "done": True, "path": destination.name, "files": len(files)}
 
+    # -- app events -----------------------------------------------------------------------
+    def events(self, device: str, items: list[AppEvent]) -> dict:
+        """Append app opened/closed events to their day's ``phone-events.jsonl``. An event's id is a
+        hash of the device, app, kind and time, so a Shortcut that retries is kept once."""
+        if (self.root / "capture" / "paused").exists():
+            return {"accepted": 0, "duplicates": 0, "paused": True}
+        received = datetime.now(UTC)
+        by_day: dict[str, list[dict]] = {}
+        for item in items:
+            moment = (item.t or received).astimezone(self.zone)
+            stamp = moment.isoformat(timespec="seconds")
+            key = f"{device}|{item.app.casefold()}|{item.event}|{stamp}"
+            record = {"t": stamp, "id": hashlib.sha256(key.encode()).hexdigest()[:16], "app": item.app.strip(),
+                      "event": item.event, "device": device}  # fmt: skip
+            by_day.setdefault(moment.date().isoformat(), []).append(record)
+        accepted = duplicates = 0
+        with self.lock:
+            for day, records in by_day.items():
+                path = self.root / "capture" / day / "phone-events.jsonl"
+                seen = set()
+                if path.exists():
+                    for line in path.read_text(encoding="utf-8").splitlines():
+                        try:
+                            seen.add(json.loads(line)["id"])
+                        except (ValueError, KeyError, TypeError):
+                            continue
+                fresh = []
+                for record in records:
+                    if record["id"] in seen:
+                        duplicates += 1
+                        continue
+                    seen.add(record["id"])
+                    fresh.append(record)
+                if fresh:
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    with path.open("a", encoding="utf-8") as handle:
+                        handle.write("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in fresh))
+                    accepted += len(fresh)
+        return {"accepted": accepted, "duplicates": duplicates, "paused": False}
+
     # -- heartbeats -----------------------------------------------------------------------
     def heartbeat(self, device: str, beat: Heartbeat) -> dict:
         record = {"device": device, "received": time.time(), **beat.model_dump(exclude_none=True)}
@@ -358,6 +412,13 @@ def router(phones: Phones, vault_token: Any) -> APIRouter:
     @api.post("/items/complete")
     def finish(body: Item, who: str = Depends(device)) -> dict:
         return phones.finish_item(who, body.item)
+
+    @api.post("/events")
+    def events(body: AppEvent | list[AppEvent], who: str = Depends(device)) -> dict:
+        items = body if isinstance(body, list) else [body]
+        if len(items) > 500:
+            raise HTTPException(413, "At most 500 events per request")
+        return phones.events(who, items)
 
     @api.post("/heartbeat")
     def heartbeat(body: Heartbeat, who: str = Depends(device)) -> dict:

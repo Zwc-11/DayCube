@@ -248,7 +248,9 @@ class Tracker:
         self.live_at = -1e9
         self.offline_since: float | None = None
         self.last_face = clock()
-        self.frames: deque[tuple[float, bool]] = deque()  # (time, had a face) over the last 10 s
+        # (time, had a face, what came of it: None without one, "closed" (a blink or its settling),
+        # "missed" (the gaze ray met no screen) or "gaze") over the last 10 s
+        self.frames: deque[tuple[float, bool, str | None]] = deque()
         self.samples: deque[float] = deque()  # gaze samples given to the detector over the last 30 s
         self.fixated: deque[tuple[float, int]] = deque()  # (time, samples) of fixations over the last 30 s
         self.heads: deque[tuple[float, float, float]] = deque()  # (time, mm, degrees) from calibration, 10 s
@@ -275,7 +277,10 @@ class Tracker:
             "monitor": [self.width, self.height],
             "fps": round((frames - 1) / span, 1) if span > 0 else None,
             "target_fps": self.target_fps,
-            "face": round(sum(face for _, face in self.frames) / frames, 2) if frames else None,
+            "face": round(sum(face for _, face, _ in self.frames) / frames, 2) if frames else None,
+            # Of the frames with a face, those read as eyes closed and those whose gaze met no
+            # screen: with the face found, either one high is why no gaze (and no ring) comes.
+            **self._outcomes(),
             # How much of the gaze becomes fixations: low means the detector is splitting looks.
             "coverage": round(min(1.0, (sum(n for _, n in self.fixated) + self._open()) / len(self.samples)), 2)
             if len(self.samples) >= 30
@@ -291,6 +296,18 @@ class Tracker:
             "camera_mode": _describe(self.calibration.get("camera_mode")),
             "learning": self._learning(),
             "drift": self.drift.state(),
+        }
+
+    def _outcomes(self) -> dict:
+        """Shares of the last 10 s's frames with a face that were read as eyes closed, and whose
+        gaze met no screen (None with fewer than 15 such frames), and how many times the blink test
+        has dropped a stuck open-eye reference since the tracker started."""
+        seen = [outcome for _, face, outcome in self.frames if face]
+        blinks = getattr(self.estimator, "_blinks", None)
+        return {
+            "eyes_closed": round(seen.count("closed") / len(seen), 2) if len(seen) >= 15 else None,
+            "ray_missed": round(seen.count("missed") / len(seen), 2) if len(seen) >= 15 else None,
+            "blink_resets": getattr(blinks, "resets", None),
         }
 
     def _learning(self) -> dict | None:
@@ -543,9 +560,7 @@ class Tracker:
         features, blink = self.estimator.extract_features(frame)
         extracted = self.timer()
         face = features is not None
-        self.frames.append((started, face))
-        while self.frames and started - self.frames[0][0] > 10:
-            self.frames.popleft()
+        outcome = "closed" if face else None
         if face:
             self.last_face = now
             moved = getattr(self.estimator, "moved", None)
@@ -583,13 +598,18 @@ class Tracker:
             self._applied(now)
             # A gaze ray that never meets the screen's plane (a bad frame's landmarks) is nan,
             # which must not reach the smoother: its state would stay nan.
+            outcome = "missed"
             if math.isfinite(x) and math.isfinite(y):
+                outcome = "gaze"
                 if self.learner is not None:
                     self.learner.frame(now, values, x, y)
                 self._gaze(now, x, y)
                 if values.ndim == 1:
                     self.drift.add(now, self.stabilizer.since, x, y, values)
             tracked = self.timer()
+        self.frames.append((started, face, outcome))
+        while self.frames and started - self.frames[0][0] > 10:
+            self.frames.popleft()
         self._click(now)
         self._report(now)
         if face:

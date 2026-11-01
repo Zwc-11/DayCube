@@ -68,9 +68,18 @@ def run(args: argparse.Namespace) -> None:
         supervisor.start()
     librarian = None
     if args.receive and not args.no_notes:
+        from ingest.integrations.models import language_model
+        from ingest.review.labels import llm_labeler
+
         from .librarian import Librarian
 
-        librarian = Librarian(settings.vault_root, settings.timezone)
+        labeler, llm = llm_labeler(settings.category_llm)
+        writer, words = language_model(settings.summary_llm, "DAYCUBE_SUMMARY_LLM")
+        log.info("category labels from a language model: %s; the day's review worded by: %s", llm,
+                 words if writer else f"the template ({words})")  # fmt: skip
+        if settings.summary_push:
+            log.info("yesterday's review is pushed by %s after %s", settings.summary_push, settings.push_at)
+        librarian = Librarian(settings.vault_root, settings.timezone, labeler=labeler, writer=writer, settings=settings)
         librarian.start()
     from .inbox import PhoneInbox
 
@@ -107,9 +116,32 @@ def run(args: argparse.Namespace) -> None:
         receiver.screen, receiver.screen_problem = read_screen(receiver, screen_file(settings.vault_root))
         if receiver.screen is None:
             log.warning("not reading the screen: %s", receiver.screen_problem)
+    if args.no_inputs:
+        receiver.inputs_problem = "started with --no-inputs"
+    elif args.receive:
+        from .inputs import start as count_inputs
+
+        receiver.inputs, receiver.inputs_problem = count_inputs(receiver)  # after the screen reader: its exclusions
+        if receiver.inputs is None:
+            log.warning("not counting typing and mouse input: %s", receiver.inputs_problem)
+    doing = None
+    if args.receive and not args.no_inputs:
+        from .doingnow import start as doing_box
+
+        doing, problem = doing_box(receiver)
+        if doing is None:
+            log.warning("no Alt+Shift+N box: %s", problem)
+    updater = None
+    if args.receive and settings.auto_restart:
+        from .api import CODE
+        from .update import start as watch_code
+
+        updater = watch_code(receiver, settings.vault_root, CODE)
     try:
         uvicorn.run(app, host="127.0.0.1", port=args.port, log_config=None, access_log=False)
     finally:
+        if updater is not None:
+            updater.stop()
         if supervisor is not None:
             supervisor.stop()
         if librarian is not None:
@@ -243,11 +275,39 @@ def _restart(command: list[str] | str) -> None:
     print("The eye tracker starts within a few seconds; python -m capture doctor checks everything.")
 
 
-def restart_receiver(_: argparse.Namespace) -> None:
+def restart_receiver(args: argparse.Namespace) -> None:
     """Stop the running receiver and eye tracker and start them again on this checkout's code."""
     from . import autostart
 
-    _restart(autostart.current() or autostart.launch_command(gaze=True))
+    if args.unattended:
+        from .update import noted_command
+
+        _restart_unattended(noted_command(Settings().vault_root) or autostart.current()
+                            or autostart.launch_command(gaze=True))  # fmt: skip
+    else:
+        _restart(autostart.current() or autostart.launch_command(gaze=True))
+
+
+def _restart_unattended(command: list[str] | str) -> None:
+    """The restart the receiver asks for when its checkout's code changed (update.py): no console,
+    so the outcome goes to vault/logs/capture.log."""
+    from . import autostart
+    from .restart import code_stamp, restart
+
+    _logging(Settings().vault_root)
+    log = logging.getLogger("capture.update")
+    try:
+        stopped, status = restart(command, _status, autostart.start_detached)
+    except Exception:  # noqa: BLE001 - nobody is watching: the log says it
+        log.exception("the restart on this checkout's code failed")
+        return
+    if status is None:
+        log.error("stopped %d receiver and eye tracker processes, but the receiver started again has not "
+                  "answered on 127.0.0.1:%s within 45 s", len(stopped), PORT)  # fmt: skip
+    elif status.get("code") != code_stamp():
+        log.error("restarted, but a receiver on older code still answers on 127.0.0.1:%s", PORT)
+    else:
+        log.info("restarted on this checkout's code (%s): %d processes stopped", status.get("code"), len(stopped))
 
 
 def install_autostart(args: argparse.Namespace) -> None:
@@ -286,6 +346,38 @@ def doctor(_: argparse.Namespace) -> None:
 
     settings = Settings()
     raise SystemExit(check(settings.vault_root, settings.timezone, PORT))
+
+
+def doing(args: argparse.Namespace) -> None:
+    """``python -m capture doing "reading CS 341 notes"``: what you are doing now, to a running receiver."""
+    import json
+    from urllib.error import HTTPError, URLError
+    from urllib.request import ProxyHandler, Request, build_opener
+
+    from ingest.vault import Vault
+
+    vault = Vault(Settings().vault_root)
+    vault.initialize()
+    request = Request(
+        f"http://127.0.0.1:{PORT}/doing",
+        data=json.dumps({"text": " ".join(args.text), "source": "cli"}).encode(),
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {vault.token}"},
+        method="POST",
+    )
+    try:
+        with build_opener(ProxyHandler({})).open(request, timeout=3) as response:
+            record = json.loads(response.read())
+        print(f"Noted at {record['t'][11:16]}: {record['text']}")
+    except HTTPError as error:
+        raise SystemExit(f"Not noted: {error.code} {error.read(200).decode('utf-8', 'replace')}") from error
+    except (URLError, OSError) as error:
+        raise SystemExit("Not noted: the receiver is not running (python -m capture restart)") from error
+
+
+def inputs(args: argparse.Namespace) -> None:
+    from .inputs import demo
+
+    raise SystemExit(demo(args.seconds))
 
 
 def ring(args: argparse.Namespace) -> None:
@@ -362,6 +454,10 @@ def main(argv: list[str] | None = None) -> None:
     start.add_argument(
         "--no-screen", action="store_true", help="Do not read the window under the gaze in apps other than the browser"
     )
+    start.add_argument(
+        "--no-inputs", action="store_true",
+        help="Do not count typing and mouse input, and no Alt+Shift+N doing-now box",
+    )  # fmt: skip
     start.add_argument("--port", type=int, default=PORT, help=argparse.SUPPRESS)
     start.set_defaults(handler=run)
 
@@ -369,9 +465,12 @@ def main(argv: list[str] | None = None) -> None:
     auto.add_argument("--no-gaze", action="store_true", help="Leave the eye tracker out")
     auto.add_argument("--on-dwell", help="Command run on each dwell (see run --on-dwell)")
     auto.set_defaults(handler=install_autostart)
-    commands.add_parser(
+    again = commands.add_parser(
         "restart", help="Stop the receiver and eye tracker and start them again on this checkout's code"
-    ).set_defaults(handler=restart_receiver)
+    )
+    # update.py: no console, the outcome in capture.log, the command line from vault/logs/update.json
+    again.add_argument("--unattended", action="store_true", help=argparse.SUPPRESS)
+    again.set_defaults(handler=restart_receiver)
     commands.add_parser("uninstall-autostart", help="Remove the sign-in entry").set_defaults(
         handler=uninstall_autostart
     )
@@ -384,6 +483,14 @@ def main(argv: list[str] | None = None) -> None:
     show = commands.add_parser("ring", help="Show or hide the gaze ring drawn over every window")
     show.add_argument("state", choices=["on", "off"])
     show.set_defaults(handler=ring)
+
+    note = commands.add_parser("doing", help="Note what you are doing now (as the Alt+Shift+N box does)")
+    note.add_argument("text", nargs="+")
+    note.set_defaults(handler=doing)
+
+    count = commands.add_parser("inputs", help="Print typing and mouse counts for a while (Windows), to check them")
+    count.add_argument("--seconds", type=float, default=30.0)
+    count.set_defaults(handler=inputs)
 
     read = commands.add_parser(
         "screen", help="Turn reading the window under your gaze (any app) on or off, or never read an app"

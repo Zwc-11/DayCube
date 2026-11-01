@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { validateContract } from './runtime.mjs';
-import type { Day, Event, Graph, Moment, Ocr, Skeleton, Transcript, Venue } from './types';
+import type { Day, Event, Graph, Moment, Ocr, Review, Skeleton, TimelineSegment, Transcript, Venue } from './types';
 
 export * from './types';
 export type Fidelity = 'known' | 'estimated' | 'illustrative';
@@ -25,6 +25,19 @@ export const ocrSchema = contract<Ocr>('ocr');
 export const skeletonSchema = contract<Skeleton>('skeleton');
 export const transcriptSchema = contract<Transcript>('transcript');
 export const venueSchema = contract<Venue>('venue');
+export const reviewSchema = contract<Review>('review');
+export const timelineSegmentSchema = contract<TimelineSegment>('timeline');
+
+// A day's end-of-day review and timeline (GET /day/{date}/review; POST /day/{date}/review writes the
+// review now, POST /labels corrects a category or project, both returning the same view).
+export const dayReviewSchema = z.object({
+  date: z.string(), zone: z.string(), window: z.object({ t0: z.string(), t1: z.string() }),
+  current: z.boolean(), review: reviewSchema.nullable(), segments: z.array(timelineSegmentSchema),
+  categories: z.array(z.string()), writers: z.object({ summary: z.string(), categories: z.string() }),
+  result: z.object({ written: z.boolean(), why: z.string() }).optional(),
+});
+export type DayReview = z.infer<typeof dayReviewSchema>;
+export type ReviewEvidence = Review['evidence'][string];
 
 const pinSchema = z.unknown().transform(input => {
   const { tod, ...event } = z.object({ tod: z.number() }).passthrough().parse(input);

@@ -30,7 +30,7 @@ runs it in this environment. A bare `python -m capture` uses the system Python, 
 | `capture/anchors.py` | Clicks as calibration points: the tracker's live error and an offset correction |
 | `capture/screen.py` | The window under the gaze in any app: found by z-order, read by Windows OCR when it changes, sent as a page with paragraphs, lines and the scroll; the app in front (`windows.jsonl`) |
 | `capture/restart.py` | `python -m capture restart`: stops the running receiver and its eye tracker (found by command line) and starts the sign-in command again; the code stamp `/status` reports |
-| `capture/doctor.py` | `python -m capture doctor`: checks receiver, extension, tracker, screen reading, accuracy, logs and autostart |
+| `capture/doctor.py` | `python -m capture doctor`: checks receiver, extension, tracker, screen reading, accuracy, logs, the day timeline's unknown share and autostart |
 | `capture/supervise.py` | Running the eye tracker from its own environment, restarting it when it stops |
 | `capture/autostart.py` | The per-user sign-in entry (registry `Run` key, windowless `pythonw.exe`) |
 | `capture/history.py` | Importing a Chromium `History` file |

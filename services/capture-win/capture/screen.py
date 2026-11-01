@@ -25,8 +25,12 @@ Windows, inside the receiver:
    window's content), so reading goes on across a scroll, and its text is sent once. A retitled
    window stays one page; one whose content was replaced (nothing matches) becomes a new page.
 
-Which app is in front is logged too (``windows.jsonl``), for time spent per app, with ``away``
-when there has been no input for 5 minutes and no gaze.
+Which app is in front is logged too (``windows.jsonl``), for time spent per app and the day
+timeline (``ingest/review/timeline.py``), with ``away`` and why: ``idle`` after 5 minutes with
+neither input nor gaze (``since``: the last of the two), ``locked``, ``asleep`` (the rounds stopped
+for a minute or more: ``since`` is the last one), ``no window``, ``off``, ``paused``, and
+``stopped`` when the reader stops. A ``still`` record every 5 minutes says it is still recording,
+so a computer switched off without a word ends what was in front within 5 minutes.
 
 Privacy: screenshots never leave memory; only the recognised text is kept, as the extension keeps
 page text. Browsers are never read (the extension covers their pages, with its exclusions), nor
@@ -68,7 +72,9 @@ RECHECK_S = 30.0  # read the window again at least this often while the eyes are
 THUMB = 8  # the change check samples every 8th pixel
 CHANGED_SHARE = 0.003  # share of sampled pixels that changed by more than CHANGED_GREY: the window changed
 CHANGED_GREY = 24
-AWAY_S = 300.0  # no keyboard or mouse input this long, and no gaze: away
+AWAY_S = 300.0  # no keyboard or mouse input this long, and no gaze this long: away
+SLEPT_S = 60.0  # this long between rounds (every EVERY_S): the computer slept
+STILL_S = 300.0  # a "still" record this often while reading runs: after the last one, nothing is known
 SCROLL_ORIGIN = 100_000.0  # where the first read of a window sits on its "page": room to scroll up
 MAX_BLOCKS, MAX_LINES, MAX_TEXT = 150, 60, 1000  # the receiver's limits for a page
 KNOWN_LIMIT = 3000  # paragraphs remembered per window
@@ -342,6 +348,9 @@ class ScreenReader(threading.Thread):
         self.current: Current | None = None
         self.front: Window | None = None  # the app in front, as last logged
         self.away = False
+        self.gazed_at: float | None = None  # when the tracker last saw the eyes on the screen
+        self.stepped_at: float | None = None  # the last round: a long gap since means the computer slept
+        self.still_at: float | None = None  # the last "still" record
         self.skipped: str | None = None  # why the window under the gaze is not read
         self.reads: deque[tuple[float, float, str]] = deque(maxlen=2000)  # (time, ms, app) of OCR runs
         self.error: str | None = None
@@ -356,6 +365,8 @@ class ScreenReader(threading.Thread):
             self._run()
         finally:
             self.leave(self.clock())
+            if self.front is not None and not self.away:  # what was in front stops counting
+                self.receiver.app_window(_entry(self.clock(), "away") | {"why": "stopped"})
             close = getattr(self.system, "close", None)
             if close is not None:
                 close()  # mss owns thread-local handles: release them on the creating thread
@@ -417,6 +428,13 @@ class ScreenReader(threading.Thread):
 
     def step(self) -> None:
         now = self.clock()
+        before, self.stepped_at = self.stepped_at, now
+        if before is not None and now - before >= SLEPT_S and self.front is not None and not self.away:
+            # Rounds come every half second; this gap is the computer asleep. What was in front
+            # stopped counting when the rounds stopped. (The lock screen on waking is logged next.)
+            since = datetime.fromtimestamp(before, UTC).isoformat()
+            self.receiver.app_window(_entry(now, "away") | {"why": "asleep", "since": since})
+            self.front = None  # logged again now, as on any return
         on, extra = self.options()
         if not on or self.receiver.paused:
             self.skipped = "off" if not on else "paused"
@@ -425,6 +443,11 @@ class ScreenReader(threading.Thread):
             self.front, self.away = None, False  # logged again when it comes back on
             self.leave(now)
             return
+        if self.still_at is None or now - self.still_at >= STILL_S:
+            # Still recording: a window in front this long ago is still in front. When these stop
+            # (the computer turned off, the receiver killed), the time after the last is unknown.
+            self.receiver.app_window(_entry(now, "still"))
+            self.still_at = now
         gaze = self.receiver.gaze_now(GAZE_FRESH_S)
         self.log_front(now, extra, gaze is not None)
         if gaze is None:
@@ -572,7 +595,19 @@ class ScreenReader(threading.Thread):
         the lock screen, or no input for ``AWAY_S`` and no gaze (reading without touching anything
         is not away while the tracker sees the eyes)."""
         front = self.system.foreground()
-        idle = 0.0 if gazing else self.system.idle_s()
+        if gazing:
+            self.gazed_at = now
+        # Since the last sign of the person: input, or the eyes on the screen. A moment without
+        # gaze (a blink, a turn of the head) is not five minutes away.
+        # Input from a real keyboard or mouse (inputs.py) when the counter runs: Windows' own idle
+        # time also restarts on input software sends (agents driving apps, keep-awake tools), which
+        # kept the PC "attended" all night. Without the counter, Windows' idle time.
+        system_idle = self.system.idle_s()
+        human = getattr(self.receiver, "human_idle", None)
+        judged = human(system_idle) if callable(human) else None
+        idle, decided = judged if judged is not None else (system_idle, None)
+        if self.gazed_at is not None:
+            idle = min(idle, now - self.gazed_at)
         locked = front is not None and front.app in LOCK_APPS
         if locked or idle >= AWAY_S:
             if not self.away:
@@ -580,6 +615,8 @@ class ScreenReader(threading.Thread):
                 away = _entry(now, "away") | {"why": "locked" if locked else "idle"}
                 if not locked:
                     away["since"] = datetime.fromtimestamp(now - idle, UTC).isoformat()
+                    if decided is not None:
+                        away["input"] = decided  # devices; software: only programs' input went on
                 self.receiver.app_window(away)
             self.front = None  # logged again on return
             return

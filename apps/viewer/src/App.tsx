@@ -412,6 +412,8 @@ export const App: React.FC<AppProps> = ({ date, day, days, onOpenDate, onOpenNot
         dataSource={dataSource}
         onSelectLayer={selectLayer}
         onSelectEvent={selectEvent}
+        date={date}
+        onSeek={handleScrubTod}
       />
 
       <main className="stage app__stage" aria-label="Diorama">
