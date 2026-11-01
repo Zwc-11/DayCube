@@ -14,6 +14,11 @@ for (const command of ['ffmpeg', 'ffprobe']) {
 // A fictional afternoon exported from a phone (scripts/build-phone-fixture.py), imported as 2026-10-21.
 const phone = ['12 Example Ave-2026-10-21_18-00-00.zip', 'Example Ave 2.m4a', 'Example Ave 2.json', 'scan'].map(name => `fixtures/phone-day/${name}`);
 rmSync(new URL('../.daycube-e2e-vault/2026-10-21', import.meta.url), { recursive: true, force: true }); // imported fresh each run
+// The scripted capture morning is written fresh too, and with it go its timeline and review and any
+// label corrections a run left behind (apps/viewer/e2e/review.spec.ts relabels and restores).
+for (const made of ['capture/2026-10-22', '2026-10-22', 'label-corrections.json']) {
+  rmSync(new URL(`../.daycube-e2e-vault/${made}`, import.meta.url), { recursive: true, force: true });
+}
 for (const args of [
   ['run', 'daycube', 'init'], ['run', 'daycube', 'seed', '--capture'], ['run', 'daycube', 'index', '--date', '2026-10-20'],
   ['run', 'daycube', 'import-phone', ...phone, '--no-transcribe'], ['run', 'daycube', 'index', '--date', '2026-10-21'],

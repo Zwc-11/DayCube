@@ -425,6 +425,34 @@ def test_the_doctor_says_which_side_of_the_gaze_ring_is_missing(vault: Vault, mo
     )
 
 
+def test_the_doctor_says_why_a_found_face_gives_no_gaze(vault: Vault, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The face in every frame and still no gaze, no fixations, no ring: the eyes read as closed, or
+    a gaze ray that meets no screen."""
+    from zoneinfo import ZoneInfo
+
+    from capture import doctor
+
+    now = datetime.now(UTC)
+    zone = ZoneInfo("America/Toronto")
+    monkeypatch.setattr(doctor.sys, "platform", "linux")
+
+    def found(**gaze: object) -> dict[str, tuple[str, str]]:
+        status = {"paused": False, "browser": {"last": now.isoformat()}, "reading": None,
+                  "gaze": {"tracking": True, "fps": 30.0, "target_fps": 30.0, "face": 1.0} | gaze}  # fmt: skip
+        return {name: (v, d) for v, name, d in doctor.checks(status, vault.root, zone, now, None)}
+
+    checks = found(eyes_closed=1.0, ray_missed=0.0, blink_resets=2)
+    verdict, detail = checks["eyes open"]
+    assert verdict == doctor.FAIL and "closed in 100% of frames" in detail and "2 times" in detail
+    verdict, detail = found(eyes_closed=0.0, ray_missed=0.95, blink_resets=0)["gaze ray"]
+    assert verdict == doctor.FAIL and "95%" in detail and "recalibrate" in detail
+    assert found(eyes_closed=0.06, ray_missed=0.0, blink_resets=0)["gaze from the face"] == (
+        doctor.PASS,
+        "94% of frames with a face give a gaze point",
+    )
+    assert not {"eyes open", "gaze ray", "gaze from the face"} & found().keys()  # an older tracker
+
+
 def test_the_doctor_shows_why_the_tracker_is_not_running(vault: Vault, monkeypatch: pytest.MonkeyPatch) -> None:
     from zoneinfo import ZoneInfo
 

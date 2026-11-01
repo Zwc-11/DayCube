@@ -194,6 +194,10 @@ class GazeState(Strict):
     fps: float | None = None
     target_fps: float | None = Field(default=None, gt=0)
     face: float | None = Field(default=None, ge=0, le=1)  # share of recent frames with a usable face
+    # Of the recent frames with a face: read as eyes closed, and with a gaze that met no screen.
+    eyes_closed: float | None = Field(default=None, ge=0, le=1)
+    ray_missed: float | None = Field(default=None, ge=0, le=1)
+    blink_resets: int | None = Field(default=None, ge=0)  # stuck open-eye references dropped since start
     coverage: float | None = Field(default=None, ge=0, le=1)  # share of recent gaze samples inside fixations
     noise_px: float | None = Field(default=None, ge=0)  # scatter of the smoothed gaze, monitor pixels
     model: str | None = Field(default=None, max_length=40)  # "head" (follows head movement) or an EyeTrax model

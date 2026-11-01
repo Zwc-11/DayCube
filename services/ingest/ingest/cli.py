@@ -32,6 +32,21 @@ def main() -> None:
     which_notes = notes.add_mutually_exclusive_group(required=True)
     which_notes.add_argument("--date")
     which_notes.add_argument("--all", action="store_true")
+    timeline = commands.add_parser(
+        "timeline", help="Write a day's timeline (vault/<date>/timeline.jsonl): desk, away, places, talk"
+    )
+    which_timeline = timeline.add_mutually_exclusive_group(required=True)
+    which_timeline.add_argument("--date", help="The review day: 04:00 that day to 04:00 the next")
+    which_timeline.add_argument("--all", action="store_true")
+    week = commands.add_parser(
+        "week", help="Write the week (Monday to Sunday) a date is in: vault/weeks/<YYYY-Www>.json and its note"
+    )
+    week.add_argument("--date", default="last", help="A date of the week; today, or last (the last finished week)")
+    review = commands.add_parser(
+        "review", help="Write a day's end-of-day review (vault/<date>/review.json) now, and print it"
+    )
+    review.add_argument("--date", required=True, help="YYYY-MM-DD, today or yesterday (review days start at 04:00)")
+    review.add_argument("--check", action="store_true", help="Also check the words against the day's facts, and time it")
     commands.add_parser("graph", help="The most mentioned entities and their links, as JSON")
     commands.add_parser("data", help="The data center: every source stream and the database, with sizes")
     phone = commands.add_parser(
@@ -88,6 +103,35 @@ def main() -> None:
                 result["capture"] = {"date": SAMPLE_CAPTURE_DAY, "seeded": True}
     elif args.command == "validate":
         result = vault.validate(args.date)
+    elif args.command == "timeline":
+        from .capture import capture_days
+        from .review import has_inputs, write
+        from .review.labels import llm_labeler
+
+        labeler, llm = llm_labeler(settings.category_llm)
+        if args.all:
+            dates = sorted({d["date"] for d in vault.list_days()} | set(capture_days(vault)))
+            days = [d for d in dates if has_inputs(vault, d)]
+        else:
+            days = [args.date]
+        result = [write(vault, day, settings.timezone, labeler=labeler) for day in days]
+        result = {"category_llm": llm, "days": result} if args.all else {"category_llm": llm, **result[0]}
+    elif args.command == "week":
+        from datetime import date as _date
+        from datetime import datetime as _datetime
+        from zoneinfo import ZoneInfo as _Zone
+
+        from .review import weekly
+
+        now = _datetime.now(_Zone(settings.timezone))
+        day = {"last": weekly.due(now, settings.timezone), "today": now.date().isoformat()}.get(args.date, args.date)
+        _date.fromisoformat(day)
+        out = weekly.write(vault, LifeStore(vault, zone=settings.timezone), day, settings.timezone, now=now)
+        result = {"written": out["written"], **out["week"]}
+    elif args.command == "review":
+        from .review.summary import review_command
+
+        result = review_command(vault, settings, args.date, check=args.check)
     elif args.command in {"index", "stats", "notes", "graph", "data"}:
         store = LifeStore(
             vault, default_embedder(settings.vector_search, settings.embedding_model), zone=settings.timezone

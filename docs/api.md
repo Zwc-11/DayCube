@@ -21,6 +21,9 @@ for actions. Do not paste external provider keys there.
 | GET | `/note?path=` | One note: Markdown, links with the note each opens, backlinks; paths confined to `vault/notes` |
 | GET | `/search?q=&date=` | Search as you type: the `/ask` answer and evidence without the token, each result with its `note` and the words to mark (`match`), and `took_ms` |
 | POST | `/notes/{date}` | Write or refresh a day's linked notes in `vault/notes` |
+| GET | `/day/{date}/review` | The review day's end-of-day review (`review`, null until written), its timeline (`segments`, written now if the day has none, without any model), the `categories` to relabel with, who words it (`writers`), its `window` and whether it is under way (`current`); docs/review.md |
+| POST | `/day/{date}/review` | Write the review now (a draft while the day is under way) and its daily note; the same view with `result: {written, why}` |
+| POST | `/labels` | `{date, key, category?, project?, clear?}`: correct what a window, page, app or site is (`key`: `page:<url>`, `app:<program>\|<title>`, `site:<domain>`, `app:<program>`; `project: null` is none; `clear` goes back to the rules); that day's timeline and review follow; the same view |
 | GET | `/moment/{id}?date=YYYY-MM-DD` | Metadata, scene availability and transcript |
 | GET | `/vault/{date}/{asset}` | Allowlisted media only, with path confinement |
 | POST | `/ask` | `{date?, question}` → extractive answer, citations, location; no `date` searches every day |

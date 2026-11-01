@@ -269,6 +269,8 @@ def _apps(windows: list[Record], last_seen: str) -> list[AppSpan]:
 
     for record in windows:
         t = record["t"]
+        if record.get("kind") == "still":
+            continue  # the reader saying it still records: nothing changed in front
         if record.get("kind") == "away" and record.get("since"):
             # Away after minutes without input: the app was not in use since the last input.
             t = max(record["since"], current.t0, key=instant) if current is not None else t
@@ -298,6 +300,23 @@ def _apps(windows: list[Record], last_seen: str) -> list[AppSpan]:
 
 def _visits(browser: list[Record]) -> list[Visit]:
     """Spans of the page in front, merged when the same page comes back within ``MERGE_GAP_S``."""
+    merged: list[Visit] = []
+    for span in _tab_spans(browser):
+        last = merged[-1] if merged else None
+        if last and last.url == span.url and (instant(span.t0) - instant(last.t1)).total_seconds() <= MERGE_GAP_S:
+            last.t1 = span.t1
+            last.seconds += span.seconds
+            last.title = span.title or last.title
+        else:
+            merged.append(span)
+    return [v for v in merged if v.seconds >= MIN_VISIT_S]
+
+
+def _tab_spans(browser: list[Record], end: str | None = None) -> list[Visit]:
+    """The page in front from each focus, navigation or return from idle to the next, unmerged
+    and however short: consecutive spans never overlap. The last one ends at ``end`` (default:
+    the last record). Without ``idle`` records (the day timeline, which takes presence from the
+    screen reader) a page stays in front while its browser window has focus."""
     spans: list[Visit] = []
     current: Visit | None = None
     tabs: dict[int, tuple[str, str]] = {}  # tab -> (url, title) last navigated
@@ -348,17 +367,8 @@ def _visits(browser: list[Record]) -> list[Visit]:
                 close(t)
                 active = False
     if current is not None and browser:
-        close(browser[-1]["t"])
-    merged: list[Visit] = []
-    for span in spans:
-        last = merged[-1] if merged else None
-        if last and last.url == span.url and (instant(span.t0) - instant(last.t1)).total_seconds() <= MERGE_GAP_S:
-            last.t1 = span.t1
-            last.seconds += span.seconds
-            last.title = span.title or last.title
-        else:
-            merged.append(span)
-    return [v for v in merged if v.seconds >= MIN_VISIT_S]
+        close(end or browser[-1]["t"])
+    return spans
 
 
 def _media(browser: list[Record]) -> list[Record]:

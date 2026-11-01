@@ -94,6 +94,15 @@ keeps every link of every note, generated or written, with the note it opens).
   (`services/capture-win/capture/librarian.py`; `python -m capture run --no-notes` turns it off).
 - On demand: `uv run daycube notes --date 2026-10-22` (or `--all`), or `POST /notes/{date}` with
   the vault token. `GET /notes` lists the notes as last read.
+- The same librarian writes the [day timeline](timeline.md) every round, and the
+  [end-of-day review](review.md) at 23:00 (draft) and after 04:00 (final). A daily note opens with
+  the review as its `## Summary` section once there is one, and a `## Conversations` section lists
+  the day's recordings with their transcripts (time, title, length, lines, people named, the first
+  two lines). and the
+  [end-of-day review](review.md) at 23:00 (draft) and after 04:00 (final). A daily note opens with
+  the review as its `## Summary` section once there is one, and a `## Conversations` section lists
+  the day's recordings with their transcripts (time, title, length, lines, people named, the first
+  two lines).
 
 Code: `services/ingest/ingest/notes/` (Markdown, writing, `read.py` and `graph.py` for the viewer),
 `services/ingest/ingest/store/notes.py` (reading back), `apps/viewer/src/components/knowledge/`

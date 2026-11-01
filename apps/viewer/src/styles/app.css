@@ -3925,3 +3925,363 @@ button.np-link:hover {
   0%, 70% { opacity: 1; }
   100% { opacity: 0; }
 }
+
+/* ---------------------------------------------------------------------------
+   Day review (components/review/DayReview.tsx): beside the daily note, and at the top of the
+   day page's itinerary.
+   --------------------------------------------------------------------------- */
+
+.dr {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-l);
+  background: var(--raised);
+}
+
+.dr--note {
+  margin: 0 0 22px;
+}
+
+.dr--side {
+  margin: 8px 8px 0;
+  padding: 12px;
+  gap: 8px;
+}
+
+.dr-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.dr-title {
+  margin: 0 4px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-2);
+}
+
+.dr-head__action {
+  margin-left: auto;
+}
+
+.dr-spin {
+  animation: dr-spin 0.9s linear infinite;
+}
+
+@keyframes dr-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.dr-headline {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.35;
+}
+
+.dr--side .dr-headline {
+  font-size: 14px;
+}
+
+.dr--side .dr-sentences {
+  font-size: 12.5px;
+}
+
+.dr-footnote {
+  padding: 8px 10px;
+  border-radius: var(--radius-m);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  color: var(--fg-2);
+  font-size: 12.5px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.dr-footnote__n {
+  display: inline-grid;
+  place-items: center;
+  min-width: 17px;
+  height: 17px;
+  margin-right: 6px;
+  border-radius: 4px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.dr-meta,
+.dr-writers,
+.dr-muted {
+  margin: 0;
+  color: var(--fg-3);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.dr-muted {
+  color: var(--fg-2);
+  font-size: 12.5px;
+}
+
+.dr-error {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-m);
+  background: var(--danger-soft);
+  color: var(--fg);
+  font-size: 12.5px;
+}
+
+/* The day as a strip of stretches, 04:00 to 04:00, trimmed to what was recorded. */
+.dr-strip {
+  padding-top: 2px;
+}
+
+.dr-strip__bars {
+  position: relative;
+  height: 22px;
+  border-radius: var(--radius-s);
+  background: rgba(255, 255, 255, 0.03);
+  box-shadow: inset 0 0 0 1px var(--line);
+  overflow: hidden;
+}
+
+.dr-strip__bar {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  opacity: 0.9;
+}
+
+.dr-strip__bar:hover {
+  opacity: 1;
+  filter: brightness(1.15);
+}
+
+.dr-strip__bar[data-where='away'] {
+  top: 9px;
+  bottom: 9px;
+  background: var(--line-3);
+}
+
+.dr-strip__bar[data-where='place'] {
+  top: 6px;
+  bottom: 6px;
+  background: var(--cat-place);
+  opacity: 0.55;
+}
+
+.dr-strip__bar[data-where='unknown'] {
+  background: var(--cat-quote);
+}
+
+.dr-strip__bar[data-private='true'] {
+  background: repeating-linear-gradient(135deg, #3d4148 0 3px, #2a2d33 3px 6px) !important;
+}
+
+.dr-strip__bar[aria-pressed='true'] {
+  opacity: 1;
+  box-shadow: 0 0 0 2px var(--accent);
+  z-index: 1;
+}
+
+.dr-strip__bar:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  z-index: 2;
+}
+
+.dr-strip__hours {
+  position: relative;
+  height: 14px;
+  margin-top: 3px;
+  color: var(--fg-3);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.dr-strip__hours span {
+  position: absolute;
+  transform: translateX(-50%);
+}
+
+.dr-strip__hours span:first-child {
+  transform: none;
+}
+
+.dr-strip__hours span:last-child {
+  transform: translateX(-100%);
+}
+
+.dr-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: var(--radius-m);
+  background: var(--bg);
+  border: 1px solid var(--line);
+}
+
+.dr-pick__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+}
+
+.dr-pick__doing {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.dr-pick__facts {
+  margin: 0;
+  font-size: 12px;
+}
+
+.dr-relabel {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.dr--side .dr-relabel {
+  grid-template-columns: 1fr;
+}
+
+.dr-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--fg-3);
+  font-size: 11.5px;
+}
+
+.dr-field .input {
+  height: 28px;
+  font-size: 12.5px;
+}
+
+.dr-scope {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  color: var(--fg-2);
+  font-size: 12px;
+}
+
+.dr-scope label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.dr-relabel .row {
+  grid-column: 1 / -1;
+}
+
+.dr-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: var(--fg-2);
+  font: inherit;
+  font-size: 12px;
+}
+
+.dr-more svg {
+  transition: transform 0.15s;
+}
+
+.dr-more svg[data-open='true'] {
+  transform: rotate(90deg);
+}
+
+.dr-numbers {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px 14px;
+  margin: 2px 0 0;
+}
+
+.dr-number {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.dr-number dt {
+  color: var(--fg-3);
+  font-size: 11.5px;
+}
+
+.dr-number dd {
+  margin: 0;
+  color: var(--fg);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.dr-part__title {
+  margin: 4px 0 4px;
+  color: var(--fg-2);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.dr-list {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--fg);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.dr-list li + li {
+  margin-top: 3px;
+}
+
+.dr-gaps > summary {
+  color: var(--fg-3);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.dr-gaps[open] > summary {
+  margin-bottom: 4px;
+}
+
+.dr-gaps .dr-list {
+  color: var(--fg-2);
+}
+
+.itin-scroll {
+  display: flex;
+  flex-direction: column;
+}

@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Week",
+  "description": "vault/weeks/<YYYY-Www>.json: a week (Monday to Sunday) in numbers, from the days' timelines and reviews. Written once Sunday's review day has ended, and again when a day of the week changes.",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema", "week", "from", "to", "zone", "made", "days", "totals", "categories", "projects", "previous", "best_hours", "next"],
+  "properties": {
+    "schema": {"const": "daycube.week/1"},
+    "week": {"type": "string", "pattern": "^[0-9]{4}-W[0-9]{2}$"},
+    "from": {"type": "string", "format": "date"},
+    "to": {"type": "string", "format": "date"},
+    "zone": {"type": "string", "minLength": 1},
+    "made": {"type": "string", "format": "date-time"},
+    "days": {"type": "array", "minItems": 7, "maxItems": 7, "items": {
+      "type": "object", "additionalProperties": false,
+      "required": ["date", "desk_s", "focus", "focus_s", "longest_s", "category", "project", "phone", "pickups", "commits", "keys", "review"],
+      "properties": {
+        "date": {"type": "string", "format": "date"},
+        "desk_s": {"type": "number", "minimum": 0}, "focus": {"type": "integer", "minimum": 0},
+        "focus_s": {"type": "number", "minimum": 0}, "longest_s": {"type": "number", "minimum": 0},
+        "category": {"type": ["string", "null"]}, "project": {"type": ["string", "null"]},
+        "phone": {"type": ["number", "null"], "minimum": 0}, "pickups": {"type": ["number", "null"], "minimum": 0},
+        "commits": {"type": ["number", "null"], "minimum": 0}, "keys": {"type": ["number", "null"], "minimum": 0},
+        "review": {"enum": ["draft", "final", null], "description": "The day's review, if it has one."}
+      }
+    }},
+    "totals": {
+      "type": "object", "additionalProperties": false,
+      "required": ["desk_s", "focus", "focus_s", "phone", "pickups", "commits", "keys", "days_recorded"],
+      "properties": {
+        "desk_s": {"type": "number", "minimum": 0}, "focus": {"type": "number", "minimum": 0},
+        "focus_s": {"type": "number", "minimum": 0}, "phone": {"type": ["number", "null"]},
+        "pickups": {"type": ["number", "null"]}, "commits": {"type": ["number", "null"]},
+        "keys": {"type": ["number", "null"]}, "days_recorded": {"type": "integer", "minimum": 0, "maximum": 7}
+      }
+    },
+    "categories": {"$ref": "#/$defs/Shares"},
+    "projects": {"$ref": "#/$defs/Shares"},
+    "previous": {
+      "type": ["object", "null"], "additionalProperties": false, "required": ["desk_s", "focus", "focus_s"],
+      "description": "The week before, for comparison; null when nothing was recorded then.",
+      "properties": {"desk_s": {"type": "number"}, "focus": {"type": "number"}, "focus_s": {"type": "number"}}
+    },
+    "best_hours": {
+      "type": ["object", "null"], "additionalProperties": false, "required": ["from", "to", "stretches"],
+      "properties": {"from": {"type": "string", "pattern": "^[0-9]{2}:[0-9]{2}$"}, "to": {"type": "string", "pattern": "^[0-9]{2}:[0-9]{2}$"},
+                     "stretches": {"type": "integer", "minimum": 0}}
+    },
+    "next": {"type": "array", "items": {
+      "type": "object", "additionalProperties": false, "required": ["text", "due"],
+      "properties": {"text": {"type": "string", "minLength": 1}, "due": {"type": "string", "minLength": 10}}
+    }}
+  },
+  "$defs": {
+    "Shares": {"type": "array", "items": {
+      "type": "object", "additionalProperties": false, "required": ["name", "seconds", "share"],
+      "properties": {"name": {"type": "string", "minLength": 1}, "seconds": {"type": "number", "minimum": 0},
+                     "share": {"type": "number", "minimum": 0, "maximum": 1}}
+    }}
+  }
+}

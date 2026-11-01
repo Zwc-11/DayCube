@@ -59,6 +59,7 @@ log = logging.getLogger("capture")
 
 BROWSER = TypeAdapter(BrowserRecord)
 MAX_BATCH = 500
+DOING_MAX = 200  # characters of a doing-now line
 # The extension queues while the receiver is down (Opera can start first, or the receiver can
 # be stopped for hours). Older records are refused so a client cannot write arbitrary days.
 MAX_AGE = timedelta(hours=24)
@@ -127,6 +128,11 @@ class Receiver:
         # The screen reader (screen.py), started by `python -m capture run`; why not, when it is not.
         self.screen: Any = None
         self.screen_problem: str | None = "not started"
+        # The typing and mouse counter (inputs.py), started by `python -m capture run`.
+        self.inputs: Any = None
+        self.inputs_problem: str | None = "not started"
+        self.doing: Any = None  # the Alt+Shift+N box (doingnow.py)
+        self.updater: Any = None  # restarts on the checkout's new code when you are away (update.py)
         self.watched_at = -1e9  # when the extension last asked for the live point
         # The gaze ring's path, for doctor: when live points arrived, when the page asked, and
         # whether the answer carried a live point (or fell back to the last fixation).
@@ -233,8 +239,38 @@ class Receiver:
             "ring": self.ring_health(),
             "display": {"gaze_ring": self.ring, "native": self.native_ring()},
             "screen": self.screen_state(),
+            "inputs": self.inputs_state(),
+            "doing": {**(self.doing.state() if self.doing is not None else {"running": False}),
+                      "last": self.last.get("doing")},
+            "update": self.updater.state() if self.updater is not None else {"running": False},
             "capabilities": ["browser", "gaze", "attention"] + (["screen"] if self.screen is not None else []),
         }
+
+    def person_away(self, away_s: float = 300.0) -> bool:
+        """Whether you are away from the PC: the screen reader's away (no real input and no gaze for
+        five minutes, or the lock screen) while it reads, else no real input for ``away_s`` (it
+        does not judge while reading is off or paused)."""
+        reader = self.screen
+        if reader is not None and reader.is_alive() and getattr(reader, "skipped", None) not in ("off", "paused"):
+            return bool(reader.away)
+        system = idle_seconds()
+        judged = self.human_idle(system) if system is not None else None
+        idle = judged[0] if judged is not None else system
+        return idle is not None and idle >= away_s
+
+    def human_idle(self, system_idle_s: float) -> tuple[float, str] | None:
+        """Seconds since the person last used the PC and what decided it (``inputs.Buckets.
+        idle_given``), or None when the counter is not running (then only Windows' idle time,
+        which software input resets, is known)."""
+        counter = self.inputs
+        if counter is None or not counter.is_alive() or counter.error:
+            return None
+        return counter.buckets.idle_given(system_idle_s)
+
+    def inputs_state(self) -> dict:
+        if self.inputs is None:
+            return {"running": False, "error": self.inputs_problem, "last": self.last.get("inputs")}
+        return {**self.inputs.state(), "last": self.last.get("inputs")}
 
     def screen_state(self) -> dict:
         if self.screen is None:
@@ -353,6 +389,30 @@ class Receiver:
                 return
             self.vault.append_lines(self.vault.root / "capture" / self._day(record["t"]) / "windows.jsonl", [record])
             self.last["screen"] = datetime.now(UTC).isoformat()
+
+    def input_counts(self, record: dict) -> None:
+        """A bucket of typing and mouse counts (inputs.py): ``inputs.jsonl``. Counts only; never while
+        paused."""
+        with self.lock:
+            if self.paused:
+                return
+            self.vault.append_lines(self.vault.root / "capture" / self._day(record["t"]) / "inputs.jsonl", [record])
+            self.last["inputs"] = datetime.now(UTC).isoformat()
+
+    def doing_now(self, text: str, t: datetime | None = None, source: str = "pc") -> dict | None:
+        """A line saying what you are doing now (the Alt+Shift+N box, the viewer, the phone):
+        ``doing.jsonl``. Returns the record, or None while paused or for an empty line."""
+        text = " ".join(text.split())[:DOING_MAX]
+        if not text:
+            return None
+        moment = (t or datetime.now(UTC)).astimezone(self.zone)
+        record = {"t": moment.isoformat(timespec="seconds"), "id": uuid.uuid4().hex[:12], "text": text, "source": source}
+        with self.lock:
+            if self.paused:
+                return None
+            self.vault.append_lines(self.vault.root / "capture" / self._day(moment) / "doing.jsonl", [record])
+            self.last["doing"] = datetime.now(UTC).isoformat()
+        return record
 
     def gaze_now(self, fresh_s: float) -> tuple[float, float] | None:
         """Where the eyes are now, in fractions of the tracker's monitor, corrected by clicks like
@@ -553,6 +613,17 @@ def create_capture_app(
         receiver.set_paused(False)
         return receiver.status()
 
+    @app.post("/doing", dependencies=[Depends(authorize)])
+    def doing(body: dict[str, Any] = Body(...)) -> dict:
+        """What you are doing now, in a line (the viewer, a script): ``capture/<date>/doing.jsonl``."""
+        text = body.get("text")
+        if not isinstance(text, str) or not text.strip():
+            raise HTTPException(422, "text: a non-empty line")
+        record = receiver.doing_now(text, source=str(body.get("source") or "api")[:20])
+        if record is None:
+            raise HTTPException(409, "Recording is paused")
+        return record
+
     @app.post("/events", dependencies=[Depends(authorize)])
     def events(records: list[dict[str, Any]] = Body(...)) -> dict:
         """Browser records. Invalid ones are returned in ``rejected`` instead of failing the batch,
@@ -635,7 +706,7 @@ def create_capture_app(
         return jobs.status()
 
     # The phone (DayCube Capture): pairing, resumable uploads into vault/inbox/phone, heartbeats.
-    app.state.phones = Phones(settings.vault_root)
+    app.state.phones = Phones(settings.vault_root, settings.timezone)
     app.include_router(phone_router(app.state.phones, lambda: vault.token))
 
     return app

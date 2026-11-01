@@ -98,7 +98,8 @@ def write_sample_capture(vault: Vault, day: str = SAMPLE_CAPTURE_DAY, *, damaged
                           ("attention.jsonl", attention), ("reading.jsonl", reading)):  # fmt: skip
         with (folder / name).open("w", encoding="utf-8") as stream:
             for record in records:
-                stream.write(_json.dumps(record) + "\n")
+                # Scripted, not recorded: what is made from it (the day's timeline and review) says so.
+                stream.write(_json.dumps({**record, "synthetic": True}) + "\n")
     if damaged:
         with (folder / "browser.jsonl").open("a", encoding="utf-8") as stream:
             stream.write("not json at all\n")  # a damaged line must not hide the rest

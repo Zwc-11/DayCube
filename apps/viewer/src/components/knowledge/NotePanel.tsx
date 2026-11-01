@@ -1,9 +1,10 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, X } from 'lucide-react';
 import type { Note } from '@daycube/schemas';
 import { backendBridge } from '../../lib/backendBridge';
-import { parseNote, renderBlocks } from '../../lib/markdown';
+import { parseNote, renderBlocks, withoutSection } from '../../lib/markdown';
 import { dayOf, folderOf, type NodeKind } from '../../lib/noteGraph';
+import { DayReview } from '../review/DayReview';
 
 /**
  * The open note beside the graph: where it is, its properties, the note itself with working
@@ -82,10 +83,13 @@ const LinkList: React.FC<{
 export const NotePanel: React.FC<NotePanelProps> = ({ path, highlight, dailies, recordedDays, placesDays, kindOf, onOpen, onOpenDay3d, onClose }) => {
   const [note, setNote] = useState<Note | null | undefined>(undefined);
   const [loading, setLoading] = useState(true);
+  // Bumped when the day's review or labels change: the daily note is written again with them.
+  const [version, setVersion] = useState(0);
   const body = useRef<HTMLDivElement>(null);
   const hitRef = useRef<HTMLElement | null>(null);
   const day = dayOf(path);
   const recorded = day !== null && recordedDays.has(day);
+  const reload = useCallback(() => setVersion((v) => v + 1), []);
 
   useEffect(() => {
     let live = true;
@@ -106,7 +110,7 @@ export const NotePanel: React.FC<NotePanelProps> = ({ path, highlight, dailies, 
       live = false;
       window.clearInterval(timer);
     };
-  }, [path, day, recorded]);
+  }, [path, day, recorded, version]);
 
   useEffect(() => {
     body.current?.scrollTo({ top: 0 });
@@ -122,6 +126,8 @@ export const NotePanel: React.FC<NotePanelProps> = ({ path, highlight, dailies, 
   }, [note, highlight]);
 
   const parsed = useMemo(() => (note ? parseNote(note.markdown) : null), [note]);
+  // A recorded day's review is the card above the note: its Summary section is not shown twice.
+  const blocks = useMemo(() => (parsed && recorded ? withoutSection(parsed.blocks, 'Summary') : parsed?.blocks ?? []), [parsed, recorded]);
   const links = useMemo(() => new Map((note?.links ?? []).map((l) => [l.target, l.path])), [note]);
   const outgoing = useMemo(
     () =>
@@ -201,8 +207,9 @@ export const NotePanel: React.FC<NotePanelProps> = ({ path, highlight, dailies, 
                 <ExternalLink size={12} aria-hidden /> Open in Obsidian
               </a>
             </div>
+            {day && recorded && <DayReview date={day} variant="note" onChanged={reload} />}
             <div className="md">
-              {renderBlocks(parsed.blocks, { resolve: (target) => links.get(target), onOpen: (p) => onOpen(p), highlight }, hitRef)}
+              {renderBlocks(blocks, { resolve: (target) => links.get(target), onOpen: (p) => onOpen(p), highlight }, hitRef)}
             </div>
             <div className="np__linked" aria-label="Links">
               <LinkList title="Linked from" items={backlinks} empty="No notes link here." kindOf={kindOf} onOpen={onOpen} />

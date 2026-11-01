@@ -325,10 +325,14 @@ Failed text writes stay visible in `/status.screen.error` and retry at the norma
 even when the window's pixels have not changed.
 
 The app in front is logged in `windows.jsonl` each time it changes, and `away` when the screen
-locks or there has been no input for 5 minutes and no gaze; a pause ends it too. The vault turns
+locks, when 5 minutes pass with neither input nor gaze (`since` is the last of the two, so losing
+the eyes for a moment is not away), and when the computer slept (`asleep`: the reader's rounds
+stopped for a minute; `since` is the last one); a pause ends it too, and so does the reader
+stopping (`stopped`). A `still` record every 5 minutes says the reader is still recording, so a
+computer switched off without a word ends what was in front within 5 minutes. The vault turns
 it into time per app (`screen.app` units, "Used Visual Studio Code for 25 min: screen.py -
 daycube") and an **Apps** section in the daily note; "which apps did I use yesterday" and "what
-did I read in VS Code" filter to them.
+did I read in VS Code" filter to them. The [day timeline](timeline.md) takes presence from it.
 
 Never read: browsers (the extension covers their pages, with its own exclusions), password
 managers (1Password, Bitwarden, KeePass and others), Windows' lock, sign-in and permission
@@ -374,7 +378,17 @@ not, no speech worker, a failed pull, install, sync or check), and that it gets 
 After `git pull`, `python -m capture restart` stops the running receiver and eye tracker and
 starts them on the new code (`install-autostart` does it too when the running receiver is older;
 `/status` reports a stamp of the code it loaded, and `doctor` says "receiver code: older than this
-checkout" until then).
+checkout" until then). The stamp covers the receiver's package and the ingest and gaze packages it
+runs (the review, the eye tracker).
+
+Without either, the receiver restarts on new code by itself (`capture/update.py`): every 5 minutes
+it compares the stamp it loaded with the files', and when they differ, have stayed the same since
+the last look, import in a fresh interpreter, and you are away (the screen reader's away: no real
+keyboard or mouse input and no gaze for 5 minutes, or the lock screen), it starts
+`python -m capture restart --unattended` outside its own process tree. The outcome goes to
+`capture.log`; the same code is not tried twice within an hour (`vault/logs/update.json`). A
+checkout that does not import leaves the running receiver as it is, and `doctor` shows the error
+on the "receiver code" row. `DAYCUBE_AUTO_RESTART=false` turns it off.
 
 ## Everyday use
 
@@ -446,7 +460,10 @@ the dwell is detected. The program runs at once; one runs at a time.
 | `reading.jsonl` | One record per block read: each line read with its text, seconds on it and passes over it, the share of the block's lines read (`coverage`), when the eyes moved to each line (`path`), the tracker offset the decoder found and its mean confidence (see [Which line you are reading](#which-line-you-are-reading)) |
 | `attention.jsonl` | Dwell `start` and `end` records |
 | `health.jsonl` | Every 10 minutes while tracking: the tracker's state (frame rate, face, fixation share, noise) and the live accuracy from clicks |
-| `windows.jsonl` | The app in front each time it changes (program, window title and `app://` address; only the program for a browser or a private app), and `away` (locked, idle with `since`, paused, reading turned off, no window) |
+| `windows.jsonl` | The app in front each time it changes (program, window title and `app://` address; only the program for a browser or a private app), `away` (locked, idle with `since`, asleep with `since`, paused, reading turned off, no window, stopped; idle is time since a real keyboard or mouse was used; `input` says what decided: `devices`, `software` when only programs' input kept Windows from idling, `unseen` when Windows saw input the counter could not and its time was taken), and `still` every 5 minutes while the reader records |
+| `inputs.jsonl` | Typing and mouse counts per 10 s, only for buckets with input: keys pressed (a held key once), mouse buttons, wheel notches, mouse distance in pixels, and `injected` (input sent by software, not counted as typing). Never which keys; nothing while a password manager, the lock or sign-in screen or an excluded app is in front ([review](review.md#beside-the-timeline)) |
+| `doing.jsonl` | Lines saying what you are doing, from the `Alt+Shift+N` box, `python -m capture doing "..."` or `POST /doing` |
+| `phone-events.jsonl` | Apps opened and closed on the phone, from iOS Shortcuts ([phone](phone.md)) |
 | `history.jsonl` | Visits imported from Opera's history |
 
 Not recorded:
@@ -455,6 +472,7 @@ Not recorded:
 - the text, clicks, selections and media of a page while it, a frame in it (an embedded sign-in
   or payment form) or an open shadow root shows a password field. The page's address and title
   are still recorded;
+- which keys were pressed (only how many, per 10 s);
 - anything typed: fields, editable areas, and code editors that draw typed text in plain
   elements (Monaco, CodeMirror, Ace). In other apps, text on screen is read as shown, typed or
   not, except in the apps and windows that are never read ([Reading other apps](#reading-other-apps));

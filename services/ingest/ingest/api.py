@@ -82,6 +82,17 @@ class SpeakerRequest(RequestModel):
     person_id: str = Field(pattern=r"^person:[\w-]{1,80}$")  # letters of any script: names are not only ASCII
 
 
+class LabelRequest(RequestModel):
+    """A correction of what a window or page, or a whole app or site, is (ingest/review/labels.py).
+    ``category`` absent: unchanged; ``project`` null: no project; ``clear``: back to the rules."""
+
+    date: str
+    key: str = Field(min_length=5, max_length=2200)
+    category: str | None = Field(default=None, max_length=32)
+    project: str | None = Field(default=None, max_length=80)
+    clear: bool = False
+
+
 def sse(event: str, value: Record) -> str:
     return f"event: {event}\ndata: {json.dumps(value)}\n\n"
 
@@ -101,6 +112,14 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
 
     day_notes = DayNotes(store)
     note_graph = NoteGraph(store, day_notes)
+    # The end-of-day review (ingest/review): which language model words it and labels unknown apps
+    # and sites, if any (off by default: the template, and nothing leaves this machine).
+    from .integrations.models import language_model
+    from .review.labels import llm_labeler
+
+    review_model, review_by = language_model(settings.summary_llm, "DAYCUBE_SUMMARY_LLM")
+    labeler, labels_by = llm_labeler(settings.category_llm)
+    writers = {"summary": review_by if review_model else f"template ({review_by})", "categories": labels_by}
 
     def warm_up() -> None:
         started = perf_counter()
@@ -525,6 +544,65 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
 
         spread_names(vault)
         return {"ok": True, "message": "Speaker named here and wherever their voice speaks"}
+
+    def local_now() -> datetime:
+        return datetime.now(ZoneInfo(settings.timezone))
+
+    def refresh_daily(date: str) -> None:
+        """The day's daily note shows its review at the top: written again with it."""
+        if store.knows(date):
+            from .notes import Notes
+
+            Notes(store).write_day(date)
+
+    @app.get("/day/{date}/review")
+    def day_review(date: str) -> Record:
+        """The day's end-of-day review (null until one is written), its timeline (written now if
+        the day has none yet), the categories to relabel with, and who words the review."""
+        from .review.summary import view
+
+        vault.day_path(date, must_exist=False)  # a valid date, or 400
+        return view(vault, date, settings.timezone, now=local_now(), writers=writers)
+
+    @app.post("/day/{date}/review", dependencies=[Depends(authorize)])
+    def summarize_day(date: str) -> Record:
+        """Write the day's review now (a draft while the day is under way), then return the view."""
+        from .review.summary import view, write_review
+
+        vault.day_path(date, must_exist=False)
+        now = local_now()
+        out = write_review(vault, store, date, settings.timezone, now=now, model=review_model, labeler=labeler, force=True)
+        if out["review"] is not None:
+            refresh_daily(date)
+        return view(vault, date, settings.timezone, now=now, writers=writers) | {
+            "result": {"written": out["written"], "why": out["why"]}
+        }
+
+    @app.post("/labels", dependencies=[Depends(authorize)])
+    def relabel(body: LabelRequest) -> Record:
+        """Correct a category or project, rebuild that day's timeline, and write its review again
+        if it has one and its facts changed. Other days follow when they are next written."""
+        from .review import timeline as day_timeline
+        from .review.labels import UNSET, correct
+        from .review.summary import day_zone, read_review, view, write_review
+
+        vault.day_path(body.date, must_exist=False)
+        given = body.model_fields_set
+        correct(
+            vault, body.key, clear=body.clear,
+            category=body.category if "category" in given and body.category is not None else UNSET,
+            project=body.project if "project" in given else UNSET,
+        )  # fmt: skip
+        now = local_now()
+        if read_review(vault, body.date) is not None:
+            out = write_review(vault, store, body.date, settings.timezone, now=now, model=review_model, labeler=labeler)
+            if out["written"]:
+                refresh_daily(body.date)
+        elif day_timeline.has_inputs(vault, body.date):
+            zone = day_zone(vault, body.date, settings.timezone)
+            under_way = now < day_timeline.window(body.date, ZoneInfo(zone))[1]
+            day_timeline.write(vault, body.date, zone, now=now if under_way else None, labeler=labeler)
+        return view(vault, body.date, settings.timezone, now=now, writers=writers)
 
     @app.delete("/day/{date}/hours", dependencies=[Depends(authorize)])
     def delete_hours(date: str) -> None:

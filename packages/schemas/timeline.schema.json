@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TimelineSegment",
+  "description": "One line of vault/<date>/timeline.jsonl: a stretch of the review day (04:00 to 04:00 local) spent in one place doing one kind of thing. Time the computer and phone did not record has no segment.",
+  "type": "object", "additionalProperties": false,
+  "required": ["t", "until", "where", "doing", "category", "project", "talk", "switches", "evidence", "source", "fidelity", "labeled", "key", "broad"],
+  "properties": {
+    "t": {"type": "string", "format": "date-time"},
+    "until": {"type": "string", "format": "date-time"},
+    "where": {"type": "string", "pattern": "^(desk|away|unknown|place:[A-Za-z0-9_-]+)$"},
+    "doing": {"type": "string", "minLength": 1},
+    "category": {"type": ["string", "null"], "minLength": 1, "description": "At the desk only: coding, studying, ... or other."},
+    "project": {"type": ["string", "null"], "minLength": 1},
+    "talk": {"type": "array", "items": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$"}, "description": "Moment ids of conversations recorded during the segment."},
+    "switches": {"type": "integer", "minimum": 0, "description": "Times something else was in front for under 20 s and the segment went on."},
+    "evidence": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}, "description": "Ids of the records the segment was made from: capture:app:<id>, capture:visit:<id>, capture:away:<id>, capture:media:<id>, place:<id>, event ids."},
+    "source": {"enum": ["pc", "phone", "pc+phone"]},
+    "fidelity": {"enum": ["known", "estimated", "illustrative"], "description": "illustrative: made from synthetic or sample records."},
+    "labeled": {"anyOf": [{"enum": ["correction", "rule", "cache", "llm", "none"]}, {"type": "null"}], "description": "How the category was decided; null away from the desk."},
+    "key": {"type": ["string", "null"], "minLength": 1, "description": "At the desk: the window or page in front longest (page:<url> or app:<program>|<title>), the key a correction of just it uses."},
+    "broad": {"type": ["string", "null"], "minLength": 1, "description": "Its site or app (site:<domain> or app:<program>), the key a correction of all of it uses."}
+  }
+}

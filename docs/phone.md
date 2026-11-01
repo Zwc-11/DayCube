@@ -40,6 +40,7 @@ The DayCube Capture app uploads to the receiver, over Tailscale, through `/phone
 | `POST /phone/items/complete {item}` | the phone's | the item's files moved into the inbox together; asking again later answers `done` |
 | `POST /phone/heartbeat {battery, storage_free_mb, state, queue_files, ...}` | the phone's | kept for doctor; every one appended to `vault/capture/phone-heartbeats.jsonl` |
 | `GET /phone/status` | the vault's | devices, their last heartbeat, uploads in progress |
+| `POST /phone/events {app, event, t}` (or a list) | the phone's | an app `opened` or `closed`, into `vault/capture/<date>/phone-events.jsonl`; the same event twice is kept once; nothing while recording is paused |
 
 - **Items.** An item is what is imported together: one audio hour, one sensor recording, one scan.
   Its files wait in `inbox/phone/.staging/` until the item is complete, then land in the inbox as
@@ -47,6 +48,22 @@ The DayCube Capture app uploads to the receiver, over Tailscale, through `/phone
 - **Deleting on the phone.** The phone deletes a file only after the receiver has acknowledged it.
 - **Doctor.** `.\capture doctor` shows each phone: when it was last heard from, its battery, the
   queue and what it records. It warns after two hours of silence.
+
+### Phone apps from iOS Shortcuts (no app needed)
+
+The day's review counts pickups and minutes per app from app events ([review](review.md)). Until
+DayCube Capture reads Screen Time, Shortcuts sends them:
+
+1. Pair the phone once (`POST /phone/pair` from the viewer's settings) and keep its token.
+2. Shortcuts › Automation › New Automation › **App**: choose the apps (one automation per app, so
+   its name can be written into the request), tick **Is Opened**, choose **Run Immediately**.
+3. Action **Get Contents of URL**: `https://<pc>.<tailnet>.ts.net/phone/events`, Method POST,
+   Header `Authorization: Bearer <the phone's token>`, Request Body JSON:
+   `app` = the app's name, `event` = `opened`, `t` = **Current Date** (format ISO 8601).
+4. The same automation with **Is Closed** and `event` = `closed`.
+
+An opening whose closing never arrives counts at most 30 minutes, and ends at the next app's
+opening. `.\capture doctor` lists `phone-events` in today's logs.
 
 ### DayCube Capture's own files
 

@@ -1,7 +1,8 @@
 """Linked notes in an Obsidian-compatible folder (``vault/notes``), written from the vault database.
 
-- ``Daily/<date>.md``: what was on screen, read, stared at, searched, copied, and what is due,
-  each line linking to the note of the page or course it concerns.
+- ``Daily/<date>.md``: the day's end-of-day review when it has one (Summary), what was said in its
+  recordings (Conversations), what was on screen, read, stared at, searched, copied, and what is
+  due, each line linking to the note of the page or course it concerns.
 - ``Sources/<page title>.md``: one per page that held attention (read, stared at, looked at, copied
   from, reached from a search, or two minutes or more on screen), with everything done on it
   across days.
@@ -20,6 +21,7 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from ..review.summary import read_review
 from ..store import LifeStore
 from ..time import instant
 from ..vault import Record, atomic_text
@@ -64,6 +66,59 @@ def _app_of(text: str) -> str:
     """The app a ``screen.app`` unit names: "Used Visual Studio Code for 5 min: main.py" -> "Visual Studio Code"."""
     head = text.split(": ", 1)[0].removeprefix("Used ")
     return head.rsplit(" for ", 1)[0]
+
+
+def _plain(text: str) -> str:
+    """Text from records or a model, kept from becoming a link or markup in the note."""
+    return " ".join(text.replace("[[", "[ [").replace("]]", "] ]").replace("<", "‹").replace(">", "›").split())
+
+
+def _count_cell(value: float | None) -> str:
+    return "–" if value is None else str(int(value))
+
+
+def _summary(review: Record | None, zone: str) -> list[str]:
+    """The day's end-of-day review (ingest/review/summary.py) at the top of its daily note."""
+    if review is None:
+        return []
+    lines = ["## Summary", f"**{_plain(review['headline'])}**", ""]
+    lines += [f"- {_plain(s['text'])}" for s in review["sentences"]]
+    lines.append("")
+    if review["numbers"]:
+        lines += [" · ".join(f"{n['label']}: {n['display']}" for n in review["numbers"]), ""]
+    phone = [{"text": f"{a['name']} {a['display']}"} for a in review.get("apps") or []]
+    for heading, items in (("Planned", review.get("plan") or []), ("Done", review["done"]), ("Phone", phone),
+                           ("To change", review["improvements"]), ("Tomorrow", review["tomorrow"])):  # fmt: skip
+        if items:
+            lines += [f"**{heading}:** " + "; ".join(_plain(i["text"]) for i in items), ""]
+    made = _local(review["made"], zone).strftime("%Y-%m-%d %H:%M")
+    by = review["writer"]["name"]
+    kind = "Final" if review["kind"] == "final" else "Draft"
+    sample = " Made from sample or simulated records." if review["illustrative"] else ""
+    lines += [f"*{kind} review, written {made} by {by}.{sample}*", ""]
+    return lines
+
+
+def _conversations(store: LifeStore, day: str, zone: str) -> list[str]:
+    """What was recorded being said on the day (its moments' transcripts), one line each."""
+    if not store.has_day(day):
+        return []
+    try:
+        moments = store.vault.snapshot(day).moments
+    except (OSError, ValueError, KeyError):
+        return []
+    lines = []
+    for moment in sorted(moments.values(), key=lambda m: instant(m.meta["t0"])):
+        said = [s for s in moment.transcript["segments"] if s["text"].strip()]
+        if not said:
+            continue
+        people = sorted({p.removeprefix("person:").replace("-", " ").title() for p in moment.transcript["speaker_map"].values()})
+        title = _plain(moment.meta.get("title") or "Recording")
+        head = f"- {_local(moment.meta['t0'], zone):%H:%M} {title}, {_minutes(float(moment.meta['duration_s']))}, "
+        head += f"{len(said)} line{'s' * (len(said) != 1)}" + (f", with {', '.join(people)}" if people else "")
+        quotes = " · ".join(f"“{_quote(_plain(s['text']), 120)}”" for s in said[:2])
+        lines.append(f"{head}: {quotes}")
+    return ["## Conversations", *lines, ""] if lines else []
 
 
 class Notes:
@@ -126,6 +181,46 @@ class Notes:
 
     # -- writing ---------------------------------------------------------------------------
 
+    def write_week(self, week: Record) -> Path:
+        """``Weekly/<YYYY-Www>.md``: the week's numbers (ingest/review/weekly.py), each day linking
+        to its daily note."""
+        key = week["week"]
+        path = self.path_for("week", key, "Weekly", key)
+
+        from ..review.metrics import duration
+
+        def h(seconds: float | None) -> str:
+            return "–" if not seconds else duration(seconds)
+
+        totals, before = week["totals"], week["previous"]
+        lines = [f"## {key}: {week['from']} to {week['to']}", ""]
+        lines.append(f"**{h(totals['desk_s'])} at the desk on {totals['days_recorded']} days; "
+                     f"{int(totals['focus'])} stretches of 25 min or more, {h(totals['focus_s'])} in all.**")  # fmt: skip
+        if before:
+            lines.append(f"The week before: {h(before['desk_s'])} at the desk, {int(before['focus'])} stretches, "
+                         f"{h(before['focus_s'])}.")  # fmt: skip
+        lines += ["", "| Day | Desk | 25 min+ | Longest | Mostly | Project | Phone | Pickups | Commits |",
+                  "| --- | --- | --- | --- | --- | --- | --- | --- | --- |"]  # fmt: skip
+        for row in week["days"]:
+            day = self.paths().get(f"day {row['date']}")
+            name = self.link(day, row["date"]) if day else row["date"]
+            cells = [name, h(row["desk_s"]), str(row["focus"]), h(row["longest_s"]), row["category"] or "–",
+                     row["project"] or "–", h(row["phone"]), _count_cell(row["pickups"]), _count_cell(row["commits"])]  # fmt: skip
+            lines.append("| " + " | ".join(_plain(c) if i else c for i, c in enumerate(cells)) + " |")
+        lines.append("")
+        for title, items in (("By category", week["categories"]), ("By project", week["projects"])):
+            if items:
+                lines += [f"**{title}:** " + ", ".join(f"{_plain(i['name'])} {h(i['seconds'])} ({round(i['share'] * 100)}%)"
+                                                           for i in items[:8]), ""]  # fmt: skip
+        if week["best_hours"]:
+            b = week["best_hours"]
+            lines += [f"**Best hours:** the long stretches ran most between {b['from']} and {b['to']}.", ""]
+        if week["next"]:
+            lines += ["**Next week:** " + "; ".join(f"{_plain(n['text'])} (due {n['due'][:10]})" for n in week["next"]), ""]
+        lines += [f"*Written {week['made'][:16].replace('T', ' ')}.*"]
+        front = {"daycube": f"week {key}", "tags": "[weekly]"}
+        return self._write(path, "\n".join(lines), front)
+
     def write_day(self, day: str) -> list[Path]:
         """The daily note of ``day``, and the source and course notes of what it touched."""
         self.store.ensure([day])
@@ -144,7 +239,8 @@ class Notes:
             searches = self._searches(db, day)
             written = [self._source(db, page) for page in pages.values() if page["noteworthy"]]
             written += [self._course(db, course) for course in courses.values()]
-            written.append(self._daily(day, zone, units, pages, deadlines, searches))
+            top = _summary(read_review(self.store.vault, day), zone) + _conversations(self.store, day, zone)
+            written.append(self._daily(day, zone, units, pages, deadlines, searches, top))
         return written
 
     def _pages(self, db: sqlite3.Connection, ids: set[int]) -> dict[int, Record]:
@@ -314,7 +410,9 @@ class Notes:
         pages: dict[int, Record],
         deadlines: list[Record],
         searches: dict[str, list[int]],
+        top: list[str] | None = None,
     ) -> Path:
+        """``top``: the lines that open the note (its Summary and Conversations)."""
         path = self.path_for("day", day, "Daily", day)
 
         def page_link(page_id: int | None, fallback: str) -> str:
@@ -326,7 +424,7 @@ class Notes:
         def hhmm(t: str) -> str:
             return _local(t, zone).strftime("%H:%M")
 
-        lines: list[str] = []
+        lines: list[str] = list(top or [])
         visits = [u for u in units if u["type"] == "web.visit"]
         if visits:
             total: dict[int | None, float] = defaultdict(float)
