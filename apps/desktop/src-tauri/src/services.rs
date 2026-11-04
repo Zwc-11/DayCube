@@ -58,20 +58,14 @@ pub struct Service {
 }
 
 pub fn now() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
+    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
 
 fn open_log(path: &Path) -> std::io::Result<File> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    if std::fs::metadata(path)
-        .map(|m| m.len() > LOG_LIMIT)
-        .unwrap_or(false)
-    {
+    if std::fs::metadata(path).map(|m| m.len() > LOG_LIMIT).unwrap_or(false) {
         let _ = std::fs::rename(path, path.with_extension("log.1"));
     }
     OpenOptions::new().create(true).append(true).open(path)
@@ -111,12 +105,7 @@ impl Service {
                 .spawn(move || supervise(&spec, &stop, &state))
                 .expect("thread")
         };
-        Self {
-            spec,
-            stop,
-            state,
-            thread: Some(thread),
-        }
+        Self { spec, stop, state, thread: Some(thread) }
     }
 
     pub fn state(&self) -> State {
@@ -177,14 +166,7 @@ fn run_once(spec: &Spec, stop: &AtomicBool, state: &Mutex<State>) -> String {
         Err(error) => return format!("cannot write its log {}: {error}", spec.log.display()),
     };
     let mut header = &log;
-    let _ = writeln!(
-        header,
-        "[desktop {}] starting {}: {} {:?}",
-        now(),
-        spec.name,
-        spec.program.display(),
-        spec.args
-    );
+    let _ = writeln!(header, "[desktop {}] starting {}: {} {:?}", now(), spec.name, spec.program.display(), spec.args);
     let (Ok(out), Ok(err)) = (log.try_clone(), log.try_clone()) else {
         return "cannot share its log".into();
     };
@@ -234,19 +216,11 @@ pub fn wait_ready(
         }
         let s = service.state();
         if !s.running && s.starts >= max_failures {
-            return Err(format!(
-                "{} stopped: {}",
-                service.spec.name,
-                s.last_exit.unwrap_or_default()
-            ));
+            return Err(format!("{} stopped: {}", service.spec.name, s.last_exit.unwrap_or_default()));
         }
         std::thread::sleep(Duration::from_millis(300));
     }
-    Err(format!(
-        "{} did not answer within {} s",
-        service.spec.name,
-        limit.as_secs()
-    ))
+    Err(format!("{} did not answer within {} s", service.spec.name, limit.as_secs()))
 }
 
 #[cfg(all(test, unix))]
@@ -288,9 +262,7 @@ mod tests {
         let dir = temp("run");
         let mut service = Service::start(sh("sleeper", "echo up; sleep 60", &dir));
         wait_ready(&service, Duration::from_secs(5), 1, || {
-            std::fs::read_to_string(dir.join("sleeper.log"))
-                .unwrap_or_default()
-                .contains("up")
+            std::fs::read_to_string(dir.join("sleeper.log")).unwrap_or_default().contains("up")
         })
         .unwrap();
         let pid = service.state().pid.unwrap();
@@ -300,9 +272,7 @@ mod tests {
         assert_eq!(state.last_exit.as_deref(), Some("stopped by the app"));
         assert!(
             !std::path::Path::new(&format!("/proc/{pid}/cmdline")).exists()
-                || std::fs::read_to_string(format!("/proc/{pid}/stat"))
-                    .unwrap()
-                    .contains(") Z")
+                || std::fs::read_to_string(format!("/proc/{pid}/stat")).unwrap().contains(") Z")
         );
     }
 
@@ -312,15 +282,11 @@ mod tests {
         let dir = temp("env");
         let mut service = Service::start(sh("env", "echo home=[$PYTHONHOME]; sleep 60", &dir));
         wait_ready(&service, Duration::from_secs(5), 1, || {
-            std::fs::read_to_string(dir.join("env.log"))
-                .unwrap_or_default()
-                .contains("home=")
+            std::fs::read_to_string(dir.join("env.log")).unwrap_or_default().contains("home=")
         })
         .unwrap();
         service.stop();
-        assert!(std::fs::read_to_string(dir.join("env.log"))
-            .unwrap()
-            .contains("home=[]"));
+        assert!(std::fs::read_to_string(dir.join("env.log")).unwrap().contains("home=[]"));
     }
 
     #[test]

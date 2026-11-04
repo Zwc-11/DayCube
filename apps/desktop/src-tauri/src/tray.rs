@@ -42,20 +42,8 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
     let status = MenuItem::with_id(app, "status", "Starting…", false, None::<&str>)?;
     let open = MenuItem::with_id(app, "open", "Open DayCube", true, None::<&str>)?;
     let pause = MenuItem::with_id(app, "pause", "Pause recording", false, None::<&str>)?;
-    let calibrate = MenuItem::with_id(
-        app,
-        "calibrate",
-        "Calibrate the eye tracker",
-        true,
-        None::<&str>,
-    )?;
-    let tools = MenuItem::with_id(
-        app,
-        "tools",
-        "Doctor, packs and updates…",
-        true,
-        None::<&str>,
-    )?;
+    let calibrate = MenuItem::with_id(app, "calibrate", "Calibrate the eye tracker", true, None::<&str>)?;
+    let tools = MenuItem::with_id(app, "tools", "Doctor and GPU packs…", true, None::<&str>)?;
     let autostart = {
         let on = app.state::<Shell>().config.lock().unwrap().autostart;
         CheckMenuItem::with_id(app, "autostart", "Start at sign-in", true, on, None::<&str>)?
@@ -76,11 +64,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
             &quit,
         ],
     )?;
-    app.manage(Items {
-        status,
-        pause,
-        autostart,
-    });
+    app.manage(Items { status, pause, autostart });
     TrayIconBuilder::with_id("daycube")
         .icon(app.default_window_icon().cloned().expect("bundle icon"))
         .tooltip("DayCube")
@@ -88,12 +72,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| on_menu(app, event.id().as_ref()))
         .on_tray_icon_event(|tray, event| {
-            if let TrayIconEvent::Click {
-                button: MouseButton::Left,
-                button_state: MouseButtonState::Up,
-                ..
-            } = event
-            {
+            if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
                 crate::show_main(tray.app_handle());
             }
         })
@@ -121,11 +100,7 @@ pub fn refresh(app: &AppHandle) {
     let autostart = shell.config.lock().unwrap().autostart;
     let items = app.state::<Items>();
     let _ = items.status.set_text(&text);
-    let _ = items.pause.set_text(if paused == Some(true) {
-        "Resume recording"
-    } else {
-        "Pause recording"
-    });
+    let _ = items.pause.set_text(if paused == Some(true) { "Resume recording" } else { "Pause recording" });
     let _ = items.pause.set_enabled(paused.is_some());
     let _ = items.autostart.set_checked(autostart);
     if let Some(tray) = app.tray_by_id("daycube") {
@@ -151,18 +126,8 @@ fn on_menu(app: &AppHandle, id: &str) {
                 let paused = status
                     .and_then(|r| serde_json::from_str::<serde_json::Value>(&r.body).ok())
                     .and_then(|s| s["paused"].as_bool());
-                let action = if paused == Some(true) {
-                    "/resume"
-                } else {
-                    "/pause"
-                };
-                let _ = http::request(
-                    "POST",
-                    RECEIVER_PORT,
-                    action,
-                    token.as_deref(),
-                    Duration::from_secs(3),
-                );
+                let action = if paused == Some(true) { "/resume" } else { "/pause" };
+                let _ = http::request("POST", RECEIVER_PORT, action, token.as_deref(), Duration::from_secs(3));
                 refresh(&app);
             });
         }
@@ -203,16 +168,9 @@ mod tests {
     fn status_in_words() {
         assert_eq!(describe(None, false).0, "Capture is off");
         assert_eq!(describe(None, true), ("Capture is starting…".into(), None));
+        assert_eq!(describe(Some(&json!({"paused": true})), true), ("Recording paused".into(), Some(true)));
         assert_eq!(
-            describe(Some(&json!({"paused": true})), true),
-            ("Recording paused".into(), Some(true))
-        );
-        assert_eq!(
-            describe(
-                Some(&json!({"paused": false, "gaze": {"tracking": true}})),
-                true
-            )
-            .0,
+            describe(Some(&json!({"paused": false, "gaze": {"tracking": true}})), true).0,
             "Recording · eye tracker on"
         );
         assert_eq!(

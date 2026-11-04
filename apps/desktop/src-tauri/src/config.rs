@@ -24,21 +24,13 @@ pub struct Config {
 
 impl Default for Config {
     fn default() -> Self {
-        Self {
-            vault: None,
-            capture: true,
-            autostart: true,
-            port: None,
-        }
+        Self { vault: None, capture: true, autostart: true, port: None }
     }
 }
 
 impl Config {
     pub fn load(path: &Path) -> Self {
-        std::fs::read(path)
-            .ok()
-            .and_then(|raw| serde_json::from_slice(&raw).ok())
-            .unwrap_or_default()
+        std::fs::read(path).ok().and_then(|raw| serde_json::from_slice(&raw).ok()).unwrap_or_default()
     }
 
     pub fn save(&self, path: &Path) -> std::io::Result<()> {
@@ -53,10 +45,7 @@ impl Config {
 
 /// A vault this PC already has, for the first run: the first candidate holding a token.
 pub fn existing_vault(candidates: &[PathBuf]) -> Option<PathBuf> {
-    candidates
-        .iter()
-        .find(|v| v.join(".token").is_file())
-        .cloned()
+    candidates.iter().find(|v| v.join(".token").is_file()).cloned()
 }
 
 /// Where a vault is likely to be: the repository's usual place, then the user's folders.
@@ -66,10 +55,7 @@ pub fn vault_candidates() -> Vec<PathBuf> {
         PathBuf::from(r"D:\DAYCUBE\vault"),
         PathBuf::from(r"C:\DAYCUBE\vault"),
     ];
-    if let Some(home) = std::env::var_os("USERPROFILE")
-        .or_else(|| std::env::var_os("HOME"))
-        .map(PathBuf::from)
-    {
+    if let Some(home) = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME")).map(PathBuf::from) {
         out.push(home.join("DAYCUBE").join("vault"));
         out.push(home.join("Documents").join("DayCube").join("vault"));
     }
@@ -101,10 +87,7 @@ pub fn usable_vault(path: &Path) -> Result<(), String> {
     }
     match std::fs::read_dir(path).map(|mut entries| entries.next().is_none()) {
         Ok(true) => Ok(()),
-        Ok(false) => Err(format!(
-            "{} already holds other files and is not a DayCube vault",
-            path.display()
-        )),
+        Ok(false) => Err(format!("{} already holds other files and is not a DayCube vault", path.display())),
         Err(error) => Err(format!("{} cannot be read: {error}", path.display())),
     }
 }
@@ -114,8 +97,7 @@ mod tests {
     use super::*;
 
     fn temp(name: &str) -> PathBuf {
-        let dir =
-            std::env::temp_dir().join(format!("daycube-config-{name}-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("daycube-config-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
@@ -126,12 +108,7 @@ mod tests {
         let dir = temp("rt");
         let path = dir.join("settings.json");
         assert_eq!(Config::load(&path), Config::default());
-        let config = Config {
-            vault: Some(dir.join("vault")),
-            capture: false,
-            autostart: true,
-            port: Some(7701),
-        };
+        let config = Config { vault: Some(dir.join("vault")), capture: false, autostart: true, port: Some(7701) };
         config.save(&path).unwrap();
         assert_eq!(Config::load(&path), config);
         std::fs::write(&path, b"{\"vault\": null}").unwrap();
@@ -153,9 +130,6 @@ mod tests {
         std::fs::write(vault.join(".token"), b"t").unwrap();
         assert!(usable_vault(&vault).is_ok(), "existing vault");
         assert!(usable_vault(Path::new("relative")).is_err());
-        assert_eq!(
-            existing_vault(&[dir.join("none"), vault.clone()]),
-            Some(vault)
-        );
+        assert_eq!(existing_vault(&[dir.join("none"), vault.clone()]), Some(vault));
     }
 }

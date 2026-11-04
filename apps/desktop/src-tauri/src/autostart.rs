@@ -39,8 +39,7 @@ mod registry {
     }
 
     pub fn set(line: &str) -> std::io::Result<()> {
-        let (key, _) =
-            RegKey::predef(HKEY_CURRENT_USER).create_subkey_with_flags(RUN, KEY_SET_VALUE)?;
+        let (key, _) = RegKey::predef(HKEY_CURRENT_USER).create_subkey_with_flags(RUN, KEY_SET_VALUE)?;
         key.set_value(super::VALUE, &line)
     }
 
@@ -94,10 +93,7 @@ mod tests {
     fn line_and_ownership() {
         let exe = PathBuf::from(r"C:\Users\c\AppData\Local\Programs\DayCube\DayCube.exe");
         let line = command_line(&exe);
-        assert_eq!(
-            line,
-            "\"C:\\Users\\c\\AppData\\Local\\Programs\\DayCube\\DayCube.exe\" --background"
-        );
+        assert_eq!(line, "\"C:\\Users\\c\\AppData\\Local\\Programs\\DayCube\\DayCube.exe\" --background");
         assert!(is_ours(&line, &exe));
         assert!(is_ours(&line.to_lowercase(), &exe));
         // The checkout's entry (python -m capture run) is not ours.
@@ -119,16 +115,11 @@ mod windows_tests {
         let saved = registry::current();
         let exe = PathBuf::from(r"C:\DayCubeTest\DayCube.exe");
         // A checkout's entry is replaced by the app's: one receiver, never two.
-        registry::set(r#""E:\DAYCUBE\services\capture-win\.venv\Scripts\pythonw.exe" -m capture run --receive --gaze"#).unwrap();
+        registry::set(r#""E:\DAYCUBE\services\capture-win\.venv\Scripts\pythonw.exe" -m capture run --receive --gaze"#)
+            .unwrap();
         assert!(apply(true, &exe).unwrap().is_some());
-        assert_eq!(
-            registry::current().as_deref(),
-            Some(command_line(&exe).as_str())
-        );
-        assert!(
-            apply(true, &exe).unwrap().is_none(),
-            "no change when already ours"
-        );
+        assert_eq!(registry::current().as_deref(), Some(command_line(&exe).as_str()));
+        assert!(apply(true, &exe).unwrap().is_none(), "no change when already ours");
         assert!(apply(false, &exe).unwrap().is_some());
         assert_eq!(registry::current(), None);
         // Turning off never removes an entry that is not the app's.

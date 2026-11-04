@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import ctypes
 import logging
+import math
 import struct
 import sys
 import threading
@@ -54,6 +55,13 @@ WHEEL, HWHEEL = 0x0400, 0x0800
 MOUSE_MOVE_ABSOLUTE = 0x0001
 RI_KEY_BREAK = 0x0001
 RIM_TYPEMOUSE, RIM_TYPEKEYBOARD = 0, 1
+ANY_DOWN = sum(DOWN_FLAGS)
+ANY_WHEEL = WHEEL | HWHEEL
+# RAWINPUT, unpacked in place from the window procedure's buffer (compiled once, no copy per event).
+# The header is dwType, dwSize, then hDevice and wParam, pointer-sized: 24 bytes on 64-bit Windows.
+HEADERS = {24: struct.Struct("<I4xQ"), 16: struct.Struct("<I4xI")}
+KEYBOARD = struct.Struct("<2xH2xH")  # RAWKEYBOARD: MakeCode, Flags, Reserved, VKey
+MOUSE = struct.Struct("<H2xHH4xii")  # RAWMOUSE: usFlags, usButtonFlags, usButtonData, lLastX, lLastY
 
 
 @dataclass
@@ -81,20 +89,23 @@ class Counts:
 
     def mouse(self, flags: int, buttons: int, data: int, dx: int, dy: int) -> None:
         """One RAWMOUSE: ``flags`` its usFlags, ``buttons`` usButtonFlags, ``data`` usButtonData
-        (signed: wheel delta, 120 a notch), ``dx``/``dy`` lLastX/lLastY."""
-        self.clicks += sum(1 for bit in DOWN_FLAGS if buttons & bit)
-        if buttons & (WHEEL | HWHEEL):
-            delta = data - 0x10000 if data >= 0x8000 else data
-            self.wheel += max(1, round(abs(delta) / 120))
+        (signed: wheel delta, 120 a notch), ``dx``/``dy`` lLastX/lLastY. Nearly every call is a
+        bare relative move, so that case does one addition."""
+        if buttons:
+            if buttons & ANY_DOWN:
+                self.clicks += sum(1 for bit in DOWN_FLAGS if buttons & bit)
+            if buttons & ANY_WHEEL:
+                delta = data - 0x10000 if data >= 0x8000 else data
+                self.wheel += max(1, round(abs(delta) / 120))
         if flags & MOUSE_MOVE_ABSOLUTE:
             # Tablets and remote sessions: positions on a 0..65535 desktop, not moves. Their
             # distance is counted in those units scaled to a 2560-pixel-wide screen.
             if self._last_abs is not None:
                 ax, ay = self._last_abs
-                self.move_px += ((dx - ax) ** 2 + (dy - ay) ** 2) ** 0.5 * 2560 / 65536
+                self.move_px += math.hypot(dx - ax, dy - ay) * 2560 / 65536
             self._last_abs = (dx, dy)
-        else:
-            self.move_px += (dx * dx + dy * dy) ** 0.5
+        elif dx or dy:
+            self.move_px += math.hypot(dx, dy)
 
     def any(self) -> bool:
         return bool(self.keys or self.clicks or self.wheel or self.move_px >= 1)
@@ -111,19 +122,33 @@ def parse(buffer: bytes, header_size: int) -> tuple[int, tuple, int] | None:
     """A RAWINPUT as GetRawInputData returns it: (RIM_TYPEKEYBOARD, (vkey, released), device) or
     (RIM_TYPEMOUSE, (flags, buttons, data, dx, dy), device), ``device`` the header's hDevice (0 for
     input a program sent); None for other devices or a short buffer."""
-    if len(buffer) < header_size:
+    got = len(buffer)
+    header = HEADERS.get(header_size)
+    if header is None or got < header_size:
         return None
-    kind = struct.unpack_from("<I", buffer, 0)[0]
-    pointer = (header_size - 8) // 2  # RAWINPUTHEADER: dwType, dwSize, then hDevice and wParam, pointer-sized
-    device = int.from_bytes(buffer[8 : 8 + pointer], "little")
-    if kind == RIM_TYPEKEYBOARD and len(buffer) >= header_size + 16:
-        _make, key_flags, _reserved, vkey = struct.unpack_from("<HHHH", buffer, header_size)
+    kind, device = header.unpack_from(buffer, 0)
+    if kind == RIM_TYPEKEYBOARD and got >= header_size + 16:
+        key_flags, vkey = KEYBOARD.unpack_from(buffer, header_size)
         return kind, (vkey, bool(key_flags & RI_KEY_BREAK)), device
-    if kind == RIM_TYPEMOUSE and len(buffer) >= header_size + 24:
-        flags, buttons, data = struct.unpack_from("<H2xHH", buffer, header_size)
-        dx, dy = struct.unpack_from("<ii", buffer, header_size + 12)
-        return kind, (flags, buttons, data, dx, dy), device
+    if kind == RIM_TYPEMOUSE and got >= header_size + 24:
+        return kind, MOUSE.unpack_from(buffer, header_size), device
     return None
+
+
+def dispatch(buffer: Any, got: int, header_size: int, buckets: Buckets) -> None:
+    """What the window procedure does with each WM_INPUT: read the RAWINPUT that GetRawInputData
+    wrote into ``buffer`` (``got`` bytes) where it lies, and count it. The same reading as ``parse``
+    without copying the buffer or building tuples: this runs for every mouse report."""
+    header = HEADERS.get(header_size)
+    if header is None or got < header_size:
+        return
+    kind, device = header.unpack_from(buffer, 0)
+    if kind == RIM_TYPEMOUSE:
+        if got >= header_size + 24:
+            buckets.mouse(*MOUSE.unpack_from(buffer, header_size), device)
+    elif kind == RIM_TYPEKEYBOARD and got >= header_size + 16:
+        key_flags, vkey = KEYBOARD.unpack_from(buffer, header_size)
+        buckets.key(vkey, bool(key_flags & RI_KEY_BREAK), device)
 
 
 class Buckets:
@@ -154,28 +179,44 @@ class Buckets:
         return t - t % self.bucket_s
 
     def event(self, kind: int, values: tuple, device: int = 1) -> None:
-        """One raw input event; ``device`` 0: a program sent it."""
+        """One raw input event as ``parse`` returns it; ``device`` 0: a program sent it."""
+        if kind == RIM_TYPEKEYBOARD:
+            self.key(*values, device)
+        elif kind == RIM_TYPEMOUSE:
+            self.mouse(*values, device)
+
+    def _injected(self, now: float) -> None:
+        self.injected += 1
+        self.injected_total += 1
+        self.injected_at = now
+
+    def key(self, vkey: int, released: bool, device: int = 1) -> None:
         now = self.clock()
         with self.lock:
-            self._roll(now)
+            if now >= self.start + self.bucket_s:
+                self._roll(now)
             if not device:
-                self.injected += 1
-                self.injected_total += 1
-                self.injected_at = now
+                self._injected(now)
                 return
             self.last_human = now
-            if kind == RIM_TYPEKEYBOARD:
-                vkey, released = values
-                if not released and self.private():
-                    self.skipped_private += 1
-                    return
-                self.counts.key(vkey, released)
-            elif kind == RIM_TYPEMOUSE:
-                flags, buttons, data, dx, dy = values
-                if buttons and self.private():  # a press or the wheel; a bare move says nothing
-                    self.skipped_private += 1
-                    return
-                self.counts.mouse(flags, buttons, data, dx, dy)
+            if not released and self.private():
+                self.skipped_private += 1
+                return
+            self.counts.key(vkey, released)
+
+    def mouse(self, flags: int, buttons: int, data: int, dx: int, dy: int, device: int = 1) -> None:
+        now = self.clock()
+        with self.lock:
+            if now >= self.start + self.bucket_s:
+                self._roll(now)
+            if not device:
+                self._injected(now)
+                return
+            self.last_human = now
+            if buttons and self.private():  # a press or the wheel; a bare move says nothing
+                self.skipped_private += 1
+                return
+            self.counts.mouse(flags, buttons, data, dx, dy)
 
     def idle_s(self) -> float:
         """Seconds since the last key, click or move from a real device (since the counter started
@@ -284,9 +325,7 @@ class InputCounter(threading.Thread):
                 size.value = ctypes.sizeof(buffer)
                 got = user32.GetRawInputData(lparam, RID_INPUT, buffer, ctypes.byref(size), header_size)
                 if got not in (0, 0xFFFFFFFF):
-                    event = parse(buffer.raw[:got], header_size)
-                    if event is not None:
-                        self.buckets.event(*event)  # kind, values, device
+                    dispatch(buffer, got, header_size, self.buckets)
                 return user32.DefWindowProcW(hwnd, message, wparam, lparam)
             if message == WM_TIMER:
                 self.buckets.tick()

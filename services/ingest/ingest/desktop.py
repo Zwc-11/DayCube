@@ -126,19 +126,9 @@ def build(api: ASGIApp, viewer_dist: Path, *, record: bool = False) -> ASGIApp:
     routes = [Route("/__desktop/token", token), *([Route("/__selftest", selftest)] if record else [])]
     app = Starlette(routes=[*routes, Mount("/api", app=api), Mount("/", app=Viewer(viewer_dist))], lifespan=lifespan)
     if record:
-        recorder = Recorder(app)
-        return _Lifespanned(recorder, app)
+        recorder = Recorder(app)  # passes lifespan and other non-HTTP messages to the app
+        return recorder
     return app
-
-
-class _Lifespanned:
-    """The recorder in front of the parent app; lifespan messages go straight to the parent."""
-
-    def __init__(self, outer: ASGIApp, inner: Starlette) -> None:
-        self.outer, self.inner = outer, inner
-
-    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        await (self.inner if scope["type"] == "lifespan" else self.outer)(scope, receive, send)
 
 
 def create_desktop_app() -> ASGIApp:
