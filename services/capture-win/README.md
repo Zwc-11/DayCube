@@ -13,9 +13,14 @@ uv run --project services/capture-win python -m capture run --receive --gaze # o
 uv run --project services/capture-win python -m capture import-history      # Opera's history into the vault
 uv run --project services/capture-win python -m capture doctor              # is it working? from what it recorded
 uv run --project services/capture-win python -m capture restart             # after git pull: run the new code now
+uv run --project services/capture-win python -m capture stop                # stop the receiver and eye tracker
 uv run --project services/capture-win python -m capture screen check        # what OCR reads in the window in front
 uv run --project services/capture-win python -m capture screen off          # stop reading other apps (on: again)
 ```
+
+The [Windows app](../../docs/desktop.md) runs this same receiver from its own install and writes the
+same sign-in entry (`DayCube capture`), pointing at the app: installing it replaces the entry
+`install-autostart` wrote, so one receiver runs on 127.0.0.1:7700.
 
 From the repository folder, `.\capture doctor` (or any of these commands) is the same: `capture.cmd`
 runs it in this environment. A bare `python -m capture` uses the system Python, which has no
@@ -34,6 +39,15 @@ runs it in this environment. A bare `python -m capture` uses the system Python, 
 | `capture/supervise.py` | Running the eye tracker from its own environment, restarting it when it stops |
 | `capture/autostart.py` | The per-user sign-in entry (registry `Run` key, windowless `pythonw.exe`) |
 | `capture/history.py` | Importing a Chromium `History` file |
+| `capture/inputs.py` | How much typing and mousing, not what: counts per 10 s into `inputs.jsonl` (Windows Raw Input; no key identities) |
+| `capture/doingnow.py` | Alt+Shift+N: a one-line "What are you doing now?" box, into `doing.jsonl` |
+| `capture/librarian.py` | Keeps the day's search, linked notes, timeline and review current while the receiver runs |
+| `capture/labels.py` | Reading turned into calibration labels for the eye tracker |
+| `capture/inbox.py` | Imports phone exports dropped into `vault/inbox/phone` |
+| `capture/phone_api.py` | Uploads from the phone into `vault/inbox/phone` |
+| `capture/memories.py` | Photos in `vault/inbox/memories` made into memories, in the recon environment |
+| `capture/jobs.py` | The vault's jobs: CPU stages at once, GPU stages while the PC is free |
+| `capture/update.py` | After `git pull`, restarts the receiver on the new code the next time you are away (off in the Windows app) |
 
 Without `--receive` the receiver starts paused, as before. A pause is remembered in
 `vault/capture/paused` until resumed. Screen reading needs `mss` and the `winrt-*` packages, installed
