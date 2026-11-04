@@ -30,6 +30,7 @@
     "api": "uv run uvicorn ingest.api:app --host 127.0.0.1 --port 7701 --reload",
     "demo:seed": "uv run daycube seed && uv run daycube index --date 2026-10-20",
     "demo": "concurrently \"npm run api\" \"npm run dev\"",
+    "media": "node scripts/readme-media.mjs",
     "schemas": "node scripts/generate-contracts.mjs && uv run python scripts/generate-models.py",
     "test": "uv run pytest -q && npm run typecheck"
   },

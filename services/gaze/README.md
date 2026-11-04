@@ -24,6 +24,9 @@ uv run --project services/gaze python -m gaze.overlay     # the gaze ring over e
 uv run --project services/gaze python -m gaze tune        # choose learning's settings on your own clicks
 ```
 
+In the [Windows app](../../docs/desktop.md), the tray's **Calibrate the eye tracker** runs the
+same calibration with the app's own runtime.
+
 Calibration first looks for a 60 fps webcam mode (`gaze/camera.py`: MJPG at 1280 x 720 or 640 x
 480, timed rather than trusted; `--fps 30` skips it) and saves it; tracking opens that mode. With
 the ring switched on, the tracker draws it over every window itself (`gaze/overlay.py`, Windows):
