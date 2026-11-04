@@ -1,6 +1,6 @@
 import React, { Profiler, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { CameraMap } from '../../src/components/modals/RecordedMomentModal';
+import { CameraMap } from '../../src/components/modals/CameraMap';
 import '../../src/styles/app.css';
 
 const n = Number(new URLSearchParams(location.search).get('points') ?? 12000);

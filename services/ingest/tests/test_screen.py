@@ -941,7 +941,8 @@ def test_the_receiver_says_you_are_away_from_the_screen_reader_or_real_input(
     assert receiver.person_away() is True
     Reader.away = False
     assert receiver.person_away() is False
-    receiver.screen = None  # no reader, and no Windows idle time here: not taken for away
+    receiver.screen = None  # no reader, and no Windows idle time: not taken for away
+    monkeypatch.setattr("capture.api.idle_seconds", lambda: None)  # a CI machine's real idle time is long
     assert receiver.person_away() is False
     receiver.screen, Reader.skipped = Reader(), "off"  # reading turned off: the reader does not judge
     monkeypatch.setattr("capture.api.idle_seconds", lambda: 900.0)
