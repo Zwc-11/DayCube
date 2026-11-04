@@ -35,8 +35,9 @@ test('a day summary beside the daily note: written on request, footnoted, stripp
   await expect(card.locator('.dr-numbers')).toContainText('Passages read line by line');
   await expect(card.getByRole('heading', { name: 'Tomorrow' })).toBeVisible();
 
-  // A stretch on the strip says what it was, and relabels everything on that site.
-  await strip.getByRole('button', { name: /^09:05–09:12 reading/ }).click();
+  // A stretch on the strip says what it was, and relabels everything on that site. The footnote
+  // above already picked the stretch it rests on (clicking it on the strip now would close it).
+  await expect(strip.getByRole('button', { name: /^09:05–09:12 reading/ })).toHaveAttribute('aria-pressed', 'true');
   const picked = card.getByRole('region', { name: 'Selected stretch' });
   await expect(picked).toContainText('Hash table - Wikipedia (en.wikipedia.org)');
   await picked.getByLabel('Category').selectOption('studying');

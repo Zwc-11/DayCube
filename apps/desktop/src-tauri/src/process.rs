@@ -199,8 +199,8 @@ mod windows_tests {
         let _ = std::fs::remove_file(&pidfile);
         // A child that starts a grandchild, records its id, and waits: as the receiver starts the tracker.
         let script = format!(
-            "$p = Start-Process -FilePath ping -ArgumentList '-n','120','127.0.0.1' -PassThru -WindowStyle Hidden; \
-             Set-Content -Path '{}' -Value $p.Id; Start-Sleep -Seconds 120",
+            "$p = Start-Process -FilePath ping -ArgumentList '-n','300','127.0.0.1' -PassThru -WindowStyle Hidden; \
+             Set-Content -Path '{}' -Value $p.Id; Start-Sleep -Seconds 300",
             pidfile.display()
         );
         let mut command = Command::new("powershell");
@@ -213,7 +213,8 @@ mod windows_tests {
                     break pid;
                 }
             }
-            assert!(start.elapsed() < Duration::from_secs(30), "no grandchild");
+            // PowerShell can take a minute to start on a busy CI runner; the kill below is what is timed.
+            assert!(start.elapsed() < Duration::from_secs(120), "no grandchild");
             std::thread::sleep(Duration::from_millis(100));
         };
         assert!(alive(grandchild));

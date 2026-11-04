@@ -41,7 +41,7 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 log = logging.getLogger("capture.inputs")
@@ -247,7 +247,7 @@ class Buckets:
         if now < self.start + self.bucket_s:
             return
         if self.counts.any() or self.injected:
-            begun = datetime.fromtimestamp(self.start).astimezone()
+            begun = datetime.fromtimestamp(self.start, UTC).astimezone()  # no mktime: Windows refuses it near 1970
             record = {"t": begun.isoformat(timespec="seconds"), "s": int(self.bucket_s), **self.counts.take(),
                       "injected": self.injected}  # fmt: skip
             try:
@@ -371,7 +371,7 @@ class InputCounter(threading.Thread):
         b = self.buckets
 
         def at(t: float | None) -> str | None:
-            return datetime.fromtimestamp(t).astimezone().isoformat(timespec="seconds") if t else None
+            return datetime.fromtimestamp(t, UTC).astimezone().isoformat(timespec="seconds") if t else None
 
         return {"running": self.is_alive() and self.error is None, "error": self.error, "buckets": b.written,
                 "last": at(b.last_at), "skipped_private": b.skipped_private, "idle_s": round(b.idle_s(), 1),
