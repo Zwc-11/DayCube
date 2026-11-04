@@ -313,6 +313,7 @@ def test_a_speech_pass_survives_importing_the_recording_again(tmp_path: Path) ->
     assert memo["text"].endswith("3 transcribed segments")
 
 
+@needs_ffmpeg
 def test_moments_follow_their_place_when_a_later_recording_moves_it(tmp_path: Path) -> None:
     """An earlier hour of the phone's arriving after the rest joins the stay at home, which then
     starts earlier and gets another id: a memo imported before goes with it (the day stays valid)."""
@@ -333,6 +334,7 @@ def test_moments_follow_their_place_when_a_later_recording_moves_it(tmp_path: Pa
     assert memo["place"] == first["id"]
 
 
+@needs_ffmpeg
 def test_the_inbox_imports_what_has_stopped_changing_and_does_not_retry_a_failure(tmp_path: Path) -> None:
     vault = Vault(tmp_path / "vault")
     vault.initialize()
