@@ -65,9 +65,9 @@ def afternoon() -> list[tuple[float, float, float, str, float]]:
     return rows
 
 
-def sensor_zip(folder: Path) -> Path:
-    rows = afternoon()
-    ns = lambda s: str(int((START.timestamp() + s) * 1e9))  # noqa: E731
+def sensor_zip(folder: Path, start: datetime = START, rows: list | None = None) -> Path:
+    rows = afternoon() if rows is None else rows
+    ns = lambda s: str(int((start.timestamp() + s) * 1e9))  # noqa: E731
 
     def table(header: list[str], body: list[list]) -> str:
         out = io.StringIO()
@@ -79,7 +79,7 @@ def sensor_zip(folder: Path) -> Path:
     files = {
         "Metadata.csv": table(
             ["version", "device name", "recording epoch time", "recording time", "recording timezone"],
-            [[3, "Test Phone", int(START.timestamp() * 1000), "2026-10-24_19-00-00", "America/Toronto"]],
+            [[3, "Test Phone", int(start.timestamp() * 1000), start.strftime("%Y-%m-%d_%H-%M-%S"), "America/Toronto"]],
         ),
         "Location.csv": table(
             [
@@ -111,16 +111,16 @@ def sensor_zip(folder: Path) -> Path:
         ),  # fmt: skip
         "Magnetometer.csv": table(["time", "seconds_elapsed", "z", "y", "x"], [[ns(0), 0, 1, 2, 3]]),
     }
-    path = folder / "1 Main St-2026-10-24_19-00-00.zip"
+    path = folder / f"1 Main St-{start.strftime('%Y-%m-%d_%H-%M-%S')}.zip"
     with zipfile.ZipFile(path, "w") as archive:
         for name, text in files.items():
             archive.writestr(name, text)
     return path
 
 
-def voice_memo(folder: Path) -> tuple[Path, Path]:
+def voice_memo(folder: Path, end_s: float = 2420) -> tuple[Path, Path]:
     """A 30 s memo saved (stamped) 20 s after coming home, and its transcript beside it."""
-    end = START + timedelta(seconds=2420)
+    end = START + timedelta(seconds=end_s)
     path = folder / "Main St 3.m4a"
     subprocess.run(
         ["ffmpeg", "-nostdin", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=300:duration=30", "-c:a", "aac",
@@ -293,6 +293,46 @@ def test_an_afternoon_of_recordings_becomes_a_vault_day(tmp_path: Path) -> None:
 
 
 @needs_ffmpeg
+def test_a_speech_pass_survives_importing_the_recording_again(tmp_path: Path) -> None:
+    """The speech worker's transcript (speakers named since) stays when the memo is imported again;
+    speech.json says the pass is done, so nothing would make it again."""
+    vault = Vault(tmp_path / "vault")
+    vault.initialize()
+    paths = [sensor_zip(tmp_path), *voice_memo(tmp_path)]
+    import_phone(vault, paths, transcribe=False, say=lambda _: None)
+    folder = next((vault.root / "2026-10-24/moments").glob("mo_voice_*"))
+    speech = {"speaker_map": {"S1": "Maya"}, "segments": [
+        {"start": s, "end": s + 2.0, "text": text, "speaker": "S1", "words": []}
+        for s, text in ((1.0, " Almost home."), (10.0, " The park was quiet."), (20.0, " Dinner at six."))
+    ]}  # fmt: skip
+    (folder / "transcript.json").write_text(json.dumps(speech))
+    (folder / "speech.json").write_text(json.dumps({"done": True}))
+    import_phone(vault, paths, transcribe=False, say=lambda _: None)
+    assert read_json(folder / "transcript.json") == speech
+    memo = next(e for e in read_lines(vault.root / "2026-10-24/events.jsonl") if e.get("moment_id") == folder.name)
+    assert memo["text"].endswith("3 transcribed segments")
+
+
+def test_moments_follow_their_place_when_a_later_recording_moves_it(tmp_path: Path) -> None:
+    """An earlier hour of the phone's arriving after the rest joins the stay at home, which then
+    starts earlier and gets another id: a memo imported before goes with it (the day stays valid)."""
+    vault = Vault(tmp_path / "vault")
+    vault.initialize()
+    import_phone(vault, [sensor_zip(tmp_path), *voice_memo(tmp_path, end_s=200)], transcribe=False, say=lambda _: None)
+    folder = next((vault.root / "2026-10-24/moments").glob("mo_voice_*"))
+    before = read_json(folder / "meta.json")["place"]
+    early = tmp_path / "early"
+    early.mkdir()
+    hour = [(float(t), *HOME, "stationary", 0.0) for t in range(600)]
+    import_phone(vault, [sensor_zip(early, START - timedelta(seconds=600), hour)], transcribe=False, say=lambda _: None)
+    vault.validate("2026-10-24")
+    first = read_json(vault.root / "2026-10-24/day.json")["places"][0]
+    assert first["id"] != before and first["t0"].startswith("2026-10-24T14:50")
+    assert read_json(folder / "meta.json")["place"] == first["id"]
+    memo = next(e for e in read_lines(vault.root / "2026-10-24/events.jsonl") if e.get("moment_id") == folder.name)
+    assert memo["place"] == first["id"]
+
+
 def test_the_inbox_imports_what_has_stopped_changing_and_does_not_retry_a_failure(tmp_path: Path) -> None:
     vault = Vault(tmp_path / "vault")
     vault.initialize()
