@@ -66,6 +66,9 @@ DayCube.exe (Tauri) ── tray, settings.json, job objects (children die with t
   starts with it, so Ask, notes, rename and reindex work without **Vault connection**. Links to other
   sites open in the default browser; the viewer window never navigates away from its origin and has
   no IPC. Only the app's local pages (startup, tools) can call its commands.
+- Loopback only: the server answers requests addressed to `127.0.0.1` or `localhost` and refuses
+  any other `Host`, so a web page that rebinds its own name to 127.0.0.1 (DNS rebinding) cannot
+  read the vault's GET endpoints, which need no token.
 - Python: uv's managed CPython 3.11 builds (python-build-standalone), copied as folders; packages
   installed by hash from `uv export --locked` of `services/capture-win` (with the `desktop` extra,
   which adds meaning search) and of `services/gaze`. The sources stay plain files found through a
@@ -98,8 +101,8 @@ Development against a checkout's own environments: `DAYCUBE_DEV_ROOT=E:\DAYCUBE`
   Windows), restart and back-off, loopback HTTP, ports, the install layout and the variables passed to
   Python, settings and vault choice, the sign-in entry (Windows), the token script and navigation
   guard, packs, the self-test's judgement, the tray's status text.
-- `services/ingest/tests/test_desktop.py`: one origin, route fallback, cache headers, token rules
-  under `/api`, the API's lifespan when mounted, the token probe, the request record.
+- `services/ingest/tests/test_desktop.py`: one origin, route fallback, cache headers and 304s, loopback
+  `Host` only, token rules under `/api`, the API's lifespan when mounted, the token probe, the request record.
 - `apps/viewer/e2e/desktop.spec.ts`: an injected token is bound at load and authorizes Ask.
 - `DayCube.exe --self-test --vault <dir> --report <file>`: starts as usual, then checks that the API
   answers, the window loaded the viewer and read its data, the injected token is on the page and
