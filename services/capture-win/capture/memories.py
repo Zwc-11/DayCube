@@ -31,11 +31,9 @@ NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(subprocess, "BE
 
 
 def recon_python(root: Path = PROJECT_ROOT) -> Path | None:
-    venv = root / "services" / "recon" / ".venv"
-    for candidate in (venv / "Scripts" / "python.exe", venv / "bin" / "python"):
-        if candidate.is_file():
-            return candidate
-    return None
+    from .supervise import environment_python
+
+    return environment_python("recon", root, windowless=False)
 
 
 def waiting(vault_root: Path, now: float | None = None) -> list[Path]:

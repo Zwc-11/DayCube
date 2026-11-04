@@ -21,6 +21,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# The desktop app (apps/desktop) runs the vault API from this environment too: meaning search.
+desktop = ["fastembed>=0.7,<1"]
 windows = [
   "pywin32>=308; sys_platform == 'win32'", "psutil>=6,<8", "mss>=10,<11",
   "pillow>=11,<13", "pystray>=0.19,<1", "pynput>=1.8,<2"
