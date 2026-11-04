@@ -337,6 +337,18 @@ def _write_day(vault: Vault, day: str, zone_name: str, spans: list, moments: lis
         place["layer_index"] = index
     ids = {p["id"] for p in all_places}
     transits = [t for t in keep_transits + transits if t["from"] in ids and t["to"] in ids]
+    # Rebuilt visits get ids from when they start, which a newly arrived recording can move (an
+    # earlier hour joined to a stay): what earlier imports placed goes to the place it falls in now.
+    for event in events:
+        if event.get("place") and event["place"] not in ids:
+            event["place"] = _place_at(_seconds(event["t"]), _seconds(event.get("t_end") or event["t"]), all_places)
+    replaced = {m.id for m in moments}
+    kept_meta = {}
+    for meta_path in (path / "moments").glob("*/meta.json") if (path / "moments").is_dir() else []:
+        meta = read_json(meta_path)
+        if meta_path.parent.name not in replaced and meta.get("place") and meta["place"] not in ids:
+            t0 = _seconds(meta["t0"])
+            kept_meta[meta_path] = meta | {"place": _place_at(t0, t0 + meta["duration_s"], all_places)}
     moment_events = []
     for moment in moments:
         folder = path / "moments" / moment.id
@@ -358,9 +370,12 @@ def _write_day(vault: Vault, day: str, zone_name: str, spans: list, moments: lis
         folder.mkdir(parents=True)
         scene = moment.write(folder) | {"source": moment.file}
         if stash is not None:
+            spoken = (stash / "speech.json").exists()  # before the loop moves it out of the stash
             for item in stash.iterdir():
-                if item.name == "transcript.json" and not (stash / "speech.json").exists():
-                    continue  # no speech pass yet: the transcript just imported stands
+                if item.name == "transcript.json":
+                    if not spoken:
+                        continue  # no speech pass yet: the transcript just imported stands
+                    moment.transcript = read_json(item)  # the speech pass's, with the names given since
                 target = folder / item.name
                 if target.is_dir():
                     shutil.rmtree(target)
@@ -414,6 +429,8 @@ def _write_day(vault: Vault, day: str, zone_name: str, spans: list, moments: lis
         if not (path / "graph.json").is_file():
             vault.write_json(path / "graph.json", {"nodes": [], "edges": []})
         vault.write_json(path / "day.json", data)
+        for meta_path, meta in kept_meta.items():
+            vault.write_json(meta_path, meta)
     vault.invalidate_index(day)
     vault.validate(day)
     result = {"places": len(places), "transits": len(transits), "fixes": len(features), "moments": [m.id for m in moments],
@@ -440,15 +457,23 @@ def _same_files(day: Path, moments: list[Moment]) -> set[str]:
 
 
 def _overlap(moment: Moment, places: list[Record]) -> str | None:
-    a, b = moment.t0.timestamp(), moment.t0.timestamp() + moment.duration_s
+    return _place_at(moment.t0.timestamp(), moment.t0.timestamp() + moment.duration_s, places)
+
+
+def _place_at(a: float, b: float, places: list[Record]) -> str | None:
+    """The place sharing most of [a, b] with it; for an instant, the place it falls in."""
+    if b <= a:
+        return next((p["id"] for p in places if _seconds(p["t0"]) <= a <= _seconds(p["t1"])), None)
     best, most = None, 0.0
     for place in places:
-        shared = min(b, datetime.fromisoformat(place["t1"]).timestamp()) - max(
-            a, datetime.fromisoformat(place["t0"]).timestamp()
-        )
+        shared = min(b, _seconds(place["t1"])) - max(a, _seconds(place["t0"]))
         if shared > most:
             best, most = place["id"], shared
     return best
+
+
+def _seconds(iso: str) -> float:
+    return datetime.fromisoformat(iso).timestamp()
 
 
 def _sensor_records(day: str, spans: list, zone: ZoneInfo) -> tuple[list, list, list, list]:
