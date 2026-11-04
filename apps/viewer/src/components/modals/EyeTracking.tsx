@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Info, RefreshCw } from 'lucide-react';
 import type { GazeFit, GazeLearning, GazeTuning } from '@daycube/schemas';
 import { backendBridge } from '../../lib/backendBridge';
+import { niceMax, path, useWidth } from '../../lib/chart';
 import { usePageVisible } from '../../lib/usePageVisible';
 import { COLORS, FONTS } from '../../styles/theme';
 
@@ -18,20 +19,6 @@ const ROLLING = 30; // clicks in each point of the error lines
 const LEARNED = '#3987e5'; // categorical slot 1 (dark); validated against the card surface
 const BASELINE = COLORS.textMuted; // the reference line: de-emphasised
 const PLOT = { height: 260, left: 44, right: 96, top: 24, bottom: 30 };
-
-/** The rendered width of an element, so charts draw at 1:1 and their text stays legible. */
-function useWidth(fallback = 860): [React.RefObject<HTMLDivElement>, number] {
-  const ref = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState(fallback);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const observer = new ResizeObserver(([entry]) => setWidth(Math.max(280, Math.round(entry.contentRect.width))));
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-  return [ref, width];
-}
 
 /** Rolling median of the finite values, one per index (null until a window has values). */
 export function rollingMedian(values: (number | null)[], window: number): (number | null)[] {
@@ -69,13 +56,6 @@ function insertSorted(sorted: number[], v: number): void {
   sorted.splice(lowerBound(sorted, v), 0, v);
 }
 
-function niceMax(v: number): number {
-  if (!(v > 0)) return 100;
-  const step = 10 ** Math.floor(Math.log10(v));
-  for (const k of [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10]) if (k * step >= v) return k * step;
-  return 10 * step;
-}
-
 function px(v: number | null | undefined): string {
   return v === null || v === undefined ? '–' : `${Math.round(v)} px`;
 }
@@ -88,20 +68,6 @@ function when(iso: string | null | undefined): string {
   if (!iso) return '–';
   const d = new Date(iso);
   return d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-}
-
-function path(points: [number, number][]): string {
-  let d = '';
-  let pen = false;
-  for (const [x, y] of points) {
-    if (!Number.isFinite(y)) {
-      pen = false;
-      continue;
-    }
-    d += `${pen ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`;
-    pen = true;
-  }
-  return d;
 }
 
 /** Line chart: rolling median error per click of the model in use and of the calibration alone. */

@@ -1,5 +1,5 @@
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarDays, Database, Maximize2, Minus, PanelLeft, Plus, RotateCw, Search, X } from 'lucide-react';
+import { Activity, CalendarDays, Database, Maximize2, Minus, PanelLeft, Plus, RotateCw, Search, X } from 'lucide-react';
 import type { SearchEvidence, SearchResult } from '@daycube/schemas';
 import { backendBridge } from '../../lib/backendBridge';
 import type { DaySummary } from '../../lib/days';
@@ -32,6 +32,7 @@ interface KnowledgePageProps {
   onOpenNote: (path: string | null) => void;
   onOpenDate: (date: string, view: DayView) => void;
   onOpenDays: () => void;
+  onOpenTraining: () => void;
   /** The DayCube logo: back to a day's page. */
   onOpenDayPage?: () => void;
 }
@@ -105,7 +106,7 @@ const wide = () => typeof window !== 'undefined' && window.innerWidth >= WIDE;
  * it. Opening a note anywhere (the graph, the list, a link, a result) shows it on the right and
  * brings it into view on the graph.
  */
-export const KnowledgePage: React.FC<KnowledgePageProps> = ({ note, date, days, onOpenNote, onOpenDate, onOpenDays, onOpenDayPage }) => {
+export const KnowledgePage: React.FC<KnowledgePageProps> = ({ note, date, days, onOpenNote, onOpenDate, onOpenDays, onOpenDayPage, onOpenTraining }) => {
   const [model, setModel] = useState<GraphModel | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'offline'>('loading');
   const etag = useRef<string | null>(null);
@@ -424,6 +425,9 @@ export const KnowledgePage: React.FC<KnowledgePageProps> = ({ note, date, days, 
         </div>
         <button type="button" className="btn btn--ghost btn--sm kb__days" onClick={onOpenDays}>
           <CalendarDays size={15} aria-hidden /> <span className="kb__days-label">Days</span>
+        </button>
+        <button type="button" className="icon-btn" aria-label="Training" title="Training" onClick={onOpenTraining}>
+          <Activity size={15} />
         </button>
         <button type="button" className="icon-btn" aria-label="Your data" title="Your data" onClick={() => setVault('data')}>
           <Database size={15} />

@@ -4285,3 +4285,92 @@ button.np-link:hover {
   display: flex;
   flex-direction: column;
 }
+
+/* Training: models trained on this PC (components/training/TrainingPage.tsx). */
+.training__main {
+  display: grid;
+  grid-template-columns: minmax(220px, 300px) 1fr;
+  gap: 16px;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 16px;
+}
+.training__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.training__item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  background: var(--panel);
+  color: var(--fg);
+  text-align: left;
+  cursor: pointer;
+}
+.training__item[aria-pressed='true'] {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+.training__title {
+  font-weight: 600;
+  font-size: 13px;
+}
+.training__detail h2 {
+  margin: 0 0 6px;
+  font-size: 18px;
+}
+.training__chart {
+  margin: 14px 0 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-l);
+  background: var(--raised);
+}
+.training__chart figcaption {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  margin-bottom: 6px;
+  font-size: 12.5px;
+}
+.training__chart figcaption .num {
+  margin-left: auto;
+  font-size: 15px;
+}
+.training__tick {
+  fill: var(--fg-3);
+  font-size: 10.5px;
+}
+.training__status--running {
+  background: rgba(141, 186, 159, 0.14);
+  color: var(--ok);
+}
+.training__status--failed,
+.training__status--stalled {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.training__error {
+  color: var(--danger);
+  font-size: 12.5px;
+}
+.training__result {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 16px;
+  margin: 14px 0 0;
+  font-size: 12.5px;
+}
+.training__result dd {
+  margin: 0;
+}
+@media (max-width: 720px) {
+  .training__main {
+    grid-template-columns: 1fr;
+  }
+}

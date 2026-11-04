@@ -309,6 +309,23 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
 
         return report(store)
 
+    @app.get("/training")
+    def training_runs() -> list[Record]:
+        """Every training run on this PC (vault/training), newest first, with its last measurement."""
+        from .training import runs
+
+        return runs(store.vault.root)
+
+    @app.get("/training/{run_id}")
+    def training_run(run_id: str) -> Record:
+        """One run and its measurements as columns."""
+        from .training import series
+
+        found = series(store.vault.root, run_id)
+        if found is None:
+            raise FileNotFoundError(run_id)
+        return found
+
     @app.get("/gaze/learning")
     def gaze_learning(request: Request) -> Response:
         """The eye tracker's learning from clicks for the current calibration: every click's live

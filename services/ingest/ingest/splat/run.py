@@ -24,6 +24,7 @@ from pathlib import Path
 
 import numpy as np
 
+from ..training import Run
 from ..vault import Vault, read_json
 from . import brush, dataset, export
 
@@ -203,13 +204,17 @@ def _make(vault: Vault, moment: Path, scene: dict, capture: Path, video: Path, w
     splat["status"] = "training"
     _write_scene(vault, moment, splat)
 
-    def progress(p: brush.Progress) -> None:
-        psnr = f", PSNR {p.psnr[-1][1]:.1f} dB" if p.psnr else ""
-        say(f"Training {p.step:,}/{p.total:,} steps, {p.splats:,} splats, {p.seconds / 60:.0f} min{psnr}")
-
+    # The Training page follows it: each held-out evaluation and the splat count as it grows.
+    run = Run(vault.root, "splat", f"3D of {moment.name}, {date}", steps_total=steps, source=f"{date}/{moment.name}",
+              device=f"GPU (Brush {brush.VERSION})", metrics={"psnr_db": ("dB", "higher"), "splats": ("splats", None)})  # fmt: skip
+    progress = training_progress(run, say)
     try:
-        result = brush.train(train_dir, work / "export", steps=steps, max_resolution=max(report["size"]),
-                             log=work / "brush.log", on_progress=progress)  # fmt: skip
+        with run:
+            result = brush.train(train_dir, work / "export", steps=steps, max_resolution=max(report["size"]),
+                                 log=work / "brush.log", on_progress=progress)  # fmt: skip
+            progress(result)  # the evaluations after the last report
+            run.result.update(psnr_db=result.psnr[-1][1] if result.psnr else None, ssim=result.ssim,
+                              minutes=round(result.seconds / 60, 1))  # fmt: skip
     except Exception as error:
         splat["status"] = "failed"
         splat["error"] = str(error)[:2000]
@@ -242,6 +247,23 @@ def _make(vault: Vault, moment: Path, scene: dict, capture: Path, video: Path, w
     say(f"Trained: {trained['splats']:,} splats in {result.seconds / 60:.0f} min"
         + (f", PSNR {result.psnr[-1][1]:.1f} dB on held-out frames" if result.psnr else ""))  # fmt: skip
     return splat
+
+
+def training_progress(run: Run, say: Callable[[str], None]) -> Callable[[brush.Progress], None]:
+    """What each progress report of Brush does: every held-out evaluation once and the splat count
+    into ``run``, and a line for ``say``."""
+    logged = 0  # evaluations already written
+
+    def progress(p: brush.Progress) -> None:
+        nonlocal logged
+        for step, value in p.psnr[logged:]:
+            run.log(step, psnr_db=value)
+        logged = len(p.psnr)
+        run.log(p.step, splats=p.splats)
+        psnr = f", PSNR {p.psnr[-1][1]:.1f} dB" if p.psnr else ""
+        say(f"Training {p.step:,}/{p.total:,} steps, {p.splats:,} splats, {p.seconds / 60:.0f} min{psnr}")
+
+    return progress
 
 
 def scans(vault: Vault, date: str) -> list[str]:

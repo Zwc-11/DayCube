@@ -24,6 +24,8 @@ for actions. Do not paste external provider keys there.
 | GET | `/day/{date}/review` | The review day's end-of-day review (`review`, null until written), its timeline (`segments`, written now if the day has none, without any model), the `categories` to relabel with, who words it (`writers`), its `window` and whether it is under way (`current`); docs/review.md |
 | POST | `/day/{date}/review` | Write the review now (a draft while the day is under way) and its daily note; the same view with `result: {written, why}` |
 | POST | `/labels` | `{date, key, category?, project?, clear?}`: correct what a window, page, app or site is (`key`: `page:<url>`, `app:<program>\|<title>`, `site:<domain>`, `app:<program>`; `project: null` is none; `clear` goes back to the rules); that day's timeline and review follow; the same view |
+| GET | `/training` | Training runs on this PC (`vault/training`), newest first: the `training` contract plus the `last` line logged and whether it `stalled` (still running, files unchanged for 15 min); docs/training.md |
+| GET | `/training/{id}` | One run and its measurements as columns: `steps`, and per metric its `values` (null where a step did not log it) |
 | GET | `/moment/{id}?date=YYYY-MM-DD` | Metadata, scene availability and transcript |
 | GET | `/vault/{date}/{asset}` | Allowlisted media only, with path confinement |
 | POST | `/ask` | `{date?, question}` → extractive answer, citations, location; no `date` searches every day |

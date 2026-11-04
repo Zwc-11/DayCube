@@ -1,9 +1,9 @@
 import {
   askResultSchema, dataCenterSchema, dayNotesSchema, dayReviewSchema, gazeLearningSchema, dayResponseSchema, entitySchema,
   eventSchema, graphSchema, knowledgeGraphSchema, momentSchema, noteGraphSchema, noteSchema, searchResultSchema, skeletonSchema,
-  transcriptSchema,
+  trainingListSchema, trainingSeriesSchema, transcriptSchema,
   type AskResult, type DataCenter, type Day, type DayReview, type GazeLearning, type DayNotes, type DayResponse, type Entity,
-  type Event, type KnowledgeGraph, type Note, type NoteGraph, type SearchResult,
+  type Event, type KnowledgeGraph, type Note, type NoteGraph, type SearchResult, type TrainingListed, type TrainingSeries,
 } from '@daycube/schemas';
 
 /** A correction of what a window or page, or a whole app or site, is: `category` absent leaves it,
@@ -160,6 +160,14 @@ export class DaycubeClient {
   /** Every source stream in the vault and the database built from them. */
   async dataCenter(signal?: AbortSignal): Promise<DataCenter> {
     return dataCenterSchema.parse(await this.request('/data', { signal }));
+  }
+  /** Every training run on this PC, newest first. */
+  async trainingRuns(signal?: AbortSignal): Promise<TrainingListed[]> {
+    return trainingListSchema.parse(await this.request('/training', { signal }));
+  }
+  /** One training run and its measurements as columns. */
+  async trainingRun(id: string, signal?: AbortSignal): Promise<TrainingSeries> {
+    return trainingSeriesSchema.parse(await this.request(`/training/${encodeURIComponent(id)}`, { signal }));
   }
   /** The eye tracker's learning from clicks for the current calibration. */
   async gazeLearning(signal?: AbortSignal): Promise<GazeLearning> {

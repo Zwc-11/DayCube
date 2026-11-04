@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TrainingRun",
+  "description": "vault/training/<id>/run.json: one training run of a model on this PC (a scan's splats, a research model). Its measurements are vault/training/<id>/metrics.jsonl, one line per step: {\"step\": n, \"t\": ISO time, <metric>: number, ...}.",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema", "id", "model", "title", "started", "ended", "status", "steps_total", "metrics", "device", "source", "result", "error"],
+  "properties": {
+    "schema": {"const": "daycube.training/1"},
+    "id": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+$"},
+    "model": {"type": "string", "minLength": 1, "description": "What is trained: splat, revisit-predictor, ..."},
+    "title": {"type": "string", "minLength": 1},
+    "started": {"type": "string", "format": "date-time"},
+    "ended": {"type": ["string", "null"], "format": "date-time"},
+    "status": {"enum": ["running", "done", "failed"]},
+    "steps_total": {"type": ["integer", "null"], "minimum": 1},
+    "metrics": {
+      "type": "object",
+      "description": "The metrics its lines carry: the unit, and which way is better.",
+      "additionalProperties": {
+        "type": "object", "additionalProperties": false, "required": ["unit", "better"],
+        "properties": {"unit": {"type": "string"}, "better": {"enum": ["higher", "lower", null], "description": "null: neither, as for a count."}}
+      }
+    },
+    "device": {"type": ["string", "null"], "description": "Where it ran, e.g. RTX 5070."},
+    "source": {"type": ["string", "null"], "description": "What it learned from: a moment, a dataset."},
+    "result": {"type": "object", "additionalProperties": {"type": ["number", "string", "null"]}, "description": "Its final numbers and outputs."},
+    "error": {"type": ["string", "null"]}
+  }
+}

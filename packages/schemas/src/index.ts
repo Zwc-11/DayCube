@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { validateContract } from './runtime.mjs';
-import type { Day, Event, Graph, Moment, Ocr, Review, Skeleton, TimelineSegment, Transcript, Venue } from './types';
+import type { Day, Event, Graph, Moment, Ocr, Review, Skeleton, TimelineSegment, TrainingRun, Transcript, Venue } from './types';
 
 export * from './types';
 export type Fidelity = 'known' | 'estimated' | 'illustrative';
@@ -27,6 +27,21 @@ export const transcriptSchema = contract<Transcript>('transcript');
 export const venueSchema = contract<Venue>('venue');
 export const reviewSchema = contract<Review>('review');
 export const timelineSegmentSchema = contract<TimelineSegment>('timeline');
+export const trainingRunSchema = contract<TrainingRun>('training');
+
+// Training runs (GET /training: every run, each with its last line and whether it stalled;
+// GET /training/{id}: one run, its measurements as columns).
+const measurement = z.record(z.string(), z.number().or(z.string()));
+export const trainingListSchema = z.array(z.unknown().transform((input) => {
+  const { last, stalled, ...run } = z.object({ last: measurement.nullable(), stalled: z.boolean() }).passthrough().parse(input);
+  return { ...trainingRunSchema.parse(run), last, stalled };
+}));
+export type TrainingListed = z.infer<typeof trainingListSchema>[number];
+export const trainingSeriesSchema = z.object({
+  run: trainingRunSchema, stalled: z.boolean(), steps: z.array(z.number().int()),
+  values: z.record(z.string(), z.array(z.number().nullable())),
+});
+export type TrainingSeries = z.infer<typeof trainingSeriesSchema>;
 
 // A day's end-of-day review and timeline (GET /day/{date}/review; POST /day/{date}/review writes the
 // review now, POST /labels corrects a category or project, both returning the same view).
