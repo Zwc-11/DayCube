@@ -1,7 +1,7 @@
 import { DaycubeClient, ApiError, type LabelCorrection } from '@daycube/api-client';
 import type {
   AskResult as SchemaAskResult, DataCenter, DayNotes, DayResponse, DayReview, Entity, GazeLearning, KnowledgeGraph, Note,
-  SearchResult, NoteGraph,
+  SearchResult, NoteGraph, TrainingListed, TrainingSeries,
 } from '@daycube/schemas';
 import {
   AskResult,
@@ -620,6 +620,16 @@ export class BackendBridge {
       () => this.client.dataCenter(),
       (d) => `${d.sources.length} sources, ${d.database.rows.units ?? 0} records indexed`
     );
+  }
+
+  /** Training runs on this PC (null offline). */
+  async trainingRuns(): Promise<TrainingListed[] | null> {
+    return this.read('/api/training', () => this.client.trainingRuns(), (runs) => `${runs.length} runs`);
+  }
+
+  /** One training run's measurements (null offline or when it is gone). */
+  async trainingRun(id: string): Promise<TrainingSeries | null> {
+    return this.read(`/api/training/${id}`, () => this.client.trainingRun(id), (s) => `${s.steps.length} steps`);
   }
 
   /** The eye tracker's learning from clicks: the new copy, 'same' while `etag` still matches

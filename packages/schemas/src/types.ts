@@ -346,6 +346,49 @@ export interface TimelineSegment {
    */
   broad: string | null;
 }
+/**
+ * vault/training/<id>/run.json: one training run of a model on this PC (a scan's splats, a research model). Its measurements are vault/training/<id>/metrics.jsonl, one line per step: {"step": n, "t": ISO time, <metric>: number, ...}.
+ */
+export interface TrainingRun {
+  schema: "daycube.training/1";
+  id: string;
+  /**
+   * What is trained: splat, revisit-predictor, ...
+   */
+  model: string;
+  title: string;
+  started: string;
+  ended: string | null;
+  status: "running" | "done" | "failed";
+  steps_total: number | null;
+  /**
+   * The metrics its lines carry: the unit, and which way is better.
+   */
+  metrics: {
+    [k: string]: {
+      unit: string;
+      /**
+       * null: neither, as for a count.
+       */
+      better: "higher" | "lower" | null;
+    };
+  };
+  /**
+   * Where it ran, e.g. RTX 5070.
+   */
+  device: string | null;
+  /**
+   * What it learned from: a moment, a dataset.
+   */
+  source: string | null;
+  /**
+   * Its final numbers and outputs.
+   */
+  result: {
+    [k: string]: number | string | null;
+  };
+  error: string | null;
+}
 export interface Transcript {
   speaker_map: {
     [k: string]: string;
