@@ -8,6 +8,10 @@ loopback origin serving both needs no path, proxy or CORS changes. The app runs:
 with the built viewer's folder in ``DAYCUBE_VIEWER_DIST``. Starlette does not run a mounted app's
 lifespan, so this app runs the API's (vault initialisation, search warm-up) itself.
 
+Only requests addressed to the loopback names are served: a web page that rebinds its own name to
+127.0.0.1 (DNS rebinding) reaches this port as same-origin, but its requests carry its name in
+``Host``, and are refused. The vault's GET endpoints need no token, so this is what keeps them local.
+
 ``/__desktop/token`` answers 204 to a request carrying the vault token and 401 otherwise: the app
 checks the token it injected into the window from inside that window. ``DAYCUBE_DESKTOP_SELFTEST=1``
 (only ``DayCube.exe --self-test`` sets it) also keeps a list of the requests the window made, at
@@ -25,6 +29,8 @@ from pathlib import Path
 
 from starlette.applications import Starlette
 from starlette.exceptions import HTTPException
+from starlette.middleware import Middleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.requests import Request
 from starlette.responses import FileResponse, JSONResponse, Response
 from starlette.routing import Mount, Route
@@ -33,6 +39,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 NO_STORE = {"Cache-Control": "no-store"}
 IMMUTABLE = {"Cache-Control": "public, max-age=31536000, immutable"}  # Vite names assets by content hash
+LOOPBACK = ["127.0.0.1", "localhost"]
 
 
 class Viewer:
@@ -68,7 +75,7 @@ class Viewer:
             response = await self.files.get_response(self.files.get_path(scope), scope)
         except HTTPException:
             return None
-        return response if response.status_code == 200 else None
+        return response if response.status_code in (200, 304) else None  # 304: the browser's copy is current
 
 
 class Recorder:
@@ -124,7 +131,11 @@ def build(api: ASGIApp, viewer_dist: Path, *, record: bool = False) -> ASGIApp:
             return JSONResponse({"requests": list(recorder.seen)}, headers=NO_STORE)
 
     routes = [Route("/__desktop/token", token), *([Route("/__selftest", selftest)] if record else [])]
-    app = Starlette(routes=[*routes, Mount("/api", app=api), Mount("/", app=Viewer(viewer_dist))], lifespan=lifespan)
+    app = Starlette(
+        routes=[*routes, Mount("/api", app=api), Mount("/", app=Viewer(viewer_dist))],
+        middleware=[Middleware(TrustedHostMiddleware, allowed_hosts=LOOPBACK)],
+        lifespan=lifespan,
+    )
     if record:
         recorder = Recorder(app)  # passes lifespan and other non-HTTP messages to the app
         return recorder

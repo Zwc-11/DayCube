@@ -24,7 +24,7 @@ def dist(tmp_path: Path) -> Path:
 
 def desktop(vault: Vault, dist: Path, *, record: bool = False) -> TestClient:
     settings = Settings(vault_root=vault.root, vector_search=False, _env_file=None)
-    return TestClient(build(create_app(settings), dist, record=record))
+    return TestClient(build(create_app(settings), dist, record=record), base_url="http://127.0.0.1:7701")
 
 
 def test_viewer_and_api_share_one_origin(vault: Vault, dist: Path) -> None:
@@ -38,6 +38,25 @@ def test_viewer_and_api_share_one_origin(vault: Vault, dist: Path) -> None:
         # The API as the viewer calls it through the dev server's proxy.
         assert client.get("/api/health").json()["capabilities"]["ask_mode"] == "extractive"
         assert client.get("/api/days").json()[0]["date"] == DAY
+
+
+def test_a_revalidated_file_is_304_not_the_page(vault: Vault, dist: Path) -> None:
+    with desktop(vault, dist) as client:
+        for path in ("/favicon.svg", "/assets/index-abc123.js"):
+            etag = client.get(path).headers["etag"]
+            again = client.get(path, headers={"If-None-Match": etag})
+            assert again.status_code == 304, path
+
+
+def test_only_loopback_names_are_served(vault: Vault, dist: Path) -> None:
+    """A page that rebinds its own name to 127.0.0.1 sends that name as Host: refused."""
+    settings = Settings(vault_root=vault.root, vector_search=False, _env_file=None)
+    app = build(create_app(settings), dist)
+    with TestClient(app, base_url="http://evil.example:7701") as client:
+        assert client.get("/api/days").status_code == 400
+        assert client.get("/").status_code == 400
+    with TestClient(app, base_url="http://localhost:7701") as client:
+        assert client.get("/api/days").status_code == 200
 
 
 def test_viewer_routes_fall_back_to_the_page(vault: Vault, dist: Path) -> None:

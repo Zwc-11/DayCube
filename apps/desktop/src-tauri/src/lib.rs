@@ -139,15 +139,21 @@ impl Shell {
 
     /// End every service the app started.
     fn shutdown(&self) {
-        if let Some(mut service) = self.receiver.lock().unwrap().take() {
-            service.stop();
-        }
-        if let Some(mut service) = self.api.lock().unwrap().take() {
-            service.stop();
-        }
-        if let Some(mut child) = self.calibration.lock().unwrap().take() {
+        stop(&self.receiver);
+        stop(&self.api);
+        let calibration = self.calibration.lock().unwrap().take();
+        if let Some(mut child) = calibration {
             let _ = child.kill();
         }
+    }
+}
+
+/// Stop the service in ``slot``, if any, after releasing the lock: holding it through the shutdown
+/// would block the tray's refresh and the tools page for its whole length.
+fn stop(slot: &Mutex<Option<Service>>) {
+    let service = slot.lock().unwrap().take();
+    if let Some(mut service) = service {
+        service.stop();
     }
 }
 
@@ -290,9 +296,7 @@ fn startup(app: &AppHandle, shell: &Shell) -> Result<(), String> {
 
     // 1. The API, which also serves the viewer. Restarting means starting it again.
     shell.set_phase(Phase::Starting { step: "Opening your vault".into() });
-    if let Some(mut old) = shell.api.lock().unwrap().take() {
-        old.stop();
-    }
+    stop(&shell.api);
     let preferred = shell.config.lock().unwrap().port.unwrap_or(0);
     let port = http::choose_port(&[preferred, API_PORT]).map_err(|e| format!("no free loopback port: {e}"))?;
     let port_arg = port.to_string();
@@ -378,9 +382,7 @@ fn startup(app: &AppHandle, shell: &Shell) -> Result<(), String> {
 
 /// Stop any receiver on 127.0.0.1:7700 (a checkout's, or ours), then start the app's.
 fn start_receiver(shell: &Shell, vault: &Path) {
-    if let Some(mut old) = shell.receiver.lock().unwrap().take() {
-        old.stop();
-    }
+    stop(&shell.receiver);
     if http::get(RECEIVER_PORT, "/status", Duration::from_secs(2)).is_ok() {
         // Started outside the app (capture.cmd, a checkout's sign-in entry): the app takes over.
         shell.note("a receiver started outside the app answers on 127.0.0.1:7700: stopping it");
@@ -599,11 +601,8 @@ fn set_capture(app: AppHandle, shell: tauri::State<Shell>, on: bool) -> Result<(
         config.capture = on;
         config.save(&shell.config_path).map_err(|e| e.to_string())?;
     }
-    if on {
-        std::thread::spawn(move || restart_receiver(&app));
-    } else if let Some(mut service) = shell.receiver.lock().unwrap().take() {
-        service.stop();
-    }
+    // Off the UI thread: starting and stopping take seconds.
+    std::thread::spawn(move || if on { restart_receiver(&app) } else { stop(&app.state::<Shell>().receiver) });
     Ok(())
 }
 
@@ -622,8 +621,7 @@ pub fn apply_autostart(app: &AppHandle, on: bool) -> Result<(), String> {
     if !shell.layout.checkout {
         autostart::apply(on, &shell.exe).map_err(|e| e.to_string())?;
     }
-    tray::refresh(app);
-    Ok(())
+    Ok(()) // the tray's check mark follows on its next refresh; a click on it toggles it at once
 }
 
 #[tauri::command]
