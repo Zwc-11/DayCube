@@ -32,11 +32,7 @@ fn exe(name: &str) -> String {
 
 /// A virtual environment's interpreter: ``Scripts\<name>.exe`` on Windows, ``bin/python`` elsewhere.
 pub fn venv_python(venv: &Path, windowless: bool) -> Option<PathBuf> {
-    let names: &[&str] = if windowless {
-        &["pythonw", "python"]
-    } else {
-        &["python"]
-    };
+    let names: &[&str] = if windowless { &["pythonw", "python"] } else { &["python"] };
     names
         .iter()
         .map(|n| venv.join("Scripts").join(format!("{n}.exe")))
@@ -49,14 +45,11 @@ impl Layout {
         let runtime = resources.join("runtime");
         let python = |env: &str, name: &str| {
             let dir = runtime.join(env);
-            [dir.join(exe(name)), dir.join("bin").join("python3")]
-                .into_iter()
-                .find(|p| p.is_file())
+            [dir.join(exe(name)), dir.join("bin").join("python3")].into_iter().find(|p| p.is_file())
         };
         Self {
             src: resources.join("src"),
-            core: python("core", "python")
-                .unwrap_or_else(|| runtime.join("core").join(exe("python"))),
+            core: python("core", "python").unwrap_or_else(|| runtime.join("core").join(exe("python"))),
             gaze: python("gaze", "pythonw").or_else(|| python("gaze", "python")),
             viewer: resources.join("viewer"),
             extension: resources.join("extension"),
@@ -70,15 +63,8 @@ impl Layout {
         let services = root.join("services");
         Self {
             src: root.to_path_buf(),
-            core: venv_python(&services.join("capture-win").join(".venv"), false).unwrap_or_else(
-                || {
-                    services
-                        .join("capture-win")
-                        .join(".venv")
-                        .join("bin")
-                        .join("python")
-                },
-            ),
+            core: venv_python(&services.join("capture-win").join(".venv"), false)
+                .unwrap_or_else(|| services.join("capture-win").join(".venv").join("bin").join("python")),
             gaze: venv_python(&services.join("gaze").join(".venv"), true),
             viewer: root.join("apps").join("viewer").join("dist"),
             extension: root.join("extensions").join("chrome"),
@@ -100,19 +86,13 @@ impl Layout {
     pub fn problems(&self) -> Vec<String> {
         let mut out = Vec::new();
         if !self.core.is_file() {
-            out.push(format!(
-                "the Python runtime is missing ({})",
-                self.core.display()
-            ));
+            out.push(format!("the Python runtime is missing ({})", self.core.display()));
         }
         if !self.viewer.join("index.html").is_file() {
             out.push(format!("the viewer is missing ({})", self.viewer.display()));
         }
         if !self.src.join("services").join("ingest").is_dir() {
-            out.push(format!(
-                "the DayCube sources are missing ({})",
-                self.src.display()
-            ));
+            out.push(format!("the DayCube sources are missing ({})", self.src.display()));
         }
         out
     }
@@ -136,14 +116,8 @@ impl Layout {
             // Downloaded models (speech, embeddings) live beside the packs, not in the install
             // folder (an update replaces it) and not in the system temp folder (cleaned up).
             if let Some(data) = self.packs.parent() {
-                env.push((
-                    "HF_HOME".into(),
-                    data.join("cache").join("huggingface").into(),
-                ));
-                env.push((
-                    "FASTEMBED_CACHE_PATH".into(),
-                    data.join("cache").join("fastembed").into(),
-                ));
+                env.push(("HF_HOME".into(), data.join("cache").join("huggingface").into()));
+                env.push(("FASTEMBED_CACHE_PATH".into(), data.join("cache").join("fastembed").into()));
             }
             if let Some(gaze) = &self.gaze {
                 env.push(("DAYCUBE_GAZE_PYTHON".into(), gaze.into()));
@@ -179,9 +153,9 @@ mod tests {
         std::fs::create_dir_all(resources.join("src/services/ingest")).unwrap();
         let packs = root.join("packs");
         let speech = if cfg!(windows) {
-            packs.join("speech/Scripts/pythonw.exe")
+            packs.join("speech").join("Scripts").join("pythonw.exe")
         } else {
-            packs.join("speech/bin/python")
+            packs.join("speech").join("bin").join("python")
         };
         touch(&speech);
 
@@ -193,27 +167,18 @@ mod tests {
         let vault = root.join("DAYCUBE").join("vault");
         let env: std::collections::HashMap<_, _> = layout.python_env(&vault).into_iter().collect();
         assert_eq!(env["DAYCUBE_VAULT_ROOT"], OsString::from(&vault));
-        assert_eq!(
-            env["DAYCUBE_ENV_FILE"],
-            OsString::from(root.join("DAYCUBE").join(".env"))
-        );
+        assert_eq!(env["DAYCUBE_ENV_FILE"], OsString::from(root.join("DAYCUBE").join(".env")));
         assert_eq!(env["DAYCUBE_AUTO_RESTART"], OsString::from("false"));
         assert_eq!(env["DAYCUBE_SPEECH_PYTHON"], OsString::from(&speech));
         assert!(env.contains_key("DAYCUBE_GAZE_PYTHON"));
         assert!(!env.contains_key("DAYCUBE_RECON_PYTHON"));
-        assert_eq!(
-            env["HF_HOME"],
-            OsString::from(root.join("cache").join("huggingface"))
-        );
+        assert_eq!(env["HF_HOME"], OsString::from(root.join("cache").join("huggingface")));
         let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
     fn missing_parts_are_named() {
-        let layout = Layout::installed(
-            Path::new("/nonexistent/daycube"),
-            PathBuf::from("/nonexistent/packs"),
-        );
+        let layout = Layout::installed(Path::new("/nonexistent/daycube"), PathBuf::from("/nonexistent/packs"));
         let problems = layout.problems().join("; ");
         assert!(problems.contains("Python runtime"));
         assert!(problems.contains("viewer"));
@@ -223,10 +188,7 @@ mod tests {
     #[test]
     fn checkout_leaves_environment_discovery_to_the_receiver() {
         let layout = Layout::checkout(Path::new("/repo"), PathBuf::from("/packs"));
-        let env: std::collections::HashMap<_, _> = layout
-            .python_env(Path::new("/repo/vault"))
-            .into_iter()
-            .collect();
+        let env: std::collections::HashMap<_, _> = layout.python_env(Path::new("/repo/vault")).into_iter().collect();
         assert!(!env.contains_key("DAYCUBE_GAZE_PYTHON"));
         assert_eq!(layout.viewer, PathBuf::from("/repo/apps/viewer/dist"));
     }

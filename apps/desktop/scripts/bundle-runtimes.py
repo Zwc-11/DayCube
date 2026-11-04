@@ -100,6 +100,21 @@ def install_environment(name: str, out: Path) -> None:
     run(interpreter(env), "-I", "-c", smoke)  # isolated: only what the bundle itself provides
 
 
+def precompile(out: Path) -> None:
+    """Bytecode for every module, written now instead of at the first launch (about 7 s of the API's
+    start on a cold install). Third-party packages never change in an install: their .pyc are
+    trusted without checking the source (unchecked-hash). DayCube's own sources are checked by
+    hash, so an edited file is still recompiled; neither depends on file times, which installers
+    do not always keep."""
+    for name in ENVIRONMENTS:
+        env = out / "runtime" / name
+        # Failures are files no Python 3 compiles (test data in some packages): they are skipped.
+        subprocess.run([str(interpreter(env)), "-I", "-m", "compileall", "-q", "-j", "0",
+                        "--invalidation-mode", "unchecked-hash", str(site_packages(env))], check=False)  # fmt: skip
+    run(interpreter(out / "runtime" / "core"), "-I", "-m", "compileall", "-q", "-j", "0",
+        "--invalidation-mode", "checked-hash", out / "src")  # fmt: skip
+
+
 def copy_sources(out: Path) -> None:
     for service in SERVICES:
         shutil.copytree(ROOT / "services" / service, out / "src" / "services" / service, ignore=SKIP)
@@ -127,6 +142,7 @@ def main() -> None:
         for name in ENVIRONMENTS:
             install_environment(name, OUT)
         shutil.copy2(uv(), OUT / "runtime" / Path(uv()).name)
+        precompile(OUT)
     for part in sorted(p for p in OUT.iterdir() if p.is_dir()):
         print(f"{part.name:10} {size(part) / 1e6:8.1f} MB")
     print(f"{'total':10} {size(OUT) / 1e6:8.1f} MB")

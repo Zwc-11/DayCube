@@ -27,31 +27,17 @@ pub struct Report {
 
 /// Judge the window's requests as the API recorded them.
 pub fn judge(requests: &[Value], report: &mut Report) {
-    let ok = |r: &Value| {
-        r["status"]
-            .as_u64()
-            .is_some_and(|s| (200..400).contains(&s))
-    };
+    let ok = |r: &Value| r["status"].as_u64().is_some_and(|s| (200..400).contains(&s));
     let path = |r: &Value| r["path"].as_str().unwrap_or("").to_string();
     report.page_loaded = requests.iter().any(|r| path(r) == "/" && ok(r));
-    report.scripts_loaded = requests
-        .iter()
-        .filter(|r| path(r).starts_with("/assets/") && path(r).ends_with(".js") && ok(r))
-        .count();
+    report.scripts_loaded =
+        requests.iter().filter(|r| path(r).starts_with("/assets/") && path(r).ends_with(".js") && ok(r)).count();
     // The app's own health checks also call /api/health: count the viewer's data reads.
-    let api: Vec<&Value> = requests
-        .iter()
-        .filter(|r| path(r).starts_with("/api/") && path(r) != "/api/health")
-        .collect();
+    let api: Vec<&Value> =
+        requests.iter().filter(|r| path(r).starts_with("/api/") && path(r) != "/api/health").collect();
     report.api_reads = api.iter().filter(|r| ok(r)).count();
-    report.refused_api_calls = api
-        .iter()
-        .filter(|r| r["status"].as_u64() == Some(401))
-        .map(|r| path(r))
-        .collect();
-    report.token_accepted = requests
-        .iter()
-        .any(|r| path(r) == "/__desktop/token" && r["status"].as_u64() == Some(204));
+    report.refused_api_calls = api.iter().filter(|r| r["status"].as_u64() == Some(401)).map(|r| path(r)).collect();
+    report.token_accepted = requests.iter().any(|r| path(r) == "/__desktop/token" && r["status"].as_u64() == Some(204));
 }
 
 fn complete(report: &Report) -> bool {
@@ -68,10 +54,7 @@ pub const PROBE: &str = "fetch('/__desktop/token',{cache:'no-store',headers:{Aut
 
 pub fn run(port: u16, receiver_required: bool, limit: Duration, probe: impl Fn()) -> Report {
     let started = Instant::now();
-    let mut report = Report {
-        receiver_required,
-        ..Report::default()
-    };
+    let mut report = Report { receiver_required, ..Report::default() };
     let short = Duration::from_secs(3);
     while started.elapsed() < limit {
         report.api_health = http::get(port, "/api/health", short).is_ok_and(|r| r.status == 200);
@@ -101,32 +84,13 @@ pub fn run(port: u16, receiver_required: bool, limit: Duration, probe: impl Fn()
     if !report.pass {
         let checks = [
             (report.api_health, "the API did not answer /api/health"),
-            (
-                report.page_loaded,
-                "the window did not load the viewer's page",
-            ),
-            (
-                report.api_reads > 0,
-                "the viewer's scripts read no data from the API",
-            ),
-            (
-                report.token_accepted,
-                "the token injected into the window was missing or refused",
-            ),
-            (
-                report.refused_api_calls.is_empty(),
-                "the API refused the window's token",
-            ),
-            (
-                !report.receiver_required || report.receiver.is_some(),
-                "the receiver did not answer on 127.0.0.1:7700",
-            ),
+            (report.page_loaded, "the window did not load the viewer's page"),
+            (report.api_reads > 0, "the viewer's scripts read no data from the API"),
+            (report.token_accepted, "the token injected into the window was missing or refused"),
+            (report.refused_api_calls.is_empty(), "the API refused the window's token"),
+            (!report.receiver_required || report.receiver.is_some(), "the receiver did not answer on 127.0.0.1:7700"),
         ];
-        report.problems = checks
-            .iter()
-            .filter(|(ok, _)| !ok)
-            .map(|(_, why)| why.to_string())
-            .collect();
+        report.problems = checks.iter().filter(|(ok, _)| !ok).map(|(_, why)| why.to_string()).collect();
     }
     report.seconds = started.elapsed().as_secs_f64();
     report
@@ -147,17 +111,11 @@ mod tests {
             json!({"path": "/api/day/2026-10-20", "status": 304, "bearer": false}),
             json!({"path": "/__desktop/token", "status": 204, "bearer": true}),
         ];
-        let mut report = Report {
-            api_health: true,
-            ..Report::default()
-        };
+        let mut report = Report { api_health: true, ..Report::default() };
         judge(&requests, &mut report);
         assert!(report.page_loaded);
         assert_eq!(report.scripts_loaded, 1);
-        assert_eq!(
-            report.api_reads, 1,
-            "health checks are the app's, not the viewer's"
-        );
+        assert_eq!(report.api_reads, 1, "health checks are the app's, not the viewer's");
         assert!(report.token_accepted);
         assert!(complete(&report));
     }
@@ -171,20 +129,13 @@ mod tests {
             json!({"path": "/api/ask", "status": 401, "bearer": false}),
             json!({"path": "/__desktop/token", "status": 401, "bearer": true}),
         ];
-        let mut report = Report {
-            api_health: true,
-            ..Report::default()
-        };
+        let mut report = Report { api_health: true, ..Report::default() };
         judge(&requests, &mut report);
         assert!(!report.token_accepted);
         assert_eq!(report.refused_api_calls, ["/api/ask"]);
         assert!(!complete(&report));
 
-        let mut with_token = Report {
-            api_health: true,
-            receiver_required: true,
-            ..Report::default()
-        };
+        let mut with_token = Report { api_health: true, receiver_required: true, ..Report::default() };
         judge(
             &[
                 json!({"path": "/", "status": 200}),

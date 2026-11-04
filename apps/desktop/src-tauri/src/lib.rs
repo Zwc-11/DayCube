@@ -32,8 +32,6 @@ const API_PORT: u16 = 7701; // the port viewer.cmd uses; another is chosen when 
 const MAIN: &str = "main";
 const STARTUP: &str = "startup";
 const TOOLS: &str = "tools";
-const UPDATER_PUBKEY: Option<&str> = option_env!("DAYCUBE_UPDATER_PUBKEY");
-const UPDATE_URL: &str = "https://github.com/Zwc-11/DayCube/releases/latest/download/latest.json";
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Args {
@@ -68,21 +66,10 @@ pub fn parse_args(argv: impl IntoIterator<Item = String>) -> Args {
 #[derive(Clone, Debug, Serialize)]
 #[serde(tag = "phase", rename_all = "snake_case")]
 pub enum Phase {
-    Starting {
-        step: String,
-    },
-    NeedsVault {
-        suggested: Option<String>,
-        new_default: String,
-        error: Option<String>,
-    },
-    Failed {
-        message: String,
-        log: String,
-    },
-    Ready {
-        url: String,
-    },
+    Starting { step: String },
+    NeedsVault { suggested: Option<String>, new_default: String, error: Option<String> },
+    Failed { message: String, log: String },
+    Ready { url: String },
 }
 
 pub struct Shell {
@@ -92,7 +79,6 @@ pub struct Shell {
     config_path: PathBuf,
     config: Mutex<Config>,
     phase: Mutex<Phase>,
-    port: Mutex<Option<u16>>,
     token: Mutex<Option<String>>,
     api: Mutex<Option<Service>>,
     receiver: Mutex<Option<Service>>,
@@ -103,10 +89,7 @@ pub struct Shell {
 
 impl Shell {
     fn vault(&self) -> Option<PathBuf> {
-        self.args
-            .vault
-            .clone()
-            .or_else(|| self.config.lock().unwrap().vault.clone())
+        self.args.vault.clone().or_else(|| self.config.lock().unwrap().vault.clone())
     }
 
     fn logs(&self) -> Option<PathBuf> {
@@ -124,11 +107,7 @@ impl Shell {
         if let Some(logs) = self.logs() {
             use std::io::Write;
             let _ = std::fs::create_dir_all(&logs);
-            if let Ok(mut file) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(logs.join("desktop.log"))
-            {
+            if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(logs.join("desktop.log")) {
                 let _ = writeln!(file, "[{}] {line}", services::now());
             }
         }
@@ -280,23 +259,10 @@ pub fn start(app: &AppHandle) {
         let outcome = startup(&app, &shell);
         shell.starting.store(false, Ordering::SeqCst);
         if let Err(message) = outcome {
-            let log = shell
-                .logs()
-                .map(|l| services::tail(&l.join("desktop-api.log"), 6000))
-                .unwrap_or_default();
-            shell.set_phase(Phase::Failed {
-                message: message.clone(),
-                log,
-            });
+            let log = shell.logs().map(|l| services::tail(&l.join("desktop-api.log"), 6000)).unwrap_or_default();
+            shell.set_phase(Phase::Failed { message: message.clone(), log });
             if shell.args.self_test {
-                finish_self_test(
-                    &app,
-                    &shell,
-                    selftest::Report {
-                        problems: vec![message],
-                        ..Default::default()
-                    },
-                );
+                finish_self_test(&app, &shell, selftest::Report { problems: vec![message], ..Default::default() });
             } else {
                 show_startup(&app);
             }
@@ -317,24 +283,18 @@ fn startup(app: &AppHandle, shell: &Shell) -> Result<(), String> {
     };
     let problems = shell.layout.problems();
     if !problems.is_empty() {
-        return Err(format!(
-            "This DayCube install is incomplete: {}. Reinstall DayCube.",
-            problems.join("; ")
-        ));
+        return Err(format!("This DayCube install is incomplete: {}. Reinstall DayCube.", problems.join("; ")));
     }
     std::fs::create_dir_all(vault.join("logs"))
         .map_err(|e| format!("cannot use the vault folder {}: {e}", vault.display()))?;
 
     // 1. The API, which also serves the viewer. Restarting means starting it again.
-    shell.set_phase(Phase::Starting {
-        step: "Opening your vault".into(),
-    });
+    shell.set_phase(Phase::Starting { step: "Opening your vault".into() });
     if let Some(mut old) = shell.api.lock().unwrap().take() {
         old.stop();
     }
     let preferred = shell.config.lock().unwrap().port.unwrap_or(0);
-    let port = http::choose_port(&[preferred, API_PORT])
-        .map_err(|e| format!("no free loopback port: {e}"))?;
+    let port = http::choose_port(&[preferred, API_PORT]).map_err(|e| format!("no free loopback port: {e}"))?;
     let port_arg = port.to_string();
     let mut spec = shell.python_spec(
         "vault API",
@@ -354,13 +314,9 @@ fn startup(app: &AppHandle, shell: &Shell) -> Result<(), String> {
         &vault,
         "desktop-api.log",
     );
-    spec.env.push((
-        "DAYCUBE_VIEWER_DIST".into(),
-        shell.layout.viewer.clone().into(),
-    ));
+    spec.env.push(("DAYCUBE_VIEWER_DIST".into(), shell.layout.viewer.clone().into()));
     if shell.args.self_test {
-        spec.env
-            .push(("DAYCUBE_DESKTOP_SELFTEST".into(), "1".into()));
+        spec.env.push(("DAYCUBE_DESKTOP_SELFTEST".into(), "1".into()));
     }
     let api = Service::start(spec);
     let ready = services::wait_ready(&api, Duration::from_secs(180), 3, || {
@@ -368,7 +324,6 @@ fn startup(app: &AppHandle, shell: &Shell) -> Result<(), String> {
     });
     *shell.api.lock().unwrap() = Some(api);
     ready?;
-    *shell.port.lock().unwrap() = Some(port);
     {
         let mut config = shell.config.lock().unwrap();
         if config.port != Some(port) && !shell.args.self_test {
@@ -383,9 +338,7 @@ fn startup(app: &AppHandle, shell: &Shell) -> Result<(), String> {
 
     // 2. Capture: the receiver, which starts the eye tracker and the GPU workers it finds.
     if shell.capture_wanted() {
-        shell.set_phase(Phase::Starting {
-            step: "Starting capture".into(),
-        });
+        shell.set_phase(Phase::Starting { step: "Starting capture".into() });
         start_receiver(shell, &vault);
     }
 
@@ -398,15 +351,11 @@ fn startup(app: &AppHandle, shell: &Shell) -> Result<(), String> {
     }
 
     // 4. The viewer.
-    shell.set_phase(Phase::Starting {
-        step: "Opening the viewer".into(),
-    });
+    shell.set_phase(Phase::Starting { step: "Opening the viewer".into() });
     open_main(app, port, &token, !shell.args.background)
         .map_err(|e| format!("could not open the viewer window: {e}"))?;
     shell.note("viewer window built");
-    shell.set_phase(Phase::Ready {
-        url: format!("http://127.0.0.1:{port}/"),
-    });
+    shell.set_phase(Phase::Ready { url: format!("http://127.0.0.1:{port}/") });
     if let Some(window) = app.get_webview_window(STARTUP) {
         let _ = window.close();
     }
@@ -420,8 +369,7 @@ fn startup(app: &AppHandle, shell: &Shell) -> Result<(), String> {
                 }
             };
             let report = selftest::run(port, receiver_required, Duration::from_secs(240), probe);
-            app.state::<Shell>()
-                .note(&format!("self-test finished: pass={}", report.pass));
+            app.state::<Shell>().note(&format!("self-test finished: pass={}", report.pass));
             finish_self_test(&app, &app.state::<Shell>(), report);
         });
     }
@@ -436,17 +384,9 @@ fn start_receiver(shell: &Shell, vault: &Path) {
     if http::get(RECEIVER_PORT, "/status", Duration::from_secs(2)).is_ok() {
         // Started outside the app (capture.cmd, a checkout's sign-in entry): the app takes over.
         shell.note("a receiver started outside the app answers on 127.0.0.1:7700: stopping it");
-        let stopper = shell.python_spec(
-            "receiver stop",
-            &["-m", "capture", "stop"],
-            vault,
-            "desktop-receiver.log",
-        );
+        let stopper = shell.python_spec("receiver stop", &["-m", "capture", "stop"], vault, "desktop-stop.log");
         let outcome = run_to_end(&stopper, Duration::from_secs(90));
-        shell.note(&format!(
-            "capture stop: {}",
-            outcome.unwrap_or_else(|e| e).trim()
-        ));
+        shell.note(&format!("capture stop: {}", outcome.unwrap_or_else(|e| e).trim()));
     }
     *shell.receiver.lock().unwrap() = Some(Service::start(shell.receiver_spec(vault)));
 }
@@ -475,11 +415,7 @@ fn self_test_watchdog(app: AppHandle, limit: Duration) {
 }
 
 fn write_report(shell: &Shell, report: &selftest::Report) {
-    let path = shell
-        .args
-        .report
-        .clone()
-        .or_else(|| shell.logs().map(|l| l.join("selftest.json")));
+    let path = shell.args.report.clone().or_else(|| shell.logs().map(|l| l.join("selftest.json")));
     if let Some(path) = path {
         let _ = std::fs::write(&path, serde_json::to_vec_pretty(report).unwrap_or_default());
     }
@@ -496,53 +432,21 @@ fn finish_self_test(app: &AppHandle, shell: &Shell, report: selftest::Report) {
     app.exit(if report.pass { 0 } else { 1 });
 }
 
-/// Run a Python command to the end and return what it printed (doctor, receiver stop).
+/// Run a Python command to the end (or ``limit``) and return what it printed (doctor, receiver
+/// stop). Its output goes to ``spec.log``, replaced each run, which keeps the last run for diagnosis.
 fn run_to_end(spec: &Spec, limit: Duration) -> Result<String, String> {
-    use std::io::Read;
+    let fail = |e: std::io::Error| format!("{}: {e}", spec.log.display());
+    let log = std::fs::File::create(&spec.log).map_err(fail)?;
     let mut command = spec.command();
-    command
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped());
-    let mut tree = process::Tree::spawn(&mut command)
-        .map_err(|e| format!("could not start {}: {e}", spec.program.display()))?;
-    let (mut out, mut err) = (tree.take_stdout(), tree.take_stderr());
-    let errors = std::thread::spawn(move || {
-        let mut text = String::new();
-        if let Some(err) = err.as_mut() {
-            let _ = err.read_to_string(&mut text);
-        }
-        text
-    });
-    let reader = std::thread::spawn(move || {
-        let mut text = String::new();
-        if let Some(out) = out.as_mut() {
-            let _ = out.read_to_string(&mut text);
-        }
-        text
-    });
+    command.stdin(std::process::Stdio::null()).stdout(log.try_clone().map_err(fail)?).stderr(log);
+    let mut tree =
+        process::Tree::spawn(&mut command).map_err(|e| format!("could not start {}: {e}", spec.program.display()))?;
     let until = std::time::Instant::now() + limit;
-    loop {
-        match tree.try_wait() {
-            Ok(Some(_)) => break,
-            Ok(None) if std::time::Instant::now() < until => {
-                std::thread::sleep(Duration::from_millis(100))
-            }
-            _ => {
-                tree.kill();
-                break;
-            }
-        }
+    while matches!(tree.try_wait(), Ok(None)) && std::time::Instant::now() < until {
+        std::thread::sleep(Duration::from_millis(100));
     }
-    let (text, errors) = (
-        reader.join().unwrap_or_default(),
-        errors.join().unwrap_or_default(),
-    );
-    Ok(if errors.trim().is_empty() {
-        text
-    } else {
-        format!("{text}\n{errors}")
-    })
+    tree.kill(); // anything it left running, or itself after the limit
+    std::fs::read_to_string(&spec.log).map_err(fail)
 }
 
 // ---- Commands for the app's own pages (startup, tools). The viewer window has no IPC. ----
@@ -560,9 +464,7 @@ fn use_vault(app: AppHandle, shell: tauri::State<Shell>, path: String) -> Result
     {
         let mut config = shell.config.lock().unwrap();
         config.vault = Some(path);
-        config
-            .save(&shell.config_path)
-            .map_err(|e| format!("cannot save the app's settings: {e}"))?;
+        config.save(&shell.config_path).map_err(|e| format!("cannot save the app's settings: {e}"))?;
     }
     start(&app);
     Ok(())
@@ -572,10 +474,7 @@ fn use_vault(app: AppHandle, shell: tauri::State<Shell>, path: String) -> Result
 async fn pick_folder(app: AppHandle) -> Option<String> {
     use tauri_plugin_dialog::DialogExt;
     tauri::async_runtime::spawn_blocking(move || {
-        app.dialog()
-            .file()
-            .set_title("Your DayCube vault")
-            .blocking_pick_folder()
+        app.dialog().file().set_title("Your DayCube vault").blocking_pick_folder()
     })
     .await
     .ok()
@@ -603,44 +502,33 @@ fn open_tools(app: AppHandle) {
 struct ToolsState {
     version: &'static str,
     vault: Option<String>,
-    port: Option<u16>,
     capture: bool,
     autostart: bool,
     checkout: bool,
     extension: String,
-    api: Option<services::State>,
     receiver: Option<services::State>,
     speech: PackState,
     recon: PackState,
     calibrating: bool,
     gaze_installed: bool,
-    updates: bool,
 }
 
 #[tauri::command]
 fn tools_state(shell: tauri::State<Shell>) -> ToolsState {
     let config = shell.config.lock().unwrap().clone();
-    let calibrating = shell
-        .calibration
-        .lock()
-        .unwrap()
-        .as_mut()
-        .is_some_and(|c| matches!(c.try_wait(), Ok(None)));
+    let calibrating = shell.calibration.lock().unwrap().as_mut().is_some_and(|c| matches!(c.try_wait(), Ok(None)));
     ToolsState {
         version: env!("CARGO_PKG_VERSION"),
         vault: shell.vault().map(|v| v.display().to_string()),
-        port: *shell.port.lock().unwrap(),
         capture: config.capture,
         autostart: config.autostart,
         checkout: shell.layout.checkout,
         extension: shell.layout.extension.display().to_string(),
-        api: shell.api.lock().unwrap().as_ref().map(Service::state),
         receiver: shell.receiver.lock().unwrap().as_ref().map(Service::state),
         speech: shell.packs.state(&shell.layout, "speech"),
         recon: shell.packs.state(&shell.layout, "recon"),
         calibrating,
         gaze_installed: shell.layout.gaze.is_some(),
-        updates: UPDATER_PUBKEY.is_some(),
     }
 }
 
@@ -649,12 +537,7 @@ async fn run_doctor(app: AppHandle) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let shell = app.state::<Shell>();
         let vault = shell.vault().ok_or("choose a vault first")?;
-        let spec = shell.python_spec(
-            "doctor",
-            &["-m", "capture", "doctor"],
-            &vault,
-            "desktop-doctor.log",
-        );
+        let spec = shell.python_spec("doctor", &["-m", "capture", "doctor"], &vault, "desktop-doctor.log");
         run_to_end(&spec, Duration::from_secs(180))
     })
     .await
@@ -664,16 +547,9 @@ async fn run_doctor(app: AppHandle) -> Result<String, String> {
 #[tauri::command]
 fn calibrate(shell: tauri::State<Shell>) -> Result<(), String> {
     let vault = shell.vault().ok_or("choose a vault first")?;
-    let gaze = shell
-        .layout
-        .gaze
-        .clone()
-        .ok_or("the eye tracker is not installed")?;
+    let gaze = shell.layout.gaze.clone().ok_or("the eye tracker is not installed")?;
     let mut running = shell.calibration.lock().unwrap();
-    if running
-        .as_mut()
-        .is_some_and(|c| matches!(c.try_wait(), Ok(None)))
-    {
+    if running.as_mut().is_some_and(|c| matches!(c.try_wait(), Ok(None))) {
         return Err("calibration is already open".into());
     }
     let log = std::fs::OpenOptions::new()
@@ -684,11 +560,7 @@ fn calibrate(shell: tauri::State<Shell>) -> Result<(), String> {
     let spec = Spec {
         name: "calibration",
         program: gaze,
-        args: ["-m", "gaze", "calibrate", "--vault"]
-            .iter()
-            .map(OsString::from)
-            .chain([vault.clone().into()])
-            .collect(),
+        args: ["-m", "gaze", "calibrate", "--vault"].iter().map(OsString::from).chain([vault.clone().into()]).collect(),
         env: shell.layout.python_env(&vault),
         cwd: shell.layout.src.clone(),
         log: vault.join("logs").join("calibrate.log"),
@@ -765,59 +637,11 @@ fn open_folder(app: AppHandle, shell: tauri::State<Shell>, which: String) -> Res
     }
     .ok_or("nothing to open")?;
     let _ = std::fs::create_dir_all(&path);
-    app.opener()
-        .open_path(path.display().to_string(), None::<&str>)
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn check_update(app: AppHandle) -> Result<Option<String>, String> {
-    use tauri_plugin_updater::UpdaterExt;
-    if UPDATER_PUBKEY.is_none() {
-        return Err("this build has no update channel".into());
-    }
-    let updater = app
-        .updater_builder()
-        .endpoints(vec![UPDATE_URL.parse().unwrap()])
-        .map_err(|e| e.to_string())?
-        .build()
-        .map_err(|e| e.to_string())?;
-    Ok(updater
-        .check()
-        .await
-        .map_err(|e| e.to_string())?
-        .map(|u| u.version))
-}
-
-#[tauri::command]
-async fn install_update(app: AppHandle) -> Result<(), String> {
-    use tauri_plugin_updater::UpdaterExt;
-    if UPDATER_PUBKEY.is_none() {
-        return Err("this build has no update channel".into());
-    }
-    let handle = app.clone();
-    let updater = app
-        .updater_builder()
-        .endpoints(vec![UPDATE_URL.parse().unwrap()])
-        .map_err(|e| e.to_string())?
-        // The installer replaces runtime files our children have open: end them first.
-        .on_before_exit(move || handle.state::<Shell>().shutdown())
-        .build()
-        .map_err(|e| e.to_string())?;
-    let update = updater
-        .check()
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or("DayCube is up to date")?;
-    update
-        .download_and_install(|_, _| {}, || {})
-        .await
-        .map_err(|e| e.to_string())?;
-    app.restart();
+    app.opener().open_path(path.display().to_string(), None::<&str>).map_err(|e| e.to_string())
 }
 
 pub fn run() {
-    let mut builder = tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, argv, _| {
             let args = parse_args(argv.into_iter().skip(1));
             if args.tools {
@@ -827,24 +651,15 @@ pub fn run() {
             }
         }))
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_opener::init());
-    if let Some(key) = UPDATER_PUBKEY {
-        builder = builder.plugin(tauri_plugin_updater::Builder::new().pubkey(key).build());
-    }
-    let app = builder
+        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let args = parse_args(std::env::args().skip(1));
             let data = app.path().app_local_data_dir()?;
             // DAYCUBE_DEV_ROOT: a repository checkout's environments. DAYCUBE_RESOURCES: a bundle
             // assembled by scripts/bundle-runtimes.py, run without installing (tests).
-            let layout = match (
-                std::env::var_os("DAYCUBE_DEV_ROOT"),
-                std::env::var_os("DAYCUBE_RESOURCES"),
-            ) {
+            let layout = match (std::env::var_os("DAYCUBE_DEV_ROOT"), std::env::var_os("DAYCUBE_RESOURCES")) {
                 (Some(root), _) => Layout::checkout(Path::new(&root), data.join("packs")),
-                (None, Some(resources)) => {
-                    Layout::installed(Path::new(&resources), data.join("packs"))
-                }
+                (None, Some(resources)) => Layout::installed(Path::new(&resources), data.join("packs")),
                 (None, None) => Layout::installed(&app.path().resource_dir()?, data.join("packs")),
             };
             let config_path = app.path().app_config_dir()?.join("settings.json");
@@ -856,10 +671,7 @@ pub fn run() {
                 args,
                 config_path,
                 config: Mutex::new(config),
-                phase: Mutex::new(Phase::Starting {
-                    step: "Starting".into(),
-                }),
-                port: Mutex::new(None),
+                phase: Mutex::new(Phase::Starting { step: "Starting".into() }),
                 token: Mutex::new(None),
                 api: Mutex::new(None),
                 receiver: Mutex::new(None),
@@ -902,17 +714,13 @@ pub fn run() {
             install_pack,
             set_capture,
             set_autostart,
-            open_folder,
-            check_update,
-            install_update
+            open_folder
         ])
         .build(tauri::generate_context!())
         .expect("DayCube could not start");
     app.run(|app, event| match event {
         // The last window closing does not quit: DayCube lives in the tray. Quit (code set) does.
-        RunEvent::ExitRequested {
-            api, code: None, ..
-        } => api.prevent_exit(),
+        RunEvent::ExitRequested { api, code: None, .. } => api.prevent_exit(),
         RunEvent::Exit => app.state::<Shell>().shutdown(),
         _ => {}
     });
@@ -925,17 +733,7 @@ mod tests {
     #[test]
     fn arguments() {
         let a = parse_args(
-            [
-                "--self-test",
-                "--vault",
-                "C:\\v",
-                "--report",
-                "r.json",
-                "--hold",
-                "15",
-                "--no-capture",
-            ]
-            .map(String::from),
+            ["--self-test", "--vault", "C:\\v", "--report", "r.json", "--hold", "15", "--no-capture"].map(String::from),
         );
         assert!(a.self_test && a.no_capture && !a.background);
         assert_eq!(a.vault, Some(PathBuf::from("C:\\v")));
@@ -957,21 +755,9 @@ mod tests {
     #[test]
     fn navigation_stays_on_the_loopback_origin() {
         let origin = "http://127.0.0.1:7701";
-        assert!(same_origin(
-            &"http://127.0.0.1:7701/2026-10-20?x=1".parse().unwrap(),
-            origin
-        ));
-        assert!(!same_origin(
-            &"http://127.0.0.1:7702/".parse().unwrap(),
-            origin
-        ));
-        assert!(!same_origin(
-            &"http://localhost:7701/".parse().unwrap(),
-            origin
-        ));
-        assert!(!same_origin(
-            &"https://evil.example/".parse().unwrap(),
-            origin
-        ));
+        assert!(same_origin(&"http://127.0.0.1:7701/2026-10-20?x=1".parse().unwrap(), origin));
+        assert!(!same_origin(&"http://127.0.0.1:7702/".parse().unwrap(), origin));
+        assert!(!same_origin(&"http://localhost:7701/".parse().unwrap(), origin));
+        assert!(!same_origin(&"https://evil.example/".parse().unwrap(), origin));
     }
 }

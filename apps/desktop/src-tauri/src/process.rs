@@ -42,22 +42,12 @@ impl Tree {
                     Ok(())
                 });
             }
-            Ok(Self {
-                child: command.spawn()?,
-            })
+            Ok(Self { child: command.spawn()? })
         }
     }
 
     pub fn id(&self) -> u32 {
         self.child.id()
-    }
-
-    pub fn take_stdout(&mut self) -> Option<std::process::ChildStdout> {
-        self.child.stdout.take()
-    }
-
-    pub fn take_stderr(&mut self) -> Option<std::process::ChildStderr> {
-        self.child.stderr.take()
     }
 
     pub fn try_wait(&mut self) -> io::Result<Option<ExitStatus>> {
@@ -94,9 +84,8 @@ mod job {
 
     use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
     use windows_sys::Win32::System::JobObjects::{
-        AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
-        SetInformationJobObject, TerminateJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
-        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+        AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation, SetInformationJobObject,
+        TerminateJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
     };
 
     pub struct Job(HANDLE);
@@ -160,12 +149,7 @@ mod tests {
     /// Running, and not a zombie waiting for a parent that may never reap it in a container.
     fn alive(pid: u32) -> bool {
         match std::fs::read_to_string(format!("/proc/{pid}/stat")) {
-            Ok(stat) => {
-                stat.rsplit(')')
-                    .next()
-                    .map(|rest| rest.trim_start().starts_with('Z'))
-                    == Some(false)
-            }
+            Ok(stat) => stat.rsplit(')').next().map(|rest| rest.trim_start().starts_with('Z')) == Some(false),
             Err(_) => false,
         }
     }
@@ -177,29 +161,20 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let pidfile = dir.join("grandchild");
         let mut command = Command::new("sh");
-        command
-            .arg("-c")
-            .arg(format!("sleep 60 & echo $! > {}; wait", pidfile.display()));
+        command.arg("-c").arg(format!("sleep 60 & echo $! > {}; wait", pidfile.display()));
         let mut tree = Tree::spawn(&mut command).unwrap();
         let start = Instant::now();
         while !pidfile.exists() || std::fs::read_to_string(&pidfile).unwrap().trim().is_empty() {
             assert!(start.elapsed() < Duration::from_secs(5));
             std::thread::sleep(Duration::from_millis(20));
         }
-        let grandchild: u32 = std::fs::read_to_string(&pidfile)
-            .unwrap()
-            .trim()
-            .parse()
-            .unwrap();
+        let grandchild: u32 = std::fs::read_to_string(&pidfile).unwrap().trim().parse().unwrap();
         assert!(alive(grandchild));
         tree.kill();
         let start = Instant::now();
         while alive(grandchild) {
             // Reaped by init once killed; give it a moment.
-            assert!(
-                start.elapsed() < Duration::from_secs(5),
-                "grandchild survived"
-            );
+            assert!(start.elapsed() < Duration::from_secs(5), "grandchild survived");
             std::thread::sleep(Duration::from_millis(20));
         }
         assert!(tree.try_wait().unwrap().is_some());
@@ -212,10 +187,7 @@ mod windows_tests {
     use std::time::{Duration, Instant};
 
     fn alive(pid: u32) -> bool {
-        let out = Command::new("tasklist")
-            .args(["/FI", &format!("PID eq {pid}"), "/NH"])
-            .output()
-            .unwrap();
+        let out = Command::new("tasklist").args(["/FI", &format!("PID eq {pid}"), "/NH"]).output().unwrap();
         String::from_utf8_lossy(&out.stdout).contains(&pid.to_string())
     }
 
@@ -248,10 +220,7 @@ mod windows_tests {
         tree.kill();
         let start = Instant::now();
         while alive(grandchild) {
-            assert!(
-                start.elapsed() < Duration::from_secs(10),
-                "the grandchild outlived the job"
-            );
+            assert!(start.elapsed() < Duration::from_secs(10), "the grandchild outlived the job");
             std::thread::sleep(Duration::from_millis(100));
         }
         assert!(tree.try_wait().unwrap().is_some());

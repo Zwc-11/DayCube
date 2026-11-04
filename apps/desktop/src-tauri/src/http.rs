@@ -10,25 +10,13 @@ pub struct Reply {
     pub body: String,
 }
 
-pub fn request(
-    method: &str,
-    port: u16,
-    path: &str,
-    token: Option<&str>,
-    timeout: Duration,
-) -> io::Result<Reply> {
+pub fn request(method: &str, port: u16, path: &str, token: Option<&str>, timeout: Duration) -> io::Result<Reply> {
     let address = SocketAddr::from((Ipv4Addr::LOCALHOST, port));
     let mut stream = TcpStream::connect_timeout(&address, timeout)?;
     stream.set_read_timeout(Some(timeout))?;
     stream.set_write_timeout(Some(timeout))?;
-    let auth = token
-        .map(|t| format!("Authorization: Bearer {t}\r\n"))
-        .unwrap_or_default();
-    let length = if method == "POST" {
-        "Content-Length: 0\r\n"
-    } else {
-        ""
-    };
+    let auth = token.map(|t| format!("Authorization: Bearer {t}\r\n")).unwrap_or_default();
+    let length = if method == "POST" { "Content-Length: 0\r\n" } else { "" };
     write!(stream, "{method} {path} HTTP/1.0\r\nHost: 127.0.0.1:{port}\r\n{auth}{length}Connection: close\r\n\r\n")?;
     let mut raw = Vec::new();
     stream.read_to_end(&mut raw)?;
@@ -41,20 +29,10 @@ pub fn get(port: u16, path: &str, timeout: Duration) -> io::Result<Reply> {
 
 fn parse(raw: &[u8]) -> io::Result<Reply> {
     let bad = || io::Error::new(io::ErrorKind::InvalidData, "not an HTTP response");
-    let split = raw
-        .windows(4)
-        .position(|w| w == b"\r\n\r\n")
-        .ok_or_else(bad)?;
+    let split = raw.windows(4).position(|w| w == b"\r\n\r\n").ok_or_else(bad)?;
     let head = std::str::from_utf8(&raw[..split]).map_err(|_| bad())?;
-    let status = head
-        .split_whitespace()
-        .nth(1)
-        .and_then(|s| s.parse().ok())
-        .ok_or_else(bad)?;
-    Ok(Reply {
-        status,
-        body: String::from_utf8_lossy(&raw[split + 4..]).into_owned(),
-    })
+    let status = head.split_whitespace().nth(1).and_then(|s| s.parse().ok()).ok_or_else(bad)?;
+    Ok(Reply { status, body: String::from_utf8_lossy(&raw[split + 4..]).into_owned() })
 }
 
 pub fn port_free(port: u16) -> bool {
@@ -66,9 +44,7 @@ pub fn choose_port(preferred: &[u16]) -> io::Result<u16> {
     if let Some(&port) = preferred.iter().find(|&&p| p != 0 && port_free(p)) {
         return Ok(port);
     }
-    Ok(TcpListener::bind((Ipv4Addr::LOCALHOST, 0))?
-        .local_addr()?
-        .port())
+    Ok(TcpListener::bind((Ipv4Addr::LOCALHOST, 0))?.local_addr()?.port())
 }
 
 #[cfg(test)]
@@ -96,9 +72,7 @@ mod tests {
 
     #[test]
     fn request_sends_token_and_reads_reply() {
-        let (port, server) = serve_once(
-            b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\n\r\n{\"paused\":false}",
-        );
+        let (port, server) = serve_once(b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\n\r\n{\"paused\":false}");
         let reply = request("POST", port, "/pause", Some("abc"), Duration::from_secs(2)).unwrap();
         assert_eq!(reply.status, 200);
         assert_eq!(reply.body, "{\"paused\":false}");
@@ -110,11 +84,7 @@ mod tests {
 
     #[test]
     fn closed_port_is_an_error_and_free() {
-        let port = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
-            .unwrap()
-            .local_addr()
-            .unwrap()
-            .port();
+        let port = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap().local_addr().unwrap().port();
         assert!(get(port, "/", Duration::from_millis(300)).is_err());
         assert!(port_free(port));
     }

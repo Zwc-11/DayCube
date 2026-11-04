@@ -1,4 +1,4 @@
-// The tools window: capture status and switches, doctor, calibration, GPU packs, updates.
+// The tools window: capture status and switches, doctor, calibration, GPU packs.
 let packShown = null;
 
 function receiverText(s) {
@@ -29,11 +29,7 @@ async function refresh() {
     state.className = 'state ' + (p.installed ? 'good' : p.failed ? 'bad' : 'muted');
     button.disabled = p.installing || s.checkout;
     button.textContent = p.installed ? 'Reinstall' : 'Install';
-    if (packShown === name) $('pack-out').textContent = (p.failed ? p.failed + '\n' : '') + p.lines.join('\n');
-  }
-  if (!s.updates) {
-    $('update-state').textContent = 'No update channel in this build';
-    $('update-check').disabled = true;
+    if (packShown === name) $('pack-out').textContent = (p.failed ? `${p.failed}\n` : '') + p.log;
   }
 }
 
@@ -60,23 +56,5 @@ for (const row of document.querySelectorAll('[data-pack]')) {
 $('extension-open').onclick = () => invoke('open_folder', { which: 'extension' }).catch(alert);
 $('vault-open').onclick = () => invoke('open_folder', { which: 'vault' }).catch(alert);
 $('logs-open').onclick = () => invoke('open_folder', { which: 'logs' }).catch(alert);
-$('update-check').onclick = async () => {
-  $('update-state').textContent = 'Checking…';
-  try {
-    const version = await invoke('check_update');
-    $('update-state').textContent = version ? `Version ${version} is available` : 'Up to date';
-    show('update-install', Boolean(version));
-  } catch (error) {
-    $('update-state').textContent = String(error);
-  }
-};
-$('update-install').onclick = async () => {
-  $('update-state').textContent = 'Downloading…';
-  try {
-    await invoke('install_update');
-  } catch (error) {
-    $('update-state').textContent = String(error);
-  }
-};
 refresh();
 setInterval(refresh, 1500);

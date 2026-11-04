@@ -30,11 +30,11 @@ stops everything until the next sign-in.
 | Open DayCube | The viewer window |
 | Pause / Resume recording | `POST /pause` or `/resume` on the receiver, with the vault token |
 | Calibrate the eye tracker | `python -m gaze calibrate` with the bundled eye-tracker runtime |
-| Doctor, packs and updates… | The tools window |
+| Doctor and GPU packs… | The tools window |
 | Start at sign-in | The shared `DayCube capture` Run value, pointing at `DayCube.exe --background` |
 
 The tools window (`DayCube.exe --tools` opens it directly) runs `capture doctor`, installs the GPU
-packs, opens the vault, logs and extension folders, and checks for updates.
+packs, and opens the vault, logs and extension folders.
 
 ## GPU packs
 
@@ -112,7 +112,7 @@ Development against a checkout's own environments: `DAYCUBE_DEV_ROOT=E:\DAYCUBE`
 
 ## Updates
 
-The updater is built in but off until a signing key exists: CI must build with
-`DAYCUBE_UPDATER_PUBKEY` set and sign with `TAURI_SIGNING_PRIVATE_KEY` (a repository secret), and a
-release must publish `latest.json`. Until then **Check** in the tools window says the build has no
-update channel; install a newer build over the old one (settings, vault and packs are kept).
+Install a newer build over the old one: settings, the vault and installed packs are kept. The installer
+closes a running DayCube first; its Python processes end with it (job objects). An in-app updater needs signed
+releases (a signing key stored as a repository secret and a release workflow); it is not built in
+until those exist, so the app carries no code that cannot run.

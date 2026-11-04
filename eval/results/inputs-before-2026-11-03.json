@@ -1,0 +1,49 @@
+{
+  "workload": {
+    "events": 200000,
+    "seed": 7,
+    "repeats": 11,
+    "output": {
+      "records": 20,
+      "counts": {
+        "keys": 6956,
+        "clicks": 2010,
+        "wheel": 4128,
+        "move_px": 6218853,
+        "injected": 1967
+      },
+      "sha256": "632d564906190a902654ea810deb810b9bcfc1dd80a63a846183392d0b467a56"
+    }
+  },
+  "result": {
+    "wall_ms": [
+      622.9264879998482,
+      588.1050210000467,
+      588.3476760000121,
+      641.7237069999828,
+      626.2041039999531,
+      636.070011999891,
+      602.0863340002052,
+      650.604087000147,
+      617.4913919999199,
+      648.8638109999556,
+      593.9107539998076
+    ],
+    "median_ms": 622.9264879998482,
+    "p95_ms": 650.604087000147,
+    "median_cpu_ms": 614.6185980000007,
+    "traced_peak_bytes": 35951,
+    "sha256": "e04aa165a64c36b47aee0f1eb5050978dddabfd8503185bada73bdb7c25548ba",
+    "profile": "         2952072 function calls in 1.751 seconds\n\n   Ordered by: cumulative time\n   List reduced from 41 to 12 due to restriction <12>\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n        1    0.437    0.437    1.754    1.754 benchmark_inputs.py:70(run)\n   200000    0.325    0.000    0.755    0.000 inputs.py:156(event)\n   200000    0.375    0.000    0.542    0.000 inputs.py:110(parse)\n   170303    0.189    0.000    0.314    0.000 inputs.py:82(mouse)\n   170308    0.060    0.000    0.122    0.000 {built-in method builtins.sum}\n   572270    0.108    0.000    0.108    0.000 {built-in method _struct.unpack_from}\n   172313    0.061    0.000    0.061    0.000 inputs.py:85(<genexpr>)\n   606957    0.053    0.000    0.053    0.000 {built-in method builtins.len}\n   200002    0.044    0.000    0.045    0.000 inputs.py:205(_roll)\n   200000    0.025    0.000    0.025    0.000 {built-in method from_bytes}\n   200003    0.025    0.000    0.025    0.000 benchmark_inputs.py:73(<lambda>)\n   200002    0.025    0.000    0.025    0.000 {method '__exit__' of '_thread.lock' objects}\n\n\n",
+    "per_event_us": 3.114632439999241
+  },
+  "python": "3.11.18 (main, Oct 26 2026, 15:28:55) [GCC 13.3.0]",
+  "platform": "Linux-6.18.44-fc-v233-x86_64-with-glibc2.39",
+  "processor": "x86_64",
+  "revision": "bae54012751448232667991ad3c437618428bf9a",
+  "source_hashes": {
+    "services/capture-win/capture/inputs.py": "76f90275a1d5424a43dc2a0384bb7805846bc091b2e982e2ff5d780f4b9dbbf2",
+    "eval/benchmark_inputs.py": "af8f354afa991956164ce0be91b4d3b5674ef9d834fd0f95d112b11163613d45",
+    "eval/benchmark_notes.py": "5359aa9de867c64fc08f294f95f323e1b4c2103dba8739c3e0982280e77a3aab"
+  }
+}
