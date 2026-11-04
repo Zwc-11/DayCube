@@ -86,7 +86,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
 }
 
 /// Read the receiver's status and update the menu.
-pub fn refresh(app: &AppHandle) {
+fn refresh(app: &AppHandle) {
     let shell = app.state::<Shell>();
     let capture = shell.capture_wanted() && shell.receiver.lock().unwrap().is_some();
     let status = if capture {
