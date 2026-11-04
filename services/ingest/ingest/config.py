@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -5,10 +6,12 @@ from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
+# The desktop app keeps its sources apart from the vault, so it names the .env beside the vault.
+ENV_FILE = Path(os.environ.get("DAYCUBE_ENV_FILE") or PROJECT_ROOT / ".env")
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="DAYCUBE_", env_file=PROJECT_ROOT / ".env", extra="ignore")
+    model_config = SettingsConfigDict(env_prefix="DAYCUBE_", env_file=ENV_FILE, extra="ignore")
 
     vault_root: Path = PROJECT_ROOT / "vault"
     timezone: str = "America/Toronto"

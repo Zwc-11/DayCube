@@ -1,0 +1,44 @@
+:root {
+  color-scheme: dark;
+  --bg: #15171b;
+  --panel: #1d2026;
+  --line: #2c3038;
+  --text: #e8e9ec;
+  --muted: #9aa0aa;
+  --gold: #f2b657;
+  --bad: #ef7b6b;
+  --good: #7fcf9a;
+  font: 14px/1.45 "Segoe UI", system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); }
+main { max-width: 720px; margin: 0 auto; padding: 28px 24px; }
+h1 { display: flex; align-items: center; gap: 10px; font-size: 18px; font-weight: 600; margin: 0 0 20px; }
+h2 { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 10px; }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 14px; }
+.row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.grow { flex: 1; min-width: 0; }
+.muted { color: var(--muted); }
+.bad { color: var(--bad); }
+.good { color: var(--good); }
+.path { font-family: Consolas, ui-monospace, monospace; font-size: 12px; overflow-wrap: anywhere; }
+button {
+  font: inherit; color: var(--text); background: #2a2e36; border: 1px solid var(--line);
+  border-radius: 7px; padding: 6px 14px; cursor: pointer;
+}
+button:hover:not(:disabled) { border-color: var(--gold); }
+button.primary { background: var(--gold); color: #1b1b1b; border-color: var(--gold); font-weight: 600; }
+button:disabled { opacity: .45; cursor: default; }
+input[type=text] {
+  font: inherit; width: 100%; color: var(--text); background: #111317; border: 1px solid var(--line);
+  border-radius: 7px; padding: 7px 10px;
+}
+pre {
+  margin: 10px 0 0; max-height: 300px; overflow: auto; background: #101215; border: 1px solid var(--line);
+  border-radius: 7px; padding: 10px; font: 12px/1.4 Consolas, ui-monospace, monospace; white-space: pre-wrap;
+}
+pre:empty { display: none; }
+label.switch { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.spinner { width: 14px; height: 14px; border: 2px solid var(--line); border-top-color: var(--gold); border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+[hidden] { display: none !important; }

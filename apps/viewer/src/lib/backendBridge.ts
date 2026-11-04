@@ -87,8 +87,15 @@ export interface ApiCallLog {
 /** The middle of a stage in diorama metres: where a visit's measured positions are centred. */
 const STAGE_MIDDLE: [number, number] = [13, 9];
 
+/** The vault token the desktop app (apps/desktop) sets on its own window before this script runs,
+ * so the app needs no pasting in Settings › Vault connection. Empty in a browser. */
+function desktopToken(): string {
+  const injected = (globalThis as { __DAYCUBE_DESKTOP__?: { token?: unknown } }).__DAYCUBE_DESKTOP__;
+  return typeof injected?.token === 'string' ? injected.token.trim() : '';
+}
+
 export class BackendBridge {
-  private token = '';
+  private token = desktopToken();
   private client: DaycubeClient;
   private listeners: Array<(log: ApiCallLog) => void> = [];
 

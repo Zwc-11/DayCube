@@ -310,6 +310,16 @@ def _restart_unattended(command: list[str] | str) -> None:
         log.info("restarted on this checkout's code (%s): %d processes stopped", status.get("code"), len(stopped))
 
 
+def stop_receiver(_: argparse.Namespace) -> None:
+    """Stop every receiver and supervised eye tracker on this computer, wherever it was started
+    from (the desktop app runs this before it starts its own receiver on 127.0.0.1:7700)."""
+    from .restart import ours, processes, stop
+
+    pids = ours(processes(), os.getpid())
+    stop(pids)
+    print(f"Stopped {len(pids)} receiver and eye tracker processes.")
+
+
 def install_autostart(args: argparse.Namespace) -> None:
     from . import autostart
     from .restart import code_stamp
@@ -474,6 +484,7 @@ def main(argv: list[str] | None = None) -> None:
     commands.add_parser("uninstall-autostart", help="Remove the sign-in entry").set_defaults(
         handler=uninstall_autostart
     )
+    commands.add_parser("stop", help="Stop the running receiver and eye tracker").set_defaults(handler=stop_receiver)
     commands.add_parser("autostart-status", help="Show the sign-in entry").set_defaults(handler=autostart_status)
 
     commands.add_parser(

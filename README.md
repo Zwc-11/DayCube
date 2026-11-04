@@ -21,6 +21,11 @@ A local-first spatial memory system. This repository now contains a working **ba
 foundation** alongside a separately maintained frontend prototype. It is not yet the complete capture/reconstruction
 system described in [the technical specification](docs/daycube-technical-spec.md).
 
+## Windows app
+
+One install with the viewer, the vault API, capture and the eye tracker, run from the tray, with no
+repository, Node or Python needed: [docs/desktop.md](docs/desktop.md). CI builds the installer.
+
 ## Start locally
 
 Prerequisites: Node 20.19+ and [uv](https://docs.astral.sh/uv/). Setup selects Python 3.11.
@@ -55,6 +60,7 @@ reconstruction or the volunteer study has run.
 
 ```text
 apps/viewer/                 React/Vite frontend with a vault/API bridge and illustrative dioramas
+apps/desktop/                Windows app (Tauri 2): the viewer, the API and capture in one install (docs/desktop.md)
 packages/schemas/            Canonical JSON Schemas, generated TypeScript types, Zod validators
 packages/api-client/         Typed browser client with response validation
 services/ingest/             FastAPI, vault storage, FTS search, adapters and tests
