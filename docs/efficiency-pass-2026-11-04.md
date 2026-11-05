@@ -1,7 +1,7 @@
 # Install size and memory of the desktop app
 
 Continues the [2026-11-03 pass](efficiency-pass-2026-11-03.md) on `desktop-app`. The question was
-the installed size (1,351 MB) and what the running app costs. The install was measured from the CI
+the installed size (1,351 MB, now 868 MB) and what the running app costs. The install was measured from the CI
 installer, extracted, per folder and package; memory on this Linux workspace (two cores), from the
 same bundle on the sample vault. Absolute times on the Windows PC will be lower; each comparison
 holds the output fixed.
@@ -10,9 +10,13 @@ holds the output fixed.
 
 | What | Before | After | How it was held equal |
 | --- | ---: | ---: | --- |
-| Linux bundle, `runtime/core` + `runtime/gaze` | 1,636 + 890 MB | 1,099 + 641 MB | The bundle's checks per environment; the self-test from the relocated bundle |
+| Windows installer (CI) | 271.8 MB | 185.3 MB | Silent install, seeding and indexing with the installed Python, `--self-test`, on `windows-latest` |
+| Windows install | 1,351 MB | 868 MB | as above |
+| of which `runtime/core` + `runtime/gaze` | 798 + 609 MB | 391 + 458 MB | as above, and the bundle's checks per environment |
+| Linux bundle, `runtime/core` + `runtime/gaze` | 1,636 + 890 MB | 1,099 + 641 MB | The bundle's checks; the self-test from the relocated bundle |
 | Embedding 2,000 texts with the lengths of a vault in use | 226.4 s, peak 1,227 MB | 36.1 s, peak 367 MB | The same texts (`workload_sha256`); every vector equal to the text embedded alone ([before](../eval/results/embed-before-2026-11-04.json), [after](../eval/results/embed-after-2026-11-04.json)) |
-| The vault API's embedding model, loaded, then unused for 10 minutes | 284 MB, kept | 94 MB; the next search loads it in 0.3 s | The same model and vectors |
+| The vault API's embedding model, loaded, then unused for 10 minutes (Linux) | 284 MB, kept | 94 MB; the next search loads it in 0.3 s | The same model and vectors |
+| The same with the installed Python on Windows CI | 198 MB, kept | 86 MB | as above |
 | The receiver 80 s after start, past its first job poll | 222 MB, Open3D loaded | 82 MB | Readiness is the same answer: Open3D installed or not |
 
 **What the installer carried that nothing runs.** Measured on the extracted Windows install before
@@ -41,8 +45,8 @@ its text comes from standard-library docstrings. Reproduce with `eval/benchmark_
 **Idle model.** bge-small with ONNX Runtime takes about 270 MB once loaded. The API loads it at
 start (to answer the first question quickly) and kept it until it stopped, all day in the tray. It
 is now let go 10 minutes after its last use, never during a run; the next search loads it again.
-On Linux glibc keeps freed pages, so the release also calls `malloc_trim`. Windows CI records the
-same measurement after its install (`embed_rss_mb` in the smoke test's `sizes.txt`).
+On Linux glibc keeps freed pages, so the release also calls `malloc_trim`; Windows' heap returns
+them by itself (198 to 86 MB, recorded by the smoke test as `embed_rss_mb` in `sizes.txt`).
 
 **Open3D in the receiver.** The CPU job thread asks every minute whether each stage can run; the
 mesh stage answered by importing Open3D, which then stayed in the receiver. With its notebook
