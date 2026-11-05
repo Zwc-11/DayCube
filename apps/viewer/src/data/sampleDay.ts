@@ -64,7 +64,7 @@ const STAIRWELL = { x: 18.2, y: 4.6, w: 2.6, d: 6.75 };
 const STAIR_STEPS = 9;
 const STAIR_RUN = STAIRWELL.d / STAIR_STEPS;
 
-export type StageId = 'home' | 'morningCafe' | 'hall' | 'courtyardCafe';
+export type StageId = 'home' | 'morningCafe' | 'hall' | 'courtyardCafe' | 'park';
 
 export type StageSpotKind = 'outside' | 'desk' | 'table' | 'counter' | 'rest' | 'landing';
 
@@ -103,6 +103,12 @@ export const STAGE_SPOTS: Record<StageId, StageSpot[]> = {
     { kind: 'counter', floor: 0, x: 7.3, y: 8.75, look: [5.95, 8.75] },
     { kind: 'table', floor: 0, x: 13.2, y: 9.1, look: [15.1, 9.1] },
   ],
+  // An outdoor visit (a walk, a park): open ground, the walk itself drawn across it.
+  park: [
+    { kind: 'outside', floor: 0, x: 13.0, y: 17.0 },
+    { kind: 'rest', floor: 0, x: 4.6, y: 9.6, look: [4.6, 8.6] },
+    { kind: 'table', floor: 0, x: 21.4, y: 9.6, look: [21.4, 8.6] },
+  ],
 };
 
 export function buildStageBoxes(stage: StageId, evening = false): VoxelBox[] {
@@ -115,7 +121,35 @@ export function buildStageBoxes(stage: StageId, evening = false): VoxelBox[] {
       return buildEngineeringHallBoxes();
     case 'courtyardCafe':
       return buildCourtyardCafeBoxes();
+    case 'park':
+      return buildParkBoxes();
   }
+}
+
+// ----------------------------------------------------------------------------
+// OUTDOORS: open ground for walks (trees at the edges, benches, a pond, a lamp)
+// ----------------------------------------------------------------------------
+export function buildParkBoxes(): VoxelBox[] {
+  const B: VoxelBox[] = [];
+  // Trees around the edge, leaving the middle (where a walk is drawn) open.
+  for (const [tx, ty] of [
+    [1.2, 1.5], [6.5, 0.6], [12.5, 0.8], [18.5, 0.6], [24.0, 1.4],
+    [0.8, 8.5], [24.8, 7.8], [1.4, 16.0], [24.2, 16.2],
+  ]) {
+    B.push(box(tx + 0.3, ty + 0.3, 0, 0.5, 0.5, 1.3, PALETTE.trunk, 0));
+    B.push(box(tx - 0.4, ty - 0.4, 1.3, 1.9, 1.9, 1.5, PALETTE.tree, 0));
+    B.push(box(tx - 0.05, ty - 0.05, 2.8, 1.2, 1.2, 0.9, PALETTE.tree, 0));
+  }
+  // Benches facing the middle.
+  for (const [bx, by] of [[3.8, 8.9], [20.6, 8.9]]) {
+    B.push(box(bx, by, 0, 1.6, 0.5, 0.45, PALETTE.desk, 0, { label: 'Bench' }));
+  }
+  // A pond and the path to the street.
+  B.push(box(19.5, 13.2, 0, 4.2, 2.6, 0.04, '#8fb8d8', 0));
+  B.push(box(11.8, 16.2, 0, 2.4, 1.8, 0.05, PALETTE.road, 0));
+  B.push(box(15.2, 15.9, 0, 0.3, 0.3, 3, '#8c8f99', 0));
+  B.push(box(15.0, 15.7, 3, 0.7, 0.7, 0.5, PALETTE.lamp, 0, { lamp: true }));
+  return B;
 }
 
 // ----------------------------------------------------------------------------

@@ -244,3 +244,66 @@ def test_the_live_point_follows_the_eyes_to_the_bottom_of_the_screen() -> None:
     run_for(t, clock, 0.5)
     ys = [y * 1080 for _, _, y in receiver.points[before:]]
     assert len(ys) >= 10 and ys[-1] > 950
+
+
+def scripted() -> tuple[Blinks, list[float]]:
+    now = [0.0]
+    return Blinks(clock=lambda: now[0]), now
+
+
+def test_a_wrong_open_eye_reference_is_relearned_not_kept_forever() -> None:
+    """Two seconds of lids read twice as wide (landmarks off while leaning or turning) made every
+    open eye after read as shut, for good: on the PC no gaze for 30 hours with the face found."""
+    detector, now = scripted()
+
+    def frame(aperture: float) -> bool:
+        now[0] += 1 / 30
+        return detector(eyes(aperture, aperture))
+
+    assert not any(frame(0.30) for _ in range(60))
+    assert not any(frame(0.62) for _ in range(60))
+    decisions = [frame(0.30) for _ in range(30 * 10)]
+    assert all(decisions[: 30 * 2])  # read as closed at first
+    first_open = decisions.index(False)
+    assert first_open <= 30 * 3 + 2  # relearned after stuck_s (3 s)
+    assert not any(decisions[first_open:])
+    assert detector.resets == 1
+
+
+def test_eyes_shut_for_a_long_time_are_never_learned_as_open() -> None:
+    detector, now = scripted()
+
+    def frame(aperture: float) -> bool:
+        now[0] += 1 / 30
+        return detector(eyes(aperture, aperture))
+
+    assert not any(frame(0.30) for _ in range(60))
+    assert all(frame(0.01) for _ in range(30 * 20))  # 20 s with the eyes shut
+    assert detector.resets == 1  # once: with no reference left, closures are not counted again
+    assert not frame(0.30)
+
+
+def test_the_state_says_when_frames_with_a_face_give_no_gaze() -> None:
+    t, scene, receiver, *_, clock, log = tracker()
+    estimator = BlinkingEstimator()
+    estimator.blinks = estimator._blinks = Blinks(clock=clock)
+    t.estimator = estimator
+    run_for(t, clock, 2)
+    state = t.state()
+    assert (state["eyes_closed"], state["ray_missed"], state["blink_resets"]) == (0.0, 0.0, 0)
+    estimator.apertures = (0.01, 0.01)
+    run_for(t, clock, 2.5)
+    assert t.state()["eyes_closed"] > 0.5 and t.state()["face"] == 1.0
+
+
+def test_the_state_counts_gaze_rays_that_meet_no_screen() -> None:
+    class Missing(Estimator):
+        def predict(self, features: object) -> object:
+            return np.array([[np.nan, np.nan]])
+
+    t, scene, receiver, *_, clock, log = tracker()
+    t.estimator = Missing()
+    run_for(t, clock, 1)
+    state = t.state()
+    assert state["ray_missed"] == 1.0 and state["eyes_closed"] == 0.0 and state["blink_resets"] is None
+    assert receiver.fixations == []

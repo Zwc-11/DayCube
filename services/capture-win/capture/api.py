@@ -41,10 +41,16 @@ from fastapi import Body, Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from ingest.config import Settings
+from ingest.jobs import stages as job_stages
+from ingest.jobs.store import Job, Jobs
+from ingest.jobs.worker import finish, runnable
 from ingest.vault import Vault, read_lines
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
 from .attention import Attention
+from .jobs import idle_seconds
+from .phone_api import Phones
+from .phone_api import router as phone_router
 from .reading import LineBox
 from .records import Blocks, BrowserRecord, GazeBatch, LivePoint, View
 from .restart import code_stamp
@@ -53,6 +59,7 @@ log = logging.getLogger("capture")
 
 BROWSER = TypeAdapter(BrowserRecord)
 MAX_BATCH = 500
+DOING_MAX = 200  # characters of a doing-now line
 # The extension queues while the receiver is down (Opera can start first, or the receiver can
 # be stopped for hours). Older records are refused so a client cannot write arbitrary days.
 MAX_AGE = timedelta(hours=24)
@@ -72,6 +79,25 @@ CODE = code_stamp()  # the code this receiver loaded; `capture restart` and doct
 
 class Display(BaseModel):
     gaze_ring: bool
+
+
+class Lease(BaseModel):
+    worker: str = Field(min_length=1, max_length=200)
+    needs: str = Field(pattern="^(cpu|gpu)$")
+    stages: list[str] | None = None  # the stages this worker has code for; None: any
+
+
+class JobWorker(BaseModel):
+    worker: str = Field(min_length=1, max_length=200)
+
+
+class JobDone(JobWorker):
+    outputs: dict[str, Any] = Field(default_factory=dict)
+
+
+class JobFailed(JobWorker):
+    error: str = Field(max_length=20000)
+    retry: bool = True
 
 
 class Exclusions(BaseModel):
@@ -102,6 +128,11 @@ class Receiver:
         # The screen reader (screen.py), started by `python -m capture run`; why not, when it is not.
         self.screen: Any = None
         self.screen_problem: str | None = "not started"
+        # The typing and mouse counter (inputs.py), started by `python -m capture run`.
+        self.inputs: Any = None
+        self.inputs_problem: str | None = "not started"
+        self.doing: Any = None  # the Alt+Shift+N box (doingnow.py)
+        self.updater: Any = None  # restarts on the checkout's new code when you are away (update.py)
         self.watched_at = -1e9  # when the extension last asked for the live point
         # The gaze ring's path, for doctor: when live points arrived, when the page asked, and
         # whether the answer carried a live point (or fell back to the last fixation).
@@ -208,8 +239,38 @@ class Receiver:
             "ring": self.ring_health(),
             "display": {"gaze_ring": self.ring, "native": self.native_ring()},
             "screen": self.screen_state(),
+            "inputs": self.inputs_state(),
+            "doing": {**(self.doing.state() if self.doing is not None else {"running": False}),
+                      "last": self.last.get("doing")},
+            "update": self.updater.state() if self.updater is not None else {"running": False},
             "capabilities": ["browser", "gaze", "attention"] + (["screen"] if self.screen is not None else []),
         }
+
+    def person_away(self, away_s: float = 300.0) -> bool:
+        """Whether you are away from the PC: the screen reader's away (no real input and no gaze for
+        five minutes, or the lock screen) while it reads, else no real input for ``away_s`` (it
+        does not judge while reading is off or paused)."""
+        reader = self.screen
+        if reader is not None and reader.is_alive() and getattr(reader, "skipped", None) not in ("off", "paused"):
+            return bool(reader.away)
+        system = idle_seconds()
+        judged = self.human_idle(system) if system is not None else None
+        idle = judged[0] if judged is not None else system
+        return idle is not None and idle >= away_s
+
+    def human_idle(self, system_idle_s: float) -> tuple[float, str] | None:
+        """Seconds since the person last used the PC and what decided it (``inputs.Buckets.
+        idle_given``), or None when the counter is not running (then only Windows' idle time,
+        which software input resets, is known)."""
+        counter = self.inputs
+        if counter is None or not counter.is_alive() or counter.error:
+            return None
+        return counter.buckets.idle_given(system_idle_s)
+
+    def inputs_state(self) -> dict:
+        if self.inputs is None:
+            return {"running": False, "error": self.inputs_problem, "last": self.last.get("inputs")}
+        return {**self.inputs.state(), "last": self.last.get("inputs")}
 
     def screen_state(self) -> dict:
         if self.screen is None:
@@ -329,6 +390,30 @@ class Receiver:
             self.vault.append_lines(self.vault.root / "capture" / self._day(record["t"]) / "windows.jsonl", [record])
             self.last["screen"] = datetime.now(UTC).isoformat()
 
+    def input_counts(self, record: dict) -> None:
+        """A bucket of typing and mouse counts (inputs.py): ``inputs.jsonl``. Counts only; never while
+        paused."""
+        with self.lock:
+            if self.paused:
+                return
+            self.vault.append_lines(self.vault.root / "capture" / self._day(record["t"]) / "inputs.jsonl", [record])
+            self.last["inputs"] = datetime.now(UTC).isoformat()
+
+    def doing_now(self, text: str, t: datetime | None = None, source: str = "pc") -> dict | None:
+        """A line saying what you are doing now (the Alt+Shift+N box, the viewer, the phone):
+        ``doing.jsonl``. Returns the record, or None while paused or for an empty line."""
+        text = " ".join(text.split())[:DOING_MAX]
+        if not text:
+            return None
+        moment = (t or datetime.now(UTC)).astimezone(self.zone)
+        record = {"t": moment.isoformat(timespec="seconds"), "id": uuid.uuid4().hex[:12], "text": text, "source": source}
+        with self.lock:
+            if self.paused:
+                return None
+            self.vault.append_lines(self.vault.root / "capture" / self._day(moment) / "doing.jsonl", [record])
+            self.last["doing"] = datetime.now(UTC).isoformat()
+        return record
+
     def gaze_now(self, fresh_s: float) -> tuple[float, float] | None:
         """Where the eyes are now, in fractions of the tracker's monitor, corrected by clicks like
         every fixation: the live point or the last fixation, whichever is newer, if at most
@@ -430,9 +515,12 @@ class Receiver:
         live = time.time() - self.watched_at < LIVE_WATCH_S and not native
         with self.lock:
             grid = self.offset_grid(now.timestamp()) if self.ring else None
+            # Lines confirmed by reading order: labels for the tracker's learning (capture/labels.py).
+            read = self.attention.labels.drain()
+            line = self.attention.line_now if self.ring else None
         return {
             "accepted": accepted, "duplicates": duplicates, "stale": stale, "live": live,
-            "ring": self.ring and not self.paused, "offset_grid": grid,
+            "ring": self.ring and not self.paused, "offset_grid": grid, "lines": read, "reading": line,
         }  # fmt: skip
 
     def live_point(self, point: LivePoint) -> None:
@@ -525,6 +613,17 @@ def create_capture_app(
         receiver.set_paused(False)
         return receiver.status()
 
+    @app.post("/doing", dependencies=[Depends(authorize)])
+    def doing(body: dict[str, Any] = Body(...)) -> dict:
+        """What you are doing now, in a line (the viewer, a script): ``capture/<date>/doing.jsonl``."""
+        text = body.get("text")
+        if not isinstance(text, str) or not text.strip():
+            raise HTTPException(422, "text: a non-empty line")
+        record = receiver.doing_now(text, source=str(body.get("source") or "api")[:20])
+        if record is None:
+            raise HTTPException(409, "Recording is paused")
+        return record
+
     @app.post("/events", dependencies=[Depends(authorize)])
     def events(records: list[dict[str, Any]] = Body(...)) -> dict:
         """Browser records. Invalid ones are returned in ``rejected`` instead of failing the batch,
@@ -561,5 +660,53 @@ def create_capture_app(
     @app.get("/live", dependencies=[Depends(authorize)])
     def live(doc: str) -> dict:
         return receiver.live_view(doc)
+
+    # Jobs for workers outside the receiver (the speech worker, a GPU elsewhere): lease one,
+    # keep its lease alive, report it done or failed. What follows a job is queued here.
+    jobs = Jobs.of(settings.vault_root)
+    app.state.jobs = jobs
+
+    @app.post("/jobs/lease", dependencies=[Depends(authorize)])
+    def lease_job(body: Lease) -> dict:
+        names = runnable(body.needs, idle_s=idle_seconds(), here=False)
+        if body.stages is not None:
+            names = [n for n in names if n in body.stages]
+        job = jobs.lease(body.worker, names)
+        if job is None:
+            return {"job": None}
+        stage = job_stages.STAGES[job.stage]
+        return {"job": {"id": job.id, "stage": job.stage, "version": stage.version, "inputs": job.inputs,
+                        "attempts": job.attempts}}  # fmt: skip
+
+    @app.post("/jobs/{job_id}/heartbeat", dependencies=[Depends(authorize)])
+    def job_heartbeat(job_id: int, body: JobWorker) -> dict:
+        return {"ok": jobs.heartbeat(job_id, body.worker)}
+
+    @app.post("/jobs/{job_id}/done", dependencies=[Depends(authorize)])
+    def job_done(job_id: int, body: JobDone) -> dict:
+        row = jobs.get(job_id)
+        if row is None:
+            raise HTTPException(404, f"No job {job_id}")
+        job = Job(job_id, row["stage"], row["version"], row["inputs"], row["attempts"], body.worker)
+        if row["status"] != "leased" or row["worker"] != body.worker:
+            return {"ok": False, "queued": []}
+        return {"ok": True, "queued": finish(jobs, job, body.outputs, vault)}
+
+    @app.post("/jobs/{job_id}/fail", dependencies=[Depends(authorize)])
+    def job_fail(job_id: int, body: JobFailed) -> dict:
+        row = jobs.get(job_id)
+        if row is None:
+            raise HTTPException(404, f"No job {job_id}")
+        stage = job_stages.STAGES.get(row["stage"])
+        attempts = stage.attempts if stage else 3
+        return {"status": jobs.fail(job_id, body.worker, body.error, retry=body.retry, max_attempts=attempts)}
+
+    @app.get("/jobs/status", dependencies=[Depends(authorize)])
+    def jobs_status() -> dict:
+        return jobs.status()
+
+    # The phone (DayCube Capture): pairing, resumable uploads into vault/inbox/phone, heartbeats.
+    app.state.phones = Phones(settings.vault_root, settings.timezone)
+    app.include_router(phone_router(app.state.phones, lambda: vault.token))
 
     return app

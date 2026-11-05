@@ -193,6 +193,17 @@ def do_check(args: argparse.Namespace) -> None:
     )
 
 
+def do_tune(args: argparse.Namespace) -> None:
+    """Replay this calibration's clicks to choose the learner's settings (gaze.tune)."""
+    from . import tune
+
+    if args.background:
+        tune.lower_priority()
+    result = tune.tune(args.vault)
+    if not result.get("tuned"):
+        print(f"not tuned: {result.get('reason')}")
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="python -m gaze", description="Webcam eye tracking for DayCube")
     common = argparse.ArgumentParser(add_help=False)
@@ -225,6 +236,12 @@ def main(argv: list[str] | None = None) -> None:
     track.add_argument("--force", action="store_true", help="Track even with a coarse calibration")
     track.add_argument("--supervised", action="store_true", help=argparse.SUPPRESS)
     track.set_defaults(handler=do_track)
+
+    tune = commands.add_parser(
+        "tune", parents=[common], help="Choose learning's settings by replaying your own clicks (a few minutes)"
+    )
+    tune.add_argument("--background", action="store_true", help="Run at idle priority (the tracker's own runs)")
+    tune.set_defaults(handler=do_tune)
 
     check = commands.add_parser("check", parents=[common], help="Test the webcam: frame rate and face detection")
     check.add_argument("--camera", type=int, default=0)

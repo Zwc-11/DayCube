@@ -3,6 +3,8 @@ and OCR: which window, what is sent to the receiver, how reading, scrolling, pri
 app come out, and how the vault turns it into units, notes and the graph."""
 
 import json
+import os
+import sys
 import time
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -111,6 +113,11 @@ def logged(vault: Vault, name: str) -> list[dict]:
         with path.open(encoding="utf-8") as stream:
             records.extend(json.loads(line) for line in stream)
     return records
+
+
+def changes(vault: Vault) -> list[dict]:
+    """``windows.jsonl`` without the reader's every-five-minutes ``still``."""
+    return [r for r in logged(vault, "windows.jsonl") if r["kind"] != "still"]
 
 
 def reader_for(vault: Vault, receiver: object) -> tuple[ScreenReader, FakeSystem, FakeOcr, Clock]:
@@ -288,7 +295,7 @@ def test_reading_a_pdf_in_another_app_is_followed_line_by_line(vault: Vault, aut
         paragraph = snapshot["blocks"][1]
         assert paragraph["text"] == " ".join(TEXTS)
         assert paragraph["lines"][0]["rect"] == [60, SCROLL_ORIGIN + 200, 700, 20]  # page coordinates
-        (front,) = logged(vault, "windows.jsonl")
+        (front,) = changes(vault)
         assert front["kind"] == "window" and front["app"] == "sumatrapdf.exe" and front["title"] == PDF.title
 
         # Nothing changed on screen: no second OCR, only a heartbeat (live, not stored).
@@ -413,12 +420,43 @@ def test_away_and_back(vault: Vault, auth: dict[str, str]) -> None:
         reader.step()
         system.idle = 0.0
         reader.step()
-    kinds = [(r["kind"], r.get("why")) for r in logged(vault, "windows.jsonl")]
+    kinds = [(r["kind"], r.get("why")) for r in changes(vault)]
     assert kinds == [("window", None), ("away", "idle"), ("window", None)]
-    away = logged(vault, "windows.jsonl")[1]
+    away = changes(vault)[1]
     assert (datetime.fromisoformat(away["t"]) - datetime.fromisoformat(away["since"])).total_seconds() == pytest.approx(
         400
     )
+
+
+def test_sleep_a_moment_without_gaze_and_the_readers_own_stop(vault: Vault, auth: dict[str, str]) -> None:
+    """For the day timeline: the reader says when it is still recording, when the computer slept,
+    and when it stopped; and a moment the tracker loses the eyes is not five minutes away."""
+    app = create_capture_app(Settings(vault_root=vault.root, _env_file=None), receive=True)
+    with TestClient(app):
+        receiver = app.state.receiver
+        reader, system, ocr, clock = reader_for(vault, receiver)
+        receiver.gaze_now = lambda fresh_s: (0.3, 0.3)  # the eyes on the PDF
+        system.idle = 400.0  # reading without touching anything
+        reader.step()
+        receiver.gaze_now = lambda fresh_s: None  # lost for a moment
+        clock.offset += 2.0
+        reader.step()
+        assert [r["kind"] for r in changes(vault)] == ["window"]  # not away: the eyes were there 2 s ago
+        clock.offset += 120.0  # the lid closed for two minutes
+        slept_from = reader.stepped_at
+        reader.step()
+        reader.still_at -= 300.0  # five minutes since the last "still"
+        clock.offset += 1.0
+        reader.step()
+        reader.stop()
+        reader.run()  # the loop ends at once: the reader's last word
+    records = changes(vault)
+    assert [(r["kind"], r.get("why")) for r in records] == [
+        ("window", None), ("away", "asleep"), ("window", None), ("away", "stopped"),
+    ]  # fmt: skip
+    assert datetime.fromisoformat(records[1]["since"]).timestamp() == pytest.approx(slept_from)
+    still = [r for r in logged(vault, "windows.jsonl") if r["kind"] == "still"]
+    assert len(still) == 2  # at the first round, and again five minutes later
 
 
 def test_the_window_read_wins_over_the_browser_page_beneath_it(vault: Vault, auth: dict[str, str]) -> None:
@@ -798,3 +836,155 @@ def test_the_receiver_reports_its_code_and_doctor_compares_it(vault: Vault) -> N
                                                                     __import__("zoneinfo").ZoneInfo("UTC"),
                                                                     datetime.now(UTC), None)}  # fmt: skip
     assert results["receiver code"] == doctor.FAIL
+
+
+def test_the_code_stamp_covers_the_ingest_and_gaze_code_the_receiver_runs(tmp_path: Path) -> None:
+    """The librarian runs the review's code in the receiver and the receiver starts the eye tracker:
+    a change there is a change to the receiver, which a restart (or update.py) picks up."""
+    from capture.restart import PACKAGE, code_folders, code_stamp
+
+    assert [f.name for f in code_folders()] == ["capture", "ingest", "gaze"] and code_folders()[0] == PACKAGE
+    capture, review = tmp_path / "capture", tmp_path / "ingest" / "review"
+    review.mkdir(parents=True)
+    capture.mkdir()
+    (capture / "api.py").write_text("x = 1\n", encoding="utf-8")
+    (review / "metrics.py").write_text("y = 1\n", encoding="utf-8")
+    first = code_stamp(capture, tmp_path / "ingest")
+    (review / "metrics.py").write_text("y = 2\n", encoding="utf-8")
+    assert code_stamp(capture, tmp_path / "ingest") != first
+
+
+def test_the_receiver_restarts_on_new_code_when_you_are_away(tmp_path: Path) -> None:
+    from capture.restart import RECEIVER
+    from capture.update import Updater, noted_command
+
+    stamp, away, problem, spawned, clock = ["old"], [False], [None], [], [1000.0]
+    updater = Updater(tmp_path, "old", lambda: away[0], '"pythonw.exe" -m capture run --receive --gaze',
+                      stamp=lambda: stamp[0], imports=lambda: problem[0], spawn=spawned.append,
+                      clock=lambda: clock[0])  # fmt: skip
+    assert updater.check() == "current"
+    stamp[0] = "new-half"  # a pull under way
+    assert updater.check() == "changing"
+    stamp[0] = "new"
+    assert updater.check() == "changing"  # changed again: wait for it to settle
+    assert updater.check() == "present"  # settled, but you are at the PC
+    away[0] = True
+    problem[0] = "ModuleNotFoundError: No module named 'ingest.review.nothing'"
+    assert updater.check() == "broken" and spawned == []  # the running receiver stays
+    assert updater.state()["problem"].startswith("ModuleNotFoundError")
+    problem[0] = None
+    assert updater.check() == "restarting"
+    assert spawned == [[sys.executable, "-m", "capture", "restart", "--unattended"]]
+    assert noted_command(tmp_path) == '"pythonw.exe" -m capture run --receive --gaze'  # what the restart starts
+    assert not any(RECEIVER.search(" ".join(c)) for c in spawned)  # the restart is never taken for a receiver
+    # A restart that did not take (the same old receiver still runs) is not repeated within the hour.
+    assert updater.check() == "tried" and len(spawned) == 1
+    clock[0] += 3601
+    assert updater.check() == "restarting" and len(spawned) == 2
+    # The receiver started on the new code has nothing to do.
+    assert Updater(tmp_path, "new", lambda: True, "", stamp=lambda: "new", spawn=spawned.append).check() == "current"
+
+
+def test_the_restart_is_started_outside_the_receivers_process_tree(tmp_path: Path) -> None:
+    """Stopping the receiver ends its children (taskkill /T): the restart must not be one of them."""
+    from capture.update import spawn_apart
+
+    out = tmp_path / "parent.txt"
+    script = f"import os, time; time.sleep(0.3); open({str(out)!r}, 'w').write(str(os.getppid()))"
+    spawn_apart([sys.executable, "-c", script])
+    for _ in range(100):
+        if out.exists() and out.read_text():
+            break
+        time.sleep(0.05)
+    assert int(out.read_text()) != os.getpid()  # its parent is the launcher that already exited, not us
+
+
+@pytest.fixture
+def importable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A fresh interpreter finds the packages as this one does (installed on the PC; pytest's paths here)."""
+    monkeypatch.setenv("PYTHONPATH", os.pathsep.join(p for p in sys.path if p))
+
+
+@pytest.mark.usefixtures("importable")
+def test_the_checkouts_code_is_checked_to_import_before_a_restart() -> None:
+    from capture.update import check_imports
+
+    assert check_imports() is None
+
+
+@pytest.mark.usefixtures("importable")
+def test_a_checkout_that_does_not_import_is_not_started(monkeypatch: pytest.MonkeyPatch) -> None:
+    import capture.update as update
+
+    monkeypatch.setattr(update, "IMPORTS", (*update.IMPORTS, "ingest.review.not_a_module"))
+    assert "No module named 'ingest.review.not_a_module'" in (update.check_imports() or "")
+
+
+def test_the_receiver_says_you_are_away_from_the_screen_reader_or_real_input(
+    vault: Vault, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    receiver = create_capture_app(Settings(vault_root=vault.root, _env_file=None), receive=True).state.receiver
+
+    class Reader:
+        away, skipped = True, None
+
+        def is_alive(self) -> bool:
+            return True
+
+    class Counter:
+        error, buckets = None, SimpleNamespace(idle_given=lambda system_idle: (900.0, "devices"))
+
+        def is_alive(self) -> bool:
+            return True
+
+    receiver.screen = Reader()
+    assert receiver.person_away() is True
+    Reader.away = False
+    assert receiver.person_away() is False
+    receiver.screen = None  # no reader, and no Windows idle time: not taken for away
+    monkeypatch.setattr("capture.api.idle_seconds", lambda: None)  # a CI machine's real idle time is long
+    assert receiver.person_away() is False
+    receiver.screen, Reader.skipped = Reader(), "off"  # reading turned off: the reader does not judge
+    monkeypatch.setattr("capture.api.idle_seconds", lambda: 900.0)
+    receiver.inputs = Counter()
+    assert receiver.person_away() is True  # 15 min without a real key or move
+    Counter.buckets = SimpleNamespace(idle_given=lambda system_idle: (20.0, "unseen"))
+    assert receiver.person_away() is False
+    receiver.inputs = receiver.screen = None
+    assert receiver.status()["update"] == {"running": False}
+
+
+def test_doctor_says_the_receiver_updates_itself_or_why_not(vault: Vault) -> None:
+    from capture import doctor
+
+    def verdict(update: dict) -> tuple[str, str]:
+        rows = doctor.checks({"paused": False, "code": "0ld", "update": update}, vault.root,
+                             __import__("zoneinfo").ZoneInfo("UTC"), datetime.now(UTC), None)  # fmt: skip
+        return next((v, text) for v, name, text in rows if name == "receiver code")
+
+    assert verdict({"running": True})[0] == doctor.WARN and "by itself" in verdict({"running": True})[1]
+    broken = verdict({"running": True, "problem": "SyntaxError: invalid syntax"})
+    assert broken[0] == doctor.FAIL and "SyntaxError" in broken[1]
+    assert verdict({"running": False})[0] == doctor.FAIL
+
+
+def test_the_unattended_restart_starts_the_noted_command_and_logs_the_outcome(
+    vault: Vault, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    import capture.__main__ as cli
+    import capture.restart as restarting
+
+    monkeypatch.setenv("DAYCUBE_VAULT_ROOT", str(vault.root))
+    (vault.root / "logs").mkdir(exist_ok=True)
+    (vault.root / "logs" / "update.json").write_text(json.dumps({"command": "pythonw.exe -m capture run --receive"}))
+    started: list = []
+    answers = [{"code": restarting.code_stamp()}, None, {"code": "0ld"}]
+    monkeypatch.setattr(restarting, "restart", lambda command, status, start: (started.append(command) or [10, 11],
+                                                                               answers.pop(0)))  # fmt: skip
+    with caplog.at_level("INFO", logger="capture.update"):
+        for _ in range(3):
+            cli.main(["restart", "--unattended"])
+    assert started == ["pythonw.exe -m capture run --receive"] * 3
+    assert "restarted on this checkout's code" in caplog.text
+    assert "has not answered on 127.0.0.1:7700 within 45 s" in caplog.text
+    assert "a receiver on older code still answers" in caplog.text

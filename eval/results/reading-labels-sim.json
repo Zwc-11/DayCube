@@ -1,0 +1,58 @@
+{
+ "read an article | recalibrated": {
+  "labels": 887,
+  "per_minute_of_reading": 66.3,
+  "on_the_right_line": 1.0,
+  "one_line_off": 0.0,
+  "line_pitch_px": 36.0
+ },
+ "read an article, 200% zoom | recalibrated": {
+  "labels": 1118,
+  "per_minute_of_reading": 85.4,
+  "on_the_right_line": 1.0,
+  "one_line_off": 0.0,
+  "line_pitch_px": 72.0
+ },
+ "re-read a paragraph 3 times | recalibrated": {
+  "labels": 719,
+  "per_minute_of_reading": 67.5,
+  "on_the_right_line": 1.0,
+  "one_line_off": 0.0,
+  "line_pitch_px": 36.0
+ },
+ "slow read under a heading | recalibrated": {
+  "labels": 71,
+  "per_minute_of_reading": 14.1,
+  "on_the_right_line": 1.0,
+  "one_line_off": 0.0,
+  "line_pitch_px": 36.0
+ },
+ "read an article | first-calibration": {
+  "labels": 14,
+  "per_minute_of_reading": 1.4,
+  "on_the_right_line": 1.0,
+  "one_line_off": 0.0,
+  "line_pitch_px": 36.0
+ },
+ "read an article, 200% zoom | first-calibration": {
+  "labels": 289,
+  "per_minute_of_reading": 28.8,
+  "on_the_right_line": 1.0,
+  "one_line_off": 0.0,
+  "line_pitch_px": 72.0
+ },
+ "re-read a paragraph 3 times | first-calibration": {
+  "labels": 0,
+  "per_minute_of_reading": 0.0,
+  "on_the_right_line": null,
+  "one_line_off": null,
+  "line_pitch_px": 36.0
+ },
+ "slow read under a heading | first-calibration": {
+  "labels": 0,
+  "per_minute_of_reading": 0.0,
+  "on_the_right_line": null,
+  "one_line_off": null,
+  "line_pitch_px": 36.0
+ }
+}

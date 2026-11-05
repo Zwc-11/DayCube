@@ -22,7 +22,8 @@ def server() -> Iterator[tuple[str, list[dict], dict]]:
             calls.append({"path": self.path, "auth": self.headers["Authorization"], "body": body})
             self.send_response(answer["code"])
             self.end_headers()
-            self.wfile.write(json.dumps(answer.get("body", {})).encode())
+            reply = {"accepted": len(body.get("fixations", [])), "duplicates": 0, "stale": 0, **answer.get("body", {})}
+            self.wfile.write(answer.get("raw", json.dumps(reply).encode()))
 
         def log_message(self, *_: object) -> None:
             pass
@@ -57,6 +58,32 @@ def test_an_unreachable_receiver_keeps_the_queue(tmp_path: Path) -> None:
     receiver = Receiver("http://127.0.0.1:9", tmp_path / ".token", timeout=0.5)
     receiver.add(Fixation(1.0, 1.4, 0.3, 0.5, 6))
     assert receiver.send({"tracking": True}) == "offline" and len(receiver.queue) == 1
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        b"not JSON",
+        b"[]",
+        b"null",
+        b"{}",
+        b'{"accepted":-1,"duplicates":0,"stale":0}',
+        b'{"accepted":0,"duplicates":0,"stale":0}',
+        b'{"accepted":true,"duplicates":0,"stale":0}',
+    ],
+)
+def test_an_invalid_acknowledgement_keeps_fixations_for_retry(server: tuple, tmp_path: Path, reply: bytes) -> None:
+    url, calls, answer = server
+    (tmp_path / ".token").write_text("synthetic")
+    receiver = Receiver(url, tmp_path / ".token")
+    record_id = receiver.add(Fixation(1_800_000_000.0, 1_800_000_000.4, 0.25, 0.5, 6))
+    answer["raw"] = reply
+    assert receiver.send({"tracking": True}) == "refused"
+    assert [row["id"] for row in receiver.queue] == [record_id]
+    assert not receiver.live and not receiver.ring
+    answer.pop("raw")
+    assert receiver.send({"tracking": True}) == "ok" and not receiver.queue
+    assert calls[-1]["body"]["fixations"] == calls[-2]["body"]["fixations"]
 
 
 def test_the_live_point_streams_only_when_the_receiver_asks(server: tuple, tmp_path: Path) -> None:
@@ -110,3 +137,34 @@ def test_the_receiver_says_whether_to_draw_the_ring_and_how_to_correct_it(server
     assert receiver.send({"tracking": True}) == "ok" and receiver.ring and receiver.offset_grid is None
     answer["code"] = 409  # paused: hide it
     assert receiver.send({"tracking": True}) == "paused" and receiver.ring is False
+
+
+def test_line_labels_in_a_reply_are_kept_for_the_learner_and_bad_ones_dropped(server: tuple, tmp_path: Path) -> None:
+    url, calls, answer = server
+    (tmp_path / ".token").write_text("secret")
+    receiver = Receiver(url, tmp_path / ".token")
+    answer["body"] = {"lines": [
+        {"id": "a", "y": 0.4, "x0": 0.1, "x1": 0.6},
+        {"id": "b", "y": "x", "x0": 0.1, "x1": 0.6},  # malformed
+        {"id": "c", "y": 9.0, "x0": 0.1, "x1": 0.6},  # off any monitor
+        {"y": 0.4, "x0": 0.1, "x1": 0.6},  # no fixation named
+    ]}  # fmt: skip
+    assert receiver.send({"tracking": True}) == "ok"
+    assert receiver.take_lines() == [{"id": "a", "y": 0.4, "x0": 0.1, "x1": 0.6}]
+    assert receiver.take_lines() == []
+
+
+def test_the_line_being_read_comes_with_the_reply_and_a_bad_one_is_dropped(server: tuple, tmp_path: Path) -> None:
+    url, calls, answer = server
+    (tmp_path / ".token").write_text("secret")
+    receiver = Receiver(url, tmp_path / ".token")
+    line = {"t": 1_800_000_000.5, "y": 0.42, "x0": 0.1, "x1": 0.55, "p": 0.93}
+    answer["body"] = {"ring": True, "reading": line}
+    assert receiver.send({"tracking": True}) == "ok" and receiver.reading == line
+    for bad in ({**line, "y": 4.0}, {**line, "p": "sure"}, {**line, "x1": float("nan")}, {"y": 0.4}, [0.4], None):
+        answer["body"] = {"ring": True, "reading": bad}
+        assert receiver.send({"tracking": True}) == "ok" and receiver.reading is None, bad
+    answer["body"] = {"ring": True, "reading": line}
+    receiver.send({"tracking": True})
+    answer["code"] = 409  # paused: no line
+    assert receiver.send({"tracking": True}) == "paused" and receiver.reading is None

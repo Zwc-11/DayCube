@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Info, RefreshCw } from 'lucide-react';
-import type { GazeFit, GazeLearning } from '@daycube/schemas';
+import type { GazeFit, GazeLearning, GazeTuning } from '@daycube/schemas';
 import { backendBridge } from '../../lib/backendBridge';
+import { niceMax, path, useWidth } from '../../lib/chart';
 import { usePageVisible } from '../../lib/usePageVisible';
 import { COLORS, FONTS } from '../../styles/theme';
 
@@ -18,20 +19,6 @@ const ROLLING = 30; // clicks in each point of the error lines
 const LEARNED = '#3987e5'; // categorical slot 1 (dark); validated against the card surface
 const BASELINE = COLORS.textMuted; // the reference line: de-emphasised
 const PLOT = { height: 260, left: 44, right: 96, top: 24, bottom: 30 };
-
-/** The rendered width of an element, so charts draw at 1:1 and their text stays legible. */
-function useWidth(fallback = 860): [React.RefObject<HTMLDivElement>, number] {
-  const ref = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState(fallback);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const observer = new ResizeObserver(([entry]) => setWidth(Math.max(280, Math.round(entry.contentRect.width))));
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-  return [ref, width];
-}
 
 /** Rolling median of the finite values, one per index (null until a window has values). */
 export function rollingMedian(values: (number | null)[], window: number): (number | null)[] {
@@ -69,13 +56,6 @@ function insertSorted(sorted: number[], v: number): void {
   sorted.splice(lowerBound(sorted, v), 0, v);
 }
 
-function niceMax(v: number): number {
-  if (!(v > 0)) return 100;
-  const step = 10 ** Math.floor(Math.log10(v));
-  for (const k of [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10]) if (k * step >= v) return k * step;
-  return 10 * step;
-}
-
 function px(v: number | null | undefined): string {
   return v === null || v === undefined ? '–' : `${Math.round(v)} px`;
 }
@@ -88,20 +68,6 @@ function when(iso: string | null | undefined): string {
   if (!iso) return '–';
   const d = new Date(iso);
   return d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-}
-
-function path(points: [number, number][]): string {
-  let d = '';
-  let pen = false;
-  for (const [x, y] of points) {
-    if (!Number.isFinite(y)) {
-      pen = false;
-      continue;
-    }
-    d += `${pen ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`;
-    pen = true;
-  }
-  return d;
 }
 
 /** Line chart: rolling median error per click of the model in use and of the calibration alone. */
@@ -472,7 +438,8 @@ export const EyeTrackingView: React.FC<{ online: boolean }> = ({ online }) => {
         </div>
         <p className="card__text">
           Median of {ROLLING} clicks. {clicks.toLocaleString()} clicks since calibrating on {when(data.calibration.t)}
-          {' '}({used.toLocaleString()} used; the rest were made without looking at what was clicked). Lines mark updates.
+          {' '}({used.toLocaleString()} used; the rest were made without looking at what was clicked)
+          {data.lines.used ? `, and ${data.lines.used.toLocaleString()} lines you read` : ''}. Vertical lines mark updates.
         </p>
         {clicks ? <ErrorChart data={data} /> : <div className="empty">No clicks yet since calibrating.</div>}
       </div>
@@ -498,6 +465,71 @@ export const EyeTrackingView: React.FC<{ online: boolean }> = ({ online }) => {
           <FitChart fits={data.fits} applied={data.applied} />
         )}
       </div>
+
+      <Tuning data={data} />
+    </div>
+  );
+};
+
+const SETTING_LABEL: Record<string, string> = {
+  gate_k: 'Click gate (× recent error)',
+  half_life_days: 'Half-life of old labels (days)',
+  intercept_penalty: 'Hold on resting direction',
+  pose_penalty: 'Hold on head terms',
+  pose_min_clicks: 'Clicks before head terms',
+  refit_every: 'Clicks between fits',
+  line_weight: 'Weight of a read line',
+};
+
+/** The last tuning to your clicks (gaze.tune): what it compared, on which clicks, and what changed. */
+const Tuning: React.FC<{ data: Learning }> = ({ data }) => {
+  const last: GazeTuning | undefined = data.tunings[data.tunings.length - 1];
+  const held = last?.replay.held_out_px;
+  return (
+    <div className="card" data-testid="tuning">
+      <h4 className="card__title">Tuned to your clicks</h4>
+      <p className="card__text">
+        Once a day, after 200 new clicks, learning is run again from the calibration over your own clicks and lines
+        with other settings. Settings are searched on the older 70% of clicks and judged on the newest 30%, which the
+        search never saw; they are taken only if 3% better there.
+      </p>
+      {!last ? (
+        <div className="empty">Not tuned yet: tuning needs 300 clicks since calibrating.</div>
+      ) : (
+        <>
+          <div className="row" style={{ gap: 24, marginBottom: 12, fontSize: 13 }}>
+            <span>{when(last.t)}</span>
+            <span>{`${last.clicks ?? 0} clicks, ${last.lines ?? 0} lines replayed ${last.replay.trials ?? 0} times`}</span>
+            {held && (
+              <span>
+                {`Newest ${last.replay.held_out_clicks ?? 0} clicks: ${px(held.in_use)} with the settings in use, ${px(held.best)} with the best found`}
+              </span>
+            )}
+            <span className="status" data-state={last.accepted ? 'ok' : undefined}>
+              {last.accepted ? 'Taken' : 'Kept the settings in use'}
+            </span>
+          </div>
+          {last.accepted && last.changed && Object.keys(last.changed).length > 0 && (
+            <div style={{ fontSize: 12.5, color: COLORS.textSecondary, marginBottom: 8 }}>
+              {Object.entries(last.changed)
+                .map(([k, [a, b]]) => `${SETTING_LABEL[k] ?? k}: ${a} → ${b}`)
+                .join(' · ')}
+            </div>
+          )}
+        </>
+      )}
+      {data.settings && (
+        <table className="table" data-testid="settings-table">
+          <tbody>
+            {Object.entries(data.settings).map(([k, v]) => (
+              <tr key={k}>
+                <td>{SETTING_LABEL[k] ?? k}</td>
+                <td>{v}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 };

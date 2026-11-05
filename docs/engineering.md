@@ -68,6 +68,11 @@ gate is `npm run check`; CI runs it on Windows and Linux. Browser suites add int
 rendering checks. See the [codebase review](efficiency-review.md) for coverage, measurements
 and unresolved limits. Performance benchmarks remain separate from this gate.
 
+The gate also runs graph-label buffer regressions and model-free speech tests. Speech canaries
+remain opt-in in their own environment; the core environment skips optional speaker clustering
+when scikit-learn is absent. Inventory the tracked review scope with
+`uv run python scripts/review-inventory.py --tracked-only` to preserve unrelated local drafts.
+
 Transport owns stream readers: process complete events incrementally, bound event buffering,
 validate final payloads against canonical contracts, and cancel/release readers on early exit.
 Do not buffer a whole stream before using an early event or repeat a failed request as a
@@ -92,12 +97,18 @@ Timing budgets must name the workload and target device. The viewer invariants a
 
 - zero draws when idle after settling;
 - no shader links or buffer allocations during playback;
-- at most 8 main-pass draw calls for the sample scene.
+- at most 10 total WebGL draw calls for the sample scene (the current browser/Three.js counter;
+  the earlier eight-call figure used a different counter).
 
 CPU baselines are in `eval/results/core-before.json` and `core-after.json`, and for the second pass
 `core-snapshot-before.json` and `core-snapshot-after.json`. They are synthetic measurements, not
 universal service latency guarantees. Interactive frame-time,
 memory growth and large payload budgets still need traces on representative user hardware.
+
+The [continued file-by-file review](codebase-continuation-2026-10-26.md) records scene ownership,
+prepared camera maps, indexed phone segmentation, voice clustering and transport/intake regressions.
+Its hash-bound ledger distinguishes implementation review from generated/dependency/asset treatment
+and keeps known cancellation, recovery, invalidation and hardware limits explicit.
 
 ## Remaining priorities
 

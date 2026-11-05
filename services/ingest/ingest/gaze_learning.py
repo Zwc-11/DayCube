@@ -46,6 +46,8 @@ from .vault import Record, file_stamp
 
 CALIBRATION_FILE = "gaze.json"
 CLICKS_FILE = "clicks.jsonl"
+LINES_FILE = "lines.jsonl"  # reading-line labels (services/gaze/gaze/learn.py)
+TUNED_FILE = "gaze-tuned.json"  # the settings tuning chose (services/gaze/gaze/tune.py)
 HISTORY_FILE = "learning.jsonl"
 LEARNED_FILE = "gaze-learned.json"
 HEAD_T = slice(9, 12)  # the head's position (mm, camera coordinates) in a click's frame vector
@@ -146,8 +148,20 @@ def _click(data: dict) -> Record:
     }
 
 
+def _line(data: dict) -> Record:
+    return {"t": float(data["t"]), "used": data.get("used")}
+
+
 def _event(data: dict) -> Record | None:
-    return data if isinstance(data, dict) and data.get("event") in ("fit", "applied") else None
+    if not isinstance(data, dict) or data.get("event") not in ("fit", "applied", "tuned"):
+        return None
+    if data["event"] == "tuned":  # only what the dashboard shows of a tuning
+        return {k: data.get(k) for k in ("event", "t", "accepted", "clicks", "lines", "replay", "changed")} | {
+            "replay": {
+                k: (data.get("replay") or {}).get(k) for k in ("held_out_px", "held_out_clicks", "trials", "seconds")
+            }
+        }
+    return data
 
 
 def _number(value: Any) -> float:
@@ -212,6 +226,13 @@ def report(root: Path) -> Record:
     model_px, base_px = _median(error[recent][both]), _median(base[recent][both])
     fits = [e for e in events if e["event"] == "fit"]
     applied = [e for e in events if e["event"] == "applied"]
+    tunings = [e for e in events if e["event"] == "tuned"]
+    lines = [r for r in TAILS.read(folder / LINES_FILE, _line) if since is None or r["t"] >= since]
+    try:
+        tuned = json.loads((folder / TUNED_FILE).read_text(encoding="utf-8"))
+        settings = tuned.get("settings") if isinstance(tuned, dict) else None
+    except (OSError, ValueError):
+        settings = None
     return {
         "calibrated": True,
         "calibration": {
@@ -243,7 +264,10 @@ def report(root: Path) -> Record:
         },
         "fits": fits[-200:],
         "applied": applied[-200:],
-        "files": {name: (folder / name).is_file() for name in (CLICKS_FILE, HISTORY_FILE, LEARNED_FILE)},
+        "lines": {"labels": len(lines), "used": sum(r["used"] is True for r in lines)},
+        "tunings": tunings[-20:],
+        "settings": settings if isinstance(settings, dict) else None,
+        "files": {name: (folder / name).is_file() for name in (CLICKS_FILE, LINES_FILE, HISTORY_FILE, LEARNED_FILE)},
     }
 
 
@@ -253,7 +277,8 @@ _TAGGED: SegmentedLRU[Path, tuple[tuple, bytes, str]] = SegmentedLRU(8 * 1024 * 
 def tagged(root: Path) -> tuple[bytes, str]:
     """The report as JSON bytes and its ETag, rebuilt only when one of its files changed."""
     folder = root / "calibration"
-    stamps = tuple(file_stamp(folder / name) for name in (CALIBRATION_FILE, CLICKS_FILE, HISTORY_FILE, LEARNED_FILE))
+    names = (CALIBRATION_FILE, CLICKS_FILE, LINES_FILE, HISTORY_FILE, LEARNED_FILE, TUNED_FILE)
+    stamps = tuple(file_stamp(folder / name) for name in names)
     cached = _TAGGED.get(root)
     if cached is not None and cached[0] == stamps:
         return cached[1], cached[2]

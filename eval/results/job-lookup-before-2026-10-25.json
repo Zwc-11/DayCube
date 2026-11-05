@@ -1,0 +1,75 @@
+{
+  "revision": "188765c22b4344ee560ba89cea9290bb483a5677",
+  "source_hashes": {
+    "services/ingest/ingest/jobs/store.py": "d15f9be506c605f178fdab97d0734b363ae79c2b889226bbbf26b493adb3e954",
+    "eval/benchmark_job_lookup.py": "08c73ceda06d220a2635928ad838d47e4fcc10cc7faced2f6a4185ae07bad36a",
+    "eval/benchmark_notes.py": "5359aa9de867c64fc08f294f95f323e1b4c2103dba8739c3e0982280e77a3aab"
+  },
+  "environment": {
+    "python": "3.11.9",
+    "platform": "Windows-10-10.0.26200-SP0",
+    "cpu": "AMD64 Family 26 Model 68 Stepping 0, AuthenticAMD"
+  },
+  "workload": {
+    "rows": [
+      1000,
+      50000
+    ],
+    "repeats": 11,
+    "warmups": 1,
+    "target_every": 10000
+  },
+  "operations": {
+    "1000": {
+      "wall_ms": [
+        0.07730000652372837,
+        0.09689998114481568,
+        0.11209998046979308,
+        0.10430003749206662,
+        0.06639998173341155,
+        0.0488999648950994,
+        0.05259999306872487,
+        0.04800001624971628,
+        0.046200002543628216,
+        0.051499984692782164,
+        0.04569999873638153
+      ],
+      "median_ms": 0.05259999306872487,
+      "p95_ms": 0.11209998046979308,
+      "median_cpu_ms": 0.0,
+      "traced_peak_bytes": 3509,
+      "sha256": "2fcf2fa8b201d626060995cebb402bbc99fd527264347ea9e8c7f41852fa028f",
+      "profile": "         26 function calls in 0.000 seconds\n\n   Ordered by: cumulative time\n   List reduced from 22 to 12 due to restriction <12>\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n        1    0.000    0.000    0.000    0.000 benchmark_job_lookup.py:42(<lambda>)\n        1    0.000    0.000    0.000    0.000 store.py:222(find)\n        1    0.000    0.000    0.000    0.000 {method 'execute' of 'sqlite3.Connection' objects}\n        1    0.000    0.000    0.000    0.000 store.py:229(<listcomp>)\n        1    0.000    0.000    0.000    0.000 store.py:254(_row)\n        1    0.000    0.000    0.000    0.000 __init__.py:183(dumps)\n        1    0.000    0.000    0.000    0.000 encoder.py:183(encode)\n        1    0.000    0.000    0.000    0.000 __init__.py:299(loads)\n        1    0.000    0.000    0.000    0.000 decoder.py:332(decode)\n        1    0.000    0.000    0.000    0.000 {method 'fetchall' of 'sqlite3.Cursor' objects}\n        1    0.000    0.000    0.000    0.000 encoder.py:205(iterencode)\n        1    0.000    0.000    0.000    0.000 decoder.py:343(raw_decode)\n\n\n",
+      "database_bytes": 270336,
+      "plan": [
+        "SCAN jobs"
+      ]
+    },
+    "50000": {
+      "wall_ms": [
+        4.624199995305389,
+        4.605299967806786,
+        4.5553999952971935,
+        4.513299965765327,
+        4.497400019317865,
+        4.745999991428107,
+        4.85069997375831,
+        4.889700037892908,
+        5.056500027421862,
+        4.587500006891787,
+        4.5078000403009355
+      ],
+      "median_ms": 4.605299967806786,
+      "p95_ms": 5.056500027421862,
+      "median_cpu_ms": 0.0,
+      "traced_peak_bytes": 7965,
+      "sha256": "cfb1bd548ff08c194ba46abcb9274155d0bf73f4781d391bb7398bd392f9f469",
+      "profile": "         74 function calls in 0.005 seconds\n\n   Ordered by: cumulative time\n   List reduced from 22 to 12 due to restriction <12>\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n        1    0.000    0.000    0.005    0.005 benchmark_job_lookup.py:42(<lambda>)\n        1    0.000    0.000    0.005    0.005 store.py:222(find)\n        1    0.004    0.004    0.004    0.004 {method 'fetchall' of 'sqlite3.Cursor' objects}\n        1    0.001    0.001    0.001    0.001 {method 'execute' of 'sqlite3.Connection' objects}\n        1    0.000    0.000    0.000    0.000 store.py:229(<listcomp>)\n        5    0.000    0.000    0.000    0.000 store.py:254(_row)\n        5    0.000    0.000    0.000    0.000 __init__.py:299(loads)\n        5    0.000    0.000    0.000    0.000 decoder.py:332(decode)\n        1    0.000    0.000    0.000    0.000 __init__.py:183(dumps)\n        1    0.000    0.000    0.000    0.000 encoder.py:183(encode)\n        5    0.000    0.000    0.000    0.000 decoder.py:343(raw_decode)\n        1    0.000    0.000    0.000    0.000 encoder.py:205(iterencode)\n\n\n",
+      "database_bytes": 13352960,
+      "plan": [
+        "SCAN jobs"
+      ]
+    }
+  },
+  "limits": "Warm SQLite connection/filesystem, synthetic job metadata, in-process lookup only. No worker, model or network runs. Index setup and fixture insertion excluded. Index storage cost included."
+}

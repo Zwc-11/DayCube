@@ -1,0 +1,82 @@
+{
+  "revision": "96d20e94f5e4c76d117261fdc8daba2265b28d1c",
+  "source_hashes": {
+    "services/ingest/ingest/voices.py": "c13231855bac966eb9b1f59b4e9c6b88a2fe03369c3e3b30a4ee75911e7b517c",
+    "eval/benchmark_voice_clusters.py": "c322e4b36c1da525314e498b642b67f57dddd0bc2991efb86450e832cb21b2a5",
+    "eval/benchmark_notes.py": "5359aa9de867c64fc08f294f95f323e1b4c2103dba8739c3e0982280e77a3aab"
+  },
+  "environment": {
+    "python": "3.11.9",
+    "platform": "Windows-10-10.0.26200-SP0",
+    "cpu": "AMD64 Family 26 Model 68 Stepping 0, AuthenticAMD",
+    "numpy": "2.4.6",
+    "openblas_threads": "1"
+  },
+  "workload": {
+    "vectors": [
+      128,
+      512,
+      1536
+    ],
+    "dimensions": 192,
+    "voices": 4,
+    "per_recording": 2,
+    "noise": 0.02,
+    "repeats": 7,
+    "warmups": 1
+  },
+  "operations": {
+    "128": {
+      "wall_ms": [
+        1.4439000515267253,
+        1.1135999811813235,
+        1.0730000212788582,
+        1.1723999632522464,
+        1.0943000670522451,
+        1.0649999603629112,
+        1.1421999661251903
+      ],
+      "median_ms": 1.1135999811813235,
+      "p95_ms": 1.4439000515267253,
+      "median_cpu_ms": 0.0,
+      "traced_peak_bytes": 284787,
+      "sha256": "1e6395a1e6d2f018510909947899c188232089ee8ac50494a484eb8ac694d0c6",
+      "profile": "         783 function calls in 0.002 seconds\n\n   Ordered by: cumulative time\n   List reduced from 31 to 12 due to restriction <12>\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n        1    0.000    0.000    0.002    0.002 benchmark_voice_clusters.py:33(<lambda>)\n        1    0.001    0.001    0.001    0.001 voices.py:52(cluster)\n      125    0.000    0.000    0.000    0.000 fromnumeric.py:1221(argmax)\n      126    0.000    0.000    0.000    0.000 fromnumeric.py:48(_wrapfunc)\n      125    0.000    0.000    0.000    0.000 {method 'argmax' of 'numpy.ndarray' objects}\n        1    0.000    0.000    0.000    0.000 _arraysetops_impl.py:145(unique)\n        1    0.000    0.000    0.000    0.000 _arraysetops_impl.py:350(_unique1d)\n      125    0.000    0.000    0.000    0.000 fromnumeric.py:1217(_argmax_dispatcher)\n        1    0.000    0.000    0.000    0.000 fromnumeric.py:2838(cumsum)\n        1    0.000    0.000    0.000    0.000 {built-in method numpy.array}\n      125    0.000    0.000    0.000    0.000 multiarray.py:1040(unravel_index)\n        1    0.000    0.000    0.000    0.000 voices.py:77(<listcomp>)\n\n\n"
+    },
+    "512": {
+      "wall_ms": [
+        21.04180003516376,
+        21.257200045511127,
+        20.97630000207573,
+        22.288499982096255,
+        23.94699992146343,
+        23.597799940034747,
+        23.0984000954777
+      ],
+      "median_ms": 22.288499982096255,
+      "p95_ms": 23.94699992146343,
+      "median_cpu_ms": 15.625,
+      "traced_peak_bytes": 3145988,
+      "sha256": "c8f32d1204cd9e31669cbfb348f28632b1bd80a705d282ea1691c8d971508a64",
+      "profile": "         3087 function calls in 0.024 seconds\n\n   Ordered by: cumulative time\n   List reduced from 31 to 12 due to restriction <12>\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n        1    0.000    0.000    0.024    0.024 benchmark_voice_clusters.py:33(<lambda>)\n        1    0.011    0.011    0.024    0.024 voices.py:52(cluster)\n      509    0.000    0.000    0.012    0.000 fromnumeric.py:1221(argmax)\n      510    0.000    0.000    0.012    0.000 fromnumeric.py:48(_wrapfunc)\n      509    0.011    0.000    0.011    0.000 {method 'argmax' of 'numpy.ndarray' objects}\n        1    0.000    0.000    0.000    0.000 {method 'astype' of 'numpy.ndarray' objects}\n        1    0.000    0.000    0.000    0.000 _arraysetops_impl.py:145(unique)\n        1    0.000    0.000    0.000    0.000 _arraysetops_impl.py:350(_unique1d)\n      509    0.000    0.000    0.000    0.000 fromnumeric.py:1217(_argmax_dispatcher)\n      510    0.000    0.000    0.000    0.000 {built-in method builtins.getattr}\n      509    0.000    0.000    0.000    0.000 multiarray.py:1040(unravel_index)\n        1    0.000    0.000    0.000    0.000 {built-in method numpy.array}\n\n\n"
+    },
+    "1536": {
+      "wall_ms": [
+        511.0004999442026,
+        421.0527000250295,
+        386.33230002596974,
+        444.5197000168264,
+        431.4075999427587,
+        440.8761999802664,
+        440.9874000120908
+      ],
+      "median_ms": 440.8761999802664,
+      "p95_ms": 511.0004999442026,
+      "median_cpu_ms": 421.875,
+      "traced_peak_bytes": 28311812,
+      "sha256": "a775e1127d2773645d61903c1219575ad2d835cc4b9c22d6cdf630dc0d6237f4",
+      "profile": "         9231 function calls in 0.449 seconds\n\n   Ordered by: cumulative time\n   List reduced from 31 to 12 due to restriction <12>\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n        1    0.001    0.001    0.449    0.449 benchmark_voice_clusters.py:33(<lambda>)\n        1    0.089    0.089    0.449    0.449 voices.py:52(cluster)\n     1533    0.002    0.000    0.357    0.000 fromnumeric.py:1221(argmax)\n     1534    0.001    0.000    0.355    0.000 fromnumeric.py:48(_wrapfunc)\n     1533    0.354    0.000    0.354    0.000 {method 'argmax' of 'numpy.ndarray' objects}\n        1    0.002    0.002    0.002    0.002 {method 'astype' of 'numpy.ndarray' objects}\n        1    0.000    0.000    0.000    0.000 _arraysetops_impl.py:145(unique)\n        1    0.000    0.000    0.000    0.000 _arraysetops_impl.py:350(_unique1d)\n     1534    0.000    0.000    0.000    0.000 {built-in method builtins.getattr}\n     1533    0.000    0.000    0.000    0.000 multiarray.py:1040(unravel_index)\n     1533    0.000    0.000    0.000    0.000 fromnumeric.py:1217(_argmax_dispatcher)\n        1    0.000    0.000    0.000    0.000 {method 'argsort' of 'numpy.ndarray' objects}\n\n\n"
+    }
+  },
+  "limits": "Synthetic well-separated clusters with cannot-link pairs; includes initial similarity matrix. Warm process, no model, audio, GPU, vault or network. Output labels must match exactly, including ties. This is clustering, not recognition or end-to-end job throughput; traced peak is not RSS."
+}

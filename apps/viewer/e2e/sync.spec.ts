@@ -42,17 +42,28 @@ test('live search and empty results stay separate from prototype evidence', asyn
 });
 
 test('the calendar lists recorded days and opens them', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?view=days');
   const day = page.getByRole('button', { name: /Tuesday, October 20/ });
   await expect(day).toBeVisible();
   await expect(page.locator('.cal__day--empty').first()).toBeVisible();
   await day.click();
   await expect(page).toHaveURL(/\?date=2026-10-20$/);
   await expect(page.locator('canvas')).toBeVisible();
-  await page.getByRole('button', { name: 'All days', exact: true }).click();
-  await expect(page).toHaveURL(/\/$/);
-  await page.goBack();
+  // The logo goes to a day's page: on a day, the newest day with places.
+  await page.getByRole('button', { name: 'Day pages', exact: true }).click();
+  await expect(page).toHaveURL(/\?date=2026-10-21$/);
   await expect(page.locator('canvas')).toBeVisible();
+  // From the graph of notes and from the calendar, back to the day last shown.
+  await page.getByRole('button', { name: 'Notes', exact: true }).click();
+  await expect(page.getByTestId('graph')).toBeVisible();
+  await page.getByRole('button', { name: 'Day pages', exact: true }).click();
+  await expect(page).toHaveURL(/\?date=2026-10-21$/);
+  await page.getByRole('button', { name: /All days/ }).click(); // the date in the itinerary
+  await expect(page).toHaveURL(/\?view=days$/);
+  await page.getByRole('button', { name: 'Day pages', exact: true }).click();
+  await expect(page).toHaveURL(/\?date=2026-10-21$/);
+  await page.goBack();
+  await expect(page).toHaveURL(/\?view=days$/);
 });
 
 test('asking and rebuilding use the open day rather than the bundled sample date', async ({ page }) => {

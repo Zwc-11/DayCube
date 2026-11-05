@@ -19,7 +19,14 @@ So the ring's filter keeps a fixation estimate and moves it in three ways:
 
 - **Resting.** Each sample near the estimate pulls it by ``max(1/n, 1 - exp(-dt/tau_s))``: the plain
   mean of the fixation's first samples (the noise falls with their number), then an exponential
-  average over ``tau_s``, so a slow drift (reading along a line) is followed smoothly.
+  average over ``tau_s``, so a slow drift (reading along a line) is followed smoothly. Vertically,
+  once the fixation is ``settle_s`` old, it is an exponential average over ``tau_y_s`` (0.5 s)
+  instead: text runs across, so up and down within a look is mostly noise. In simulation that keeps
+  the ring within half a line of the eyes 55% of the time in prose (46% without) and 50% in code
+  (46%), for 17 ms more on near jumps and twice the lag behind a smooth vertical pursuit (a touchpad
+  scroll: 51 px at 150 px/s). It does not stop a real drift of the estimate (a drooping lid moving
+  the gaze down): that is followed, and measured (``gaze/drift.py``); on text the ring is held on
+  the line being read instead (``Tracker._snap``).
 - **A far jump.** A sample farther than ``k`` times the noise from the estimate is held back: a
   single one is an outlier (a bad frame) and is ignored. ``confirm`` far samples in a row that
   agree with each other are a saccade: the estimate jumps to them.
@@ -37,7 +44,7 @@ tighter threshold and a quicker ring. The far-jump threshold is kept within ``mi
 
 ``eval/ring_filter.py`` measures it against the One Euro ring on simulated webcam gaze (the PC's
 error model, 30 and 60 frames/s): at 30 frames/s it halves the shake and spread of the resting
-ring at 20 ms more latency on far jumps (eval/results/ring-filter.json has the numbers).
+ring at 16 ms more latency on far jumps (eval/results/ring-filter.json has the numbers).
 """
 
 from __future__ import annotations
@@ -63,6 +70,8 @@ class Stabilizer:
         width: float,
         *,
         tau_s: float = 0.2,
+        tau_y_s: float | None = 0.5,
+        settle_s: float = 0.3,
         k: float = 4.5,
         confirm: int = 2,
         k_window: float = 3.0,
@@ -72,6 +81,10 @@ class Stabilizer:
         scale_s: float = 3.0,
     ) -> None:
         self.tau_s, self.k, self.confirm, self.k_window, self.scale_s = tau_s, k, confirm, k_window, scale_s
+        # Vertically, once a fixation has settled, the estimate moves on this slower time constant:
+        # eyes at rest do not glide, so a slow vertical slide is the estimate drifting, not the eyes.
+        self.tau_y_s, self.settle_s = tau_y_s if tau_y_s is not None else tau_s, settle_s
+        self.since = 0.0  # when the current fixation began
         self.windows = tuple(sorted(windows))
         self.min_jump, self.max_jump = min_jump * width, max_jump * width
         # The noise: median distance of a sample (and of each window's median) from the estimate.
@@ -101,7 +114,7 @@ class Stabilizer:
         return min(max(self.k * self.scale, self.min_jump), self.max_jump)
 
     def _jump(self, points: list[tuple[float, float]], x: float, y: float) -> tuple[float, float]:
-        self.x, self.y, self.n = x, y, len(points)
+        self.x, self.y, self.n, self.since = x, y, len(points), self.t
         self.pending = []
         self.recent.clear()
         self.recent.extend(points)
@@ -110,7 +123,7 @@ class Stabilizer:
 
     def __call__(self, t: float, x: float, y: float) -> tuple[float, float]:
         if self.n == 0:
-            self.x, self.y, self.n, self.t = x, y, 1, t
+            self.x, self.y, self.n, self.t, self.since = x, y, 1, t, t
             self.recent.append((x, y))
             return x, y
         dt = max(t - self.t, 1e-3)
@@ -131,9 +144,14 @@ class Stabilizer:
                 )
         else:
             self.pending = []
-            gain = max(1.0 / (self.n + 1), 1.0 - math.exp(-dt / self.tau_s))
+            mean = 1.0 / (self.n + 1)
+            gain = max(mean, 1.0 - math.exp(-dt / self.tau_s))
             self.x += gain * (x - self.x)
-            self.y += gain * (y - self.y)
+            if self.tau_y_s != self.tau_s and t - self.since >= self.settle_s:
+                # Settled: no longer the fixation's plain mean, which would follow a slide at half its rate.
+                self.y += (1.0 - math.exp(-dt / self.tau_y_s)) * (y - self.y)
+            else:
+                self.y += gain * (y - self.y)
             self.n += 1
         recent = list(self.recent)
         for w in self.windows:

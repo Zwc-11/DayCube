@@ -13,7 +13,16 @@ import pytest
 pytest.importorskip("cv2")
 
 from gaze.head import GazeModel, HeadEstimator, Poser, pack  # noqa: E402
-from gaze.learn import CLICKS_FILE, HISTORY_FILE, LEARNED_FILE, Learner, steady  # noqa: E402
+from gaze.learn import (  # noqa: E402
+    CLICKS_FILE,
+    HISTORY_FILE,
+    LEARNED_FILE,
+    LINES_FILE,
+    TUNED_FILE,
+    Learner,
+    Settings,
+    steady,
+)
 from test_head import CAMERA, GRID, HOME, MOVED, SCREEN, face  # noqa: E402
 
 MONITOR = (1920, 1080)
@@ -248,3 +257,188 @@ def test_the_tracker_records_the_first_frame_an_update_reaches(tmp_path: Path) -
     assert tracker.state()["learning"]["applied"]["version"] == learner.version
     events = [json.loads(line)["event"] for line in (tmp_path / HISTORY_FILE).read_text().splitlines()]
     assert events[-1] == "applied" and "fit" in events
+
+
+def test_an_update_loaded_at_start_is_recorded_as_applied_on_the_first_frame(tmp_path: Path) -> None:
+    """The tracker restarted: the learner loads update N before the tracker exists, and the first
+    frame predicts with it. That frame records it applied (doctor waited for the next fit)."""
+    from gaze.track import Tracker
+    from test_track import CALIBRATION, Camera, Clock, Computer, Receiver, Scene
+
+    first = Learner(estimator(), MONITOR, tmp_path, CALIBRATED)
+    for k, (x, y, v, _) in enumerate(clicks(120, seed=3)):
+        first.add(1_800_000_000.0 + 2 * k, x, y, v)
+    assert first.version >= 1
+    est = estimator()
+    learner = Learner(est, MONITOR, tmp_path, CALIBRATED)  # after the restart
+    assert learner.version == first.version and learner.applied is None
+    vector = pack(Poser(CAMERA).measure(face((700, 400), *HOME)))
+
+    class Head:
+        model = est.model
+
+        def extract_features(self, frame: object) -> tuple[np.ndarray, bool]:
+            return vector, False
+
+        def predict(self, X: np.ndarray) -> np.ndarray:
+            return est.predict(X)
+
+    clock, scene, log = Clock(), Scene(), []
+    tracker = Tracker(Head(), lambda: Camera(scene, log), Receiver(), CALIBRATION | {"monitor": list(MONITOR)},
+                      system=Computer(), clock=clock, sleep=clock.sleep, timer=clock, learner=learner)  # fmt: skip
+    for _ in range(200):
+        tracker.step()
+        if learner.applied:
+            break
+    assert learner.applied is not None and learner.applied["version"] == first.version
+    assert learner.applied["after_ms"] is None  # fitted before this tracker started
+
+
+def lines(n: int, seed: int, shift: float = 0.0) -> list[tuple[float, float, float, np.ndarray, np.ndarray]]:
+    """(y, x0, x1, frame vector, true point): looks along lines being read, from the moved head
+    poses; the label's height ``shift`` px off where the eyes were (a decoder a line astray)."""
+    rng = np.random.default_rng(seed)
+    poser = Poser(CAMERA)
+    out = []
+    for k in range(n):
+        R, t = MOVED[k % len(MOVED)] if k % 3 else HOME
+        looked = rng.uniform([360, 60], [1560, 1020])
+        vector = pack(poser.measure(face(tuple(looked), R, t, rng)))
+        x0 = looked[0] - rng.uniform(50, 550)
+        out.append((float(looked[1] + shift), float(x0), float(x0 + 600), vector, looked))
+    return out
+
+
+def test_reading_lines_teach_what_clicks_alone_learn_slowly() -> None:
+    """A calibration off vertically; few clicks, many lines read: the lines carry the vertical."""
+    test = clicks(60, seed=99)
+    results = {}
+    for use_lines in (False, True):
+        est = estimator(offset=(0.0, -90.0))
+        learner = Learner(est, MONITOR, None, CALIBRATED)
+        stream = sorted(
+            [(1_800_000_000.0 + 30 * k, "click", c) for k, c in enumerate(clicks(40, seed=7))]
+            + [(1_800_000_000.0 + 3 * k + 1, "line", ln) for k, ln in enumerate(lines(400, seed=8))],
+            key=lambda e: e[0],
+        )
+        for t, kind, item in stream:
+            if kind == "click":
+                learner.add(t, item[0], item[1], item[2])
+            elif use_lines:
+                learner.add_line(t, item[0], item[1], item[2], item[3])
+        predicted = est.predict(np.array([v for *_, v, _ in test]))
+        results[use_lines] = float(np.median(np.abs(predicted[:, 1] - np.array([p[1] for *_, p in test]))))
+        if use_lines:
+            assert learner.line_counts["used"] > 300 and learner.fit["lines"] > 0
+    assert results[True] < 0.75 * results[False], results  # the vertical, which lines label
+
+
+def test_lines_a_decoder_got_wrong_cannot_make_tracking_worse() -> None:
+    """Every line 150 px off (a decoder astray): clicks judge every fit, so none of it is taken
+    unless the clicks say the model is better."""
+    est = estimator(offset=(0.0, 0.0))
+    learner = Learner(est, MONITOR, None, CALIBRATED, settings=Settings(line_weight=1.0))
+    test = clicks(60, seed=99)
+    before = error(est, test)
+    stream = sorted(
+        [(1_800_000_000.0 + 20 * k, "click", c) for k, c in enumerate(clicks(120, seed=9))]
+        + [(1_800_000_000.0 + 2 * k + 1, "line", ln) for k, ln in enumerate(lines(1200, seed=10, shift=150.0))],
+        key=lambda e: e[0],
+    )
+    for t, kind, item in stream:
+        if kind == "click":
+            learner.add(t, item[0], item[1], item[2])
+        else:
+            learner.add_line(t, item[0], item[1], item[2], item[3])
+    assert error(est, test) <= before * 1.05, (before, error(est, test))
+
+
+def test_a_line_label_finds_the_fixation_it_names(tmp_path: Path) -> None:
+    est = estimator(offset=(0.0, 0.0))
+    learner = Learner(est, MONITOR, tmp_path, CALIBRATED)
+    vector = pack(Poser(CAMERA).measure(face((700, 400), *HOME)))
+    x, y = est.predict(vector[None, :])[0]
+    t0 = 1_800_000_000.0
+    for k in range(9):
+        learner.frame(t0 + k / 30, vector, float(x), float(y))
+    learner.fixation("f1", t0, t0 + 8 / 30)
+    learner.fixation("f2", t0 + 0.2, t0 + 0.25)  # one frame: too short to keep
+    assert learner.line("f1", 400.0, 500.0, 1100.0) == "used"
+    assert learner.line("f1", 400.0, 500.0, 1100.0) == "fixation not found"  # each look labels once
+    assert learner.line("f2", 400.0, 500.0, 1100.0) == "fixation not found"
+    assert learner.line("f3", 400.0, 500.0, 1100.0) == "fixation not found"
+    kept = learner.lines[0]
+    assert kept.kind == "line" and kept.span == (500.0, 1100.0) and 500 <= kept.x <= 1100 and kept.y == 400.0
+    saved = [json.loads(line) for line in (tmp_path / LINES_FILE).read_text().splitlines()]
+    assert saved[0]["span"] == [500.0, 1100.0]
+    again = Learner(estimator(offset=(0.0, 0.0)), MONITOR, tmp_path, CALIBRATED)
+    assert len(again.lines) == 1 and again.lines[0].span == (500.0, 1100.0)
+    assert learner.state()["lines"] == {"used": 1, "off the line": 0, "fixation not found": 3, "kept": 1}
+
+
+def test_settings_are_held_to_their_bounds_and_tuned_ones_are_read_before_a_fit(tmp_path: Path) -> None:
+    settings = Settings.from_json({"gate_k": 99, "refit_every": 7.6, "line_weight": "x", "unknown": 1})
+    assert settings.gate_k == 6.0 and settings.refit_every == 8 and settings.line_weight == Settings().line_weight
+    assert Settings.from_json(None) == Settings()
+    learner = Learner(estimator(), MONITOR, tmp_path, CALIBRATED)
+    assert learner.settings == Settings()
+    (tmp_path / TUNED_FILE).write_text(json.dumps({"settings": {"refit_every": 40, "gate_k": 2.0}}))
+    learner.refit()  # too few clicks to fit, but the settings are read first
+    assert learner.settings.refit_every == 40 and learner.settings.gate_k == 2.0
+    assert learner.state()["tuned"] is True
+    fixed = Learner(estimator(), MONITOR, tmp_path, CALIBRATED, settings=Settings(refit_every=10))
+    fixed.refit()
+    assert fixed.settings.refit_every == 10  # settings given are kept
+
+
+def drooped(vector: np.ndarray, mm: float) -> np.ndarray:
+    out = np.array(vector, dtype=float)
+    out[[20, 24]] += mm  # each eye's upper lid (head frame y points down)
+    return out
+
+
+def droop_px(model_estimator: HeadEstimator, sample: list, mm: float = 1.0) -> float:
+    X = np.array([v for *_, v, _ in sample])
+    moved = model_estimator.predict(np.array([drooped(v, mm) for v in X])) - model_estimator.predict(X)
+    return float(np.median(moved[:, 1]))
+
+
+def test_stares_teach_that_a_drooping_lid_is_not_a_look_down(tmp_path: Path) -> None:
+    """The calibrated model reads the vertical partly from the lids, so a lid drooping over a long
+    stare moves the gaze down. Stares (the eyes did not move; the lids came down 0.3-0.9 mm) teach
+    the fit to stop that, and the clicks' error does not suffer."""
+    test = clicks(60, seed=99)
+    results = {}
+    for weight in (0.0, 1.0):
+        est = estimator(offset=(40.0, -30.0))
+        learner = Learner(est, MONITOR, tmp_path if weight else None, CALIBRATED,
+                          settings=Settings(stare_weight=weight))  # fmt: skip
+        before = droop_px(est, test)
+        rng = np.random.default_rng(3)
+        for k, (x, y, vector, _) in enumerate(clicks(200, seed=1)):
+            t = 1_800_000_000.0 + 2 * k
+            if k % 4 == 0:
+                assert learner.add_stare(t - 1, vector, drooped(vector, rng.uniform(0.3, 0.9)), 4.0) == "used"
+            learner.add(t, x, y, vector)
+        results[weight] = (droop_px(est, test), error(est, test), learner.version)
+    assert before > 10  # the calibration: 1 mm of droop moves the gaze down
+    (droop_plain, error_plain, v_plain), (droop_stares, error_stares, v_stares) = results[0.0], results[1.0]
+    assert v_plain >= 1 and v_stares >= 1
+    assert abs(droop_stares) < 0.5 * abs(droop_plain), results
+    assert error_stares < 1.1 * error_plain, results
+    state = learner.state()
+    assert state["stares"]["used"] == 50 and state["fit"]["stares"] > 0
+    assert len((tmp_path / "stares.jsonl").read_text().splitlines()) == 50
+    again = Learner(estimator(offset=(40.0, -30.0)), MONITOR, tmp_path, CALIBRATED)
+    assert len(again.stares) == 50  # kept for this calibration
+
+
+def test_a_stare_whose_ends_the_model_puts_far_apart_is_not_used() -> None:
+    est = estimator(offset=(0.0, 0.0))
+    learner = Learner(est, MONITOR, None, CALIBRATED)
+    rng = np.random.default_rng(8)
+    poser = Poser(CAMERA)
+    a, b = (pack(poser.measure(face(point, *HOME, rng))) for point in ((300.0, 300.0), (1500.0, 800.0)))
+    learner.add_stare(1_800_000_000.0, a, a)
+    assert learner.add_stare(1_800_000_010.0, a, b) == "moved"  # the eyes moved: not a stare
+    assert len(learner.stares) == 1 and learner.state()["stares"] == {"used": 1, "moved": 1, "kept": 1}

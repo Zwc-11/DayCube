@@ -29,6 +29,7 @@ from .config import Settings
 from .contracts import ContractError
 from .generated.event import Event
 from .index.embed import Embedder, default_embedder
+from .notes.graph import NoteGraph
 from .notes.read import DayNotes, attach_notes, read_note
 from .store import EmbeddingModelChanged, LifeStore
 from .time import instant
@@ -36,8 +37,18 @@ from .vault import Record, Vault, read_json
 
 log = logging.getLogger("daycube.api")
 
-MEDIA_SUFFIXES = frozenset({".jpg", ".jpeg", ".png", ".svg", ".mp4", ".wav", ".glb", ".ply", ".spz"})
+MEMORY_FILES = {"photo.jpg": "image/jpeg", "memory.splat": "application/octet-stream"}
+MEDIA_SUFFIXES = frozenset({".jpg", ".jpeg", ".png", ".svg", ".mp4", ".wav", ".m4a", ".mp3", ".glb", ".ply", ".spz", ".splat"})
+# Types the platform may not know (Windows has no .m4a in its registry by default).
+MEDIA_TYPES = {
+    ".m4a": "audio/mp4",
+    ".mp3": "audio/mpeg",
+    ".glb": "model/gltf-binary",
+    ".spz": "application/octet-stream",
+    ".splat": "application/octet-stream",
+}
 SAFE_ID = re.compile(r"[A-Za-z0-9_-]+")
+SAFE_FILE = re.compile(r"[A-Za-z0-9_-]+\.json")
 MAX_JOBS = 100
 
 
@@ -68,7 +79,18 @@ class SpeakerRequest(RequestModel):
     date: str
     moment_id: str
     diar_label: str
-    person_id: str = Field(pattern=r"^person:[A-Za-z0-9_-]+$")
+    person_id: str = Field(pattern=r"^person:[\w-]{1,80}$")  # letters of any script: names are not only ASCII
+
+
+class LabelRequest(RequestModel):
+    """A correction of what a window or page, or a whole app or site, is (ingest/review/labels.py).
+    ``category`` absent: unchanged; ``project`` null: no project; ``clear``: back to the rules."""
+
+    date: str
+    key: str = Field(min_length=5, max_length=2200)
+    category: str | None = Field(default=None, max_length=32)
+    project: str | None = Field(default=None, max_length=80)
+    clear: bool = False
 
 
 def sse(event: str, value: Record) -> str:
@@ -89,6 +111,15 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
     bearer = HTTPBearer(auto_error=False)
 
     day_notes = DayNotes(store)
+    note_graph = NoteGraph(store, day_notes)
+    # The end-of-day review (ingest/review): which language model words it and labels unknown apps
+    # and sites, if any (off by default: the template, and nothing leaves this machine).
+    from .integrations.models import language_model
+    from .review.labels import llm_labeler
+
+    review_model, review_by = language_model(settings.summary_llm, "DAYCUBE_SUMMARY_LLM")
+    labeler, labels_by = llm_labeler(settings.category_llm)
+    writers = {"summary": review_by if review_model else f"template ({review_by})", "categories": labels_by}
 
     def warm_up() -> None:
         started = perf_counter()
@@ -254,6 +285,17 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
         the notes it links to and that link to it, and its local graph."""
         return day_notes.view(date)
 
+    @app.get("/notes/graph")
+    def notes_graph(request: Request) -> Response:
+        """Every note in vault/notes (path, kind) and every [[link]] between them, links to notes
+        not written yet as their own nodes (``missing``): the vault's graph. Every recorded day gets
+        its daily note first. Tagged: a client holding the current copy gets an empty 304."""
+        body, etag = note_graph.tagged()
+        headers = {"ETag": etag, "Cache-Control": "no-cache"}
+        if etag in (tag.strip().removeprefix("W/") for tag in request.headers.get("if-none-match", "").split(",")):
+            return Response(status_code=304, headers=headers)
+        return Response(body, media_type="application/json", headers=headers)
+
     @app.get("/note")
     def note(path: str = Query(..., max_length=1000)) -> Record:
         """One note in vault/notes: its Markdown, its links (each with the note it opens) and backlinks."""
@@ -266,6 +308,23 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
         from .datacenter import report
 
         return report(store)
+
+    @app.get("/training")
+    def training_runs() -> list[Record]:
+        """Every training run on this PC (vault/training), newest first, with its last measurement."""
+        from .training import runs
+
+        return runs(store.vault.root)
+
+    @app.get("/training/{run_id}")
+    def training_run(run_id: str) -> Record:
+        """One run and its measurements as columns."""
+        from .training import series
+
+        found = series(store.vault.root, run_id)
+        if found is None:
+            raise FileNotFoundError(run_id)
+        return found
 
     @app.get("/gaze/learning")
     def gaze_learning(request: Request) -> Response:
@@ -302,11 +361,22 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
         if not SAFE_ID.fullmatch(moment_id):
             raise ValueError("Invalid moment id")
         path = vault.day_path(date) / "moments" / moment_id
-        return {
-            "meta": read_json(path / "meta.json"),
-            "scene": read_json(path / "scene.json"),
-            "transcript": read_json(path / "transcript.json"),
-        }
+        scene = read_json(path / "scene.json")
+        out = {"meta": read_json(path / "meta.json"), "scene": scene, "transcript": read_json(path / "transcript.json")}
+        # A capture's camera path (phone imports): small enough to send with the moment.
+        camera = scene.get("path") if isinstance(scene, dict) else None
+        if isinstance(camera, str) and SAFE_FILE.fullmatch(camera) and (path / camera).is_file():
+            out["camera"] = read_json(path / camera)
+        # A scan in 3D: where the camera was every few frames, for the viewer to follow the walk.
+        splat = scene.get("splat") if isinstance(scene, dict) else None
+        if isinstance(splat, dict) and (path / "splat" / "cameras.json").is_file():
+            out["splat_cameras"] = read_json(path / "splat" / "cameras.json")
+        # A recording's speech (services/speech): per turn its emotion and fillers, sound events,
+        # and whose voice each speaker is.
+        if (path / "speech.json").is_file():
+            speech = read_json(path / "speech.json")
+            out["speech"] = {k: speech.get(k) for k in ("languages", "speakers", "turns", "events", "voices", "models")}
+        return out
 
     @app.get("/vault/{date}/{asset_path:path}")
     def asset(date: str, asset_path: str) -> FileResponse:
@@ -320,8 +390,48 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
             raise HTTPException(404, "Asset not found")
         return FileResponse(
             candidate,
+            media_type=MEDIA_TYPES.get(candidate.suffix.lower()),
             headers={"X-Content-Type-Options": "nosniff", "Content-Security-Policy": "default-src 'none'; sandbox"},
         )
+
+    # Memories: photos you can step into (ingest/recon/memory.py), in their day's ``memories``.
+    @app.get("/memories")
+    def memories() -> list[Record]:
+        """Newest first: each memory's day, id and what the viewer needs to show it."""
+        out = []
+        for meta_path in vault.root.glob("????-??-??/memories/mem_*/memory.json"):
+            try:
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            keep = ("width", "height", "fx", "fov_y_deg", "splats", "depth_m", "model", "made", "source")
+            date = meta_path.parents[2].name
+            item = {"date": date, "id": meta_path.parent.name, **{k: meta.get(k) for k in keep}}
+            # A photo from a scan stands in that scan's world: its splat (trained, else the LiDAR's)
+            # and where the photo was taken in it.
+            world = meta.get("world")
+            if isinstance(world, dict) and re.fullmatch(r"[\w.-]+", str(world.get("moment", ""))):
+                scene = read_json(vault.root / date / "moments" / world["moment"] / "scene.json") or {}
+                splat = scene.get("splat") if isinstance(scene.get("splat"), dict) else {}
+                name = splat.get("trained") or splat.get("lidar")
+                if name:
+                    item["world"] = {**world, "splat": f"moments/{world['moment']}/{name}", "trained": bool(splat.get("trained")),
+                                     "bounds": splat.get("bounds")}  # fmt: skip
+            out.append(item)
+        return sorted(out, key=lambda m: (m["date"], str(m.get("made"))), reverse=True)
+
+    @app.get("/memories/{date}/{ident}/{name}")
+    def memory_file(date: str, ident: str, name: str) -> FileResponse:
+        if (
+            not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date)
+            or not re.fullmatch(r"mem_[0-9a-f]{12}", ident)
+            or name not in MEMORY_FILES
+        ):
+            raise HTTPException(404, "Memory not found")
+        path = vault.safe_path(f"{date}/memories/{ident}/{name}")
+        if not path.is_file():
+            raise HTTPException(404, "Memory not found")
+        return FileResponse(path, media_type=MEMORY_FILES[name], headers={"X-Content-Type-Options": "nosniff"})
 
     @app.post("/ask", dependencies=[Depends(authorize)], response_model=None)
     def answer(body: AskRequest, stream: bool = False) -> Record | StreamingResponse:
@@ -439,7 +549,77 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
             transcript["speaker_map"][body.diar_label] = body.person_id
             vault.write_json(path, transcript)
             vault.invalidate_index(body.date)
-        return {"ok": True, "message": "Speaker map saved; quote event regeneration is not implemented yet"}
+            # Given by hand, even when it is the name the voice already had.
+            speech_path = path.with_name("speech.json")
+            speech = read_json(speech_path) if speech_path.is_file() else None
+            if isinstance(speech, dict) and isinstance(speech.get("voices"), dict):
+                entry = speech["voices"].setdefault(body.diar_label, {"voice": None})
+                entry.update(person=body.person_id, how="confirmed")
+                vault.write_json(speech_path, speech)
+        # The name goes with the voice: every other recording where it speaks gets it too.
+        from .voices import update as spread_names
+
+        spread_names(vault)
+        return {"ok": True, "message": "Speaker named here and wherever their voice speaks"}
+
+    def local_now() -> datetime:
+        return datetime.now(ZoneInfo(settings.timezone))
+
+    def refresh_daily(date: str) -> None:
+        """The day's daily note shows its review at the top: written again with it."""
+        if store.knows(date):
+            from .notes import Notes
+
+            Notes(store).write_day(date)
+
+    @app.get("/day/{date}/review")
+    def day_review(date: str) -> Record:
+        """The day's end-of-day review (null until one is written), its timeline (written now if
+        the day has none yet), the categories to relabel with, and who words the review."""
+        from .review.summary import view
+
+        vault.day_path(date, must_exist=False)  # a valid date, or 400
+        return view(vault, date, settings.timezone, now=local_now(), writers=writers)
+
+    @app.post("/day/{date}/review", dependencies=[Depends(authorize)])
+    def summarize_day(date: str) -> Record:
+        """Write the day's review now (a draft while the day is under way), then return the view."""
+        from .review.summary import view, write_review
+
+        vault.day_path(date, must_exist=False)
+        now = local_now()
+        out = write_review(vault, store, date, settings.timezone, now=now, model=review_model, labeler=labeler, force=True)
+        if out["review"] is not None:
+            refresh_daily(date)
+        return view(vault, date, settings.timezone, now=now, writers=writers) | {
+            "result": {"written": out["written"], "why": out["why"]}
+        }
+
+    @app.post("/labels", dependencies=[Depends(authorize)])
+    def relabel(body: LabelRequest) -> Record:
+        """Correct a category or project, rebuild that day's timeline, and write its review again
+        if it has one and its facts changed. Other days follow when they are next written."""
+        from .review import timeline as day_timeline
+        from .review.labels import UNSET, correct
+        from .review.summary import day_zone, read_review, view, write_review
+
+        vault.day_path(body.date, must_exist=False)
+        given = body.model_fields_set
+        correct(
+            vault, body.key, clear=body.clear,
+            category=body.category if "category" in given and body.category is not None else UNSET,
+            project=body.project if "project" in given else UNSET,
+        )  # fmt: skip
+        now = local_now()
+        if read_review(vault, body.date) is not None:
+            out = write_review(vault, store, body.date, settings.timezone, now=now, model=review_model, labeler=labeler)
+            if out["written"]:
+                refresh_daily(body.date)
+        elif day_timeline.has_inputs(vault, body.date):
+            zone = day_zone(vault, body.date, settings.timezone)
+            under_way = now < day_timeline.window(body.date, ZoneInfo(zone))[1]
+            day_timeline.write(vault, body.date, zone, now=now if under_way else None, labeler=labeler)
+        return view(vault, body.date, settings.timezone, now=now, writers=writers)
 
     @app.delete("/day/{date}/hours", dependencies=[Depends(authorize)])
     def delete_hours(date: str) -> None:

@@ -17,13 +17,15 @@ import contextlib
 import json
 import re
 import sys
-from datetime import UTC, datetime
+import time
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import httpx
 
 from .restart import code_stamp
+from .supervise import speech_python
 
 PASS, WARN, FAIL, INFO = "pass", "warn", "FAIL", "info"
 # Median error at which paragraphs at 100% zoom stop being separable: a 1920 px wide 24" monitor at
@@ -37,6 +39,9 @@ LOGS = (
     "reading.jsonl",
     "health.jsonl",
     "windows.jsonl",
+    "inputs.jsonl",
+    "doing.jsonl",
+    "phone-events.jsonl",
 )
 RESTART = "run python -m capture restart"
 
@@ -82,6 +87,7 @@ def tracker_log(vault: Path) -> str | None:
     text = last[24:].strip()
     for prefix in ("gaze ", "capture.gaze "):
         text = text.removeprefix(prefix)
+    text = f"{last[:16]} {text}"  # when: the last such line can be from days before
     crash = _crash(_tail(vault / "logs" / "gaze.log"))
     if crash and crash not in text:
         text += f" (the tracker's error: {crash})"
@@ -121,7 +127,11 @@ def _learning(gaze: dict) -> list[tuple[str, str, str]]:
     clicks, skipped = learning.get("clicks", 0), learning.get("skipped") or {}
     fit, version = learning.get("fit"), learning.get("version", 0)
     away = skipped.get("not looking", 0)
-    counted = f"{clicks} clicks since calibration" + (f", {away} made without looking at the spot" if away else "")
+    read = (learning.get("lines") or {}).get("used", 0)
+    counted = (
+        f"{clicks} clicks since calibration" + (f", {away} made without looking at the spot" if away else "")
+        + (f"; {read} lines read as labels" if read else "")
+    )  # fmt: skip
     if fit is None:
         return [(INFO, "learning", f"from clicks: {counted}; the first check needs 30 usable clicks")]
     errors = fit.get("error_px") or {}
@@ -159,6 +169,88 @@ def _learning(gaze: dict) -> list[tuple[str, str, str]]:
     )]  # fmt: skip
 
 
+def _drift(gaze: dict) -> list[tuple[str, str, str]]:
+    """Whether the gaze slides while the eyes rest, and what slides with it (services/gaze/gaze/drift.py)."""
+    drift = gaze.get("drift") if gaze.get("tracking") else None
+    if not drift or drift.get("gaze_px_s") is None:
+        return []
+    rate = drift["gaze_px_s"]
+    detail = (
+        f"over the last {drift['stares']} stares ({drift['seconds']:.0f} s), the gaze slid {abs(rate):.1f} px/s "
+        + ("down" if rate > 0 else "up")
+    )
+    if abs(rate) < 3:
+        return [(PASS, "stare drift", detail + ": steady")]
+    # What moved with it, in the units each is measured in, largest share of the slide first.
+    lids, iris = drift.get("lids_mm_s"), drift.get("iris_per_s")
+    pitch, distance = drift.get("pitch_deg_s"), drift.get("distance_mm_s")
+    causes = []
+    if lids is not None and abs(lids) >= 0.01:
+        causes.append(f"the lids {'closed' if lids < 0 else 'opened'} {abs(lids) * 60:.1f} mm a minute")
+    if iris is not None and abs(iris) >= 0.0005:
+        causes.append(f"the irises read {'lower' if iris > 0 else 'higher'} in the eye")
+    if pitch is not None and abs(pitch) >= 0.02:
+        causes.append(f"the head's tilt changed {abs(pitch) * 60:.1f} degrees a minute")
+    if distance is not None and abs(distance) >= 0.5:
+        causes.append(f"the head moved {'away' if distance > 0 else 'closer'} {abs(distance) * 60:.0f} mm a minute")
+    why = "; meanwhile " + ", ".join(causes) if causes else "; nothing measured moved with it"
+    return [(INFO, "stare drift", detail + why)]
+
+
+def _no_gaze(gaze: dict) -> list[tuple[str, str, str]]:
+    """Why frames with a face give no gaze: the eyes read as closed, or a gaze ray that meets no
+    screen. Either one in most frames means no fixations and no ring, though the face is found."""
+    closed, missed, resets = gaze.get("eyes_closed"), gaze.get("ray_missed"), gaze.get("blink_resets")
+    if closed is None and missed is None:
+        return []
+    out = []
+    if closed is not None and closed >= 0.5:
+        out.append((
+            FAIL if closed >= 0.9 else WARN,
+            "eyes open",
+            f"read as closed in {closed:.0%} of frames with a face, so those give no gaze"
+            + (f"; the blink test has relearned open eyes {resets} times since start" if resets else "")
+            + ". Eyes open and still closed: light on the face, or recalibrate",
+        ))  # fmt: skip
+    if missed is not None and missed >= 0.5:
+        out.append((
+            FAIL if missed >= 0.9 else WARN,
+            "gaze ray",
+            f"meets no screen in {missed:.0%} of frames with a face: recalibrate "
+            "(uv run --project services/gaze python -m gaze calibrate)",
+        ))  # fmt: skip
+    if not out:
+        share = 1 - (closed or 0) - (missed or 0)
+        out.append((PASS, "gaze from the face", f"{share:.0%} of frames with a face give a gaze point"))
+    return out
+
+
+def _inputs(status: dict) -> list[tuple[str, str, str]]:
+    """The typing and mouse counter and the Alt+Shift+N box (Windows only; older receivers have neither)."""
+    out = []
+    inputs, doing = status.get("inputs"), status.get("doing")
+    if inputs is not None and sys.platform == "win32":
+        if inputs.get("running"):
+            last = inputs.get("last")
+            when = f"last count at {last[11:16]}" if last else "no input counted yet"
+            skipped = inputs.get("skipped_private") or 0
+            out.append((PASS, "typing and mouse", f"counted in 10 s buckets (counts only): {when}"
+                        + (f"; {skipped} events in private windows left out" if skipped else "")))  # fmt: skip
+            if inputs.get("injected"):
+                last_soft = inputs.get("injected_last") or ""
+                out.append((INFO, "software input", f"{inputs['injected']} key and mouse events sent by programs since the "
+                            f"receiver started (last at {last_soft[11:16]}): not counted as you, so a PC kept busy by "
+                            "agents or a keep-awake tool is away, not at the desk"))  # fmt: skip
+        else:
+            out.append((WARN, "typing and mouse", f"not counted: {inputs.get('error') or 'not running'}: " + RESTART))
+    if doing is not None and sys.platform == "win32":
+        if doing.get("running"):
+            out.append((PASS, "doing-now box", f"Alt+Shift+N opens it; {doing.get('saved', 0)} lines since start"))
+        elif doing.get("error"):
+            out.append((WARN, "doing-now box", f"Alt+Shift+N does not open it: {doing['error']}"))
+    return out
+
+
 def _screen(status: dict) -> list[tuple[str, str, str]]:
     """Reading the window under the gaze in other apps (screen.py)."""
     screen = status.get("screen")
@@ -191,13 +283,227 @@ def _screen(status: dict) -> list[tuple[str, str, str]]:
     return [(PASS, "screen reading", detail)]
 
 
+def _tuning(vault: Path) -> list[tuple[str, str, str]]:
+    """The last tuning of learning to your clicks (services/gaze/gaze/tune.py), from its file."""
+    try:
+        tuned = json.loads((vault / "calibration" / "gaze-tuned.json").read_text(encoding="utf-8"))
+        held = tuned["replay"]["held_out_px"]
+        detail = (
+            f"{tuned['t'][:10]}: {tuned['clicks']} clicks replayed; on the newest "
+            f"{tuned['replay']['held_out_clicks']}, {held['in_use']} px with the settings in use, {held['best']} px "
+            "with the best found: "
+        )
+    except (OSError, ValueError, KeyError, TypeError):
+        return []
+    changed = tuned.get("changed") or {}
+    if tuned.get("accepted"):
+        return [
+            (PASS, "tuning", detail + "taken (" + ", ".join(f"{k} {a} -> {b}" for k, (a, b) in changed.items()) + ")")
+        ]
+    return [(INFO, "tuning", detail + "kept the settings in use (not 3% better)")]
+
+
+def _jobs(vault: Path, now: float | None = None) -> list[tuple[str, str, str]]:
+    """The vault's jobs (capture.jobs): what runs, what waits and why, what failed."""
+    try:
+        from ingest.jobs.stages import STAGES
+        from ingest.jobs.store import Jobs
+    except ImportError:
+        return []
+    if not (vault / "jobs.sqlite").is_file():
+        return []
+    jobs = Jobs.of(vault)
+    try:
+        state = jobs.status(now=now)
+    finally:
+        jobs.close()
+    now = time.time() if now is None else now
+
+    def what(job: dict) -> str:
+        inputs = job["inputs"]
+        return "/".join(str(inputs[k]) for k in ("date", "moment") if k in inputs) or json.dumps(inputs)
+
+    def title(name: str) -> str:
+        stage = STAGES.get(name)
+        return (stage.title if stage and stage.title else name).capitalize()
+
+    rows = []
+    for job in state["running"]:
+        minutes = (now - (job.get("started") or now)) / 60
+        rows.append(
+            (INFO, "jobs", f"{title(job['stage'])} of {what(job)}: running {minutes:.0f} min ({job['worker']})")
+        )
+    for name, counts in sorted(state["stages"].items()):
+        if not counts["queued"]:
+            continue
+        stage = STAGES.get(name)
+        if stage is not None and not stage.ready():
+            when = f"once it is installed: {stage.install or 'see docs/jobs.md'}"
+        elif (
+            stage is not None and stage.run is None and name in ("speech", "conversations") and speech_python() is None
+        ):
+            rows.append((WARN, "jobs", f"{title(name)}: {counts['queued']} waiting, and the speech worker is not"
+                         " installed: uv sync --project services/speech (docs/speech.md)"))  # fmt: skip
+            continue
+        elif stage is not None and stage.run is None:
+            when = f"by {stage.worker or 'its worker'}, when you are away 10 min or at night"
+        elif stage is not None and stage.needs == "gpu":
+            when = "when you are away 10 min, or at night"
+        else:
+            when = "next"
+        rows.append((INFO, "jobs", f"{title(name)}: {counts['queued']} waiting, {when}"))
+    for job in state["failed"]:
+        reason = (job.get("error") or "").strip().splitlines()[-1:] or ["no reason kept"]
+        rows.append((WARN, "jobs", f"{title(job['stage'])} of {what(job)} failed: {reason[0][:160]}"
+                     f" (uv run daycube jobs retry --stage {job['stage']})"))  # fmt: skip
+    if not rows:
+        done = sum(c["done"] for c in state["stages"].values())
+        rows.append((PASS, "jobs", f"nothing waiting; {done} done"))
+    return rows
+
+
+def _speech_check(vault: Path) -> list[tuple[str, str, str]]:
+    """The speech models' last check (``python -m speech canary``, derived/speech/canary.json)."""
+    try:
+        report = json.loads((vault / "derived" / "speech" / "canary.json").read_text(encoding="utf-8"))
+    except (FileNotFoundError, ValueError):
+        return []
+    when = str(report.get("made", ""))[:16].replace("T", " ")
+    where = f"{report.get('asr', 'the models')} on {report.get('device', '?')}, {when} UTC"
+    if report.get("ok"):
+        return [(PASS, "speech check", f"{where}: zh CER {report.get('zh_cer')}, en WER {report.get('en_wer')}")]
+    why = (
+        report.get("why")
+        or f"zh CER {report.get('zh_cer')}, en WER {report.get('en_wer')}, speakers {report.get('speakers_ok')}"
+    )
+    return [(FAIL, "speech check", f"{where}: {why} (docs/speech.md, the check)")]
+
+
+OTHER_TARGET = 0.10  # the day timeline: at most this share of desk time in no category
+
+
+def _timeline(vault: Path, zone: ZoneInfo, now: datetime) -> list[tuple[str, str, str]]:
+    """The day timeline (ingest/review/timeline.py) of the review day under way and the one before:
+    time at the desk, and how much of it no category rule knew ("other"), with what it was."""
+    try:
+        from ingest.review.timeline import FILE, review_day
+        from ingest.vault import read_lines, stored
+    except ImportError:
+        return []
+    current = review_day(now, zone)
+    before = (date.fromisoformat(current) - timedelta(days=1)).isoformat()
+    rows = []
+    for day, when in ((before, "yesterday"), (current, "today so far")):
+        path = vault / day / FILE
+        if not stored(path).exists():
+            continue
+        try:
+            segments = read_lines(path)
+        except (OSError, ValueError) as error:
+            rows.append((WARN, "timeline", f"{day}: unreadable ({error})"))
+            continue
+        desk = other = 0.0
+        unknown: dict[str, float] = {}
+        for s in segments:
+            if s.get("where") != "desk":
+                continue
+            seconds = (datetime.fromisoformat(s["until"]) - datetime.fromisoformat(s["t"])).total_seconds()
+            desk += seconds
+            if s.get("category") == "other":
+                other += seconds
+                unknown[s.get("doing", "?")] = unknown.get(s.get("doing", "?"), 0.0) + seconds
+        if not desk:
+            rows.append((INFO, "timeline", f"{when} ({day}): nothing at the desk; {len(segments)} segments"))
+            continue
+        share = other / desk
+        detail = f"{when} ({day}): {desk / 3600:.1f} h at the desk, {share:.0%} in no category"
+        if share <= OTHER_TARGET:
+            rows.append((PASS, "timeline", detail))
+        else:
+            top = ", ".join(name[:40] for name, _ in sorted(unknown.items(), key=lambda kv: -kv[1])[:3])
+            rows.append((WARN, "timeline", f"{detail} (target {OTHER_TARGET:.0%}): most of it {top}. Add rules to "
+                         "vault/categories.yaml (docs/timeline.md)"))  # fmt: skip
+    if not rows:
+        rows.append((INFO, "timeline", "none written yet: the receiver writes it every 10 minutes"))
+    return rows
+
+
+def _review(vault: Path, zone: ZoneInfo, now: datetime) -> list[tuple[str, str, str]]:
+    """Yesterday's end-of-day review (ingest/review/summary.py): written, when, and by what."""
+    try:
+        from ingest.review.timeline import review_day
+    except ImportError:
+        return []
+    day = (date.fromisoformat(review_day(now, zone)) - timedelta(days=1)).isoformat()
+    path = vault / day / "review.json"
+    try:
+        review = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        if (vault / "capture" / day).is_dir() or (vault / day / "day.json").is_file():
+            return [(WARN, "review", f"none for yesterday ({day}): the receiver writes it after 04:00; "
+                     "uv run daycube review --date yesterday writes it now")]  # fmt: skip
+        return []
+    except (OSError, ValueError) as error:
+        return [(WARN, "review", f"yesterday's ({day}) is unreadable: {error}")]
+    when = str(review.get("made", ""))[:16].replace("T", " ")
+    writer = review.get("writer") or {}
+    detail = f"yesterday ({day}): {review.get('kind')}, written {when} by {writer.get('name')}"
+    rejected = writer.get("rejected") or []
+    if rejected:
+        return [(WARN, "review", detail + f"; the model's answer was not used ({rejected[-1][:140]})")]
+    return [(PASS if review.get("kind") == "final" else INFO, "review", detail)]
+
+
+PHONE_QUIET_S = 2 * 3600  # the app sends a heartbeat every hour
+
+
+def _phones(vault: Path, now: float | None = None) -> list[tuple[str, str, str]]:
+    """Paired phones (capture.phone_api): when each was last heard from, its battery and queue. A
+    phone quiet for two hours is recording nothing the vault will get (the app was swiped away,
+    the phone is off or offline)."""
+    path = vault / "capture" / "phone-devices.json"
+    try:
+        devices = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, ValueError):
+        return []
+    now = time.time() if now is None else now
+    rows = []
+    for device, info in sorted(devices.items()):
+        name = info.get("name") or device
+        last = info.get("last")
+        if not last:
+            rows.append((INFO, "phone", f"{name}: paired, nothing heard from it yet"))
+            continue
+        age = now - float(last.get("received", 0))
+        parts = []
+        if last.get("battery") is not None:
+            parts.append(f"battery {round(100 * last['battery'])}%" + (" charging" if last.get("charging") else ""))
+        if last.get("queue_files"):
+            parts.append(f"{last['queue_files']} files waiting to upload")
+        recording = [k for k, v in (last.get("state") or {}).items() if v and v != "off"]
+        if recording:
+            parts.append("recording " + ", ".join(recording))
+        heard = f"{age / 60:.0f} min ago" if age < 3600 else f"{age / 3600:.0f} h ago"
+        level = PASS if age < PHONE_QUIET_S else WARN
+        hint = "" if level == PASS else "; open DayCube Capture on the phone (never swipe it away)"
+        rows.append((level, "phone", f"{name}: heard {heard}" + (f", {', '.join(parts)}" if parts else "") + hint))
+    return rows
+
+
 def checks(status: dict | None, vault: Path, zone: ZoneInfo, now: datetime, autostart: str | None) -> list[tuple]:
     out: list[tuple[str, str, str]] = []
     if status is None:
         return [(FAIL, "receiver", "not running on 127.0.0.1:7700: start it, or sign out and in (autostart)")]
     out.append((WARN if status["paused"] else PASS, "receiver", "paused" if status["paused"] else "running"))
+    update = status.get("update") or {}
     if status.get("code") != code_stamp():  # it runs the code it started with, not the checkout's
-        out.append((FAIL, "receiver code", "older than this checkout (started before the last update): " + RESTART))
+        if update.get("problem"):
+            out.append((FAIL, "receiver code", f"older than this checkout, whose code does not import: {update['problem']}"))
+        elif update.get("running"):
+            out.append((WARN, "receiver code", "older than this checkout: it restarts on it by itself the next time "
+                                               "you are away for 5 minutes, or " + RESTART))  # fmt: skip
+        else:
+            out.append((FAIL, "receiver code", "older than this checkout (started before the last update): " + RESTART))
 
     age = _age(status.get("browser", {}).get("last"), now)
     if age is None:
@@ -218,8 +524,10 @@ def checks(status: dict | None, vault: Path, zone: ZoneInfo, now: datetime, auto
                 detail += f". Last from the tracker's logs: {last}"
         out.append((INFO if normal else FAIL, "eye tracker", detail))
     else:
-        if gaze.get("fps") and gaze.get("coverage") is None and gaze.get("noise_px") is None:
-            # A current tracker reports both within seconds of turning the camera on.
+        face_seen = (gaze.get("face") or 0) >= 0.8
+        if gaze.get("fps") and face_seen and gaze.get("coverage") is None and gaze.get("noise_px") is None:
+            # A current tracker reports both within seconds of turning the camera on, given a face
+            # (with none in view there are no fixations to measure: 7% of frames, 2026-10-25).
             out.append((WARN, "tracker code", "older than this checkout: restarting the receiver restarts it"))
         fps, target = gaze.get("fps"), gaze.get("target_fps") or 30
         out.append((PASS if fps and fps >= 0.8 * target else WARN, "frame rate", f"{fps} of {target} frames/s"))
@@ -239,6 +547,7 @@ def checks(status: dict | None, vault: Path, zone: ZoneInfo, now: datetime, auto
         face = gaze.get("face")
         verdict = PASS if face is not None and face >= 0.8 else WARN if face is not None and face >= 0.5 else FAIL
         out.append((verdict, "face found", "unknown" if face is None else f"{face:.0%} of frames"))
+        out += _no_gaze(gaze)
         timing = gaze.get("timing_ms")
         if timing and timing.get("frame") is not None:
             budget = 1000 / (gaze.get("target_fps") or 30)
@@ -325,6 +634,7 @@ def checks(status: dict | None, vault: Path, zone: ZoneInfo, now: datetime, auto
             out.append((PASS, "gaze ring", f"{points:.0f} live points/s, the page asks {asks:.0f} times/s"))
 
     out += _screen(status)
+    out += _inputs(status)
 
     saved = _calibration(vault)
     model = (saved or {}).get("model") or gaze.get("model")
@@ -359,6 +669,14 @@ def checks(status: dict | None, vault: Path, zone: ZoneInfo, now: datetime, auto
             out.append((WARN, "calibration", "the tracker still uses the calibration from before: " + RESTART))
 
     out += _learning(gaze)
+    out += _drift(gaze)
+    if gaze.get("tracking") and gaze.get("learning"):
+        out += _tuning(vault)
+    out += _jobs(vault)
+    out += _speech_check(vault)
+    out += _phones(vault)
+    out += _timeline(vault, zone, now)
+    out += _review(vault, zone, now)
 
     decoding = status.get("line_decoding") or {}
     seen = decoding.get("fixations", 0)

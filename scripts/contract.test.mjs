@@ -41,3 +41,36 @@ test('the generated Pydantic schema accepts the same fixture event', async () =>
   const result = execFileSync('uv', ['run', 'python', '-c', script], { cwd: root, input: JSON.stringify(event), encoding: 'utf8', windowsHide: true });
   assert.equal(result.trim(), 'ok');
 });
+
+test('the precompiled validators judge and explain exactly as ajv compiling the schemas does', async () => {
+  const { default: Ajv2020 } = await import('ajv/dist/2020.js');
+  const { default: addFormats } = await import('ajv-formats');
+  const contracts = JSON.parse(await readFile(new URL('../packages/schemas/src/contracts.json', import.meta.url), 'utf8'));
+  const ajv = new Ajv2020({ allErrors: true, strict: false });
+  addFormats(ajv);
+  const events = await jsonl('events.jsonl');
+  const broken = [
+    ...events.slice(0, 5).map(({ type, ...rest }) => rest),          // no type
+    ...events.slice(0, 5).map(e => ({ ...e, t: 'noon' })),            // wrong type
+    { ...(await json('day.json')), date: 'not-a-date' },              // format
+    null, 42, 'x', [],
+  ];
+  for (const [name, contract] of Object.entries(contracts)) {
+    const compiled = ajv.compile(contract);
+    for (const value of [...events, await json('day.json'), ...broken]) {
+      const expected = compiled(value) ? null : `${name}: ${ajv.errorsText(compiled.errors)}`;
+      let got = null;
+      try { validateContract(name, value); } catch (error) { got = error.message; }
+      assert.equal(got, expected, `${name} on ${JSON.stringify(value)?.slice(0, 80)}`);
+    }
+  }
+  assert.throws(() => validateContract('toString', {}), /Unknown contract/);
+});
+
+test('the copied ucs2length counts code points as ajv\'s does', async () => {
+  const { ucs2length } = await import('../packages/schemas/src/ucs2length.mjs');
+  const { default: reference } = await import('ajv/dist/runtime/ucs2length.js');
+  for (const s of ['', 'abc', '日本語', '😀', 'a😀b', '\ud83d', '\ud83dx', '\ude00', '😀😀\ud83d']) {
+    assert.equal(ucs2length(s), (reference.default ?? reference)(s), JSON.stringify(s));
+  }
+});

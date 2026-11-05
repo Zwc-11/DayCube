@@ -125,7 +125,16 @@ def test_a_stare_at_a_paragraph_becomes_a_dwell_signal_and_hook(
         snapshot = record("blocks", -12, doc="doc-1", geometry=GEOMETRY, blocks=blocks, **TAB)
         assert client.post("/events", json=[snapshot], headers=auth).json()["accepted"] == 1
         body = client.post("/gaze", json={"state": state, "fixations": fixations}, headers=auth).json()
-        assert body == {"accepted": 18, "duplicates": 0, "stale": 0, "live": False, "ring": False, "offset_grid": None}
+        assert body == {
+            "accepted": 18,
+            "duplicates": 0,
+            "stale": 0,
+            "live": False,
+            "ring": False,
+            "offset_grid": None,
+            "lines": [],
+            "reading": None,
+        }
         status = client.get("/status").json()["gaze"]
         assert status["tracking"] is True and status["error_px"] == 120.0
         signals = client.post("/events", json=[], headers=auth).json()["signals"]
@@ -249,8 +258,16 @@ def test_the_line_being_read_is_logged_shown_and_recorded(vault: Vault, auth: di
             truth.append(i)
             t += timedelta(seconds=0.3)
     with TestClient(create_capture_app(settings(vault), receive=True)) as client:
+        client.app.state.receiver.set_ring(True)  # the tracker's ring is on: the reply names the line for it
         assert client.post("/events", json=[blocks], headers=auth).json()["accepted"] == 1
-        assert client.post("/gaze", json={"state": state, "fixations": fixations}, headers=auth).status_code == 200
+        answer = client.post("/gaze", json={"state": state, "fixations": fixations}, headers=auth)
+        assert answer.status_code == 200
+        line = answer.json()["reading"]  # the last line, where it is on the monitor, for the ring to sit on
+        assert line["y"] == pytest.approx((200 + 2 * 28.8 + 10 + 100) / 1080, abs=1e-4)
+        assert (line["x0"], line["x1"]) == pytest.approx((100 / 1920, 400 / 1920), abs=1e-4)
+        assert line["p"] >= 0.6 and line["t"] == pytest.approx(
+            datetime.fromisoformat(fixations[-1]["t_end"]).timestamp()
+        )
         status = client.get("/status").json()
         reading, decoding = status["reading"], status["line_decoding"]
         assert reading["block"] == "p1" and reading["line"] == 2 and reading["text"] == texts[2]
@@ -408,6 +425,34 @@ def test_the_doctor_says_which_side_of_the_gaze_ring_is_missing(vault: Vault, mo
     )
 
 
+def test_the_doctor_says_why_a_found_face_gives_no_gaze(vault: Vault, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The face in every frame and still no gaze, no fixations, no ring: the eyes read as closed, or
+    a gaze ray that meets no screen."""
+    from zoneinfo import ZoneInfo
+
+    from capture import doctor
+
+    now = datetime.now(UTC)
+    zone = ZoneInfo("America/Toronto")
+    monkeypatch.setattr(doctor.sys, "platform", "linux")
+
+    def found(**gaze: object) -> dict[str, tuple[str, str]]:
+        status = {"paused": False, "browser": {"last": now.isoformat()}, "reading": None,
+                  "gaze": {"tracking": True, "fps": 30.0, "target_fps": 30.0, "face": 1.0} | gaze}  # fmt: skip
+        return {name: (v, d) for v, name, d in doctor.checks(status, vault.root, zone, now, None)}
+
+    checks = found(eyes_closed=1.0, ray_missed=0.0, blink_resets=2)
+    verdict, detail = checks["eyes open"]
+    assert verdict == doctor.FAIL and "closed in 100% of frames" in detail and "2 times" in detail
+    verdict, detail = found(eyes_closed=0.0, ray_missed=0.95, blink_resets=0)["gaze ray"]
+    assert verdict == doctor.FAIL and "95%" in detail and "recalibrate" in detail
+    assert found(eyes_closed=0.06, ray_missed=0.0, blink_resets=0)["gaze from the face"] == (
+        doctor.PASS,
+        "94% of frames with a face give a gaze point",
+    )
+    assert not {"eyes open", "gaze ray", "gaze from the face"} & found().keys()  # an older tracker
+
+
 def test_the_doctor_shows_why_the_tracker_is_not_running(vault: Vault, monkeypatch: pytest.MonkeyPatch) -> None:
     from zoneinfo import ZoneInfo
 
@@ -434,11 +479,28 @@ def test_the_doctor_shows_why_the_tracker_is_not_running(vault: Vault, monkeypat
     assert found["eye tracker"] == (
         doctor.FAIL,
         "not tracking: not running. Last from the tracker's logs: "
-        "WARNING eye tracker exited with code 1; restarting in 10 s",
+        "2026-10-23 22:18 WARNING eye tracker exited with code 1; restarting in 10 s",
     )
     paused = status | {"gaze": {"tracking": False, "reason": "paused"}}
     found = {name: d for _, name, d in doctor.checks(paused, vault.root, zone, now, None)}
     assert "toolbar button" in found["eye tracker"]
+
+
+def test_the_doctor_shows_the_speech_models_last_check(vault: Vault) -> None:
+    from capture import doctor
+
+    assert doctor._speech_check(vault.root) == []
+    folder = vault.root / "derived" / "speech"
+    folder.mkdir(parents=True)
+    report = {"made": "2026-10-25T23:10:00+00:00", "device": "cuda:0", "asr": "Qwen/Qwen3-ASR-1.7B", "ok": True,
+              "zh_cer": 0.0, "en_wer": 0.067}  # fmt: skip
+    (folder / "canary.json").write_text(json.dumps(report), encoding="utf-8")
+    assert doctor._speech_check(vault.root) == [
+        (doctor.PASS, "speech check", "Qwen/Qwen3-ASR-1.7B on cuda:0, 2026-10-25 23:10 UTC: zh CER 0.0, en WER 0.067")
+    ]
+    (folder / "canary.json").write_text(json.dumps({**report, "ok": False, "why": "3 turns, not 4"}), encoding="utf-8")
+    [(level, _, detail)] = doctor._speech_check(vault.root)
+    assert level == doctor.FAIL and "3 turns, not 4" in detail
 
 
 def test_the_librarian_keeps_the_days_notes_current(vault: Vault) -> None:
@@ -531,6 +593,26 @@ def test_the_doctor_reports_the_ring_over_every_window(vault: Vault, monkeypatch
     assert broken[0][0] == doctor.WARN and "OSError: no desktop" in broken[0][1]
     old = ring({"gaze_ring": True, "native": False}, None)
     assert old[0][0] == doctor.WARN and "older than this checkout" in old[0][1]
+
+
+def test_no_face_in_view_is_not_taken_for_an_old_tracker(vault: Vault, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A tracker with no face in view has no fixations to report coverage or noise from; doctor
+    said its code was old (2026-10-25, face in 7% of frames)."""
+    from zoneinfo import ZoneInfo
+
+    from capture import doctor
+
+    now = datetime.now(UTC)
+    monkeypatch.setattr(doctor.sys, "platform", "linux")
+
+    def rows(face: float) -> dict:
+        gaze = {"tracking": True, "fps": 28.6, "target_fps": 30.0, "face": face, "coverage": None, "noise_px": None}
+        status = {"paused": False, "browser": {"last": now.isoformat()}, "reading": None, "gaze": gaze}
+        return {name: (v, d) for v, name, d in doctor.checks(status, vault.root, ZoneInfo("America/Toronto"), now, None)}
+
+    away = rows(0.07)
+    assert "tracker code" not in away and away["face found"][0] == doctor.FAIL
+    assert rows(1.0)["tracker code"][0] == doctor.WARN
 
 
 def test_the_doctor_reports_the_webcam_rate_and_how_to_get_60(vault: Vault, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -642,8 +724,13 @@ def test_doctor_shows_when_an_update_reached_the_gaze_and_the_live_loss_ratio() 
         "applied": {"version": 4, "t": "2026-10-24T18:02:00.040000+00:00", "after_ms": 38.2},
         "live": {"clicks": 300, "error_px": 121.0, "calibration_px": 158.0, "ratio": 0.766, "by_version": []},
     }  # fmt: skip
-    rows = {name: (verdict, detail) for verdict, name, detail in doctor._learning({"tracking": True, "learning": learning})}
-    assert rows["learning applied"] == (doctor.PASS, "update 4 reached the gaze 38 ms after it was fitted (every frame since uses it)")
+    rows = {
+        name: (verdict, detail) for verdict, name, detail in doctor._learning({"tracking": True, "learning": learning})
+    }
+    assert rows["learning applied"] == (
+        doctor.PASS,
+        "update 4 reached the gaze 38 ms after it was fitted (every frame since uses it)",
+    )
     assert rows["loss ratio"] == (doctor.PASS, (
         "last 300 clicks, each measured before learning from it: 121.0 px against 158.0 px for the calibration "
         "alone (ratio 0.77, 23% less error)"
@@ -651,3 +738,35 @@ def test_doctor_shows_when_an_update_reached_the_gaze_and_the_live_loss_ratio() 
     pending = dict(learning, applied={"version": 3, "t": "2026-10-24T17:40:00+00:00", "after_ms": 30.0})
     rows = {name: verdict for verdict, name, _ in doctor._learning({"tracking": True, "learning": pending})}
     assert rows["learning applied"] == doctor.WARN
+
+
+def test_doctor_reports_the_last_tuning_and_lines_read(tmp_path: Path) -> None:
+    from capture import doctor
+
+    (tmp_path / "calibration").mkdir()
+    tuned = {"t": "2026-10-25T03:12:00+00:00", "clicks": 640, "accepted": True, "changed": {"refit_every": [20, 10]},
+             "replay": {"held_out_px": {"in_use": 141.2, "best": 128.9}, "held_out_clicks": 192}}  # fmt: skip
+    (tmp_path / "calibration" / "gaze-tuned.json").write_text(json.dumps(tuned))
+    assert doctor._tuning(tmp_path) == [(doctor.PASS, "tuning", (
+        "2026-10-25: 640 clicks replayed; on the newest 192, 141.2 px with the settings in use, 128.9 px with the "
+        "best found: taken (refit_every 20 -> 10)"
+    ))]  # fmt: skip
+    (tmp_path / "calibration" / "gaze-tuned.json").write_text(json.dumps(tuned | {"accepted": False}))
+    assert doctor._tuning(tmp_path)[0][0] == doctor.INFO
+    assert doctor._tuning(tmp_path / "nowhere") == []
+    learning = {"version": 0, "clicks": 12, "skipped": {}, "fit": None, "lines": {"used": 340}}
+    ((_, _, detail),) = doctor._learning({"tracking": True, "learning": learning})
+    assert "12 clicks since calibration; 340 lines read as labels" in detail
+
+
+def test_doctor_says_whether_the_gaze_slides_during_stares_and_what_moved_with_it() -> None:
+    from capture import doctor
+
+    drift = {"stares": 12, "seconds": 61.0, "gaze_px_s": 14.2, "iris_per_s": 0.0001, "lids_mm_s": -0.02,
+             "pitch_deg_s": 0.001, "distance_mm_s": 0.1}  # fmt: skip
+    assert doctor._drift({"tracking": True, "drift": drift}) == [(doctor.INFO, "stare drift", (
+        "over the last 12 stares (61 s), the gaze slid 14.2 px/s down; meanwhile the lids closed 1.2 mm a minute"
+    ))]  # fmt: skip
+    assert doctor._drift({"tracking": True, "drift": drift | {"gaze_px_s": -1.0}})[0][0] == doctor.PASS
+    assert doctor._drift({"tracking": True, "drift": None}) == []
+    assert doctor._drift({"tracking": False, "drift": drift}) == []

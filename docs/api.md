@@ -16,10 +16,16 @@ for actions. Do not paste external provider keys there.
 | GET | `/entity/{id}` | One entity: its records (newest first) and neighbours |
 | GET | `/data` | Data center: source files by stream (vault days, each capture log, notes, calibration) and the database built from them (rows per table, kinds, sizes) |
 | GET | `/notes` | The notes folder as read into the database |
+| GET | `/notes/graph` | Every note (path, kind) and every `[[link]]` between them, links to notes not written yet as their own nodes (`missing`); edges `[from, to, count]`. Writes the daily note of a recorded day that has none first. ETag: an empty 304 while the folder is unchanged |
 | GET | `/day/{date}/notes` | A day's knowledge base: daily note (written or refreshed first), the notes it links to and that link to it, local graph with each node's note |
 | GET | `/note?path=` | One note: Markdown, links with the note each opens, backlinks; paths confined to `vault/notes` |
 | GET | `/search?q=&date=` | Search as you type: the `/ask` answer and evidence without the token, each result with its `note` and the words to mark (`match`), and `took_ms` |
 | POST | `/notes/{date}` | Write or refresh a day's linked notes in `vault/notes` |
+| GET | `/day/{date}/review` | The review day's end-of-day review (`review`, null until written), its timeline (`segments`, written now if the day has none, without any model), the `categories` to relabel with, who words it (`writers`), its `window` and whether it is under way (`current`); docs/review.md |
+| POST | `/day/{date}/review` | Write the review now (a draft while the day is under way) and its daily note; the same view with `result: {written, why}` |
+| POST | `/labels` | `{date, key, category?, project?, clear?}`: correct what a window, page, app or site is (`key`: `page:<url>`, `app:<program>\|<title>`, `site:<domain>`, `app:<program>`; `project: null` is none; `clear` goes back to the rules); that day's timeline and review follow; the same view |
+| GET | `/training` | Training runs on this PC (`vault/training`), newest first: the `training` contract plus the `last` line logged and whether it `stalled` (still running, files unchanged for 15 min); docs/training.md |
+| GET | `/training/{id}` | One run and its measurements as columns: `steps`, and per metric its `values` (null where a step did not log it) |
 | GET | `/moment/{id}?date=YYYY-MM-DD` | Metadata, scene availability and transcript |
 | GET | `/vault/{date}/{asset}` | Allowlisted media only, with path confinement |
 | POST | `/ask` | `{date?, question}` → extractive answer, citations, location; no `date` searches every day |
@@ -29,7 +35,7 @@ for actions. Do not paste external provider keys there.
 | GET | `/jobs/{id}` | Job snapshot |
 | GET | `/jobs/{id}?stream=1` | SSE `progress` events |
 | POST | `/places/rename` | `{place_id,name}` → global name override |
-| POST | `/speakers/confirm` | `{date,moment_id,diar_label,person_id}` → persisted speaker map |
+| POST | `/speakers/confirm` | `{date,moment_id,diar_label,person_id}` (`person:<letters, digits, -, _>`) → the speaker map saved, and the name spread to every recording of the same voice (docs/speech.md) |
 | POST | `/pause`, `/resume` | Forward to receiver; 503 if absent |
 | DELETE | `/day/{date}/hours` | 501 until complete purge/reindex semantics exist |
 

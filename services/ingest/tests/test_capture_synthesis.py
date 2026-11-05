@@ -7,6 +7,7 @@ from conftest import CAPTURE_DAY, DAY, capture_session
 from ingest.ask.retrieve import retrieve
 from ingest.ask.service import ask
 from ingest.capture import capture_days, capture_units, read_capture
+from ingest.capture.synthesize import has_capture_day
 from ingest.store import LifeStore
 from ingest.vault import Vault
 
@@ -57,6 +58,32 @@ def test_a_capture_only_day_is_searchable(vault: Vault) -> None:
     assert found[0]["t"] == 9 * 3600 + 60 and found[0]["place"] is None  # 09:01 Toronto
     answer = ask(store, CAPTURE_DAY, "when is assignment 3 due")
     assert "October 30" in answer["sentences"][0]["text"]
+
+
+def test_single_capture_day_check_matches_history_and_update_does_not_scan(
+    vault: Vault, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    capture_session(vault)
+    packed = vault.root / "capture" / "2026-10-20" / "browser.jsonl.zst"
+    packed.parent.mkdir(parents=True)
+    packed.touch()
+    invalid = vault.root / "capture" / "2026-99-99" / "browser.jsonl"
+    invalid.parent.mkdir(parents=True)
+    invalid.touch()
+    empty = vault.root / "capture" / "2026-10-19"
+    empty.mkdir()
+    dates = [CAPTURE_DAY, "2026-10-20", "2026-99-99", "2026-10-19", "../outside", "20261020"]
+    assert {day for day in dates if has_capture_day(vault, day)} == set(capture_days(vault))
+
+    def unexpected_scan(_: Vault) -> list[str]:
+        raise AssertionError("updating a single day must not scan the whole history")
+
+    monkeypatch.setattr("ingest.store.db.capture_days", unexpected_scan)
+    assert LifeStore(vault).update(CAPTURE_DAY)["units"] > 0
+    with pytest.raises(FileNotFoundError):
+        LifeStore(vault).update("2026-10-19")
+    with pytest.raises(ValueError):
+        LifeStore(vault).update("2026-99-99")
 
 
 def test_new_capture_lines_reindex_the_day(vault: Vault, monkeypatch: pytest.MonkeyPatch) -> None:

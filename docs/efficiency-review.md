@@ -1,5 +1,16 @@
 # Codebase efficiency review
 
+The [2026-11-04 pass](efficiency-pass-2026-11-04.md) shrinks the desktop app's install (what the
+bundle carried that nothing runs) and its memory: embeddings in sorted small batches, the model let
+go when unused, Open3D imported only to make a mesh.
+
+The [2026-11-03 pass](efficiency-pass-2026-11-03.md) precompiles the contract validators (viewer
+startup), reads raw input in place (input counting) and precompiles the desktop app's bytecode.
+
+The [2026-10-26 pass](codebase-efficiency-2026-10-26.md) adds measured capture-text projection,
+graph-label reuse, indexed job history and word-to-speaker lookup, plus integrated checks and a refreshed file ledger.
+Its coverage and remaining limits are recorded separately from the historical reviews below.
+
 The [2026-10-24 follow-up](review-2026-10-24.md) adds a hash-bound file ledger, notes/graph/cache
 measurements, concurrent-job and retrieval fixes, extension delivery checks and explicit live-write
 failures. The review below is historical; its test counts and open issues describe that earlier pass.
@@ -158,3 +169,41 @@ Native window enumeration and screenshot capture are separate OS calls, so these
 do not prove atomic capture during arbitrary compositor changes. Manual Windows checks of
 overlapping windows, OCR accuracy and sustained capture remain necessary. No throughput or
 memory improvement is claimed. The ledger refresh is limited to this pass's changed files.
+
+## Phone fixture runtime follow-up, 2026-10-25
+
+PRs #1–#3 are merged and have no unresolved review threads. Their final checks and the default
+branch checks passed. The newer `capture-browser-gaze` revision `14d398c` failed Linux viewer
+CI (run `40207670593`, job `121211992822`): FFmpeg and ffprobe were missing, so the phone importer
+left out the synthetic voice memo and scan. Three viewer tests then failed on missing moments.
+
+CI now installs the FFmpeg package alongside the MediaPipe libraries. Browser setup checks both
+executables before resetting its synthetic vault or importing fixtures, and reports the missing
+tool directly. The production importer's partial-import behavior is unchanged.
+
+Testing with FFmpeg 9.0.2 also exposed a JPEG encoder failure when a short scan yields no sampled
+keyframes: the encoder rejected limited-range YUV before EOF. Keyframe output now explicitly
+uses JPEG's full-range pixel format. Two regressions use synthetic limited-range video to check
+the short-clip case, JPEG decoding, image dimensions and colors, and unchanged sample timestamps.
+Clips shorter than the first sampling point still have no keyframe; their preview remains
+available. The original recording and its timestamp are untouched.
+
+Run `npm ci`, then `npm run check` and `npm run test:e2e:viewer` with FFmpeg and ffprobe on PATH.
+The core media regressions otherwise skip when the tools are unavailable. Splat tests use a
+stand-in for Brush; this follow-up does not run GPU training, paid jobs or live camera capture.
+This is a correctness and test-environment fix, with no new performance claim. The ledger
+refresh covers only this follow-up's changed paths.
+
+Local validation with FFmpeg 9.0.2: `npm run check` passed (302 core tests, 139 gaze tests,
+4 contract tests, 9 transport tests, 10 extension tests, Ruff, schema consistency, TypeScript
+and build). All 31 viewer tests passed after syncing the existing lockfile; the three phone
+browser tests passed again after the JPEG fix. The missing-tool preflight smoke check exits
+before importing data. Upstream Brush progress commit `69fe716` was preserved during integration.
+
+## Continued implementation coverage, 2026-10-26
+
+The [continuation report](codebase-continuation-2026-10-26.md) closes the earlier missing manual
+source/test/configuration notes and records remaining resource, invalidation, recovery and native
+acceptance gaps. It adds measured preparation/indexing/clustering improvements and synthetic
+regressions for scene cleanup, failed acknowledgements, bounded uploads and stale browser lines.
+The earlier reports retain their original measurement and coverage scope.

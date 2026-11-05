@@ -398,6 +398,13 @@ class Blinks:
     ``deep`` of the open average whatever the eye's direction. Closed frames never lower an
     established reference, and one eye cannot hide the other's closure. The tracker separately
     waits for reopening landmarks to settle before prediction.
+
+    That makes a wrong reference permanent: two seconds of apertures twice the usual (landmarks
+    off while leaning or turning) and every open eye after is under ``deep`` of it, so no frame is
+    accepted and nothing lowers it again. On the PC this stopped the gaze for 30 hours from
+    2026-10-30 10:35 with the face found in every frame. So ``stuck_s`` of unbroken closure with
+    the landmarks present drops the reference and learns it again from the next frames; eyes that
+    really are shut (under 0.1, the bootstrap's floor) are still never learned as open.
     """
 
     def __init__(
@@ -408,14 +415,24 @@ class Blinks:
         deep: float = 0.5,
         shallow_s: float = 0.3,
         slope_history: int = 900,
+        stuck_s: float = 3.0,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self.history: deque[tuple[float, float, float, float]] = deque(maxlen=history)  # (a_r, a_l, v_r, v_l)
+        self.slope_history = slope_history
+        self.ratio, self.minimum, self.deep, self.shallow_s, self.clock = ratio, minimum, deep, shallow_s, clock
+        self.stuck_s = stuck_s
+        self.resets = 0  # references dropped after ``stuck_s`` of unbroken closure
+        self.closed_since: float | None = None  # first frame of the current run of closed frames
+        self._forget()
+
+    def _forget(self) -> None:
+        """No open-eye reference: the next frames build one, as at the start."""
+        self.history.clear()
         self.total = [0.0, 0.0, 0.0, 0.0]
-        self.slopes = (_Slope(slope_history), _Slope(slope_history))
+        self.slopes = (_Slope(self.slope_history), _Slope(self.slope_history))
         self.previous: tuple[float, float] | None = None
         self.previous_height: tuple[float, float] = (0.0, 0.0)
-        self.ratio, self.minimum, self.deep, self.shallow_s, self.clock = ratio, minimum, deep, shallow_s, clock
         self.narrow_since: float | None = None  # when the eyes last became narrower than expected
         self.deep_at = -math.inf  # the last frame with the lids (nearly) shut
 
@@ -509,6 +526,15 @@ class Blinks:
         elif learn:
             for e in range(2):
                 self.slopes[e].add(height[e], ear[e])
+        if blink and ready:
+            if self.closed_since is None:
+                self.closed_since = now
+            elif now - self.closed_since >= self.stuck_s:
+                self._forget()  # this frame stays a blink; the next ones learn the reference again
+                self.resets += 1
+                self.closed_since = None
+        else:
+            self.closed_since = None
         return blink
 
 

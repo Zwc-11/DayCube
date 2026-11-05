@@ -1,136 +1,116 @@
-# DAYCUBE
+# DayCube
 
-Replay your day as a voxel world you can walk through and ask questions about. Every place you
-visited becomes a small diorama, a character walks your route through it (up the stairs, to the
-desk, out the door), and answers to questions cite the records they came from.
+Your days as a world you can walk back into, search and ask about. DayCube records what you do on
+your PC and phone (the places you went, what you read line by line, what was said) and keeps it as
+plain files you own: a 3D day you can replay, linked Markdown notes Obsidian opens, and answers
+that cite the records they came from. It runs on your own computer; nothing leaves it unless you
+turn on an option that sends it (a language model, the morning summary pushed to your phone).
 
-![DayCube demo: the character walks into Engineering Hall, climbs the stairs to floor 2 and reaches the desk](docs/media/daycube-demo.gif)
+![DayCube: a day replayed in 3D, the character walks into Engineering Hall and climbs to floor 2; a question answered with its sources; the day's notes and summary; the Training page](docs/media/daycube-demo.gif)
 
-▶ [Watch the 19-second demo (MP4)](docs/media/daycube-demo.mp4): walking and climbing, the
-whole day stacked, then a question answered from the local vault with sources.
+▶ [Watch the demo (MP4, 22 s)](docs/media/daycube-demo.mp4)
 
-| Climbing to the second floor | Arriving upstairs |
+| A day in 3D, with its summary | Ask, with numbered sources |
 | --- | --- |
-| ![The character climbs the Engineering Hall stairs while the floor above is cut away](docs/media/stairs-climb.png) | ![The character reaches the top of the stairs on floor 2](docs/media/upper-floor.png) |
-| **The whole day, stacked** | **Ask, with cited sources** |
-| ![Every place of the day stacked as layers](docs/media/day-stack.png) | ![A question answered from the vault, with numbered sources](docs/media/ask-answer.png) |
+| ![The sample day in 3D: Home in the evening, the day's summary and itinerary, the timeline](docs/media/day-3d.jpg) | ![A question answered from the vault: the place and time, the quote and six sources](docs/media/ask.jpg) |
+| **The day's notes, beside the graph** | **A phone day: walk, floors, a voice memo** |
+| ![The notes graph with a day's note: its summary card, what was on screen and what was read](docs/media/notes.jpg) | ![A day imported from the phone: the walk, the floor reached and a voice memo](docs/media/phone-day.jpg) |
+| **The eye tracker learning from clicks** | **Models trained on this PC** |
+| ![Eye tracking: live error, calibration alone, the loss ratio and the error per click](docs/media/eye-tracking.jpg) | ![The Training page: runs and a chart per metric](docs/media/training.jpg) |
 
-The sample day is fictional and every scene is labelled *illustrative* in the app.
+Every image above comes from the fictional sample data in [`fixtures/`](fixtures) (the app labels it
+*Sample data* and *Illustrative*); the eye-tracking clicks and training curves are sample data
+too. `npm run build && npm run media` makes them again.
 
-A local-first spatial memory system. This repository now contains a working **backend/API
-foundation** alongside a separately maintained frontend prototype. It is not yet the complete capture/reconstruction
-system described in [the technical specification](docs/daycube-technical-spec.md).
+## What it does
 
-## Start locally
+- **Days in 3D.** Each place you went becomes a scene, and a character walks your route through
+  it: up the stairs to the floor the barometer measured, to the desk, out the door. LiDAR scans
+  from the phone become Gaussian splats trained on your GPU ([splat](docs/splat.md)).
+- **Notes and the day's summary.** What you read line by line, the pages and apps in front, your
+  searches, places and conversations become linked Markdown in `vault/notes`, a folder Obsidian
+  opens ([notes](docs/notes.md)). At the end of the day a summary with footnoted sources is written
+  from the [day timeline](docs/timeline.md) ([review](docs/review.md)).
+- **Search and Ask.** Keyword (SQLite FTS5) and meaning search (bge-small vectors) across every
+  day; answers are quoted from your records with their place and time ([search](docs/search.md)).
+- **Capture on Windows.** A browser extension, a webcam eye tracker that works out which line you
+  are reading, reading of other apps' windows with Windows' own OCR, and counts of typing and
+  mouse use with no key identities ([capture](docs/capture.md)). The eye tracker keeps learning
+  from your clicks, and shows whether that helps.
+- **Phone.** Sensor Logger (visits, walks, floors), voice memos and Stray Scanner LiDAR captures,
+  dropped into the vault's inbox ([phone](docs/phone.md)). Speech becomes transcripts with who
+  spoke and how, in English and Mandarin, on the GPU ([speech](docs/speech.md)).
+- **Memories.** One photo becomes a small 3D scene you can step into ([memories](docs/memories.md)).
+- **Training.** Models trained on this PC, each metric charted against the step
+  ([training](docs/training.md)).
 
-Prerequisites: Node 20.19+ and [uv](https://docs.astral.sh/uv/). Setup selects Python 3.11.
-Core libraries are already installed in this workspace, and the synthetic sample is seeded.
+## The Windows app
+
+One install with all of the above: the viewer in its own window, the vault API, capture and the
+eye tracker, run from the tray and started at sign-in. No repository, Node or Python is needed on
+the PC. The speech and 3D GPU packs install from the app when wanted.
+
+Until there are releases, the installer is built by CI: open the latest run of
+[DayCube for Windows](https://github.com/Zwc-11/DayCube/actions/workflows/desktop.yml) (signed in
+to GitHub) and download `daycube-windows`. Every build is installed on a Windows runner and runs its
+self-test there. See [the desktop app](docs/desktop.md).
+
+## Start from source
+
+Prerequisites: Node 20.19+ and [uv](https://docs.astral.sh/uv/) (it selects Python 3.11).
 
 ```powershell
 npm run setup
-npm run demo:seed
-npm run demo
+npm run demo:seed      # the fictional sample vault
+npm run demo           # API on 127.0.0.1:7701, viewer on http://127.0.0.1:3000
 ```
 
-- Viewer: <http://127.0.0.1:3000>
-- API and interactive endpoint documentation: <http://127.0.0.1:7701/docs>
-- Health/capabilities: <http://127.0.0.1:7701/health>
+Actions that change the vault need its token: in the viewer, the gear icon › **Vault
+connection**, paste `vault\.token` (`Get-Content -Raw .\vault\.token | Set-Clipboard`) and
+**Connect**. The Windows app does this for you. Capture on your own PC:
+[capture](docs/capture.md) and [the runbook](docs/runbook.md).
 
-The frontend loads the vault day through `/api` on startup. To enable authenticated actions:
-
-1. Open the viewer, click the gear icon (top right), then **Vault connection**.
-2. Copy your token. PowerShell: `Get-Content -Raw .\vault\.token | Set-Clipboard`;
-   macOS: `pbcopy < vault/.token`.
-3. Paste it into the token field and click **Connect**. This also reloads the vault day.
-4. Click **Rebuild search index**, then ask a question from the search field (Ctrl K).
-
-Try “Where was I when we decided the demo order?”. Live answers quote source evidence and
-select its place/time. The token is held only in page memory, so bind it again after a browser
-reload. Without a bound token, Ask runs the frontend's standalone demo engine. Decorative scenes,
-the moment and screen viewers, and the graph, pipeline and recall-study pages in Settings still
-contain prototype data and are labelled as such in the UI; they do not mean that capture,
-reconstruction or the volunteer study has run.
-
-## Structure
+## Repository
 
 ```text
-apps/viewer/                 React/Vite frontend with a vault/API bridge and illustrative dioramas
-packages/schemas/            Canonical JSON Schemas, generated TypeScript types, Zod validators
-packages/api-client/         Typed browser client with response validation
-services/ingest/             FastAPI, vault storage, FTS search, adapters and tests
-services/capture-win/        Capture receiver: browser records, gaze placement, dwells, sign-in autostart
-services/gaze/               Webcam eye tracker (EyeTrax), its own environment
-extensions/chrome/          DayCube Capture browser extension (Opera, Chrome, Edge; MV3)
-jobs/modal/                 Optional transcription/depth cloud job definitions
-fixtures/sample-day/        Fictional day with 5 visits, 60 fixes and 14 events
-venues/                     Fictional venue pack
-eval/                       Fixture smoke evaluation and isolated synthetic CPU benchmarks
-docs/                       API, architecture, dependencies, runbook and implementation status
-scripts/                    Fixture generation and cross-language contract checks
-vault/                      Local runtime data and token; ignored by Git
+apps/viewer/            The interface: React, three.js (days in 3D, notes graph, Ask, settings)
+apps/desktop/           The Windows app: Tauri 2 shell, bundled Python, installer (docs/desktop.md)
+packages/schemas/       Twelve JSON Schema contracts; generated Pydantic, TypeScript and validators
+packages/api-client/    Typed client for the API, responses validated
+services/ingest/        Vault, API (FastAPI), search, notes, timeline and review, phone import, 3D jobs
+services/capture-win/   Capture receiver: browser and screen records, gaze, input counts, jobs
+services/gaze/          Webcam eye tracker (EyeTrax), its own environment
+services/speech/        Transcripts, speakers and emotion on the GPU, its own environment
+services/recon/         Photo and scan to 3D (SHARP, COLMAP), its own environment
+extensions/chrome/      DayCube Capture extension (Opera, Chrome, Edge)
+fixtures/               Fictional sample day, phone day and capture morning
+eval/                   Simulations, benchmarks and their recorded results
+docs/                   Every part in detail; start with architecture.md
 ```
 
-The frontend's rendering design is preserved under `apps/viewer`. Its bridge uses the typed API
-client and converts the API's seconds-since-midnight into the renderer's decimal-hour format.
+## Status and limits
 
-## Working now
+- Built and used on Windows; capture and the app are Windows-first.
+- Ask quotes your records; it does not generate free-form answers. The end-of-day summary is
+  written by a template unless you turn on a model (`DAYCUBE_SUMMARY_LLM`).
+- Deleting an hour of recording is not implemented yet (the API answers 501).
+- Memories use Apple's SHARP, whose research licence allows evaluation only.
+- Speech and 3D need an NVIDIA GPU (an RTX 5070 here).
 
-- Atomic vault JSON/JSONL writes, schema validation and reference checks.
-- Day, layer, event, skeleton, graph, moment and allowlisted media reads.
-- Authenticated event writes, place renaming, speaker-map saves and index jobs.
-- One rebuildable vault database (`vault/daycube.sqlite`) across all days: keyword search
-  (FTS5) plus meaning search (bge-small int8 vectors, two-pass numpy scan) merged by rank, with
-  extractive cited answers and SSE responses. See [search](docs/search.md).
-- Eight shared JSON Schema contracts with generated Pydantic and TypeScript models.
-- GPX parser, attention helper, FFmpeg probe/audio helpers, optional integration adapters.
-- Browser and gaze capture from sign-in to shutdown: a browser extension, a webcam eye tracker
-  and a local receiver that works out which paragraph the eyes are on and flags dwells. See
-  [capture](docs/capture.md).
-- A character that walks the day: routes go around furniture and through doorways, climb
-  stairs step by step between floors, and cut away the floor above while it is indoors.
-  Playback slows while it walks. Visits without measured indoor positions get an
-  illustrative walk between the spots where their records happened.
-- Python tests, JavaScript contract tests, real-browser API checks and a CI workflow.
-
-Native window capture, OCR execution, visit/floor inference, turning capture logs into day events,
-generative answers, deletion, splats and full moment reconstruction remain
-future milestones. Unimplemented ingest stages and hour deletion return HTTP 501.
-The sample moment has a synthetic transcript and **no source video/audio or GLB**.
-See [implementation status](docs/implementation-status.md) for exact boundaries.
+Exact boundaries: [implementation status](docs/implementation-status.md).
 
 ## Commands
 
 ```powershell
-npm run api                   # API only, loopback port 7701
-npm run dev                   # Starter viewer only, loopback port 3000
-npm run demo:seed             # Seed if absent, then rebuild local index
-uv run daycube validate --date 2026-10-20
-uv run daycube index --date 2026-10-20   # or --all; `uv sync --extra vector` adds meaning search
-uv run daycube stats
-uv run daycube doctor
-npm run schemas               # Regenerate Pydantic + TypeScript contracts
-npm run test:api               # Drift checks, JS contracts and Python tests
-npm run build                 # Build the separately maintained frontend
-npm run lint:api
-npm run bench:core -- --output test-results/core-current.json # Isolated synthetic CPU workloads
-npx playwright install chromium
-npm run test:e2e:api           # Real-browser API checks on an isolated test vault/port
-npm run test:e2e:viewer        # Token binding, reindex and live Ask through the frontend
-uv run --extra vector python eval/score_retrieval.py   # keyword vs meaning vs combined, sample day
-uv run python eval/vector_bench.py                     # vector search latency at vault scale
+npm run check                  # lint, Python and contract tests, eye tracker, extension, build
+npm run test:e2e:viewer        # the interface in a real browser, on the sample vault
+npm run schemas                # regenerate the contracts after changing a schema
+uv run daycube index --all     # rebuild the search database from the vault's files
+uv run daycube doctor          # check the vault
+.\capture doctor               # check capture on this PC
+npm run media                  # remake the README's screenshots and video (after npm run build)
 ```
 
-Make targets mirror the main commands when Make is available. On Windows the npm/uv commands
-work without Make or shell activation. `npm run demo` starts both servers; Ctrl+C
-stops them. Seed first with `npm run demo:seed`. Demo does not start capture, call a model or deploy a GPU job.
-
-Optional libraries, account configuration and the remaining system dependencies are documented
-in [dependencies](docs/dependencies.md) and [the runbook](docs/runbook.md).
-
-The viewer stops rendering when idle. See [performance notes](docs/performance.md) for measured
-results and regression checks. Refresh the browser after performance updates so the less costly
-visual defaults take effect in an existing hot-reload session.
-
-The [engineering standard](docs/engineering.md) applies the measured, batch-oriented approach
-from the [DeepInfer reference review](docs/deepinfer-review.md) to this project's browser and
-local-service workloads. The review records its scope, evidence and remaining gaps.
+Engineering: measured changes only, recorded with their benchmarks
+([engineering](docs/engineering.md), [efficiency](docs/efficiency-review.md),
+[performance](docs/performance.md)).
