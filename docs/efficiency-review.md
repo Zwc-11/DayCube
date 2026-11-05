@@ -1,5 +1,9 @@
 # Codebase efficiency review
 
+The [2026-11-04 pass](efficiency-pass-2026-11-04.md) shrinks the desktop app's install (what the
+bundle carried that nothing runs) and its memory: embeddings in sorted small batches, the model let
+go when unused, Open3D imported only to make a mesh.
+
 The [2026-11-03 pass](efficiency-pass-2026-11-03.md) precompiles the contract validators (viewer
 startup), reads raw input in place (input counting) and precompiles the desktop app's bytecode.
 

@@ -1,6 +1,6 @@
 # The built installer, checked as a user would get it, with no one watching (CI, windows-latest):
 #  1. install silently (per-user, no admin);
-#  2. seed a sample vault with the installed Python;
+#  2. seed a sample vault with the installed Python, and record meaning search's memory;
 #  3. start a receiver the way a repository checkout does, so the app must take it over;
 #  4. run DayCube.exe --self-test: the API answers, the window loads the viewer and its data, the
 #     injected token is accepted, the receiver answers on 127.0.0.1:7700;
@@ -46,6 +46,16 @@ $env:PYTHONNOUSERSITE = '1'
 if ($LASTEXITCODE -ne 0) { Fail 'seeding the vault with the installed Python failed' }
 & $python -c "import sys; from ingest.cli import main; sys.argv=['daycube','index','--date','2026-10-20']; main()"
 if ($LASTEXITCODE -ne 0) { Fail 'indexing the vault with the installed Python failed' }
+# Meaning search's memory with the installed Python: the model loaded, then let go (recorded only).
+$probe = @'
+import time, psutil
+from ingest.index.embed import FastEmbedder
+mb = lambda: round(psutil.Process().memory_info().rss / 2**20)
+embedder = FastEmbedder(idle_s=2)
+start = mb(); embedder.query('demo order'); loaded = mb(); time.sleep(4)
+print(f'embed_rss_mb=start {start}, loaded {loaded}, let go {mb()}')
+'@
+& $python -c $probe | Tee-Object -Append -FilePath "$Out/sizes.txt"
 
 # 3. A receiver started outside the app, as capture.cmd does.
 $foreign = Start-Process -FilePath $python -ArgumentList '-m', 'capture', 'run', '--receive', '--no-screen', '--no-inputs' `

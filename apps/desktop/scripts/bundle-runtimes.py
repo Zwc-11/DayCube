@@ -9,8 +9,9 @@
 
 The interpreters are uv's managed CPython builds (python-build-standalone), which run from any
 folder. Packages come from ``uv export --locked`` with hashes, so they match the repository's
-environments exactly. The sources stay plain files found through a relative .pth, so the Python code
-keeps its PROJECT_ROOT layout and nothing is installed into the vault or the system.
+environments exactly, less what the app never runs (``Environment``). The sources stay plain
+files found through a relative .pth, so the Python code keeps its PROJECT_ROOT layout and nothing
+is installed into the vault or the system.
 
 Run on the platform being built (Windows for the installer): ``npm run bundle -w @daycube/desktop``.
 """
@@ -22,6 +23,8 @@ import os
 import shutil
 import subprocess
 import sys
+from collections.abc import Iterable
+from dataclasses import dataclass, field
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -34,10 +37,72 @@ SKIP = shutil.ignore_patterns(
 # Source folders the Python code reads at run time through PROJECT_ROOT.
 DATA = ["packages/schemas", "venues", "fixtures/sample-day"]
 SERVICES = ["ingest", "capture-win", "gaze", "speech", "recon"]
-# Which environment gets which locked project, extras, and source folders on its path.
+# In every environment: test suites, type stubs, C sources and headers, link libraries, IDLE, and
+# the installers python-build-standalone ships (the packs are installed by uv).
+UNUSED = ["**/tests", "**/test", "**/*.pyi", "**/*.pxd", "**/*.pyx", "**/*.[ch]", "**/*.[ch]pp", "**/*.lib",
+          "idlelib", "ensurepip", "site-packages/pip", "site-packages/pip-*", "site-packages/setuptools",
+          "site-packages/setuptools-*", "site-packages/_distutils_hack", "site-packages/distutils-precedence.pth"]  # fmt: skip
+NO_PLOTLY = '''"""Open3D's Plotly viewer: not in DayCube's bundle, which leaves out Plotly and Dash."""
+
+
+def get_plotly_fig(*args, **kwargs):
+    raise ImportError("Open3D's Plotly viewer is not part of the DayCube app")
+
+
+draw_plotly = draw_plotly_server = get_plotly_fig
+'''
+
+
+@dataclass(frozen=True)
+class Environment:
+    """One bundled interpreter: a locked project with its extras, the DayCube sources on its path,
+    and a check run in isolated mode once it is assembled."""
+
+    project: str
+    extras: tuple[str, ...]
+    sources: tuple[str, ...]
+    check: str
+    prune: tuple[str, ...] = ()  # locked packages the app never imports, with what only they need
+    drop: tuple[str, ...] = ()  # files in site-packages the app never loads (globs)
+    replace: dict[str, str] = field(default_factory=dict)  # a site-packages file and its text here
+    read_as_text: tuple[str, ...] = ()  # .py files a package reads itself, kept beside their bytecode
+
+
 ENVIRONMENTS = {
-    "core": ("services/capture-win", ["desktop", "windows"], ["services/ingest", "services/capture-win"]),
-    "gaze": ("services/gaze", [], ["services/gaze"]),
+    "core": Environment(
+        "services/capture-win",
+        ("desktop", "windows"),
+        ("services/ingest", "services/capture-win"),
+        # The API, the receiver, meaning search, and Open3D's geometry as the mesh stage uses it.
+        check="import ingest.desktop, capture.__main__, uvicorn, fastembed, open3d as o3d\n"
+        "scene = o3d.t.geometry.RaycastingScene()\n"
+        "scene.add_triangles(o3d.t.geometry.TriangleMesh.from_legacy(o3d.geometry.TriangleMesh.create_box()))\n"
+        "d = scene.compute_distance(o3d.core.Tensor([[0.5, 0.5, 2.0]], o3d.core.float32)).numpy()[0]\n"
+        "assert abs(d - 1.0) < 1e-4, d",
+        # Walks rebuilt from images run in the 3D pack, which has its own COLMAP. Open3D's notebook
+        # and web viewers (Plotly, Dash, Flask, Jupyter widgets: about 180 MB) are never opened:
+        # the one module of theirs Open3D imports is replaced by NO_PLOTLY.
+        prune=("pycolmap", "dash", "flask", "werkzeug", "ipywidgets", "nbformat", "configargparse"),
+        replace={"open3d/visualization/draw_plotly.py": NO_PLOTLY},
+        # Open3D's renderer assets, its PyTorch and TensorFlow ops, Open3D-ML, examples and notebook extensions.
+        drop=(
+            "open3d/resources",
+            "open3d/*torch_ops*",
+            "open3d/*tf_ops*",
+            "open3d/_ml3d",
+            "open3d/examples",
+            "open3d/labextension",
+            "open3d/nbextension",
+        ),
+    ),
+    "gaze": Environment(
+        "services/gaze",
+        (),
+        ("services/gaze",),
+        check="import gaze.track, eyetrax.gaze, mediapipe.tasks.python.vision, cv2, sklearn.linear_model",
+        prune=("opencv-python",),  # opencv-contrib-python, MediaPipe's, is the same cv2 with more in it
+        read_as_text=("cv2/config*.py",),  # cv2/__init__.py executes its loader settings from source
+    ),
 }
 
 
@@ -61,56 +126,74 @@ def interpreter(env: Path) -> Path:
     return env / "python.exe" if WINDOWS else env / "bin" / "python3"
 
 
-def site_packages(env: Path) -> Path:
-    if WINDOWS:
-        return env / "Lib" / "site-packages"
-    return next((env / "lib").glob("python3.*")) / "site-packages"
+def stdlib(env: Path) -> Path:
+    return env / "Lib" if WINDOWS else next((env / "lib").glob("python3.*"))
+
+
+def remove(paths: Iterable[Path]) -> None:
+    for path in list(paths):
+        if path.is_dir() and not path.is_symlink():
+            shutil.rmtree(path)
+        elif path.exists() or path.is_symlink():
+            path.unlink()
 
 
 def copy_python(target: Path) -> None:
     """A clean copy of uv's managed CPython (python-build-standalone): relocatable as a folder."""
     run(uv(), "python", "install", PYTHON)
-    source = Path(run(uv(), "python", "find", "--managed-python", PYTHON).strip())
+    # --system: the managed build itself, never an active virtual environment made from another.
+    source = Path(run(uv(), "python", "find", "--managed-python", "--system", PYTHON).strip())
     home = source.parent if WINDOWS else source.parent.parent
     shutil.copytree(home, target, symlinks=True, ignore=shutil.ignore_patterns("EXTERNALLY-MANAGED", "__pycache__"))
-    for unused in ("Lib/test", "Lib/idlelib", "lib/python3.11/test"):
-        shutil.rmtree(target / unused, ignore_errors=True)
 
 
 def install_environment(name: str, out: Path) -> None:
-    project, extras, sources = ENVIRONMENTS[name]
+    spec = ENVIRONMENTS[name]
     env = out / "runtime" / name
     copy_python(env)
     lock = out / f"{name}-requirements.txt"
-    export = [uv(), "export", "--locked", "--project", ROOT / project, "--no-dev", "--no-emit-project",
+    export = [uv(), "export", "--locked", "--project", ROOT / spec.project, "--no-dev", "--no-emit-project",
               "--no-emit-package", "daycube-ingest", "--format", "requirements-txt", "-o", lock]  # fmt: skip
-    for extra in extras:
+    for extra in spec.extras:
         export += ["--extra", extra]
+    for package in spec.prune:
+        export += ["--prune", package]
     run(*export)
     run(uv(), "pip", "install", "--python", interpreter(env), "--break-system-packages", "--require-hashes",
         "--no-deps", "-r", lock, env={**os.environ, "UV_LINK_MODE": "copy"})  # fmt: skip
     lock.unlink()
+    lib = stdlib(env)
+    site = lib / "site-packages"
+    remove(path for pattern in UNUSED for path in lib.glob(pattern))
+    remove(path for pattern in spec.drop for path in site.glob(pattern))
+    for path, text in spec.replace.items():
+        (site / path).write_text(text, encoding="utf-8")
     # Relative lines in a .pth resolve against its own folder: the install can move.
-    site = site_packages(env)
     up = os.path.relpath(out, site)
-    (site / "daycube.pth").write_text("".join(f"{Path(up, 'src', s).as_posix()}\n" for s in sources), encoding="utf-8")
-    smoke = {"core": "import ingest.desktop, capture.__main__, uvicorn, fastembed", "gaze": "import gaze, eyetrax"}[
-        name
-    ]
-    run(interpreter(env), "-I", "-c", smoke)  # isolated: only what the bundle itself provides
+    (site / "daycube.pth").write_text(
+        "".join(f"{Path(up, 'src', s).as_posix()}\n" for s in spec.sources), encoding="utf-8"
+    )
+    bytecode_only(env, spec)
+    run(interpreter(env), "-I", "-c", spec.check)  # isolated: only what the bundle itself provides
+
+
+def bytecode_only(env: Path, spec: Environment) -> None:
+    """Python's standard library and the third-party packages as bytecode alone, the way Python's
+    own embeddable distribution ships its standard library: written now instead of at the first
+    launch (about 7 s of the API's start on a cold install), and without the sources beside it,
+    which no import reads (about 80 MB on Windows). Tracebacks there show the file and line without
+    the line's text. DayCube's own sources stay sources (``precompile``)."""
+    lib = stdlib(env)
+    # Failures are files no Python 3 compiles (data in some packages): they are kept as they are.
+    subprocess.run([str(interpreter(env)), "-I", "-m", "compileall", "-q", "-b", "-j", "0", str(lib)], check=False)
+    keep = {path for pattern in spec.read_as_text for path in (lib / "site-packages").glob(pattern)}
+    remove(source for source in lib.rglob("*.py") if source.with_suffix(".pyc").is_file() and source not in keep)
+    remove(lib.rglob("__pycache__"))  # written by the runs above, for sources now gone
 
 
 def precompile(out: Path) -> None:
-    """Bytecode for every module, written now instead of at the first launch (about 7 s of the API's
-    start on a cold install). Third-party packages never change in an install: their .pyc are
-    trusted without checking the source (unchecked-hash). DayCube's own sources are checked by
-    hash, so an edited file is still recompiled; neither depends on file times, which installers
-    do not always keep."""
-    for name in ENVIRONMENTS:
-        env = out / "runtime" / name
-        # Failures are files no Python 3 compiles (test data in some packages): they are skipped.
-        subprocess.run([str(interpreter(env)), "-I", "-m", "compileall", "-q", "-j", "0",
-                        "--invalidation-mode", "unchecked-hash", str(site_packages(env))], check=False)  # fmt: skip
+    """Bytecode for DayCube's own sources, checked by hash so an edited file is still recompiled,
+    and independent of file times, which installers do not always keep."""
     run(interpreter(out / "runtime" / "core"), "-I", "-m", "compileall", "-q", "-j", "0",
         "--invalidation-mode", "checked-hash", out / "src")  # fmt: skip
 
@@ -145,6 +228,8 @@ def main() -> None:
         precompile(OUT)
     for part in sorted(p for p in OUT.iterdir() if p.is_dir()):
         print(f"{part.name:10} {size(part) / 1e6:8.1f} MB")
+    for name in ENVIRONMENTS:
+        print(f"  {name:8} {size(OUT / 'runtime' / name) / 1e6:8.1f} MB")
     print(f"{'total':10} {size(OUT) / 1e6:8.1f} MB")
 
 
