@@ -11,6 +11,7 @@ others are kept back to check the result: the median distance from their LiDAR p
 
 from __future__ import annotations
 
+import importlib.util
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -27,11 +28,9 @@ GL_TO_CV = np.diag([1.0, -1.0, -1.0, 1.0])
 
 
 def available() -> bool:
-    try:
-        import open3d  # noqa: F401
-    except ImportError:
-        return False
-    return True
+    """Whether Open3D is installed, without importing it: the receiver's job thread asks every
+    minute, and importing Open3D costs it about 150 MB for as long as it runs."""
+    return importlib.util.find_spec("open3d") is not None
 
 
 def build(

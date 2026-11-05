@@ -73,6 +73,13 @@ DayCube.exe (Tauri) ── tray, settings.json, job objects (children die with t
   installed by hash from `uv export --locked` of `services/capture-win` (with the `desktop` extra,
   which adds meaning search) and of `services/gaze`. The sources stay plain files found through a
   relative `daycube.pth`, so `PROJECT_ROOT` is the install's `src` folder.
+- What the bundle leaves out (`Environment` in `bundle-runtimes.py`, each checked by importing and
+  running what the app uses once the environment is assembled): COLMAP, which only the 3D pack runs;
+  Open3D's notebook and web viewers (Plotly, Dash, Flask, Jupyter widgets) and renderer assets; the
+  second copy of OpenCV; test suites, type stubs, headers, pip and setuptools. The standard library
+  and third-party packages are shipped as bytecode alone, as Python's embeddable distribution ships
+  its standard library; tracebacks inside them show the file and line without its text. DayCube's
+  own sources stay sources.
 - Variables the app sets for every Python child: `DAYCUBE_VAULT_ROOT`, `DAYCUBE_ENV_FILE`,
   `DAYCUBE_AUTO_RESTART=false` (code changes only with an app update), `DAYCUBE_GAZE_PYTHON`,
   `DAYCUBE_SPEECH_PYTHON`, `DAYCUBE_RECON_PYTHON`, `HF_HOME`, `FASTEMBED_CACHE_PATH`,
