@@ -12,6 +12,7 @@ pub struct Items {
     status: MenuItem<Wry>,
     pause: MenuItem<Wry>,
     autostart: CheckMenuItem<Wry>,
+    notify: CheckMenuItem<Wry>,
 }
 
 /// What the receiver's /status says, in a few words, and whether recording is paused.
@@ -45,10 +46,15 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
     let forget = MenuItem::with_id(app, "forget", "Delete the last hour…", true, None::<&str>)?;
     let calibrate = MenuItem::with_id(app, "calibrate", "Calibrate the eye tracker", true, None::<&str>)?;
     let tools = MenuItem::with_id(app, "tools", "Doctor and GPU packs…", true, None::<&str>)?;
-    let autostart = {
-        let on = app.state::<Shell>().config.lock().unwrap().autostart;
-        CheckMenuItem::with_id(app, "autostart", "Start at sign-in", true, on, None::<&str>)?
+    let shell = app.state::<Shell>();
+    let (on, notify_on) = {
+        let config = shell.config.lock().unwrap();
+        (config.autostart, config.notify)
     };
+    let autostart = CheckMenuItem::with_id(app, "autostart", "Start at sign-in", true, on, None::<&str>)?;
+    let notify =
+        CheckMenuItem::with_id(app, "notify", "Yesterday's review each morning", true, notify_on, None::<&str>)?;
+    let search = MenuItem::with_id(app, "search", "Search", true, Some(crate::morning::SEARCH))?;
     let quit = MenuItem::with_id(app, "quit", "Quit DayCube", true, None::<&str>)?;
     let menu = Menu::with_items(
         app,
@@ -56,17 +62,19 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
             &status,
             &PredefinedMenuItem::separator(app)?,
             &open,
+            &search,
             &pause,
             &forget,
             &PredefinedMenuItem::separator(app)?,
             &calibrate,
             &tools,
             &autostart,
+            &notify,
             &PredefinedMenuItem::separator(app)?,
             &quit,
         ],
     )?;
-    app.manage(Items { status, pause, autostart });
+    app.manage(Items { status, pause, autostart, notify });
     TrayIconBuilder::with_id("daycube")
         .icon(app.default_window_icon().cloned().expect("bundle icon"))
         .tooltip("DayCube")
@@ -113,6 +121,14 @@ fn refresh(app: &AppHandle) {
 fn on_menu(app: &AppHandle, id: &str) {
     match id {
         "open" => crate::show_main(app),
+        "search" => crate::open_search(app),
+        "notify" => {
+            let shell = app.state::<Shell>();
+            let mut config = shell.config.lock().unwrap();
+            config.notify = !config.notify;
+            let _ = config.save(&shell.config_path);
+            let _ = app.state::<Items>().notify.set_checked(config.notify);
+        }
         "tools" => crate::show_tools(app),
         "calibrate" => {
             if let Err(error) = crate::calibrate(app.state::<Shell>()) {
