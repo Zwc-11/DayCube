@@ -50,6 +50,7 @@ MEDIA_TYPES = {
 SAFE_ID = re.compile(r"[A-Za-z0-9_-]+")
 SAFE_FILE = re.compile(r"[A-Za-z0-9_-]+\.json")
 MAX_JOBS = 100
+FILL_EVERY_S = 60.0  # how often a warm API looks for days stored without their vectors
 
 
 class RequestModel(BaseModel):
@@ -100,7 +101,8 @@ def sse(event: str, value: Record) -> str:
 def create_app(settings: Settings | None = None, *, embedder: Embedder | None = None, warm: bool = False) -> FastAPI:
     """``embedder`` replaces the configured model (tests pass a deterministic one). ``warm``: at
     startup, bring the vault database up to date and load the embedding model and vector index in
-    the background, so the first question is answered as fast as the rest."""
+    the background, so the first question is answered as fast as the rest, then keep embedding
+    the days stored without vectors (``LifeStore.fill_backlog``)."""
     settings = settings or Settings()
     vault = Vault(settings.vault_root)
     store = LifeStore(
@@ -121,7 +123,7 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
     labeler, labels_by = llm_labeler(settings.category_llm)
     writers = {"summary": review_by if review_model else f"template ({review_by})", "categories": labels_by}
 
-    def warm_up() -> None:
+    def warm_up(stop: threading.Event) -> None:
         started = perf_counter()
         try:
             store.ensure()
@@ -130,13 +132,23 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
             log.exception("Warming up search failed")
         else:
             log.info("Search warm in %.1f s", perf_counter() - started)
+        # Then, while the API runs, vectors for the days stored without them, so meaning search
+        # covers every day and not only those small enough to embed inside a request.
+        while not stop.wait(FILL_EVERY_S):
+            try:
+                if filled := store.fill_backlog(stop):
+                    log.info("Meaning search: %d more texts embedded", filled)
+            except Exception:  # noqa: BLE001 - tried again later; keywords answer meanwhile
+                log.exception("Embedding the vault's backlog failed")
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         vault.initialize()
+        stop = threading.Event()
         if warm:
-            threading.Thread(target=warm_up, name="warm-up", daemon=True).start()
+            threading.Thread(target=warm_up, args=(stop,), name="warm-up", daemon=True).start()
         yield
+        stop.set()
 
     app = FastAPI(
         title="DAYCUBE Local API",

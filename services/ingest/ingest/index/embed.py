@@ -13,6 +13,7 @@ from __future__ import annotations
 import contextlib
 import ctypes
 import importlib.util
+import os
 import sys
 import threading
 import time
@@ -24,6 +25,9 @@ SCALE = 254.0
 # length, so texts go shortest first, a few at a time: on 2,000 texts of real lengths 6.3x faster
 # than unsorted batches of 64, at under a third of the peak memory (eval/benchmark_embed.py).
 BATCH = 16
+# A quarter of the logical processors (at least 2): embedding a day runs beside the eye tracker
+# and capture, which keep the rest; a question's one short text takes milliseconds either way.
+THREADS = max(2, (os.cpu_count() or 2) // 4)
 IDLE_S = 600.0  # unused this long, the model is let go: about 190 MB of the API's memory
 DEFAULT_MODEL = "BAAI/bge-small-en-v1.5"
 # bge v1.5 is trained with this instruction on short queries; passages are embedded bare.
@@ -64,7 +68,7 @@ class FastEmbedder:
             if self._model is None:
                 from fastembed import TextEmbedding
 
-                self._model = TextEmbedding(model_name=self.name)
+                self._model = TextEmbedding(model_name=self.name, threads=THREADS)
             if self._timer is None:
                 self._release_in(self.idle_s)
             self._runs += 1

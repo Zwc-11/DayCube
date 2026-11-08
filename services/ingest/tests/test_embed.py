@@ -19,7 +19,7 @@ class FakeModel:
 
     loaded = 0
 
-    def __init__(self, model_name: str) -> None:
+    def __init__(self, model_name: str, **options: object) -> None:
         FakeModel.loaded += 1
         self.batches: list[list[int]] = []
 

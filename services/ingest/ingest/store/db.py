@@ -18,6 +18,7 @@ import hashlib
 import json
 import os
 import sqlite3
+import threading
 from collections.abc import Iterable, Iterator, Sequence
 from contextlib import contextmanager, suppress
 from datetime import datetime, timedelta
@@ -150,6 +151,7 @@ class LifeStore:
         self.fresh = vault.fresh_index
         self.index = VectorIndex()
         self._ready = False
+        self._migrating = threading.Lock()  # the warm-up and the first request open it together
         self.notes_root = vault.root / "notes"
         self._notes: dict[str, tuple[int, int]] | None = None  # the notes folder as last synced
         self._everything_at = -FULL_CHECK_S  # when every day's files were last checked (monotonic)
@@ -169,7 +171,9 @@ class LifeStore:
             db.row_factory = sqlite3.Row
             db.execute("PRAGMA synchronous = NORMAL")  # WAL + NORMAL: safe for a rebuildable cache
             if not self._ready:
-                self._migrate(db)
+                with self._migrating:
+                    if not self._ready:
+                        self._migrate(db)
             yield db
 
     @contextmanager
@@ -337,12 +341,34 @@ class LifeStore:
             row = known.get(day)
             changed = row is None or row["stamp"] != stamp
             # Vectors missing after an append, or after search was switched on: fill them now
-            # if that is quick; a day with more waits for `daycube index`.
+            # if that is quick; a day with more waits for fill_backlog (the API runs it).
             fill = self.vectors and row is not None and 0 < row["unembedded"] <= INLINE_EMBED_LIMIT
             if changed or fill:
                 self.update(day, embed_limit=INLINE_EMBED_LIMIT)
             else:
                 self.fresh.put_metadata(day, key)
+
+    def fill_backlog(self, stop: threading.Event | None = None) -> int:
+        """Embed what the days were stored without (more new texts than a request embeds inline,
+        or search switched on later), newest day first, a day at a time; ``stop`` ends it between
+        days. Returns how many texts gained vectors."""
+        if not self.vectors:
+            return 0
+        with self.read() as db:
+            days = [row[0] for row in db.execute("SELECT day FROM days WHERE unembedded > 0 ORDER BY day DESC")]
+        filled = 0
+        for day in days:
+            if stop is not None and stop.is_set():
+                break
+            with suppress(FileNotFoundError):  # removed since: the next ensure() drops it
+                before = self._unembedded(day)
+                filled += before - self.update(day)["unembedded"]
+        return filled
+
+    def _unembedded(self, day: str) -> int:
+        with self.read() as db:
+            row = db.execute("SELECT unembedded FROM days WHERE day = ?", (day,)).fetchone()
+        return row[0] if row else 0
 
     def update(self, day: str, *, embed_limit: int | None = None) -> Record:
         """Replace the day's rows from its files. ``embed_limit`` caps how many new texts this
