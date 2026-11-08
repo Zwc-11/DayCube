@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { X } from 'lucide-react';
+import { Clapperboard, X } from 'lucide-react';
 import { SceneResources } from '../../lib/sceneResources';
 import { MAX_SPLATS, classifyGpu, rendererName, startBudget } from '../../lib/splatBudget';
 import { type Memory, memoryUrl, quarterTurns, uprightFovY, worldScale, worldUrl } from '../../lib/memories';
@@ -43,6 +43,8 @@ export interface MemoryViewProps {
   others?: Memory[];
   onClose: () => void;
   onSwitch?: (memory: Memory) => void;
+  /** Play it as its film (MemoryFilm). */
+  onFilm?: () => void;
 }
 
 type Pose = { x: number; y: number; z: number; yaw: number; pitch: number };
@@ -71,7 +73,7 @@ async function photoGradient(url: string): Promise<[string, string] | null> {
   }
 }
 
-export const MemoryView: React.FC<MemoryViewProps> = ({ memory, others = [], onClose, onSwitch }) => {
+export const MemoryView: React.FC<MemoryViewProps> = ({ memory, others = [], onClose, onSwitch, onFilm }) => {
   const root = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'failed'>('loading');
   const [progress, setProgress] = useState(0);
@@ -211,6 +213,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ memory, others = [], onC
       };
       const raycaster = new THREE.Raycaster();
       const onDown = (e: PointerEvent) => {
+        if ((e.target as Element).closest('button')) return; // captured, a button would never get its click
         dragging = { x: e.clientX, y: e.clientY, yaw: target.yaw, pitch: target.pitch, moved: 0 };
         el.setPointerCapture?.(e.pointerId);
       };
@@ -359,6 +362,11 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ memory, others = [], onC
       <button type="button" className="memory__close" onClick={onClose} aria-label="Close">
         <X size={18} aria-hidden />
       </button>
+      {onFilm && (
+        <button type="button" className="memory__close memory__film" onClick={onFilm} aria-label="Film" title="Play as a film">
+          <Clapperboard size={17} aria-hidden />
+        </button>
+      )}
       {state === 'loading' && <span className="memory__status" role="status">{progress > 0 ? `${progress}%` : ''}</span>}
       {state === 'ready' && inWorld && <span className="memory__hint">drag to look · WASD to walk · double-click to go back</span>}
       {state === 'failed' && <span className="memory__status memory__status--failed" role="alert">This memory could not be loaded</span>}

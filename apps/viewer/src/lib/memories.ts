@@ -13,6 +13,8 @@ export interface Memory {
   model: string;
   made: string;
   source?: Record<string, unknown> | null;
+  /** The line under its photo at the end of its film. */
+  caption?: string | null;
   /** A photo from a scan: the scan's world it stands in. */
   world?: MemoryWorld;
 }
@@ -30,9 +32,22 @@ export interface MemoryWorld {
   bounds: { min: [number, number, number]; max: [number, number, number] } | null;
 }
 
+/**
+ * When the photo was taken: an inbox photo's EXIF time (the PC's wall time, no offset), else a
+ * scan frame's seconds into its scan; null when neither is known.
+ */
+export function taken(m: Pick<Memory, 'source'>): Date | null {
+  const s = m.source ?? {};
+  const when = typeof s.taken === 'string' ? new Date(s.taken)
+    : typeof s.t0 === 'string' ? new Date(Date.parse(s.t0) + 1000 * Number(s.t_s ?? 0)) : null;
+  return when && !Number.isNaN(when.getTime()) ? when : null;
+}
+
 export const memoryKey = (m: Pick<Memory, 'date' | 'id'>): string => `${m.date}/${m.id}`;
 
-export const memoryUrl = (m: Pick<Memory, 'date' | 'id'>, name: 'photo.jpg' | 'memory.splat'): string =>
+export type MemoryFile = 'photo.jpg' | 'memory.splat' | 'film-portrait.mp4' | 'film-landscape.mp4';
+
+export const memoryUrl = (m: Pick<Memory, 'date' | 'id'>, name: MemoryFile): string =>
   `/api/memories/${m.date}/${m.id}/${name}`;
 
 /**

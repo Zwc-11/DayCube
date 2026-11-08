@@ -101,6 +101,25 @@ def test_a_recording_in_the_span_goes_whole_and_the_day_stays_valid(vault: Vault
         assert not (span[0] <= a < span[1] or span[0] < b <= span[1]) or (a < span[0] and b > span[1])
 
 
+def test_memories_taken_in_the_span_go_with_their_scene(vault: Vault, api: TestClient) -> None:
+    def memory(ident: str, source: dict) -> Path:
+        folder = vault.root / DAY / "memories" / ident
+        folder.mkdir(parents=True)
+        (folder / "memory.json").write_text(json.dumps({"splats": 1, "source": source}), encoding="utf-8")
+        (folder / "memory.splat").write_bytes(bytes(32))
+        return folder
+
+    frame = memory("mem_00000000000a", {"moment": "mo_001", "frame": 3, "t_s": 1.0, "t0": f"{DAY}T12:40:00-04:00"})
+    local = instant(f"{DAY}T09:07:00-04:00").astimezone().replace(tzinfo=None)  # EXIF: the PC's wall time
+    photo = memory("mem_00000000000b", {"file": "IMG_1.jpg", "taken": local.isoformat()})
+    later = memory("mem_00000000000c", {"file": "IMG_2.jpg", "taken": f"{DAY}T18:00:00-04:00"})
+    assert delete(api, DAY, "09:00:00", "09:15:00").json()["removed"]["memories"] == 1
+    assert not photo.exists() and frame.exists() and later.exists()
+    # A frame of a recording goes with it, though the frame itself is just after the span.
+    assert delete(api, DAY, "12:30:00", "12:40:30").json()["removed"]["memories"] == 1
+    assert not frame.exists() and later.exists()
+
+
 @pytest.mark.parametrize(
     ("t0", "t1"), [("10:00:00", "09:00:00"), ("23:30:00", "2026-10-21T00:30:00-04:00"), ("09:00:00", "09:00:00")]
 )

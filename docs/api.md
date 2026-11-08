@@ -42,8 +42,12 @@ for actions. Do not paste external provider keys there.
 | GET | `/day/{date}/deletions` | The spans deleted from the day |
 | GET | `/morning` | Yesterday's final review as the desktop app's morning notification shows it (`{date, title, text}`), from `DAYCUBE_PUSH_AT`; `date` null before then |
 | GET | `/day/{date}/seen` | What was on screen, page by page: when each page or app was in front, and what was read, stared at, looked at, copied, clicked, played and searched on it (`ingest/seen.py`; the viewer's What I saw, `?date=…&view=seen`) |
+| GET | `/memories` | Memories, newest first: size, focal length, distances, source, `caption`, and the scan's world for a photo from a scan ([memories](memories.md)) |
+| GET | `/memories/{date}/{id}/{file}` | `photo.jpg`, `memory.splat`, and a kept film (`film-portrait.mp4`, `film-landscape.mp4`) |
+| PATCH | `/memories/{date}/{id}` | `{caption}` (at most 280 characters; empty removes it) → `{caption}` |
+| PUT | `/memories/{date}/{id}/film-portrait.mp4` or `film-landscape.mp4` | The MP4 body (at most 512 MB), kept beside the memory; 422 for anything not an MP4 |
 
-All POST/DELETE routes require `Authorization: Bearer <vault-token>`. Event ingestion is separate
+All POST, PUT, PATCH and DELETE routes require `Authorization: Bearer <vault-token>`. Event ingestion is separate
 from port 7700's raw browser metadata receiver. The two payloads are intentionally different.
 Moment lookup requires a date so two days can safely both contain `mo_001`.
 

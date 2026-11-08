@@ -137,7 +137,7 @@ export class DaycubeClient {
 
   private async response(path: string, init: RequestInit = {}): Promise<Response> {
     const headers = new Headers(init.headers);
-    if (init.body) headers.set('Content-Type', 'application/json');
+    if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
     if (init.method && init.method !== 'GET') {
       const token = this.getToken();
       if (!token) throw new ApiError(401, 'Connect your vault token to use this action.');
@@ -304,6 +304,18 @@ export class DaycubeClient {
     return this.request(`/day/${encodeURIComponent(date)}/hours`, {
       method: 'DELETE', body: JSON.stringify({ t0, t1, reason: reason || null }),
     }) as Promise<Deletion>;
+  }
+  /** A memory's caption (docs/memories.md); empty removes it. */
+  editMemory(date: string, id: string, caption: string) {
+    return this.request(`/memories/${encodeURIComponent(date)}/${encodeURIComponent(id)}`, {
+      method: 'PATCH', body: JSON.stringify({ caption }),
+    }) as Promise<{ caption: string | null }>;
+  }
+  /** Keep a memory's exported film (MP4) beside it in the vault. */
+  saveFilm(date: string, id: string, name: 'film-portrait.mp4' | 'film-landscape.mp4', film: Blob) {
+    return this.request(`/memories/${encodeURIComponent(date)}/${encodeURIComponent(id)}/${name}`, {
+      method: 'PUT', body: film, headers: { 'Content-Type': 'video/mp4' },
+    }) as Promise<{ film: string; bytes: number }>;
   }
   seen(date: string) { return this.request(`/day/${encodeURIComponent(date)}/seen`) as Promise<Seen>; }
   deletions(date: string) { return this.request(`/day/${encodeURIComponent(date)}/deletions`) as Promise<Deletion[]>; }

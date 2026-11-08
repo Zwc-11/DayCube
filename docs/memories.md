@@ -52,7 +52,11 @@ A memory made from a scan's frame also records its `world`:
   LiDAR's.
 
 The API lists them at `GET /memories` and serves `photo.jpg` and `memory.splat` at
-`GET /memories/{date}/{id}/{file}`.
+`GET /memories/{date}/{id}/{file}`. With the vault token, `PATCH /memories/{date}/{id}` sets its
+`caption` (at most 280 characters; empty removes it) and `PUT /memories/{date}/{id}/film-portrait.mp4`
+or `film-landscape.mp4` keeps an exported film beside it (an MP4, at most 512 MB; the newest of
+each shape wins). A memory taken in a span that is deleted goes whole, with its films
+([deleting a span](capture.md#deleting-a-span)).
 
 ## Seeing them
 
@@ -97,6 +101,64 @@ The view is held this close to the photo on purpose. On the trail, a photo lifte
 1–2 dB over itself up to about 1 m, and almost nothing by 4 m (`docs/glasses.md`, "One photo").
 Beyond that it shows what the photo never saw.
 
+## Film
+
+The clapperboard on an open memory plays it as a film (`?view=memories&memory=<date>/<id>&film=1`,
+`components/memories/MemoryFilm.tsx`, `lib/film.ts`), after a scan-driven particle reel: the
+photo opens into its 3D scene, its subject is left floating, and its points stream back into the
+photo, which ends on the date, the time and the caption.
+
+**What happens, in seconds** (a photo on its own runs 15 s; one from a scan 19 s):
+
+| Beat | Alone | From a scan | What you see |
+| --- | --- | --- | --- |
+| Open | 0.6-4.8 | 0.6-4.8 | The photo turns into its points, and each flies out along its own camera ray from its pixel to the distance SHARP gave it: SHARP made one Gaussian per pixel, so this is the photo becoming the scene it shows, not an effect laid over it. Near points go first. |
+| Isolate | 4.6-7 | 4.6-6.6 | The background fades to a faint dust, smaller, and the near subject floats alone. |
+| Grow | | 6.2-11.2 | The camera backs off and the scan's points rise from the floor up around the photo, standing where it was taken; the growing edge is lit. |
+| Recall | 8.6-12 | 12.2-15.6 | A copy of the points streams into a card, each to its own pixel, top of the photo first. The scene stays and moves aside: right of the card in 16:9, above it in 9:16. |
+| Card | 11.4-12.8 | 15-16.4 | The card becomes the photo, upright; then the date, the time and the caption. |
+
+The corners carry real numbers: the timecode and frame, the Gaussians out of the photo, the
+scene's distance, the scan's points and the height grown (metres, from the scan), and the photo's
+time. The date takes the photo's liveliest colour.
+
+**Subject and background.** The split is Otsu's threshold on the points' log distances, kept only
+where the histogram has a valley between two peaks (under a third of the lower) and the near part
+is over 5% of the points. A photo whose distances run on, a wall going away or a landscape, has no
+split, and the film keeps all of it.
+
+**Time.** An inbox photo's EXIF time (the PC's wall time), else a scan frame's seconds into its
+scan; else the day the memory is filed under.
+
+| Input | What it does |
+| --- | --- |
+| Drag | looks round while it plays (±10°, from a scan ±70°), easing back when let go |
+| Space | pause or play; at the end, play again |
+| R | from the start |
+| Pen | the caption, kept with the memory (needs the vault token) |
+| Frame | 16:9 or 9:16 (TikTok, Reels): the screen shows the frame Export writes |
+| MP4 | Export: 1920 × 1080 or 1080 × 1920, 30 fps, 14 Mb/s |
+| Escape | back to the memory |
+
+**How it is drawn.** All points, by the film's own shader (`lib/film.ts`), read straight from the
+`.splat` files: at most 700,000 of the memory's and 600,000 of the scan's, an even stride through
+them, each drawn twice its Gaussian's mean scale (more for a sample, so it covers as the whole).
+The memory's points are sorted far to near once (a counting sort) and blend right from its view
+without a sort per frame. The film does not use Spark: Spark sorts its Gaussians off the main
+thread, so a frame would depend on when its sort came back. Here each frame depends on its time
+alone, which is what lets Export draw the frames the screen does. A held frame is not drawn again
+until something changes (a drag, a resize, a new caption).
+
+**Export.** Frame by frame, not a screen recording: each frame is drawn at the film's size, the
+scene and the 2D layer (the card, the words, the corners) put together, and encoded with WebCodecs
+through Mediabunny (H.264, else VP9, else AV1, in MP4). A slow GPU takes longer; it drops no
+frame. The film downloads, and with the vault token is kept beside the memory. In software
+rendering (the tests' Chromium) a 15 s 1080 × 1920 film took 206 s.
+
+**Limits.** One photo holds up only near its own view, so a photo alone swings 7° either way and
+steps in 10%; one from a scan swings 16° once the scan is around it. SHARP's distances are its
+own guess: the split is as good as they are.
+
 ## Licence
 
 SHARP's weights are licensed for research, not for a commercial product. A product path is a
@@ -110,7 +172,9 @@ metric scale was off by 3× there, so the scale has to come from elsewhere.
   - OpenCV axes to the viewer's, positions and Gaussian rotations;
   - a memory's files and numbers, from a stand-in for SHARP;
   - inbox photos filed by their EXIF date and focal length;
-  - the API's listing and file route, including refused names.
+  - the API's listing and file route, including refused names;
+  - a caption kept and removed, an exported film kept and served, and what is refused (no token,
+    not an MP4, another file name, a memory that is not there).
 - `apps/viewer/e2e/memories.spec.ts`:
   - a memory written into the test vault opens from the list;
   - it reaches ready and draws a picture of many colours;
@@ -121,5 +185,18 @@ metric scale was off by 3× there, so the scale has to come from elsewhere.
     - walking 3.2 m fades the memory out;
     - dragging turns past 2 radians;
     - double-click returns, the memory sharp again.
+- The film (`apps/viewer/e2e/memories.spec.ts`, `scripts/film.test.mjs`):
+  - the Film button opens it; it finds the near blobs and the wall as two, and the wall's colours
+    go as it fades;
+  - at the end the card draws the photo; a caption typed is kept in `memory.json`; Space holds
+    it; Escape goes back;
+  - Export writes an MP4 of 450 frames (15 s at 30 fps, none dropped), downloaded and kept beside
+    the memory;
+  - a photo from a scan grows the room's 32,805 points;
+  - points read far to near without faint ones, a sample sized to cover; the split found for a
+    subject and its background and refused for an even run, a speck and too few points; the card's
+    place in 16:9 and 9:16; the beats in order; the timecode and date.
+- `test_forget.py`: a memory taken in a deleted span goes, and so does a frame of a recording that
+  went, though the frame itself is just after the span.
 - `test_memory.py` also covers the LiDAR scale (a wall SHARP put at 2 m and the LiDAR at 4 m
   gives 2), and the listing's world. A moment name that would leave its day is ignored.

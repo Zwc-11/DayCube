@@ -503,6 +503,7 @@ the span held goes from the vault (`ingest/forget.py`):
 | The day's folder | Its events, GPS fixes, screen text and shots in the span; each recording that overlaps it, whole (audio, video, transcript, and its 3D and speech outputs); a place visit that starts or ends in it is cut at its edge, one inside it goes, one around it keeps its times |
 | `sources/` | The phone's sensor rows in the span; a kept hour of sound loses the span (FFmpeg cuts it out) |
 | `inbox/phone/imported/` | Sensor rows in the span, in folders and zips; a memo that overlaps it, whole |
+| Memories | A photo taken in the span, or a frame of a recording that went, with its 3D scene and films ([memories](memories.md)) |
 | Derived | The search database is rewritten (keyword index optimized, `VACUUM`, write-ahead log emptied), the notes it touched and the day's note are written again or removed, and the timelines, reviews and week of the review days it falls in |
 
 The span is written to `deletions.jsonl` first, with when, the reason given and what went. From

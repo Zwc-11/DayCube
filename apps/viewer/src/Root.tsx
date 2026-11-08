@@ -15,7 +15,7 @@ type DayView = 'notes' | '3d';
 type Route =
   | { page: 'graph'; note: string | null; date: string | null }
   | { page: 'days' }
-  | { page: 'memories'; memory: string | null }
+  | { page: 'memories'; memory: string | null; film?: boolean }
   | { page: 'training'; run: string | null }
   | { page: 'seen'; date: string }
   | { page: 'day'; date: string };
@@ -37,7 +37,8 @@ const readRoute = (): Route => {
   if (view === 'days') return { page: 'days' };
   if (view === 'memories') {
     const memory = q.get('memory');
-    return { page: 'memories', memory: memory && /^\d{4}-\d{2}-\d{2}\/mem_[0-9a-f]{12}$/.test(memory) ? memory : null };
+    const open = memory && /^\d{4}-\d{2}-\d{2}\/mem_[0-9a-f]{12}$/.test(memory) ? memory : null;
+    return { page: 'memories', memory: open, film: Boolean(open) && q.get('film') === '1' };
   }
   if (view === 'training') {
     const run = q.get('run');
@@ -50,7 +51,7 @@ const readRoute = (): Route => {
 
 const urlOf = (route: Route): string => {
   if (route.page === 'days') return '?view=days';
-  if (route.page === 'memories') return route.memory ? `?view=memories&memory=${route.memory}` : '?view=memories';
+  if (route.page === 'memories') return route.memory ? `?view=memories&memory=${route.memory}${route.film ? '&film=1' : ''}` : '?view=memories';
   if (route.page === 'training') return route.run ? `?view=training&run=${route.run}` : '?view=training';
   if (route.page === 'seen') return `?date=${route.date}&view=seen`;
   if (route.page === 'day') return `?date=${route.date}`;
@@ -139,8 +140,8 @@ export const Root: React.FC = () => {
   if (route.page === 'memories') {
     return (
       <Suspense fallback={<Loading />}>
-        <MemoriesPage open={route.memory} onOpen={(memory) => go({ page: 'memories', memory })} onHome={openDayPage}
-                      onGraph={() => openDate(null)} />
+        <MemoriesPage open={route.memory} film={Boolean(route.film)} onOpen={(memory, film) => go({ page: 'memories', memory, film })}
+                      onHome={openDayPage} onGraph={() => openDate(null)} />
       </Suspense>
     );
   }

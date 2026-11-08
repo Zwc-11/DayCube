@@ -3926,6 +3926,122 @@ button.np-link:hover {
   100% { opacity: 0; }
 }
 
+.memory__film {
+  right: 56px;
+}
+
+/* A memory's film (components/memories/MemoryFilm.tsx): a 16:9 or 9:16 stage, as large as fits;
+   the scene and the 2D layer over it share its size. */
+.film {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  background: #050608;
+}
+.film__stage {
+  position: relative;
+  max-width: 100vw;
+  max-height: 100vh;
+  overflow: hidden;
+  touch-action: none;
+  cursor: grab;
+  background: linear-gradient(180deg, #070a12 0%, #0b0b10 55%, #24140c 100%);
+}
+.film__stage--landscape {
+  aspect-ratio: 16 / 9;
+  width: min(100vw, 100vh * 16 / 9);
+}
+.film__stage--portrait {
+  aspect-ratio: 9 / 16;
+  height: 100vh;
+  width: auto;
+}
+.film__stage:active {
+  cursor: grabbing;
+}
+.film__canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.film__layer {
+  pointer-events: none;
+}
+.film__bar {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 2;
+  opacity: 0.35;
+  transition: opacity 0.3s ease;
+}
+.film:hover .film__bar,
+.film__bar:focus-within {
+  opacity: 1;
+}
+.film__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--fg);
+  font: 500 12px var(--font);
+  cursor: pointer;
+}
+.film__btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+}
+.film__btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.film__btn--wide span {
+  font-variant-numeric: tabular-nums;
+  min-width: 3ch;
+}
+.film__caption {
+  position: absolute;
+  left: 50%;
+  bottom: 62px;
+  transform: translateX(-50%);
+  width: min(560px, calc(100vw - 32px));
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
+  background: rgba(10, 10, 12, 0.85);
+  color: var(--fg);
+  font: 15px Georgia, 'Noto Serif SC', SimSun, serif;
+  z-index: 3;
+}
+.film__note {
+  position: absolute;
+  left: 50%;
+  bottom: 62px;
+  transform: translateX(-50%);
+  max-width: calc(100vw - 32px);
+  font-size: 12px;
+  color: var(--fg-2);
+  z-index: 2;
+}
+.film__note--failed {
+  color: #e79482;
+}
+
 /* ---------------------------------------------------------------------------
    Day review (components/review/DayReview.tsx): beside the daily note, and at the top of the
    day page's itinerary.
