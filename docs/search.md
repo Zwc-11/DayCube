@@ -46,12 +46,17 @@ unit.
   pause in typing, so across every day it re-checks older days and the notes folder at most every
   2 s (`FULL_CHECK_S`) and today and yesterday, where capture is arriving, every time. A note hit
   whose file was deleted since is dropped, and a changed one brings the folder in at once.
-- **Reuse before embedding.** Embedding is the slow step: bge-small manages 28–47 texts a second
-  on two CPU cores. Re-indexing a day reuses the vectors of its unchanged units, and repeated
-  text on other days ("Visited Home", the same document) reuses theirs. Only new text is
-  embedded, outside the vault lock.
+- **Reuse before embedding.** Embedding is the slow step: bge-small manages about 55 texts a
+  second on two CPU cores, embedded shortest first 16 at a time (a batch is padded to its longest
+  text), with a quarter of the processors so capture keeps the rest. Re-indexing a day reuses the
+  vectors of its unchanged units, and repeated text on other days ("Visited Home", the same
+  document) reuses theirs. Only new text is embedded, outside the vault lock.
 - **Inline limit.** A query embeds at most 256 new texts before answering. A bigger day is
-  searched by keywords until `daycube index --date …` (or `--all`) fills its vectors.
+  searched by keywords until its vectors are filled: a running API (`npm run api`, the desktop
+  app) looks every minute for days stored without them and embeds them, newest first, a day at a
+  time (`LifeStore.fill_backlog`); `daycube index --date …` (or `--all`) does the same at once.
+- **Idle model.** The model is let go ten minutes after its last use (about 190 MB), and loaded
+  again by the next search in about 0.3 s.
 - **Removed days.** A day deleted from the vault leaves the database at the next search across
   days.
 

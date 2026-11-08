@@ -3,11 +3,15 @@
 import copy
 import shutil
 import sqlite3
+import threading
+import time
 from contextlib import closing
 
 import pytest
 from conftest import DAY, WordEmbedder, clone_day
+from fastapi.testclient import TestClient
 from ingest.ask.retrieve import retrieve
+from ingest.config import Settings
 from ingest.index.build import UNIT_COLUMNS
 from ingest.store import LifeStore
 from ingest.store.vectors import Block, VectorIndex
@@ -165,19 +169,37 @@ def test_unchanged_text_is_never_embedded_twice(vault: Vault, embedder: WordEmbe
     assert store.stats()["unembedded"] == 0
 
 
-def test_a_day_too_big_to_embed_inline_waits_for_the_index_command(vault: Vault, monkeypatch: object) -> None:
+def test_a_day_too_big_to_embed_inline_is_filled_from_the_backlog(vault: Vault, monkeypatch: object) -> None:
     import ingest.store.db as store_db
 
     monkeypatch.setattr(store_db, "INLINE_EMBED_LIMIT", 3)
+    clone_day(vault, DAY, OTHER)
     embedder = WordEmbedder()
     store = LifeStore(vault, embedder)
     store.ensure()
-    assert embedder.embedded == [] and store.stats()["unembedded"] == 28
+    assert embedder.embedded == [] and store.stats()["unembedded"] == 56
     assert retrieve(store, "hinge", day=DAY)  # keywords still answer
     store.ensure()
     assert embedder.embedded == []  # not retried on every query
-    store.update(DAY)
-    assert store.stats()["unembedded"] == 0
+    stop = threading.Event()
+    stop.set()
+    assert store.fill_backlog(stop) == 0  # asked to stop: no day is started
+    assert store.fill_backlog() == 56 and store.stats()["unembedded"] == 0
+    assert store.fill_backlog() == 0 and len(embedder.embedded) == len(set(embedder.embedded))
+
+
+def test_a_warm_api_fills_the_backlog_while_it_runs(vault: Vault, monkeypatch: pytest.MonkeyPatch) -> None:
+    import ingest.api as api
+    import ingest.store.db as store_db
+
+    monkeypatch.setattr(store_db, "INLINE_EMBED_LIMIT", 3)
+    monkeypatch.setattr(api, "FILL_EVERY_S", 0.05)
+    app = api.create_app(Settings(vault_root=vault.root, _env_file=None), embedder=WordEmbedder(), warm=True)
+    with TestClient(app):
+        deadline = time.monotonic() + 10
+        while app.state.store.stats()["days"] == 0 or app.state.store.stats()["unembedded"]:
+            assert time.monotonic() < deadline, app.state.store.stats()
+            time.sleep(0.05)
 
 
 def test_a_new_model_replaces_every_vector(vault: Vault) -> None:
