@@ -4374,3 +4374,169 @@ button.np-link:hover {
     grid-template-columns: 1fr;
   }
 }
+
+/* What I saw: the day's pages and apps (components/seen/SeenPage.tsx). */
+.seen__nav {
+  gap: 4px;
+  margin: 0 auto;
+}
+.seen__date {
+  margin: 0 6px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.seen__main {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 16px;
+}
+.seen__totals {
+  display: flex;
+  gap: 28px;
+  margin: 0 0 14px;
+}
+.seen__totals dt {
+  color: var(--fg-3);
+  font-size: 12px;
+}
+.seen__totals dd {
+  margin: 2px 0 0;
+  font-size: 20px;
+}
+.seen__strip {
+  position: relative;
+  padding: 10px 12px 22px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-l);
+  background: var(--raised);
+}
+.seen__lane {
+  position: relative;
+  height: 22px;
+  border-radius: var(--radius-xs);
+  background: var(--panel);
+}
+.seen__span {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  min-width: 2px;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  opacity: 0.85;
+  cursor: pointer;
+}
+.seen__span:hover,
+.seen__span:focus-visible {
+  opacity: 1;
+  outline: 1px solid var(--fg);
+}
+.seen__ticks {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 4px;
+  height: 14px;
+}
+.seen__ticks span {
+  position: absolute;
+  transform: translateX(-50%);
+  color: var(--fg-3);
+  font-size: 10.5px;
+}
+.seen__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+}
+.seen__page {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  background: var(--panel);
+}
+.seen__page[data-focused] {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+.seen__time {
+  color: var(--fg-3);
+  font-size: 12.5px;
+  padding-top: 1px;
+}
+.seen__head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  font-size: 13px;
+}
+.seen__dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.seen__title {
+  overflow: hidden;
+  color: var(--fg);
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.seen__title[href]:hover {
+  text-decoration: underline;
+}
+.seen__head .faint {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.seen__spent {
+  flex: none;
+  margin-left: auto;
+  color: var(--fg-2);
+  white-space: nowrap;
+}
+.seen__items {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.seen__item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  color: var(--fg-2);
+  font-size: 12.5px;
+}
+.seen__item svg {
+  flex: none;
+  position: relative;
+  top: 2px;
+  color: var(--fg-3);
+}
+.seen__item--read .seen__text {
+  color: var(--fg);
+}
+.seen__item .num {
+  flex: none;
+  white-space: nowrap;
+}
+.seen__text {
+  min-width: 0;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}

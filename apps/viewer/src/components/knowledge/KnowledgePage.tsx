@@ -1,5 +1,5 @@
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, CalendarDays, Database, Maximize2, Minus, PanelLeft, Plus, RotateCw, Search, X } from 'lucide-react';
+import { Activity, CalendarDays, Database, Eye, Maximize2, Minus, PanelLeft, Plus, RotateCw, Search, X } from 'lucide-react';
 import type { SearchEvidence, SearchResult } from '@daycube/schemas';
 import { backendBridge } from '../../lib/backendBridge';
 import type { DaySummary } from '../../lib/days';
@@ -33,6 +33,8 @@ interface KnowledgePageProps {
   onOpenDate: (date: string, view: DayView) => void;
   onOpenDays: () => void;
   onOpenTraining: () => void;
+  /** What was on screen through a day (components/seen/SeenPage.tsx). */
+  onOpenSeen: (date: string) => void;
   /** The DayCube logo: back to a day's page. */
   onOpenDayPage?: () => void;
 }
@@ -106,8 +108,10 @@ const wide = () => typeof window !== 'undefined' && window.innerWidth >= WIDE;
  * it. Opening a note anywhere (the graph, the list, a link, a result) shows it on the right and
  * brings it into view on the graph.
  */
-export const KnowledgePage: React.FC<KnowledgePageProps> = ({ note, date, days, onOpenNote, onOpenDate, onOpenDays, onOpenDayPage, onOpenTraining }) => {
+export const KnowledgePage: React.FC<KnowledgePageProps> = ({ note, date, days, onOpenNote, onOpenDate, onOpenDays, onOpenDayPage, onOpenTraining, onOpenSeen }) => {
   const [model, setModel] = useState<GraphModel | null>(null);
+  // What I saw opens on the day whose note is open, else the newest day with computer capture.
+  const seenDay = date ?? [...(days ?? [])].reverse().find((d) => d.capture)?.date ?? null;
   const [status, setStatus] = useState<'loading' | 'ready' | 'offline'>('loading');
   const etag = useRef<string | null>(null);
   const graphRef = useRef<GraphHandle>(null);
@@ -426,6 +430,11 @@ export const KnowledgePage: React.FC<KnowledgePageProps> = ({ note, date, days, 
         <button type="button" className="btn btn--ghost btn--sm kb__days" onClick={onOpenDays}>
           <CalendarDays size={15} aria-hidden /> <span className="kb__days-label">Days</span>
         </button>
+        {seenDay && (
+          <button type="button" className="icon-btn" aria-label="What I saw" title="What I saw" onClick={() => onOpenSeen(seenDay)}>
+            <Eye size={15} />
+          </button>
+        )}
         <button type="button" className="icon-btn" aria-label="Training" title="Training" onClick={onOpenTraining}>
           <Activity size={15} />
         </button>

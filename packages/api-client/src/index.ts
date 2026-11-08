@@ -34,6 +34,27 @@ export interface Deletion {
   removed: Record<string, number>;
 }
 
+/** What was on screen through a day, page by page (``GET /day/{date}/seen``). */
+export interface SeenItem {
+  t: string;
+  kind: 'read' | 'stay' | 'look' | 'copy' | 'click' | 'media' | 'search';
+  text: string;
+  value: number | null; // a read's share of the lines; seconds of a stay or look
+}
+export interface SeenPage {
+  key: string;
+  title: string;
+  site: string;
+  spans: [string, string][];
+  seconds: number;
+  items: SeenItem[];
+}
+export interface Seen {
+  date: string;
+  pages: SeenPage[];
+  totals: { seconds: number; pages: number; read: number };
+}
+
 export interface DaySummary {
   date: string; stats: Day['stats']; kinds?: string[]; capture?: boolean; records?: number | null;
 }
@@ -284,6 +305,7 @@ export class DaycubeClient {
       method: 'DELETE', body: JSON.stringify({ t0, t1, reason: reason || null }),
     }) as Promise<Deletion>;
   }
+  seen(date: string) { return this.request(`/day/${encodeURIComponent(date)}/seen`) as Promise<Seen>; }
   deletions(date: string) { return this.request(`/day/${encodeURIComponent(date)}/deletions`) as Promise<Deletion[]>; }
   assetUrl(date: string, ref: string) {
     return `${this.baseUrl}/vault/${encodeURIComponent(date)}/${ref.split('/').map(encodeURIComponent).join('/')}`;

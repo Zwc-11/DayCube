@@ -1,4 +1,4 @@
-import { DaycubeClient, ApiError, type Deletion, type LabelCorrection } from '@daycube/api-client';
+import { DaycubeClient, ApiError, type Deletion, type LabelCorrection, type Seen } from '@daycube/api-client';
 import type {
   AskResult as SchemaAskResult, DataCenter, DayNotes, DayResponse, DayReview, Entity, GazeLearning, KnowledgeGraph, Note,
   SearchResult, NoteGraph, TrainingListed, TrainingSeries,
@@ -540,13 +540,19 @@ export class BackendBridge {
     }
   }
 
-  /** Delete a span of the day from the vault; resolves to what went. */
-  async deleteHours(date: string, t0: string, t1: string, reason: string): Promise<Deletion> {
-    let deletion: Deletion | null = null;
-    await this.write(`/api/day/${date}/hours`, async () => {
-      deletion = await this.client.deleteHours(date, t0, t1, reason);
-    }, `Deleted ${t0.slice(11, 16)}–${t1.slice(11, 16)} of ${date} from the vault`);
-    return deletion as unknown as Deletion;
+  /** Delete a span of the day from the vault, and what was made from it. */
+  deleteHours(date: string, t0: string, t1: string, reason: string): Promise<boolean> {
+    return this.write(`/api/day/${date}/hours`, () => this.client.deleteHours(date, t0, t1, reason),
+      `Deleted a span of ${date} from the vault`);
+  }
+
+  /** What was on screen through the day; null when the day has nothing or the vault is unreachable. */
+  async seen(date: string): Promise<Seen | null> {
+    try {
+      return await this.client.seen(date);
+    } catch {
+      return null;
+    }
   }
 
   /** The spans deleted from the day; empty when the vault cannot be reached. */

@@ -31,6 +31,8 @@ too. `npm run build && npm run media` makes them again.
   searches, places and conversations become linked Markdown in `vault/notes`, a folder Obsidian
   opens ([notes](docs/notes.md)). At the end of the day a summary with footnoted sources is written
   from the [day timeline](docs/timeline.md) ([review](docs/review.md)).
+- **What I saw.** The day's pages and apps in the order they came to the front, a strip of when
+  each was on screen, and what was read, stared at, copied and searched on each.
 - **Search and Ask.** Keyword (SQLite FTS5) and meaning search (bge-small vectors) across every
   day; answers are quoted from your records with their place and time ([search](docs/search.md)).
 - **Capture on Windows.** A browser extension, a webcam eye tracker that works out which line you
