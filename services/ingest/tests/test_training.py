@@ -90,3 +90,23 @@ def test_splat_training_logs_each_evaluation_once(vault: Vault) -> None:
     assert got["steps"] == [1200, 3000, 3000, 4000]
     assert got["values"]["psnr_db"] == [None, 20.25, None, None]
     assert said[-1].startswith("Training 4,000/30,000 steps, 90,000 splats") and said[-1].endswith("PSNR 20.2 dB")
+
+
+def test_the_eye_trackers_learning_is_a_run_of_its_current_calibration(vault: Vault) -> None:
+    folder = vault.root / "calibration"
+    folder.mkdir()
+    (folder / "gaze.json").write_text(json.dumps({"t": "2026-10-24T15:00:00+00:00", "error_px": 85}), encoding="utf-8")
+    fits = [
+        {"event": "fit", "t": "2026-10-23T10:00:00+00:00", "version": 7, "clicks": 900, "error_px": {"learned": 60}},
+        {"event": "fit", "t": "2026-10-24T16:00:00+00:00", "version": 1, "clicks": 140,
+         "error_px": {"calibration": 142, "in_use": 142, "learned": 97}},
+        {"event": "applied", "t": "2026-10-24T16:00:01+00:00", "version": 1},
+        {"event": "fit", "t": "2026-10-25T09:00:00+00:00", "version": 2, "clicks": 310,
+         "error_px": {"calibration": 150, "in_use": 97, "learned": 88}},
+    ]  # fmt: skip
+    (folder / "learning.jsonl").write_text("".join(json.dumps(f) + "\n" for f in fits), encoding="utf-8")
+    [listed] = runs(vault.root)  # the earlier calibration's fit and the application are not steps
+    assert listed["id"] == "eye-tracker-20261024T150000" and not listed["stalled"]
+    assert listed["last"]["learned_px"] == 88 and listed["result"] == {"calibration_px": 85}
+    got = series(vault.root, listed["id"])
+    assert got["steps"] == [1, 2] and got["values"]["learned_px"] == [97, 88] and got["values"]["clicks"] == [140, 310]

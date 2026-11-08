@@ -27,5 +27,7 @@ other trainer can write the two files directly. A run left `running` whose files
 15 minutes is shown as stalled: its process ended without saying so.
 
 Written today by: a scan's splat training (`ingest/splat/run.py`: held-out PSNR at each evaluation
-and the splat count). The eye tracker's learning from clicks keeps its own records and dashboard
-(Settings › Eye tracking).
+and the splat count). The eye tracker's learning from clicks is listed from its own log
+(`vault/calibration/learning.jsonl`): one run for the current calibration, each fit a step, with
+the held-out error of the candidate (`learned_px`), the model in use and the calibration alone, and
+the clicks it learned from. Its full dashboard stays under Settings › Eye tracking.

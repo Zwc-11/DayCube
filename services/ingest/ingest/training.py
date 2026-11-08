@@ -14,6 +14,10 @@ trainer can write them: DayCube's own (a scan's splats) through ``Run``, a resea
 
 A run still ``running`` whose files have not changed for ``STALE_S`` is reported as stalled: its
 process ended without saying so.
+
+The eye tracker's learning from clicks (``vault/calibration``, ``services/gaze/gaze/learn.py``) is
+listed too, read from its own log: a run for the current calibration, each fit a step with the
+held-out error of the candidate, the model in use and the calibration alone.
 """
 
 from __future__ import annotations
@@ -27,7 +31,7 @@ from pathlib import Path
 from typing import Any
 
 from .contracts import validate
-from .vault import atomic_text, read_json
+from .vault import atomic_text, read_json, read_lines
 
 STALE_S = 900.0
 SCHEMA = "daycube.training/1"
@@ -95,9 +99,45 @@ def _stalled(run: dict, files: list[Path], now: float) -> bool:
     return run["status"] == "running" and now - newest > STALE_S
 
 
+GAZE = "eye-tracker"
+GAZE_METRICS = {"learned_px": ("px", "lower"), "in_use_px": ("px", "lower"), "calibration_px": ("px", "lower"),
+                "clicks": ("clicks", None)}  # fmt: skip
+
+
+def _gaze(vault_root: Path) -> tuple[dict, list[dict]] | None:
+    """The current calibration's learning from clicks as a run and its lines, or None before any fit."""
+    folder = vault_root / "calibration"
+    try:
+        calibration = read_json(folder / "gaze.json")
+        started = datetime.fromisoformat(calibration["t"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    lines = []
+    for event in read_lines(folder / "learning.jsonl"):
+        errors = event.get("error_px") or {}
+        if event.get("event") != "fit" or datetime.fromisoformat(event["t"]) < started:
+            continue  # an earlier calibration's: learning starts over with each
+        lines.append({"step": int(event.get("version") or len(lines) + 1), "t": event["t"], "clicks": event.get("clicks"),
+                      "learned_px": errors.get("learned"), "in_use_px": errors.get("in_use"),
+                      "calibration_px": errors.get("calibration")})  # fmt: skip
+    if not lines:
+        return None
+    run = {
+        "schema": SCHEMA, "id": f"{GAZE}-{started.strftime('%Y%m%dT%H%M%S')}", "model": GAZE,
+        "title": "Eye tracker, learning from your clicks", "started": started.isoformat(), "ended": None,
+        "status": "running", "steps_total": None, "device": "webcam", "source": "vault/calibration",
+        "metrics": {name: {"unit": unit, "better": better} for name, (unit, better) in GAZE_METRICS.items()},
+        "result": {"calibration_px": calibration.get("error_px")}, "error": None,
+    }  # fmt: skip
+    validate("training", run)
+    return run, lines
+
+
 def runs(vault_root: Path) -> list[dict]:
     """Every run, newest first, each with its last logged line and whether it stalled."""
     out, now = [], time.time()
+    if (gaze := _gaze(vault_root)) is not None:
+        out.append({**gaze[0], "last": gaze[1][-1], "stalled": False})  # it learns when you click
     for path in folder(vault_root).glob("*/run.json"):
         try:
             run = read_json(path)
@@ -129,6 +169,15 @@ def series(vault_root: Path, run_id: str) -> dict | None:
     (null where a line did not log it). None when there is no such run."""
     if NAME.search(run_id):
         return None
+    if run_id.startswith(f"{GAZE}-") and (gaze := _gaze(vault_root)) is not None and gaze[0]["id"] == run_id:
+        run, lines = gaze
+        steps = [line["step"] for line in lines]
+        return {
+            "run": run,
+            "stalled": False,
+            "steps": steps,
+            "values": {n: [line.get(n) for line in lines] for n in run["metrics"]},
+        }
     path = folder(vault_root) / run_id / "run.json"
     try:
         run = read_json(path)
