@@ -28,11 +28,13 @@ stops everything until the next sign-in.
 |---|---|
 | Status line | Recording, paused, or why the eye tracker is off (from the receiver's `/status`) |
 | Open DayCube | The viewer window |
+| Search | The viewer window with Ask open (on a day) or the search box (on the notes); also **Alt+Shift+F** from any app |
 | Pause / Resume recording | `POST /pause` or `/resume` on the receiver, with the vault token |
 | Delete the last hour… | After a confirmation, `DELETE /api/recent?minutes=60`: the last hour leaves the vault and everything made from it ([capture](capture.md#deleting-a-span)) |
 | Calibrate the eye tracker | `python -m gaze calibrate` with the bundled eye-tracker runtime |
 | Doctor and GPU packs… | The tools window |
 | Start at sign-in | The shared `DayCube capture` Run value, pointing at `DayCube.exe --background` |
+| Yesterday's review each morning | A Windows notification with yesterday's final review, once, from `DAYCUBE_PUSH_AT` (08:00) local time (`GET /api/morning`); nothing leaves the PC |
 
 The tools window (`DayCube.exe --tools` opens it directly) runs `capture doctor`, installs the GPU
 packs, and opens the vault, logs and extension folders.

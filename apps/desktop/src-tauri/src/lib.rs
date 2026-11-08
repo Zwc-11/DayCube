@@ -6,6 +6,7 @@ mod autostart;
 mod config;
 mod http;
 mod layout;
+mod morning;
 mod packs;
 mod process;
 mod selftest;
@@ -20,6 +21,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 use tauri::webview::NewWindowResponse;
 use tauri::{AppHandle, Manager, RunEvent, Url, WebviewUrl, WebviewWindowBuilder, WindowEvent};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use tauri_plugin_opener::OpenerExt;
 
 use config::Config;
@@ -214,6 +216,17 @@ pub fn show_main(app: &AppHandle) {
             let _ = window.set_focus();
         }
         None => show_startup(app),
+    }
+}
+
+/// What the viewer takes as "/": Ask on a day, the search box on the notes (apps/viewer/e2e/desktop.spec.ts).
+pub const SEARCH_KEY: &str = "document.dispatchEvent(new KeyboardEvent('keydown',{key:'/',bubbles:true}))";
+
+/// DayCube to the front with its search open.
+pub fn open_search(app: &AppHandle) {
+    show_main(app);
+    if let Some(window) = app.get_webview_window(MAIN) {
+        let _ = window.eval(SEARCH_KEY);
     }
 }
 
@@ -650,6 +663,16 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_notification::init())
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, _, event| {
+                    if event.state == ShortcutState::Pressed {
+                        open_search(app);
+                    }
+                })
+                .build(),
+        )
         .setup(|app| {
             let args = parse_args(std::env::args().skip(1));
             let data = app.path().app_local_data_dir()?;
@@ -678,6 +701,10 @@ pub fn run() {
                 starting: AtomicBool::new(false),
             });
             tray::build(app.handle())?;
+            if let Err(error) = app.global_shortcut().register(morning::SEARCH) {
+                app.state::<Shell>().note(&format!("{} is taken by another app: {error}", morning::SEARCH));
+            }
+            morning::watch(app.handle().clone());
             if app.state::<Shell>().args.self_test {
                 self_test_watchdog(app.handle().clone(), Duration::from_secs(420));
             }

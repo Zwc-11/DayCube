@@ -20,11 +20,17 @@ pub struct Config {
     pub autostart: bool,
     #[serde(default)]
     pub port: Option<u16>,
+    /// Show yesterday's review as a Windows notification in the morning.
+    #[serde(default = "yes")]
+    pub notify: bool,
+    /// The review day last shown, so each is shown once.
+    #[serde(default)]
+    pub notified: Option<String>,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Self { vault: None, capture: true, autostart: true, port: None }
+        Self { vault: None, capture: true, autostart: true, port: None, notify: true, notified: None }
     }
 }
 
@@ -108,12 +114,18 @@ mod tests {
         let dir = temp("rt");
         let path = dir.join("settings.json");
         assert_eq!(Config::load(&path), Config::default());
-        let config = Config { vault: Some(dir.join("vault")), capture: false, autostart: true, port: Some(7701) };
+        let config = Config {
+            vault: Some(dir.join("vault")),
+            capture: false,
+            port: Some(7701),
+            notified: Some("2026-11-07".into()),
+            ..Config::default()
+        };
         config.save(&path).unwrap();
         assert_eq!(Config::load(&path), config);
         std::fs::write(&path, b"{\"vault\": null}").unwrap();
         let partial = Config::load(&path);
-        assert!(partial.capture && partial.autostart);
+        assert!(partial.capture && partial.autostart && partial.notify && partial.notified.is_none());
         std::fs::write(&path, b"not json").unwrap();
         assert_eq!(Config::load(&path), Config::default());
     }

@@ -78,12 +78,9 @@ def _state(vault: Vault) -> dict:
         return {}
 
 
-def step(vault: Vault, settings: Any, now: datetime, zone: str, opener: Callable[[Request], bytes] = _open) -> Record | None:
-    """Send yesterday's review if it is due; returns what happened, or None when nothing was due."""
-    if not (getattr(settings, "summary_push", "") or "").strip():
-        return None
-    tz = ZoneInfo(zone)
-    local = now.astimezone(tz)
+def due(vault: Vault, settings: Any, now: datetime, zone: str) -> tuple[str, Record] | None:
+    """The review day before, with its final review, once it is ``push_at`` (08:00) local time."""
+    local = now.astimezone(ZoneInfo(zone))
     try:
         at = time.fromisoformat(getattr(settings, "push_at", "08:00") or "08:00")
     except ValueError:
@@ -91,13 +88,19 @@ def step(vault: Vault, settings: Any, now: datetime, zone: str, opener: Callable
     if local.time() < at:
         return None
     day = (local.date() - timedelta(days=1) if local.time() >= time(4, 0) else local.date() - timedelta(days=2))
-    key = day.isoformat()
+    review = read_review(vault, day.isoformat())
+    return (day.isoformat(), review) if review is not None and review["kind"] == "final" else None
+
+
+def step(vault: Vault, settings: Any, now: datetime, zone: str, opener: Callable[[Request], bytes] = _open) -> Record | None:
+    """Send yesterday's review if it is due; returns what happened, or None when nothing was due."""
+    if not (getattr(settings, "summary_push", "") or "").strip() or (found := due(vault, settings, now, zone)) is None:
+        return None
+    key, review = found
+    local = now.astimezone(ZoneInfo(zone))
     state = _state(vault)
     entry = state.get(key, {})
     if entry.get("sent") or entry.get("attempts", 0) >= ATTEMPTS:
-        return None
-    review = read_review(vault, key)
-    if review is None or review["kind"] != "final":
         return None
     title, text = message(review)
     try:

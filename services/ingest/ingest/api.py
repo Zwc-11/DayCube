@@ -696,6 +696,18 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
         store.purge()
         return report
 
+    @app.get("/morning")
+    def morning() -> Record:
+        """Yesterday's final review as the desktop app's morning notification shows it, from
+        ``DAYCUBE_PUSH_AT`` (08:00) local time; ``date`` null before then or without one."""
+        from .review.push import due, message
+
+        found = due(vault, settings, local_now(), settings.timezone)
+        if found is None:
+            return {"date": None}
+        title, text = message(found[1])
+        return {"date": found[0], "title": title, "text": text}
+
     @app.get("/day/{date}/seen")
     def day_seen(date: str) -> Record:
         """What was on screen through the day, page by page (ingest/seen.py)."""

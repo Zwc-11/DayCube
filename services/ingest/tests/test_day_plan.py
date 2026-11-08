@@ -5,6 +5,7 @@ import json
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from fastapi.testclient import TestClient
 from ingest import contracts
 from ingest.config import Settings
 from ingest.review import build, metrics, plan, push, summary, weekly
@@ -235,6 +236,28 @@ def test_yesterdays_review_is_pushed_once_after_the_push_time(vault: Vault) -> N
     assert text.splitlines()[0] == "2 h 30 min at the desk, mostly coding; longest stretch 1 h 30 min"
     assert push.step(vault, settings, datetime.fromisoformat(at("08:15:00", "2026-10-28")), ZONE, opener) is None
     assert len(opener.requests) == 1  # once
+
+
+def test_the_desktop_app_gets_yesterdays_review_for_its_morning_notification(vault: Vault, monkeypatch) -> None:  # noqa: ANN001
+    import ingest.api
+
+    golden(vault)
+    write_review(vault, LifeStore(vault), DAY, ZONE, now=datetime.fromisoformat(at("05:00:00", "2026-10-28")))
+    app = ingest.api.create_app(Settings(vault_root=vault.root, _env_file=None, vector_search=False))
+    clock = {"now": datetime.fromisoformat(at("07:30:00", "2026-10-28"))}
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):  # noqa: ANN001, ANN206
+            return clock["now"].astimezone(tz)
+
+    monkeypatch.setattr(ingest.api, "datetime", Clock)
+    with TestClient(app) as client:
+        assert client.get("/morning").json() == {"date": None}  # before 08:00
+        clock["now"] = datetime.fromisoformat(at("08:01:00", "2026-10-28"))
+        morning = client.get("/morning").json()
+    assert morning["date"] == DAY and morning["title"] == "DayCube · 2026-10-27"
+    assert morning["text"].startswith("2 h 30 min at the desk, mostly coding")
 
 
 def test_a_failed_push_is_retried_a_few_times_and_telegram_must_accept(vault: Vault) -> None:
