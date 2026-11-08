@@ -365,6 +365,15 @@ class LifeStore:
                 filled += before - self.update(day)["unembedded"]
         return filled
 
+    def purge(self) -> None:
+        """After a deletion: fold the keyword indexes' deleted entries away and rewrite the file, so
+        no page of it still holds deleted text, then empty the write-ahead log."""
+        with self.vault.lock, self.connect() as db:
+            for table in ("units_fts", "note_chunks_fts"):
+                db.execute(f"INSERT INTO {table}({table}) VALUES ('optimize')")
+            db.execute("VACUUM")
+            db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+
     def _unembedded(self, day: str) -> int:
         with self.read() as db:
             row = db.execute("SELECT unembedded FROM days WHERE day = ?", (day,)).fetchone()

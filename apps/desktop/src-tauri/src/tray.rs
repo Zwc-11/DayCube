@@ -42,6 +42,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
     let status = MenuItem::with_id(app, "status", "Starting…", false, None::<&str>)?;
     let open = MenuItem::with_id(app, "open", "Open DayCube", true, None::<&str>)?;
     let pause = MenuItem::with_id(app, "pause", "Pause recording", false, None::<&str>)?;
+    let forget = MenuItem::with_id(app, "forget", "Delete the last hour…", true, None::<&str>)?;
     let calibrate = MenuItem::with_id(app, "calibrate", "Calibrate the eye tracker", true, None::<&str>)?;
     let tools = MenuItem::with_id(app, "tools", "Doctor and GPU packs…", true, None::<&str>)?;
     let autostart = {
@@ -56,6 +57,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
             &PredefinedMenuItem::separator(app)?,
             &open,
             &pause,
+            &forget,
             &PredefinedMenuItem::separator(app)?,
             &calibrate,
             &tools,
@@ -131,6 +133,21 @@ fn on_menu(app: &AppHandle, id: &str) {
                 refresh(&app);
             });
         }
+        "forget" => {
+            let app = app.clone();
+            std::thread::spawn(move || {
+                let sure = app
+                    .dialog()
+                    .message("Delete everything recorded in the last hour? Pages, gaze, screen text, places and recordings from it go for good.")
+                    .title("DayCube")
+                    .buttons(MessageDialogButtons::OkCancelCustom("Delete".into(), "Keep".into()))
+                    .blocking_show();
+                if sure {
+                    let text = forget_last_hour(&app.state::<Shell>());
+                    app.dialog().message(text).title("DayCube").show(|_| {});
+                }
+            });
+        }
         "autostart" => {
             let on = !app.state::<Shell>().config.lock().unwrap().autostart;
             if let Err(error) = crate::apply_autostart(app, on) {
@@ -159,10 +176,53 @@ fn on_menu(app: &AppHandle, id: &str) {
     }
 }
 
+/// ``DELETE /api/recent``: the API deletes the last hour and rebuilds what was made from it.
+fn forget_last_hour(shell: &Shell) -> String {
+    let token = shell.token.lock().unwrap().clone();
+    let Some(port) = shell.config.lock().unwrap().port else {
+        return "The vault API is not running.".into();
+    };
+    match http::request("DELETE", port, "/api/recent?minutes=60", token.as_deref(), Duration::from_secs(120)) {
+        Ok(reply) if reply.status == 200 => deleted_in_words(&reply.body),
+        Ok(reply) => format!("Nothing was deleted: the API answered {}.\n{}", reply.status, reply.body),
+        Err(error) => format!("Nothing was deleted: {error}"),
+    }
+}
+
+/// What ``/recent`` removed, in a sentence: "Deleted 412 records: capture 380, events 2, …".
+pub fn deleted_in_words(body: &str) -> String {
+    let mut counts: Vec<(String, u64)> = Vec::new();
+    let reply: serde_json::Value = serde_json::from_str(body).unwrap_or_default();
+    for day in reply["deleted"].as_array().into_iter().flatten() {
+        for (kind, n) in day["removed"].as_object().into_iter().flatten() {
+            let n = n.as_u64().unwrap_or(0);
+            match counts.iter_mut().find(|(k, _)| k == kind) {
+                Some((_, total)) => *total += n,
+                None => counts.push((kind.clone(), n)),
+            }
+        }
+    }
+    counts.retain(|(_, n)| *n > 0);
+    if counts.is_empty() {
+        return "Nothing was recorded in the last hour.".into();
+    }
+    let total: u64 = counts.iter().map(|(_, n)| n).sum();
+    let parts: Vec<String> = counts.iter().map(|(k, n)| format!("{k} {n}")).collect();
+    format!("Deleted the last hour: {total} records ({}).", parts.join(", "))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn deletion_in_words() {
+        let body =
+            r#"{"deleted": [{"removed": {"capture": 380, "events": 2}}, {"removed": {"capture": 20, "places": 0}}]}"#;
+        assert_eq!(deleted_in_words(body), "Deleted the last hour: 402 records (capture 400, events 2).");
+        assert_eq!(deleted_in_words(r#"{"deleted": [{"removed": {}}]}"#), "Nothing was recorded in the last hour.");
+    }
 
     #[test]
     fn status_in_words() {

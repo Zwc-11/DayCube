@@ -24,6 +24,16 @@ export class ApiError extends Error {
 
 /** `capture`: the day has computer capture logs (a day with no places has only those);
  *  `records`: its searchable record count, once indexed. */
+/** A span deleted from a day (``deletions.jsonl``): what went, per kind of record. */
+export interface Deletion {
+  t0: string;
+  t1: string;
+  at: string;
+  date: string;
+  reason: string | null;
+  removed: Record<string, number>;
+}
+
 export interface DaySummary {
   date: string; stats: Day['stats']; kinds?: string[]; capture?: boolean; records?: number | null;
 }
@@ -268,6 +278,13 @@ export class DaycubeClient {
   confirmSpeaker(date: string, moment_id: string, diar_label: string, person_id: string) {
     return this.request('/speakers/confirm', { method: 'POST', body: JSON.stringify({ date, moment_id, diar_label, person_id }) });
   }
+  /** Delete a span of the day (``DELETE /day/{date}/hours``); ``t0`` and ``t1`` carry their offset. */
+  deleteHours(date: string, t0: string, t1: string, reason?: string) {
+    return this.request(`/day/${encodeURIComponent(date)}/hours`, {
+      method: 'DELETE', body: JSON.stringify({ t0, t1, reason: reason || null }),
+    }) as Promise<Deletion>;
+  }
+  deletions(date: string) { return this.request(`/day/${encodeURIComponent(date)}/deletions`) as Promise<Deletion[]>; }
   assetUrl(date: string, ref: string) {
     return `${this.baseUrl}/vault/${encodeURIComponent(date)}/${ref.split('/').map(encodeURIComponent).join('/')}`;
   }

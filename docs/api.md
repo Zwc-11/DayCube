@@ -37,7 +37,9 @@ for actions. Do not paste external provider keys there.
 | POST | `/places/rename` | `{place_id,name}` → global name override |
 | POST | `/speakers/confirm` | `{date,moment_id,diar_label,person_id}` (`person:<letters, digits, -, _>`) → the speaker map saved, and the name spread to every recording of the same voice (docs/speech.md) |
 | POST | `/pause`, `/resume` | Forward to receiver; 503 if absent |
-| DELETE | `/day/{date}/hours` | 501 until complete purge/reindex semantics exist |
+| DELETE | `/day/{date}/hours` | `{t0, t1, reason?}` (times with their offset, within the day) → the span deleted from the vault and what was made from it ([capture](capture.md#deleting-a-span)); the deletion with what went, per kind |
+| DELETE | `/recent?minutes=60` | The last minutes up to now, a day at a time (the tray's Delete the last hour) |
+| GET | `/day/{date}/deletions` | The spans deleted from the day |
 
 All POST/DELETE routes require `Authorization: Bearer <vault-token>`. Event ingestion is separate
 from port 7700's raw browser metadata receiver. The two payloads are intentionally different.

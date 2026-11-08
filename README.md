@@ -36,7 +36,8 @@ too. `npm run build && npm run media` makes them again.
 - **Capture on Windows.** A browser extension, a webcam eye tracker that works out which line you
   are reading, reading of other apps' windows with Windows' own OCR, and counts of typing and
   mouse use with no key identities ([capture](docs/capture.md)). The eye tracker keeps learning
-  from your clicks, and shows whether that helps.
+  from your clicks, and shows whether that helps. Any span can be deleted, from the vault and
+  everything made from it ([deleting a span](docs/capture.md#deleting-a-span)).
 - **Phone.** Sensor Logger (visits, walks, floors), voice memos and Stray Scanner LiDAR captures,
   dropped into the vault's inbox ([phone](docs/phone.md)). Speech becomes transcripts with who
   spoke and how, in English and Mandarin, on the GPU ([speech](docs/speech.md)).
@@ -93,7 +94,6 @@ docs/                   Every part in detail; start with architecture.md
 - Built and used on Windows; capture and the app are Windows-first.
 - Ask quotes your records; it does not generate free-form answers. The end-of-day summary is
   written by a template unless you turn on a model (`DAYCUBE_SUMMARY_LLM`).
-- Deleting an hour of recording is not implemented yet (the API answers 501).
 - Memories use Apple's SHARP, whose research licence allows evaluation only.
 - Speech and 3D need an NVIDIA GPU (an RTX 5070 here).
 

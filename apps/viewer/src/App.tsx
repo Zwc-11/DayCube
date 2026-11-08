@@ -13,6 +13,7 @@ import type { SettingsSection } from './components/modals/SystemStudioModal';
 import { type ApiCallLog, backendBridge } from './lib/backendBridge';
 import { usePageVisible } from './lib/usePageVisible';
 import { makeLayerLookup } from './lib/timeIndex';
+import { instantOn, toAudit } from './lib/deletions';
 import { PLAYBACK_TICK_MS, daySchedule } from './lib/walkRoute';
 import { type DaySummary, type LoadedDay, SAMPLE_DATE, refreshDay } from './lib/days';
 import { TopBar, type ViewMode } from './components/shell/TopBar';
@@ -136,7 +137,7 @@ export const App: React.FC<AppProps> = ({ date, day, days, onOpenDate, onOpenNot
 
   const [speakerOverrides, setSpeakerOverrides] = useState<Record<string, string>>({});
   const [capturePaused, setCapturePaused] = useState(false);
-  const [deletions] = useState<DeletionAudit[]>([]);
+  const [deletions, setDeletions] = useState<DeletionAudit[]>([]);
   const [mutationError, setMutationError] = useState<string | null>(null);
 
   const [backendOnline, setBackendOnline] = useState(false);
@@ -350,9 +351,26 @@ export const App: React.FC<AppProps> = ({ date, day, days, onOpenDate, onOpenNot
   const togglePlay = useCallback(() => setPlaying((p) => !p), []);
   const cycleSpeed = useCallback(() => setPlaySpeed((s) => SPEEDS[(SPEEDS.indexOf(s) + 1) % SPEEDS.length]), []);
 
-  const handleDeleteHours = () => {
-    setMutationError('Deleting a time range is not supported by the local API yet. No records were deleted.');
-  };
+  useEffect(() => {
+    let live = true;
+    backendBridge.deletions(date).then((list) => live && setDeletions(list.map(toAudit)));
+    return () => {
+      live = false;
+    };
+  }, [date]);
+
+  const handleDeleteHours = useCallback(
+    async (from: number, to: number, reason: string) => {
+      try {
+        const deletion = await backendBridge.deleteHours(date, instantOn(date, from), instantOn(date, to), reason);
+        setDeletions((prev) => [...prev, toAudit(deletion)]);
+        await syncWithBackend();
+      } catch (error) {
+        setMutationError(error instanceof Error ? error.message : 'The time range could not be deleted.');
+      }
+    },
+    [date, syncWithBackend]
+  );
 
   const activeLayer = layers[activeLayerIndex] || layers[0];
   const transits = dataSource === 'sample' ? SAMPLE_TRANSITS : NO_TRANSITS;
