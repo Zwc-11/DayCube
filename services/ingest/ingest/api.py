@@ -30,11 +30,14 @@ from .config import Settings
 from .contracts import ContractError
 from .generated.event import Event
 from .index.embed import Embedder, default_embedder
+from .integrations.overpass import OverpassAdapter
 from .notes.graph import NoteGraph
 from .notes.read import DayNotes, attach_notes, read_note
 from .store import EmbeddingModelChanged, LifeStore
 from .time import instant
 from .vault import Record, Vault, atomic_bytes, overlaps, read_json
+from .world import osm
+from .world import store as worlds
 
 log = logging.getLogger("daycube.api")
 
@@ -219,6 +222,7 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
                 "capture": False,
                 "gpu_pipeline": False,
                 "delete_hours": True,
+                "world": True,
             },
         }
 
@@ -487,6 +491,54 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
             raise HTTPException(422, "Not an MP4 film")
         await asyncio.to_thread(atomic_bytes, path, data)
         return {"film": name, "bytes": len(data)}
+
+    # Worlds made from videos (ingest/world, docs/world.md): islands of a video's own splats, and
+    # the open map they stand in. Google's tiles are streamed by the viewer and never touch here.
+    @app.get("/worlds")
+    def world_list() -> list[Record]:
+        return worlds.list_worlds(vault)
+
+    def world_of(date: str, wid: str) -> tuple[Path, Record]:
+        try:
+            path = worlds.folder(vault, date, wid)
+        except ValueError:
+            raise HTTPException(404, "World not found") from None
+        if not (path / "world.json").is_file():
+            raise HTTPException(404, "World not found")
+        return path, read_json(path / "world.json")
+
+    @app.get("/worlds/{date}/{wid}")
+    def world(date: str, wid: str) -> Record:
+        return world_of(date, wid)[1]
+
+    @app.get("/worlds/{date}/{wid}/{name}")
+    def world_file(date: str, wid: str, name: str) -> FileResponse:
+        path, found = world_of(date, wid)
+        if name not in {island.get("splat") for island in found.get("islands") or []} or not (path / name).is_file():
+            raise HTTPException(404, "World not found")
+        headers = {"X-Content-Type-Options": "nosniff"}
+        return FileResponse(path / name, media_type="application/octet-stream", headers=headers)
+
+    overpass = OverpassAdapter(vault.root / "maps" / "osm")
+
+    @app.get("/maps/buildings")
+    def buildings(
+        lat: float = Query(ge=-90, le=90),
+        lon: float = Query(ge=-180, le=180),
+        radius_m: int = Query(300, ge=50, le=600),
+    ) -> Record:
+        """OpenStreetMap footprints with heights around a point (ODbL), fetched once and kept in
+        vault/maps/osm; the rounded location is sent to Overpass the first time."""
+        try:
+            return osm.footprints(overpass.buildings(lat, lon, radius_m))
+        except (httpx.HTTPError, ValueError) as error:
+            why = f"OpenStreetMap is not reachable and this area is not kept yet ({type(error).__name__})"
+            raise HTTPException(503, why) from None
+
+    @app.get("/maps/config", dependencies=[Depends(authorize)])
+    def maps_config() -> Record:
+        """The Google Maps key for the viewer to stream Photorealistic 3D Tiles with; null without one."""
+        return {"google_tiles_key": settings.google_maps_key.get_secret_value() or None}
 
     @app.post("/ask", dependencies=[Depends(authorize)], response_model=None)
     def answer(body: AskRequest, stream: bool = False) -> Record | StreamingResponse:

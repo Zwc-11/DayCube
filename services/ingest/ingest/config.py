@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     local_llm_model: str = "local"
     anthropic_api_key: SecretStr = Field(default=SecretStr(""), validation_alias="ANTHROPIC_API_KEY")
     modal_app: str = "daycube"
+    # Google's Photorealistic 3D Tiles in a world's view (docs/world.md): a Maps Platform key with the
+    # Map Tiles API on. The viewer streams the tiles with it; nothing of Google's is stored.
+    google_maps_key: SecretStr = SecretStr("")
 
     @field_validator("vault_root")
     @classmethod

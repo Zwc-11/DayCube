@@ -47,6 +47,10 @@ too. `npm run build && npm run media` makes them again.
   Each also plays as a film: the photo opens into its points, its subject floats, the scanned
   place grows around it, and the points stream back into the photo with its date and caption,
   exported as a 16:9 or 9:16 MP4 ([film](docs/memories.md#film)).
+- **Worlds.** A shot of a video becomes an island of 3D, stood on the map where it was filmed, with
+  the passers-by taken out. Around it stand OpenStreetMap's buildings, and, with your own Google
+  Maps key, Google's live 3D city: streamed behind your footage, never stored. What was filled in
+  is labelled imagined ([worlds](docs/world.md)).
 - **Training.** Models trained on this PC, each metric charted against the step
   ([training](docs/training.md)).
 

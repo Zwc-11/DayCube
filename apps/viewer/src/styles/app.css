@@ -4042,6 +4042,141 @@ button.np-link:hover {
   color: #e79482;
 }
 
+/* Worlds (components/world): videos made into islands in the city. */
+.worlds__list {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  max-width: 720px;
+  margin: 0 auto;
+}
+.worlds__item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.worlds__item:hover {
+  background: var(--raised);
+}
+.worlds__title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.worlds__meta {
+  color: var(--fg-2);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.world {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: #0d1015;
+}
+.world__stage {
+  position: absolute;
+  inset: 0;
+  touch-action: none;
+}
+.world__canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.world__layers {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 2;
+  max-width: calc(100vw - 32px);
+  overflow-x: auto;
+}
+.world__layer {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--fg-2);
+  font: 500 12px var(--font);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.world__layer--on {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--fg);
+}
+.world__layer:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.world__why {
+  position: absolute;
+  top: 52px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  color: var(--fg-2);
+  z-index: 2;
+}
+.world__why--failed {
+  top: 50%;
+  color: #e79482;
+}
+.world__credits {
+  position: absolute;
+  right: 10px;
+  bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  max-width: min(70vw, 640px);
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.78);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  z-index: 2;
+  pointer-events: none;
+}
+.world__google {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+}
+.world__google-logo {
+  /* Google's sizes: 16-19 px tall, clear space 10 px left, right and top, 5 px below. */
+  height: 18px;
+  width: auto;
+  margin: 10px 10px 5px;
+}
+.world__badge {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
 /* ---------------------------------------------------------------------------
    Day review (components/review/DayReview.tsx): beside the daily note, and at the top of the
    day page's itinerary.
