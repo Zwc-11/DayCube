@@ -696,6 +696,14 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
         store.purge()
         return report
 
+    @app.get("/day/{date}/seen")
+    def day_seen(date: str) -> Record:
+        """What was on screen through the day, page by page (ingest/seen.py)."""
+        from .seen import seen
+
+        vault.day_path(date, must_exist=False)
+        return seen(store, date)
+
     @app.get("/day/{date}/deletions")
     def day_deletions(date: str) -> list[Record]:
         """The spans deleted from the day: when, why, and how many records of each kind went."""

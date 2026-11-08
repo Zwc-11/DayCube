@@ -40,6 +40,7 @@ for actions. Do not paste external provider keys there.
 | DELETE | `/day/{date}/hours` | `{t0, t1, reason?}` (times with their offset, within the day) → the span deleted from the vault and what was made from it ([capture](capture.md#deleting-a-span)); the deletion with what went, per kind |
 | DELETE | `/recent?minutes=60` | The last minutes up to now, a day at a time (the tray's Delete the last hour) |
 | GET | `/day/{date}/deletions` | The spans deleted from the day |
+| GET | `/day/{date}/seen` | What was on screen, page by page: when each page or app was in front, and what was read, stared at, looked at, copied, clicked, played and searched on it (`ingest/seen.py`; the viewer's What I saw, `?date=…&view=seen`) |
 
 All POST/DELETE routes require `Authorization: Bearer <vault-token>`. Event ingestion is separate
 from port 7700's raw browser metadata receiver. The two payloads are intentionally different.

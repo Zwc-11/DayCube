@@ -8,6 +8,7 @@ const App = lazy(() => import('./App'));
 const KnowledgePage = lazy(() => import('./components/knowledge/KnowledgePage'));
 const MemoriesPage = lazy(() => import('./components/memories/MemoriesPage'));
 const TrainingPage = lazy(() => import('./components/training/TrainingPage'));
+const SeenPage = lazy(() => import('./components/seen/SeenPage'));
 
 type DayView = 'notes' | '3d';
 
@@ -16,6 +17,7 @@ type Route =
   | { page: 'days' }
   | { page: 'memories'; memory: string | null }
   | { page: 'training'; run: string | null }
+  | { page: 'seen'; date: string }
   | { page: 'day'; date: string };
 
 const Loading: React.FC = () => (
@@ -41,6 +43,7 @@ const readRoute = (): Route => {
     const run = q.get('run');
     return { page: 'training', run: run && /^[A-Za-z0-9_.-]+$/.test(run) ? run : null };
   }
+  if (view === 'seen' && isIsoDate(date)) return { page: 'seen', date };
   if (isIsoDate(date) && view !== 'notes') return { page: 'day', date };
   return { page: 'graph', note: note && /\.md$/i.test(note) ? note : null, date: isIsoDate(date) ? date : null };
 };
@@ -49,6 +52,7 @@ const urlOf = (route: Route): string => {
   if (route.page === 'days') return '?view=days';
   if (route.page === 'memories') return route.memory ? `?view=memories&memory=${route.memory}` : '?view=memories';
   if (route.page === 'training') return route.run ? `?view=training&run=${route.run}` : '?view=training';
+  if (route.page === 'seen') return `?date=${route.date}&view=seen`;
   if (route.page === 'day') return `?date=${route.date}`;
   if (route.note) return `?note=${encodeURIComponent(route.note)}`;
   if (route.date) return `?date=${route.date}&view=notes`;
@@ -147,6 +151,14 @@ export const Root: React.FC = () => {
       </Suspense>
     );
   }
+  if (route.page === 'seen') {
+    return (
+      <Suspense fallback={<Loading />}>
+        <SeenPage date={route.date} days={days} onDate={(d) => go({ page: 'seen', date: d })} onHome={openDayPage}
+                  onGraph={() => openDate(null)} />
+      </Suspense>
+    );
+  }
   if (route.page === 'graph') {
     return (
       <Suspense fallback={<Loading />}>
@@ -159,6 +171,7 @@ export const Root: React.FC = () => {
           onOpenDays={() => go({ page: 'days' })}
           onOpenDayPage={openDayPage}
           onOpenTraining={() => go({ page: 'training', run: null })}
+          onOpenSeen={(d) => go({ page: 'seen', date: d })}
         />
       </Suspense>
     );

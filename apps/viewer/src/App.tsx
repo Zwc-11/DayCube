@@ -362,8 +362,8 @@ export const App: React.FC<AppProps> = ({ date, day, days, onOpenDate, onOpenNot
   const handleDeleteHours = useCallback(
     async (from: number, to: number, reason: string) => {
       try {
-        const deletion = await backendBridge.deleteHours(date, instantOn(date, from), instantOn(date, to), reason);
-        setDeletions((prev) => [...prev, toAudit(deletion)]);
+        await backendBridge.deleteHours(date, instantOn(date, from), instantOn(date, to), reason);
+        setDeletions((await backendBridge.deletions(date)).map(toAudit));
         await syncWithBackend();
       } catch (error) {
         setMutationError(error instanceof Error ? error.message : 'The time range could not be deleted.');
