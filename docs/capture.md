@@ -491,6 +491,26 @@ resend after a lost reply or a failed write is stored once per receiver run. Rec
 24 hours are refused. After a restart the receiver reloads block texts from today's and
 yesterday's snapshots, so dwells on pages already open still know their text.
 
+## Deleting a span
+
+Settings › Privacy and capture › **Delete a time range**, the tray's **Delete the last hour…**, or
+`DELETE /day/{date}/hours` with `{t0, t1}` (`DELETE /recent?minutes=60` for the last hour). What
+the span held goes from the vault (`ingest/forget.py`):
+
+| From | What goes |
+| --- | --- |
+| `capture/<date>/` | Every record timed in the span, in every log, plain or compacted |
+| The day's folder | Its events, GPS fixes, screen text and shots in the span; each recording that overlaps it, whole (audio, video, transcript, and its 3D and speech outputs); a place visit that starts or ends in it is cut at its edge, one inside it goes, one around it keeps its times |
+| `sources/` | The phone's sensor rows in the span; a kept hour of sound loses the span (FFmpeg cuts it out) |
+| `inbox/phone/imported/` | Sensor rows in the span, in folders and zips; a memo that overlaps it, whole |
+| Derived | The search database is rewritten (keyword index optimized, `VACUUM`, write-ahead log emptied), the notes it touched and the day's note are written again or removed, and the timelines, reviews and week of the review days it falls in |
+
+The span is written to `deletions.jsonl` first, with when, the reason given and what went. From
+then on the vault drops any record written into it, so the receiver still holding a page open,
+the extension resending, Opera's history or an import of the same recording cannot bring it back.
+A backup made before is not reached. `tests/test_forget.py` checks that a phrase from the span is
+in no byte of the vault afterwards.
+
 ## How gaze is placed on a page
 
 1. The tracker predicts a screen point per frame (the head-aware model, [next](#when-your-head-moves),

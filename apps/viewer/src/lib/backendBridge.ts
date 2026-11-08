@@ -1,4 +1,4 @@
-import { DaycubeClient, ApiError, type LabelCorrection } from '@daycube/api-client';
+import { DaycubeClient, ApiError, type Deletion, type LabelCorrection } from '@daycube/api-client';
 import type {
   AskResult as SchemaAskResult, DataCenter, DayNotes, DayResponse, DayReview, Entity, GazeLearning, KnowledgeGraph, Note,
   SearchResult, NoteGraph, TrainingListed, TrainingSeries,
@@ -537,6 +537,24 @@ export class BackendBridge {
         latencyMs: performance.now() - t0, mode: 'live-backend', summary: 'Change was not saved',
       });
       throw error;
+    }
+  }
+
+  /** Delete a span of the day from the vault; resolves to what went. */
+  async deleteHours(date: string, t0: string, t1: string, reason: string): Promise<Deletion> {
+    let deletion: Deletion | null = null;
+    await this.write(`/api/day/${date}/hours`, async () => {
+      deletion = await this.client.deleteHours(date, t0, t1, reason);
+    }, `Deleted ${t0.slice(11, 16)}–${t1.slice(11, 16)} of ${date} from the vault`);
+    return deletion as unknown as Deletion;
+  }
+
+  /** The spans deleted from the day; empty when the vault cannot be reached. */
+  async deletions(date: string): Promise<Deletion[]> {
+    try {
+      return await this.client.deletions(date);
+    } catch {
+      return [];
     }
   }
 

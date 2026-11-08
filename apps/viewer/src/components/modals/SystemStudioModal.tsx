@@ -200,7 +200,7 @@ const PrivacySection: React.FC<SettingsProps> = ({
       <div className="card">
         <h4 className="card__title">Delete a time range</h4>
         <p className="card__text">
-          Removes every event, screen and transcript line recorded in this window and logs the deletion.
+          Removes everything recorded in this window from the vault, its search and its notes.
         </p>
         <div className="row" style={{ alignItems: 'flex-end', gap: 12 }}>
           <label className="field" style={{ width: 120 }}>
@@ -286,7 +286,7 @@ const PrivacySection: React.FC<SettingsProps> = ({
             <thead>
               <tr>
                 <th>Range</th>
-                <th>Events removed</th>
+                <th>Records removed</th>
                 <th>Reason</th>
                 <th>When</th>
               </tr>

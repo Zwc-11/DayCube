@@ -57,6 +57,7 @@ CAPTURE_TEXT_CACHE_BYTES = 32 << 20  # decoded text projections, never retained 
 # -> events.jsonl.zst) and every reader decompresses transparently. Level 10 gets within a few
 # percent of the maximum ratio at a fraction of its time.
 COMPACTABLE = ("events.jsonl", "skeleton.geojson", "screens/ocr.jsonl")
+DELETIONS = "deletions.jsonl"  # spans deleted from the vault (ingest/forget.py)
 COMPACT_MIN_BYTES = 4096
 ZSTD_LEVEL = 10
 # The viewer path: 10 cm, well under one voxel, and the fields the viewer's contract reads.
@@ -348,6 +349,7 @@ class Vault:
         # day -> key of the inputs the vault database was last confirmed fresh for.
         self.fresh_index: SegmentedLRU[str, tuple] = SegmentedLRU(METADATA_CACHE_BYTES)
         self.capture_texts: SegmentedLRU[Path, tuple] = SegmentedLRU(CAPTURE_TEXT_CACHE_BYTES)
+        self._deleted: tuple[FileStamp, tuple[tuple[datetime, datetime], ...]] = (None, ())
 
     # -- files -------------------------------------------------------------------------------
 
@@ -396,14 +398,32 @@ class Vault:
         return self._replace(path, text + "\n")
 
     def write_lines(self, path: Path, values: list[Record]) -> tuple[FileStamp, int]:
+        values = self.unforgotten(values)
         return self._replace(path, "".join(json.dumps(v, ensure_ascii=False) + "\n" for v in values))
 
     def append_lines(self, path: Path, values: list[Record]) -> tuple[FileStamp, int]:
+        values = self.unforgotten(values)
         with self.lock:
             self._expand(path)
             stamp = append_text(path, "".join(json.dumps(v, ensure_ascii=False) + "\n" for v in values))
             self._writes[path] += 1
             return stamp, self._writes[path]
+
+    def deleted_spans(self) -> tuple[tuple[datetime, datetime], ...]:
+        """The spans deleted from the vault (``deletions.jsonl``), read again when the file changes:
+        a stat per write, as the receiver and the API are separate processes."""
+        path = self.root / DELETIONS
+        stamp = file_stamp(path)
+        if stamp != self._deleted[0]:
+            spans = tuple((instant(r["t0"]), instant(r["t1"])) for r in read_lines(path))
+            self._deleted = (stamp, spans)
+        return self._deleted[1]
+
+    def unforgotten(self, values: list[Record]) -> list[Record]:
+        """``values`` without the records timed inside a deleted span: what a receiver still held,
+        or an import of the same recording, does not bring a deleted span back."""
+        spans = self.deleted_spans()
+        return [v for v in values if not spans or not in_spans(v, spans)]
 
     def _replace(self, path: Path, text: str) -> tuple[FileStamp, int]:
         with self.lock:
@@ -779,6 +799,28 @@ def viewer_path(fixes: list[Record], zone: str) -> tuple[list[Record], float]:
     if scale > 1.0:
         path = [{**p, "x": round(p["x"] / scale, 3), "y": round(p["y"] / scale, 3)} for p in path]
     return path, round(scale, 3)
+
+
+def record_bounds(record: object) -> tuple[datetime, datetime] | None:
+    """A record's start and end from its ``t`` and ``t_end`` (or ``until``); None if it is not timed."""
+    start = record.get("t") if isinstance(record, dict) else None
+    if not isinstance(start, str):
+        return None
+    try:
+        end = record.get("t_end") or record.get("until")
+        return instant(start), instant(end) if isinstance(end, str) else instant(start)
+    except ValueError:
+        return None
+
+
+def overlaps(start: datetime, end: datetime, span: tuple[datetime, datetime]) -> bool:
+    """[start, end] meets the half-open span [t0, t1); a record ending at t0 counts."""
+    return start < span[1] and max(start, end) >= span[0]
+
+
+def in_spans(record: object, spans: tuple[tuple[datetime, datetime], ...]) -> bool:
+    bounds = record_bounds(record)
+    return bounds is not None and any(overlaps(*bounds, span) for span in spans)
 
 
 def check_event(

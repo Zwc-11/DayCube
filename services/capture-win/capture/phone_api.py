@@ -41,6 +41,7 @@ from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from ingest.vault import Vault
 from pydantic import AwareDatetime, BaseModel, Field
 
 CHUNK = 4 * 1024 * 1024
@@ -331,7 +332,7 @@ class Phones:
                         except (ValueError, KeyError, TypeError):
                             continue
                 fresh = []
-                for record in records:
+                for record in Vault(self.root).unforgotten(records):  # none inside a deleted span
                     if record["id"] in seen:
                         duplicates += 1
                         continue

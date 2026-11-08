@@ -25,7 +25,7 @@ from ..review.summary import read_review
 from ..store import LifeStore
 from ..time import instant
 from ..vault import Record, atomic_text
-from .markdown import file_name, front_matter, merge, wikilink
+from .markdown import file_name, front_matter, merge, user_text, wikilink
 
 ATTENDED = ("web.read", "web.dwell", "web.look", "web.selection")
 SOURCE_MIN_S = 120.0  # on screen this long earns a page its own note
@@ -242,6 +242,39 @@ class Notes:
             top = _summary(read_review(self.store.vault, day), zone) + _conversations(self.store, day, zone)
             written.append(self._daily(day, zone, units, pages, deadlines, searches, top))
         return written
+
+    def touched(self, day: str, span: tuple[datetime, datetime]) -> set[str]:
+        """The pages and courses (``"<kind> <key>"``) that units of ``day`` in ``span`` mention:
+        the notes to write again once the span is deleted (``ingest/forget.py``)."""
+        with self.store.connect() as db:
+            rows = db.execute(
+                "SELECT u.t, u.t_end, e.kind, e.key FROM units u JOIN mentions m ON m.unit_id = u.id "
+                "JOIN entities e ON e.id = m.entity_id WHERE u.day = ? AND e.kind IN ('page', 'course')",
+                (day,),
+            ).fetchall()
+        return {
+            f"{kind} {key}"
+            for t, t_end, kind, key in rows
+            if instant(t) < span[1] and instant(t_end or t) >= span[0]
+        }
+
+    def rewrite(self, identities: set[str]) -> None:
+        """Write these page and course notes again from what the database holds now. One left with
+        nothing recorded and none of the person's writing is removed."""
+        with self.store.connect() as db:
+            for identity in sorted(identities):
+                path = self.paths().get(identity)
+                kind, key = identity.split(" ", 1)
+                row = db.execute("SELECT id, key, name FROM entities WHERE kind = ? AND key = ?", (kind, key)).fetchone()
+                if row is not None and kind == "page":
+                    self._source(db, self._pages(db, {row["id"]})[row["id"]])
+                elif row is not None:
+                    self._course(db, dict(row))
+                elif path is not None and path.exists():
+                    if user_text(path.read_text(encoding="utf-8")):
+                        self._write(path, "", {})
+                    else:
+                        path.unlink()
 
     def _pages(self, db: sqlite3.Connection, ids: set[int]) -> dict[int, Record]:
         found: dict[int, Record] = {}
