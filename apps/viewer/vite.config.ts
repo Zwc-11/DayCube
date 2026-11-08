@@ -8,15 +8,11 @@ function daycubeNodeEphemeralPlugin(): Plugin {
       server.middlewares.use((req, res, next) => {
         const request = req as unknown as { url?: string; method?: string };
         const pathname = request.url?.split('?')[0];
-        const health = request.method === 'GET' && pathname === '/api/node-health';
-        const deletion = request.method === 'POST' && pathname === '/api/delete-hours';
-        if (!health && !deletion) return next();
+        if (request.method !== 'GET' || pathname !== '/api/node-health') return next();
         res.setHeader('Cache-Control', 'no-store');
         res.setHeader('Content-Type', 'application/json; charset=utf-8');
-        res.statusCode = deletion ? 501 : 200;
-        res.end(JSON.stringify(deletion
-          ? { detail: 'Hour deletion is not implemented. No records were deleted.' }
-          : { status: 'ok', mode: 'standalone-sim' }));
+        res.statusCode = 200;
+        res.end(JSON.stringify({ status: 'ok', mode: 'standalone-sim' }));
       });
     },
   };

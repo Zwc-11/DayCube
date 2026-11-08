@@ -209,7 +209,7 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
                 "vector_search": store.vectors,
                 "capture": False,
                 "gpu_pipeline": False,
-                "delete_hours": False,
+                "delete_hours": True,
             },
         }
 
