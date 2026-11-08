@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from datetime import date as date_type
 from datetime import time as time_type
+from pathlib import Path
 from time import perf_counter
 from uuid import uuid4
 from zoneinfo import ZoneInfo
@@ -33,11 +34,13 @@ from .notes.graph import NoteGraph
 from .notes.read import DayNotes, attach_notes, read_note
 from .store import EmbeddingModelChanged, LifeStore
 from .time import instant
-from .vault import Record, Vault, overlaps, read_json
+from .vault import Record, Vault, atomic_bytes, overlaps, read_json
 
 log = logging.getLogger("daycube.api")
 
 MEMORY_FILES = {"photo.jpg": "image/jpeg", "memory.splat": "application/octet-stream"}
+FILMS = ("film-portrait.mp4", "film-landscape.mp4")  # a memory's film, as the viewer exports it
+FILM_MAX = 512 * 1024 * 1024
 MEDIA_SUFFIXES = frozenset({".jpg", ".jpeg", ".png", ".svg", ".mp4", ".wav", ".m4a", ".mp3", ".glb", ".ply", ".spz", ".splat"})
 # Types the platform may not know (Windows has no .m4a in its registry by default).
 MEDIA_TYPES = {
@@ -92,6 +95,12 @@ class LabelRequest(RequestModel):
     category: str | None = Field(default=None, max_length=32)
     project: str | None = Field(default=None, max_length=80)
     clear: bool = False
+
+
+class MemoryEdit(RequestModel):
+    """A memory's caption: the line shown under its photo at the end of its film; empty removes it."""
+
+    caption: str = Field(max_length=280)
 
 
 class HoursRequest(RequestModel):
@@ -424,7 +433,7 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
                 meta = json.loads(meta_path.read_text(encoding="utf-8"))
             except (OSError, ValueError):
                 continue
-            keep = ("width", "height", "fx", "fov_y_deg", "splats", "depth_m", "model", "made", "source")
+            keep = ("width", "height", "fx", "fov_y_deg", "splats", "depth_m", "model", "made", "source", "caption")
             date = meta_path.parents[2].name
             item = {"date": date, "id": meta_path.parent.name, **{k: meta.get(k) for k in keep}}
             # A photo from a scan stands in that scan's world: its splat (trained, else the LiDAR's)
@@ -440,18 +449,44 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
             out.append(item)
         return sorted(out, key=lambda m: (m["date"], str(m.get("made"))), reverse=True)
 
-    @app.get("/memories/{date}/{ident}/{name}")
-    def memory_file(date: str, ident: str, name: str) -> FileResponse:
-        if (
-            not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date)
-            or not re.fullmatch(r"mem_[0-9a-f]{12}", ident)
-            or name not in MEMORY_FILES
-        ):
+    def memory_path(date: str, ident: str, name: str = "memory.json") -> Path:
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date) or not re.fullmatch(r"mem_[0-9a-f]{12}", ident):
             raise HTTPException(404, "Memory not found")
         path = vault.safe_path(f"{date}/memories/{ident}/{name}")
+        if not (path.parent / "memory.json").is_file():
+            raise HTTPException(404, "Memory not found")
+        return path
+
+    @app.get("/memories/{date}/{ident}/{name}")
+    def memory_file(date: str, ident: str, name: str) -> FileResponse:
+        if name not in MEMORY_FILES and name not in FILMS:
+            raise HTTPException(404, "Memory not found")
+        path = memory_path(date, ident, name)
         if not path.is_file():
             raise HTTPException(404, "Memory not found")
-        return FileResponse(path, media_type=MEMORY_FILES[name], headers={"X-Content-Type-Options": "nosniff"})
+        media = MEMORY_FILES.get(name, "video/mp4")
+        return FileResponse(path, media_type=media, headers={"X-Content-Type-Options": "nosniff"})
+
+    @app.patch("/memories/{date}/{ident}", dependencies=[Depends(authorize)])
+    def edit_memory(date: str, ident: str, body: MemoryEdit) -> Record:
+        path = memory_path(date, ident)
+        with vault.lock:
+            meta = {k: v for k, v in read_json(path).items() if k != "caption"}
+            caption = " ".join(body.caption.split())
+            vault.write_json(path, {**meta, "caption": caption} if caption else meta)
+        return {"caption": caption or None}
+
+    @app.put("/memories/{date}/{ident}/{name}", dependencies=[Depends(authorize)])
+    async def save_film(date: str, ident: str, name: str, request: Request) -> Record:
+        """A film the viewer exported (MP4), kept beside its memory; the newest of each shape wins."""
+        if name not in FILMS:
+            raise HTTPException(404, "Memory not found")
+        path = memory_path(date, ident, name)
+        data = await request.body()
+        if len(data) > FILM_MAX or data[4:8] != b"ftyp":
+            raise HTTPException(422, "Not an MP4 film")
+        await asyncio.to_thread(atomic_bytes, path, data)
+        return {"film": name, "bytes": len(data)}
 
     @app.post("/ask", dependencies=[Depends(authorize)], response_model=None)
     def answer(body: AskRequest, stream: bool = False) -> Record | StreamingResponse:

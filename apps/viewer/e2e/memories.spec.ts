@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 // A memory written into the test vault as ingest/recon/memory.py writes one: a photo and its
@@ -138,7 +138,7 @@ test('a memory opens as its photo, fades into 3D and follows the mouse', async (
   const z = await page.evaluate(() => (window as any).__memory.pose.z);
   expect(z).toBeLessThan(0);
   expect(z).toBeGreaterThanOrEqual(-1.35 - 1e-6);
-  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Close' }).click(); // a click on a button is not taken for a drag
   await expect(page).toHaveURL(/view=memories$/);
   await expect(view).toHaveCount(0);
 });
@@ -183,4 +183,112 @@ test('a photo from a scan stands in its world: look round, walk away, and the ot
   // Double-click: back where the photo was taken, its scene sharp again.
   await page.mouse.dblclick(box.x + 10, box.y + box.height - 10);
   await expect.poll(async () => (await live()).memoryOpacity, { timeout: 30_000 }).toBeGreaterThan(0.95);
+});
+
+/** The vault token, as the desktop app gives its window: saving a caption or a film needs it. */
+async function withToken(page: import('@playwright/test').Page): Promise<void> {
+  const token = readFileSync(path.resolve('.daycube-e2e-vault/.token'), 'utf8').trim();
+  await page.addInitScript(
+    `Object.defineProperty(window, '__DAYCUBE_DESKTOP__', { value: Object.freeze({ token: ${JSON.stringify(token)}, version: 'test' }) });`,
+  );
+}
+
+/** How many colours the scene's canvas (or the 2D layer over it) shows, from a 64 x 40 copy. */
+const colours = (page: import('@playwright/test').Page, layer = false) => page.evaluate((layer) => {
+  const canvas = document.querySelectorAll('.film__canvas')[layer ? 1 : 0] as HTMLCanvasElement;
+  const copy = document.createElement('canvas');
+  [copy.width, copy.height] = [64, 40];
+  const ctx = copy.getContext('2d')!;
+  ctx.drawImage(canvas, 0, 0, 64, 40);
+  const data = ctx.getImageData(0, 0, 64, 40).data;
+  const seen = new Set<string>();
+  for (let k = 0; k < data.length; k += 4) if (data[k + 3] > 0) seen.add(`${data[k] >> 4},${data[k + 1] >> 4},${data[k + 2] >> 4}`);
+  return seen.size;
+}, layer);
+
+test('a memory plays as its film: out of its photo, its subject alone, back into its card', async ({ page }) => {
+  test.setTimeout(180_000);
+  await withToken(page);
+  await page.goto(`/?view=memories&memory=${DATE}/${ID}`);
+  await expect(page.getByTestId('memory-view')).toHaveAttribute('data-state', 'ready', { timeout: 60_000 });
+  await page.getByRole('button', { name: 'Film' }).click();
+  await expect(page).toHaveURL(new RegExp(`memory=${DATE}/${ID}&film=1`));
+  const film = page.getByTestId('memory-film');
+  await expect(film).toHaveAttribute('data-state', 'ready', { timeout: 60_000 });
+  const live = () => page.evaluate(() => { const { seek, ...rest } = (window as any).__film ?? {}; return rest; });
+  await expect.poll(async () => (await live()).state, { timeout: 30_000 }).toBe('ready');
+  const first = await live();
+  expect(first.points).toBe(5200);
+  expect(first.world).toBe(false);
+  expect(first.end).toBe(15);
+  // The near blobs (1.6-1.9 m) and the wall (3 m) are two: the wall can fade, the blobs float.
+  expect(first.split).toBeGreaterThan(1.9);
+  expect(first.split).toBeLessThan(3);
+  const at = async (t: number) => {
+    await page.evaluate((t) => (window as any).__film.seek(t), t);
+    await expect.poll(async () => (await live()).t, { timeout: 30_000 }).toBe(t);
+  };
+  for (const t of [0.3, 3]) {
+    await at(t);
+    await expect.poll(() => colours(page), { timeout: 30_000 }).toBeGreaterThan(20);
+  }
+  // Then the wall fades to dust: its ramp of colours goes, the near blobs stay.
+  const opened = await colours(page);
+  await at(7.5);
+  await expect.poll(() => colours(page), { timeout: 30_000 }).toBeLessThan(opened / 2);
+  expect(await colours(page)).toBeGreaterThan(1);
+  // At the end the card holds the photo: the 2D layer draws it, in many colours.
+  await at(14.5);
+  await expect.poll(() => colours(page, true), { timeout: 30_000 }).toBeGreaterThan(20);
+  // A caption is kept with the memory and drawn under its card.
+  await page.getByRole('button', { name: 'Caption' }).click();
+  const caption = page.getByRole('textbox', { name: 'Caption' });
+  await caption.fill('A cold morning by the wall.');
+  await caption.press('Enter');
+  await expect.poll(async () => (await live()).caption, { timeout: 30_000 }).toBe('A cold morning by the wall.');
+  expect(JSON.parse(readFileSync(path.join(folder, 'memory.json'), 'utf8')).caption).toBe('A cold morning by the wall.');
+  // Space pauses it; Escape goes back to the memory.
+  await page.keyboard.press(' ');
+  const held = (await live()).t;
+  await page.waitForTimeout(500);
+  expect((await live()).t).toBe(held);
+  await page.keyboard.press('Escape');
+  await expect(page).toHaveURL(new RegExp(`memory=${DATE}/${ID}$`));
+  await expect(film).toHaveCount(0);
+});
+
+test('a film exports as an MP4, frame by frame, and is kept beside its memory', async ({ page }) => {
+  test.setTimeout(300_000);
+  await withToken(page);
+  await page.addInitScript(() => { (window as any).__filmSize = [320, 180]; });
+  rmSync(path.join(folder, 'film-landscape.mp4'), { force: true });
+  await page.goto(`/?view=memories&memory=${DATE}/${ID}&film=1`);
+  await expect(page.getByTestId('memory-film')).toHaveAttribute('data-state', 'ready', { timeout: 60_000 });
+  const [download] = await Promise.all([
+    page.waitForEvent('download', { timeout: 280_000 }),
+    page.getByRole('button', { name: 'Export MP4' }).click(),
+  ]);
+  const saved = path.resolve('test-results/viewer/film.mp4');
+  await download.saveAs(saved);
+  const probe = spawnSync('ffprobe', ['-v', 'error', '-count_frames', '-show_entries', 'stream=width,height,nb_read_frames',
+    '-of', 'csv=p=0', saved], { encoding: 'utf8' });
+  expect(probe.stdout.trim()).toBe('320,180,450'); // 15 s at 30 fps, none dropped
+  await expect(page.getByRole('status')).toContainText('kept beside the memory', { timeout: 30_000 });
+  expect(readFileSync(path.join(folder, 'film-landscape.mp4')).subarray(4, 8).toString()).toBe('ftyp');
+  const served = await page.request.get(`/api/memories/${DATE}/${ID}/film-landscape.mp4`);
+  expect(served.headers()['content-type']).toBe('video/mp4');
+});
+
+test('a film from a scan grows the place around its photo', async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.goto(`/?view=memories&memory=${DATE}/${IN_WORLD[0]}&film=1`);
+  await expect(page.getByTestId('memory-film')).toHaveAttribute('data-state', 'ready', { timeout: 90_000 });
+  const live = () => page.evaluate(() => { const { seek, ...rest } = (window as any).__film ?? {}; return rest; });
+  await expect.poll(async () => (await live()).state, { timeout: 30_000 }).toBe('ready');
+  const info = await live();
+  expect(info.world).toBe(true);
+  expect(info.place).toBe(81 * 81 * 5);
+  expect(info.end).toBe(19);
+  await page.evaluate(() => (window as any).__film.seek(11));
+  await expect.poll(() => colours(page), { timeout: 60_000 }).toBeGreaterThan(20);
 });

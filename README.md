@@ -44,6 +44,9 @@ too. `npm run build && npm run media` makes them again.
   dropped into the vault's inbox ([phone](docs/phone.md)). Speech becomes transcripts with who
   spoke and how, in English and Mandarin, on the GPU ([speech](docs/speech.md)).
 - **Memories.** One photo becomes a small 3D scene you can step into ([memories](docs/memories.md)).
+  Each also plays as a film: the photo opens into its points, its subject floats, the scanned
+  place grows around it, and the points stream back into the photo with its date and caption,
+  exported as a 16:9 or 9:16 MP4 ([film](docs/memories.md#film)).
 - **Training.** Models trained on this PC, each metric charted against the step
   ([training](docs/training.md)).
 

@@ -546,6 +546,16 @@ export class BackendBridge {
       `Deleted a span of ${date} from the vault`);
   }
 
+  /** A memory's caption, shown under its photo at the end of its film (needs the vault token). */
+  editMemory(date: string, id: string, caption: string): Promise<boolean> {
+    return this.write(`/api/memories/${date}/${id}`, () => this.client.editMemory(date, id, caption), `Captioned a memory of ${date}`);
+  }
+
+  /** Keep a memory's exported film in the vault, beside the memory (needs the vault token). */
+  saveFilm(date: string, id: string, name: 'film-portrait.mp4' | 'film-landscape.mp4', film: Blob): Promise<boolean> {
+    return this.write(`/api/memories/${date}/${id}/${name}`, () => this.client.saveFilm(date, id, name, film), `Kept a memory's film of ${date}`);
+  }
+
   /** What was on screen through the day; null when the day has nothing or the vault is unreachable. */
   async seen(date: string): Promise<Seen | null> {
     try {

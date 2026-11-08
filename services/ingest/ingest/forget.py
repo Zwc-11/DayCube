@@ -11,7 +11,9 @@ recording, cannot bring it back. Then everything it holds leaves the source file
   cut without breaking its timing); a place visit that starts or ends in the span is cut at its
   edge, one inside it goes, one around it keeps its times;
 - the phone's kept sources: sensor rows, hours of sound (the span cut out, the rest kept), and the
-  originals in ``inbox/phone/imported`` (sensor rows; a memo that overlaps the span, whole).
+  originals in ``inbox/phone/imported`` (sensor rows; a memo that overlaps the span, whole);
+- memories: a photo taken in the span, or a frame of a recording that went, with its 3D scene and
+  films.
 
 What is derived from them (the search database, notes, timeline, review, week) is the caller's to
 rebuild (``api.py``). The vault's own copies are gone; a backup made before is not reached.
@@ -54,8 +56,10 @@ def forget(vault: Vault, day: str, span: Span, *, reason: str | None = None, now
         folder = vault.root / "capture" / day
         for name in sorted({p.name.removesuffix(".zst") for p in folder.glob("*.jsonl*")}):
             removed["capture"] += _filter_lines(vault, folder / name, span)  # plain or compacted
+        gone = set()  # the recordings that went
         if (vault.day_path(day, must_exist=False) / "day.json").is_file():  # a phone or sample day
-            _day_files(vault, day, span, removed)
+            gone = _day_files(vault, day, span, removed)
+        _memories(vault, span, gone, removed)
         _sensor_sources(vault, span, removed)
         _audio_sources(vault, audio_cuts, span, removed)
         _imported(vault, span, removed)
@@ -91,7 +95,7 @@ def _hit(record: Record, span: Span) -> bool:
     return bounds is not None and overlaps(*bounds, span)
 
 
-def _day_files(vault: Vault, day: str, span: Span, removed: Counter[str]) -> None:
+def _day_files(vault: Vault, day: str, span: Span, removed: Counter[str]) -> set[str]:
     path = vault.day_path(day)
     gone: set[str] = set()  # ids of the events and recordings that went
     for moment in sorted((path / "moments").glob("*/meta.json")):
@@ -148,6 +152,28 @@ def _day_files(vault: Vault, day: str, span: Span, removed: Counter[str]) -> Non
     if stored(graph_path).exists():
         vault.write_json(graph_path, _graph_without(read_json(graph_path), gone | {f"place:{p}" for p in dropped}))
     vault.refresh_stats(day)
+    return gone
+
+
+def _memories(vault: Vault, span: Span, gone: set[str], removed: Counter[str]) -> None:
+    """A memory (``docs/memories.md``) whose photo was taken in the span, or that is a frame of a
+    recording that went, goes whole: its photo, its scene and its films."""
+    for meta_path in vault.root.glob("????-??-??/memories/mem_*/memory.json"):
+        source = (read_json(meta_path) or {}).get("source") or {}
+        if source.get("moment") in gone or _taken_in(source, span):
+            shutil.rmtree(meta_path.parent)
+            removed["memories"] += 1
+
+
+def _taken_in(source: Record, span: Span) -> bool:
+    """When the photo was taken: a photo's EXIF time is the PC's local time, with no offset; a
+    scan's frame is its seconds into the scan."""
+    with contextlib.suppress(KeyError, TypeError, ValueError):
+        if source.get("taken"):
+            when = datetime.fromisoformat(source["taken"])
+            return span[0] <= (when if when.tzinfo else when.astimezone()) < span[1]
+        return span[0] <= instant(source["t0"]) + timedelta(seconds=float(source["t_s"])) < span[1]
+    return False
 
 
 def _graph_without(graph: Record, gone: set[str]) -> Record:

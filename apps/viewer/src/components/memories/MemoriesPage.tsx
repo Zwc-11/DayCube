@@ -4,17 +4,20 @@ import { BrandMark } from '../shell/TopBar';
 import { type Memory, listMemories, memoryKey, memoryUrl, quarterTurns } from '../../lib/memories';
 
 const MemoryView = lazy(() => import('./MemoryView'));
+const MemoryFilm = lazy(() => import('./MemoryFilm'));
 
 interface MemoriesPageProps {
   /** The memory open, as ``date/id``; null for the list. */
   open: string | null;
-  onOpen: (key: string | null) => void;
+  /** The open memory plays as its film (MemoryFilm). */
+  film: boolean;
+  onOpen: (key: string | null, film?: boolean) => void;
   onHome: () => void;
   onGraph: () => void;
 }
 
 /** Photos you can step into: newest first, each opening as its 3D scene. */
-export const MemoriesPage: React.FC<MemoriesPageProps> = ({ open, onOpen, onHome, onGraph }) => {
+export const MemoriesPage: React.FC<MemoriesPageProps> = ({ open, film, onOpen, onHome, onGraph }) => {
   const [memories, setMemories] = useState<Memory[] | null | undefined>(undefined);
   useEffect(() => {
     const abort = new AbortController();
@@ -49,7 +52,9 @@ export const MemoriesPage: React.FC<MemoriesPageProps> = ({ open, onOpen, onHome
       </main>
       {shown && (
         <Suspense fallback={null}>
-          <MemoryView memory={shown} others={memories ?? []} onClose={() => onOpen(null)} onSwitch={(m) => onOpen(memoryKey(m))} />
+          {film ? <MemoryFilm memory={shown} others={memories ?? []} onClose={() => onOpen(memoryKey(shown))} />
+            : <MemoryView memory={shown} others={memories ?? []} onClose={() => onOpen(null)} onSwitch={(m) => onOpen(memoryKey(m))}
+                          onFilm={() => onOpen(memoryKey(shown), true)} />}
         </Suspense>
       )}
     </div>

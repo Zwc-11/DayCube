@@ -194,6 +194,31 @@ def test_the_api_lists_and_serves_memories(client: TestClient, vault: Vault, tmp
         assert client.get(bad).status_code == 404
 
 
+def test_a_memory_keeps_its_caption_and_its_films(client: TestClient, vault: Vault, auth: dict[str, str]) -> None:
+    rgb = np.random.default_rng(3).integers(0, 255, (240, 320, 3), dtype=np.uint8)
+    ident = memory.memory_id(b"film")
+    folder = vault.root / "2026-10-20" / "memories" / ident
+    memory.make(rgb, 300.0, folder, predict=lambda image, f: plane(image, f))
+    url = f"/memories/2026-10-20/{ident}"
+    assert client.patch(url, json={"caption": "x"}).status_code == 401
+    edited = client.patch(url, json={"caption": "  A cold   morning.\n"}, headers=auth)
+    assert edited.json() == {"caption": "A cold morning."}
+    assert client.get("/memories").json()[0]["caption"] == "A cold morning."
+    assert client.patch(url, json={"caption": ""}, headers=auth).json() == {"caption": None}
+    assert "caption" not in json.loads((folder / "memory.json").read_text(encoding="utf-8"))
+    assert client.patch(url, json={"caption": "x" * 281}, headers=auth).status_code == 422
+    film = b"\0\0\0\x20ftypisom" + bytes(100)
+    assert client.put(f"{url}/film-portrait.mp4", content=film).status_code == 401
+    kept = client.put(f"{url}/film-portrait.mp4", content=film, headers=auth)
+    assert kept.json() == {"film": "film-portrait.mp4", "bytes": len(film)}
+    served = client.get(f"{url}/film-portrait.mp4")
+    assert served.content == film and served.headers["content-type"] == "video/mp4"
+    assert client.put(f"{url}/film-portrait.mp4", content=b"<html>", headers=auth).status_code == 422
+    for bad in (f"{url}/memory.json", f"{url}/photo.jpg", "/memories/2026-10-20/mem_000000000000/film-portrait.mp4"):
+        assert client.put(bad, content=film, headers=auth).status_code == 404
+    assert client.get(f"{url}/film-landscape.mp4").status_code == 404  # not made yet
+
+
 def test_the_lidar_sets_a_memorys_scale_in_its_scan() -> None:
     # SHARP put a wall 2 m away; the LiDAR measured it at 4 m: the scan's metres are twice SHARP's.
     rgb = np.zeros((480, 640, 3), np.uint8)
