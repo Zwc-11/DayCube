@@ -1,4 +1,4 @@
-import { DaycubeClient, ApiError, type Deletion, type LabelCorrection, type Seen } from '@daycube/api-client';
+import { DaycubeClient, ApiError, type Deletion, type LabelCorrection, type MapsConfig, type Seen } from '@daycube/api-client';
 import type {
   AskResult as SchemaAskResult, DataCenter, DayNotes, DayResponse, DayReview, Entity, GazeLearning, KnowledgeGraph, Note,
   SearchResult, NoteGraph, TrainingListed, TrainingSeries,
@@ -554,6 +554,16 @@ export class BackendBridge {
   /** Keep a memory's exported film in the vault, beside the memory (needs the vault token). */
   saveFilm(date: string, id: string, name: 'film-portrait.mp4' | 'film-landscape.mp4', film: Blob): Promise<boolean> {
     return this.write(`/api/memories/${date}/${id}/${name}`, () => this.client.saveFilm(date, id, name, film), `Kept a memory's film of ${date}`);
+  }
+
+  /** The map settings (the Google tiles key); null without the vault token or the API. */
+  async mapsConfig(): Promise<MapsConfig | null> {
+    if (!this.token) return null;
+    try {
+      return await this.client.mapsConfig();
+    } catch {
+      return null;
+    }
   }
 
   /** What was on screen through the day; null when the day has nothing or the vault is unreachable. */

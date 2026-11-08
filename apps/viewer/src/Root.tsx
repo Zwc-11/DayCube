@@ -7,6 +7,7 @@ import { type DaySummary, type LoadedDay, cachedDay, isIsoDate, listDays, loadDa
 const App = lazy(() => import('./App'));
 const KnowledgePage = lazy(() => import('./components/knowledge/KnowledgePage'));
 const MemoriesPage = lazy(() => import('./components/memories/MemoriesPage'));
+const WorldPage = lazy(() => import('./components/world/WorldPage'));
 const TrainingPage = lazy(() => import('./components/training/TrainingPage'));
 const SeenPage = lazy(() => import('./components/seen/SeenPage'));
 
@@ -16,6 +17,7 @@ type Route =
   | { page: 'graph'; note: string | null; date: string | null }
   | { page: 'days' }
   | { page: 'memories'; memory: string | null; film?: boolean }
+  | { page: 'world'; world: string | null }
   | { page: 'training'; run: string | null }
   | { page: 'seen'; date: string }
   | { page: 'day'; date: string };
@@ -40,6 +42,10 @@ const readRoute = (): Route => {
     const open = memory && /^\d{4}-\d{2}-\d{2}\/mem_[0-9a-f]{12}$/.test(memory) ? memory : null;
     return { page: 'memories', memory: open, film: Boolean(open) && q.get('film') === '1' };
   }
+  if (view === 'world') {
+    const world = q.get('world');
+    return { page: 'world', world: isIsoDate(date) && world && /^[A-Za-z0-9_.-]+$/.test(world) ? `${date}/${world}` : null };
+  }
   if (view === 'training') {
     const run = q.get('run');
     return { page: 'training', run: run && /^[A-Za-z0-9_.-]+$/.test(run) ? run : null };
@@ -52,6 +58,11 @@ const readRoute = (): Route => {
 const urlOf = (route: Route): string => {
   if (route.page === 'days') return '?view=days';
   if (route.page === 'memories') return route.memory ? `?view=memories&memory=${route.memory}${route.film ? '&film=1' : ''}` : '?view=memories';
+  if (route.page === 'world') {
+    if (!route.world) return '?view=world';
+    const [date, world] = route.world.split('/');
+    return `?view=world&date=${date}&world=${world}`;
+  }
   if (route.page === 'training') return route.run ? `?view=training&run=${route.run}` : '?view=training';
   if (route.page === 'seen') return `?date=${route.date}&view=seen`;
   if (route.page === 'day') return `?date=${route.date}`;
@@ -135,7 +146,14 @@ export const Root: React.FC = () => {
 
   if (route.page === 'days') {
     return <DayCalendar days={days} today={localToday()} onOpen={openFromCalendar} onHome={() => openDate(null)} onDayPage={openDayPage}
-                        onMemories={() => go({ page: 'memories', memory: null })} />;
+                        onMemories={() => go({ page: 'memories', memory: null })} onWorlds={() => go({ page: 'world', world: null })} />;
+  }
+  if (route.page === 'world') {
+    return (
+      <Suspense fallback={<Loading />}>
+        <WorldPage open={route.world} onOpen={(world) => go({ page: 'world', world })} onHome={openDayPage} onGraph={() => openDate(null)} />
+      </Suspense>
+    );
   }
   if (route.page === 'memories') {
     return (

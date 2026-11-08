@@ -20,9 +20,15 @@ function daycubeNodeEphemeralPlugin(): Plugin {
 
 export default defineConfig(({ mode }) => ({
   plugins: [react(), daycubeNodeEphemeralPlugin()],
-  // Imported only when a scan's mesh opens: bundled up front, or the dev server finds them on that
-  // first open and reloads the page.
-  optimizeDeps: { include: ['three/examples/jsm/loaders/GLTFLoader.js', 'three/examples/jsm/controls/OrbitControls.js', '@sparkjsdev/spark'] },
+  // Imported only when a scan's mesh or a world opens: bundled up front, or the dev server finds
+  // them on that first open and reloads the page.
+  optimizeDeps: {
+    include: [
+      'three/examples/jsm/loaders/GLTFLoader.js', 'three/examples/jsm/controls/OrbitControls.js', '@sparkjsdev/spark',
+      'three/examples/jsm/loaders/DRACOLoader.js', 'three/examples/jsm/utils/BufferGeometryUtils.js',
+      '3d-tiles-renderer/three', '3d-tiles-renderer/three/plugins', '3d-tiles-renderer/core/plugins',
+    ],
+  },
   build: {
     rollupOptions: {
       output: {
@@ -32,6 +38,8 @@ export default defineConfig(({ mode }) => ({
           // Vite's dynamic-import helper is shared by the entry and drei; left alone it lands in
           // the three.js chunk and drags that chunk into the entry.
           if (id.includes('vite/preload-helper')) return 'vendor-react';
+          // Only a world opens these: left to the world's own chunk, not every 3D page's.
+          if (/three[\\/]examples[\\/]jsm[\\/](loaders[\\/]DRACOLoader|utils[\\/]BufferGeometryUtils)/.test(id)) return undefined;
           if (/[\\/]node_modules[\\/](three|@react-three)[\\/]/.test(id)) return 'vendor-three';
           if (/[\\/]node_modules[\\/](react|react-dom|scheduler|framer-motion)[\\/]/.test(id)) return 'vendor-react';
         },

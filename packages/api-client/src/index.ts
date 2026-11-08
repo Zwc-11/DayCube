@@ -49,6 +49,26 @@ export interface SeenPage {
   seconds: number;
   items: SeenItem[];
 }
+/** A video's world (docs/world.md): islands of the user's footage, georeferenced. */
+export interface WorldOrigin { lat: number; lon: number; ground_m: number }
+export interface WorldIsland {
+  id: string;
+  splat: string;
+  points: number;
+  enu: number[][];
+  bounds: { min: [number, number, number]; max: [number, number, number] } | null;
+  located_by: string;
+  error_m: number | null;
+  kind: 'seen' | 'imagined';
+  shots?: unknown;
+}
+export interface World {
+  id: string; date: string; title: string; source?: unknown; made?: string;
+  origin: WorldOrigin; islands: WorldIsland[];
+}
+export interface WorldSummary { date: string; id: string; title: string; islands: number; origin: WorldOrigin }
+export interface MapsConfig { google_tiles_key: string | null }
+
 export interface Seen {
   date: string;
   pages: SeenPage[];
@@ -304,6 +324,16 @@ export class DaycubeClient {
     return this.request(`/day/${encodeURIComponent(date)}/hours`, {
       method: 'DELETE', body: JSON.stringify({ t0, t1, reason: reason || null }),
     }) as Promise<Deletion>;
+  }
+  worlds() { return this.request('/worlds') as Promise<WorldSummary[]>; }
+  world(date: string, id: string) {
+    return this.request(`/worlds/${encodeURIComponent(date)}/${encodeURIComponent(id)}`) as Promise<World>;
+  }
+  /** The map settings, with the Google tiles key when one is set (needs the vault token). */
+  mapsConfig() {
+    const token = this.getToken();
+    if (!token) return Promise.reject(new ApiError(401, 'Connect your vault token to use the map.'));
+    return this.request('/maps/config', { headers: { Authorization: `Bearer ${token}` } }) as Promise<MapsConfig>;
   }
   /** A memory's caption (docs/memories.md); empty removes it. */
   editMemory(date: string, id: string, caption: string) {
