@@ -15,6 +15,7 @@ dependencies = [
   # SHARP, one photo to 3D Gaussians (Apple research licence: eval only, never in the product path)
   "sharp @ git+https://github.com/apple/ml-sharp@aed6527499ef91cba3b54c18d49a870f25947190",
   "pycolmap>=4.2,<5",      # COLMAP: verification, mapping (BSD)
+  "opencv-python-headless>=5,<6",  # frames, masks; LaMa fill through its DNN (OpenCV 5 runs the zoo's ONNX) (Apache-2.0)
   "pillow>=11,<13",
   "numpy>=1.26,<3",
 ]

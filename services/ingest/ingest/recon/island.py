@@ -10,8 +10,10 @@ facade at dusk, docs/world.md), and depth chained frame to frame under-read the 
 Steps, each its own function:
 
 1. ``keyframe``: the sharpest frame (variance of the Laplacian) with the least of it masked.
-2. ``moving``: people, vehicles and bicycles out (DeepLabV3 MobileNet, torchvision, BSD), widened
-   a little; nobody passing by is kept in the vault's 3D.
+2. ``moving``, ``hole``: people, vehicles and bicycles out (DeepLabV3 MobileNet, torchvision, BSD),
+   widened, and carried down over the feet and shadows the segmenter misses; nobody passing by is
+   kept in the vault's 3D. ``fill`` paints what was behind them (LaMa) and ``depth_behind`` gives
+   it depth; that island is labelled imagined.
 3. Depth: Depth Anything V2 Metric Outdoor (Apache-2.0). Its metres were 2-3x long on the dusk
    test, so two rulers in the frame set the scale:
    - ``people_ruler``: people standing whole in the frame are taken as 1.70 m tall;
@@ -24,12 +26,13 @@ Steps, each its own function:
    metres away come out of one view flattened onto a sheet; the map layer draws them).
 7. ``place_on_wall``: the facade laid on a wall of the building's open footprint (OSM), the camera
    ``along`` metres from the wall's first corner where the shot starts, plus a walking speed times
-   the keyframe's time into the shot; on the side the wall faces.
+   the keyframe's time into the shot; on the side the wall faces. The wall is named, or found from
+   a landmark (``where``, ``choose``; world/walls.py).
 
-Run in services/recon's environment (PyTorch, transformers):
+Run in services/recon's environment (PyTorch, transformers, OpenCV 5):
 
     uv run --project services/recon python -m ingest.recon.island VIDEO --date D --shot T0 T1 \
-        --wall LAT,LON LAT,LON --along M [--title T] [--vault PATH]
+        (--at LANDMARK [--street NAME] [--pick N] | --wall LAT,LON LAT,LON --along M) [--title T] [--vault PATH]
 """
 
 from __future__ import annotations
@@ -40,9 +43,13 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import TypeVar
 
 import numpy as np
 
+from ..world.walls import Seen, Wall
+
+T = TypeVar("T")
 ADULT_M = 1.70
 CAMERA_M = 1.45
 WALK = 1.3  # m/s: the step cadence on the first test was about 2 a second, an ordinary walk
@@ -50,6 +57,8 @@ KEEP_M = 35.0
 MOVING = (2, 6, 7, 14, 15, 19)  # VOC: bicycle, bus, car, motorbike, person, train
 PERSON = 15
 DEPTH_MODEL = "depth-anything/Depth-Anything-V2-Metric-Outdoor-Small-hf"
+# LaMa (Apache-2.0) as OpenCV's model zoo exports it, 93 MB: OpenCV 5's DNN runs it, no new runtime.
+LAMA = ("opencv/inpainting_lama", "inpainting_lama_2025jan.onnx", "aee6d22f0a13e5e35af1c9a1c3afd62841fc6f3f")
 
 
 @dataclass(frozen=True)
@@ -116,6 +125,15 @@ def facade(points: np.ndarray, side: float = 1.0) -> tuple[np.ndarray, float]:
     if n @ -plane.point < 0:
         n = -n
     return n, float(n @ -plane.point)
+
+
+def facade_span(points: np.ndarray, normal: np.ndarray, distance: float) -> tuple[float, float]:
+    """Where the facade was seen, from and to how many metres ahead of the camera along it."""
+    along = np.cross(normal, [0.0, 1.0, 0.0])
+    if along[2] > 0:
+        along = -along  # ahead is -z
+    on =points[(np.abs(points @ normal + distance) < 0.3) & (points[:, 1] > 0.5)] @ along
+    return float(np.percentile(on, 2)), float(np.percentile(on, 98))
 
 
 def crop(points: np.ndarray, rgb: np.ndarray, camera_height: float = CAMERA_M) -> np.ndarray:
@@ -202,6 +220,44 @@ def moving(rgb: np.ndarray, labels: np.ndarray | None = None) -> np.ndarray:
     return cv2.dilate(np.isin(labels, MOVING).astype(np.uint8), np.ones((15, 15), np.uint8)) > 0
 
 
+def hole(gone: np.ndarray) -> np.ndarray:
+    """What is taken out of the frame and filled: ``gone`` widened by a 35th of the frame's width,
+    then carried down a 25th of its height (the segmenter misses feet, shoes and shadows, and LaMa
+    grows whatever is left of a person back into the hole)."""
+    import cv2
+
+    h, w = gone.shape
+    k, down = w // 35 | 1, h // 25
+    wide = cv2.dilate(gone.astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k)))
+    return cv2.dilate(wide, np.ones((down, 1), np.uint8), anchor=(0, down - 1)) > 0
+
+
+def fill(rgb: np.ndarray, hole: np.ndarray) -> np.ndarray:
+    """``rgb`` with ``hole`` painted in by LaMa (at 512 x 512, its export's fixed size)."""
+    import cv2
+    from huggingface_hub import hf_hub_download
+
+    if not hasattr(fill, "net"):
+        fill.net = cv2.dnn.readNetFromONNX(hf_hub_download(LAMA[0], LAMA[1], revision=LAMA[2]))
+    h, w = hole.shape
+    fill.net.setInput(cv2.dnn.blobFromImage(rgb, 1 / 255, (512, 512)), "image")
+    fill.net.setInput((cv2.dnn.blobFromImage(hole.astype(np.uint8), 1.0, (512, 512)) > 0).astype(np.float32), "mask")
+    painted = np.clip(fill.net.forward()[0].transpose(1, 2, 0), 0, 255).astype(np.uint8)
+    return np.where(hole[..., None], cv2.resize(painted, (w, h), interpolation=cv2.INTER_CUBIC), rgb)
+
+
+def depth_behind(d: np.ndarray, d_filled: np.ndarray, hole: np.ndarray) -> np.ndarray:
+    """``d`` with depth in ``hole``: the depth model's reading of the filled frame, times its ratio
+    to ``d`` carried in from the hole's edge, so the two meet there. (The model reads the whole
+    frame a little differently once people are gone: 10% median on the dusk test.)"""
+    import cv2
+
+    ratio = np.where(hole, 1.0, d / np.maximum(d_filled, 1e-3)).astype(np.float32)
+    # Navier-Stokes: OpenCV 5's Telea returns about half the value on float images.
+    ratio = cv2.inpaint(ratio, hole.astype(np.uint8), 3, cv2.INPAINT_NS)
+    return np.where(hole, d_filled * ratio, d)
+
+
 def depth(rgb: np.ndarray) -> np.ndarray:
     import torch
     from transformers import AutoImageProcessor, AutoModelForDepthEstimation
@@ -223,7 +279,7 @@ def build(rgb: np.ndarray, f: float) -> tuple[list[tuple[bytes, int, np.ndarray]
 
     h, w = rgb.shape[:2]
     labels = segment(rgb)
-    gone = moving(rgb, labels)
+    gone = hole(moving(rgb, labels))
     d = depth(rgb)
     count, parts, stats, _ = cv2.connectedComponentsWithStats((labels == PERSON).astype(np.uint8))
     whole = [k for k in range(1, count) if stats[k][4] > 4000 and stats[k][1] > 2 and stats[k][1] + stats[k][3] < h - 2
@@ -246,11 +302,10 @@ def build(rgb: np.ndarray, f: float) -> tuple[list[tuple[bytes, int, np.ndarray]
 
     points, colour = to_island(lift(d, seen)), rgb[v, u][seen]
     normal, distance = facade(points)
-    # Where people and vehicles were: the colour and depth around them carried in (inpainting).
-    # Invented, so kept apart as an imagined island the viewer labels and can hide.
-    hole = gone.astype(np.uint8)
-    rgb_fill = cv2.inpaint(np.ascontiguousarray(rgb), hole, 9, cv2.INPAINT_TELEA)
-    d_fill = cv2.inpaint(d.astype(np.float32), hole, 9, cv2.INPAINT_TELEA)
+    # Where people and vehicles were: invented, so kept apart as an imagined island the viewer
+    # labels and can hide.
+    rgb_fill = fill(rgb, gone)
+    d_fill = depth_behind(d, depth(rgb_fill), gone)
     filled = gone[v, u] & (d_fill[v, u] < 70)
     guessed, guessed_colour = to_island(lift(d_fill, filled)), rgb_fill[v, u][filled]
     islands = []
@@ -259,29 +314,72 @@ def build(rgb: np.ndarray, f: float) -> tuple[list[tuple[bytes, int, np.ndarray]
         pts, col = pts[keep], col[keep]
         size = np.maximum(0.012, 2 * np.linalg.norm(pts - np.array([0.0, CAMERA_M, 0.0]), axis=1) / f)
         islands.append((splat_records(pts, col, size), len(pts), pts))
+    span = facade_span(islands[0][2], normal, distance)
     notes = {"scale": round(scale, 3), "scale_by_people": by_people and round(by_people, 3),
              "scale_by_ground": round(by_ground, 3), "people": len(whole), "facade_m": round(distance, 2),
-             "points": islands[0][1], "imagined_points": islands[1][1]}
-    return islands, {"normal": normal, "distance": distance, "notes": notes}
+             "facade_seen_m": [round(s, 1) for s in span], "points": islands[0][1], "imagined_points": islands[1][1]}
+    return islands, {"normal": normal, "distance": distance, "span": span, "notes": notes}
 
 
-def ground_at(at: tuple[float, float], cache: Path, tries: int = 4) -> float:
-    """The ground's ellipsoid height at the wall's first corner (the island is within its error of
-    it), tried again after a dropped connection."""
+def retried(call: Callable[[], T], tries: int = 4) -> T:
+    """``call``, tried again after a dropped connection (Overpass and Open-Meteo reset some)."""
     import time
 
     import httpx
 
-    from ..world import geo
-
-    for attempt in range(tries):
+    for attempt in range(tries - 1):
         try:
-            return geo.ground_height(*at, cache)
-        except httpx.HTTPError:
-            if attempt == tries - 1:
-                raise
+            return call()
+        except httpx.TransportError:
             time.sleep(3 * (attempt + 1))
-    raise AssertionError("unreachable")
+    return call()
+
+
+def where(args: argparse.Namespace, maps: Path) -> tuple[Wall | str, Callable[[Seen], Wall | None], float]:
+    """Before the models run, so that a network failure or a question costs nothing: the wall the
+    shot was beside (or the walls to pick from), the same wall as it fits what the island saw,
+    and the ground's height at its start."""
+    from ..integrations.nominatim import NominatimAdapter
+    from ..integrations.overpass import OverpassAdapter
+    from ..world import geo, osm
+    from ..world.walls import ANY, landmark_walls, reach
+
+    if args.wall:
+        a, b = (tuple(float(x) for x in corner.split(",")) for corner in args.wall)
+        wall = Wall(a, b, 0.0, None, (-math.inf, math.inf))
+        return wall, lambda seen: wall, retried(lambda: geo.ground_height(*a, maps))
+    place = retried(lambda: NominatimAdapter(maps / "places").place(args.at))
+    overpass, radius = OverpassAdapter(maps / "osm"), reach(place)
+    buildings = osm.footprints(retried(lambda: overpass.buildings(place["lat"], place["lon"], radius)))
+    streets = retried(lambda: overpass.streets(place["lat"], place["lon"], radius))
+    wall = choose(landmark_walls(place, buildings, streets, ANY), args.street, args.pick)
+    if isinstance(wall, str):
+        return wall, lambda seen: None, math.nan
+    at = wall.a if math.hypot(*geo.local_from_lat_lon(place["lat"], place["lon"], *wall.a)) > 50 else (place["lat"], place["lon"])
+
+    def fitted(seen: Seen) -> Wall | None:
+        return next((w for w in landmark_walls(place, buildings, streets, seen) if (w.a, w.b) == (wall.a, wall.b)), None)
+
+    return wall, fitted, retried(lambda: geo.ground_height(*at, maps))
+
+
+def choose(walls: list[Wall], street: str | None, pick: int | None) -> Wall | str:
+    """The wall the shot was beside, or the walls to pick from: those facing a street (the one
+    named, if any), longest first. Numbered before any shot is measured, so a pick stays put."""
+    from ..world.walls import label
+
+    middle = tuple(np.mean([w.a for w in walls] + [w.b for w in walls], 0)) if walls else (0.0, 0.0)
+    walls = [w for w in walls if w.street] or walls
+    if street:
+        walls = [w for w in walls if w.street and street.casefold() in w.street.casefold()]
+    if pick is not None and 1 <= pick <= len(walls):
+        return walls[pick - 1]
+    if len(walls) == 1 and pick is None:
+        return walls[0]
+    rows = [f"  {n}  {w.street or '(no street)'}, {w.length:.0f} m, {label(w, middle)}: {w.a[0]:.6f},{w.a[1]:.6f} to {w.b[0]:.6f},{w.b[1]:.6f}"
+            for n, w in enumerate(walls, 1)]  # fmt: skip
+    head = f"{len(walls)} walls fit; pick one with --pick N (or name one with --wall)" if walls else "No wall fits"
+    return "\n".join([head + (f" on {street!r}" if street else "") + ":", *rows])
 
 
 def main() -> None:
@@ -293,21 +391,36 @@ def main() -> None:
     p.add_argument("video", type=Path)
     p.add_argument("--date", required=True)
     p.add_argument("--shot", nargs=2, type=float, required=True, metavar=("T0", "T1"))
-    p.add_argument("--wall", nargs=2, required=True, metavar=("LAT,LON", "LAT,LON"),
-                   help="the footprint wall beside the walk, from where the walk starts")
-    p.add_argument("--along", type=float, required=True, help="metres from the wall's first corner where the shot starts")
+    on = p.add_mutually_exclusive_group(required=True)
+    on.add_argument("--wall", nargs=2, metavar=("LAT,LON", "LAT,LON"), help="the footprint wall beside the walk, from where the walk starts")
+    on.add_argument("--at", metavar="LANDMARK", help="the building the shot was filmed beside, e.g. \"Union Station, Toronto\"")
+    p.add_argument("--street", help="with --at: the street the walk was on")
+    p.add_argument("--pick", type=int, help="with --at: which of the walls it lists")
+    p.add_argument("--along", type=float, help="metres from the wall's first corner where the shot starts (with --at: the middle of where it fits)")
     p.add_argument("--speed", type=float, default=WALK, help="walking speed, m/s: the keyframe is this far on per second")
     p.add_argument("--focal", type=float, default=1.45, help="focal length over the frame's width (iPhone main camera, 3:4 crop)")
     p.add_argument("--title", default="")
     p.add_argument("--error-m", type=float, default=15.0)
     p.add_argument("--vault", type=Path)
     args = p.parse_args()
+    if args.wall and args.along is None:
+        p.error("--wall needs --along")
+    if args.wall and (args.street or args.pick is not None):
+        p.error("--street and --pick choose among the walls --at finds")
     vault = Vault(args.vault or Settings().vault_root)
-    a, b = (tuple(float(x) for x in corner.split(",")) for corner in args.wall)
-    ground = ground_at(a, vault.root / "maps")  # first: a network failure costs nothing yet
+    wall, fitted, ground = where(args, vault.root / "maps")
+    if isinstance(wall, str):
+        p.exit(2, wall + "\n")
     rgb, t = keyframe(args.video, *args.shot)
     islands, found = build(rgb, args.focal * rgb.shape[1])
-    lat, lon, rotation = place_on_wall(a, b, args.along + args.speed * (t - args.shot[0]), found["normal"], found["distance"])
+    seen_by = Seen(found["distance"], *found["span"])
+    if (wall := fitted(seen_by)) is None:
+        p.exit(2, f"The facade seen ({seen_by.start:.0f} to {seen_by.end:.0f} m ahead) does not fit that wall, or its sidewalk is built on\n")
+    if args.along is not None:
+        along, error = args.along + args.speed * (t - args.shot[0]), args.error_m
+    else:  # anywhere it fits: the middle, the error widened to cover the rest
+        along, error = sum(wall.along) / 2, max(args.error_m, (wall.along[1] - wall.along[0]) / 2 + 3)
+    lat, lon, rotation = place_on_wall(wall.a, wall.b, along, found["normal"], found["distance"])
     enu = np.eye(4)
     enu[:3, :3] = rotation
 
@@ -315,7 +428,7 @@ def main() -> None:
         placed = pts @ rotation.T
         return {"id": f"is_{n:02d}", "splat": f"is_{n:02d}.splat", "points": count, "enu": enu.round(6).tolist(),
                 "bounds": {"min": placed.min(0).round(2).tolist(), "max": placed.max(0).round(2).tolist()},
-                "located_by": "landmark+footprints", "error_m": args.error_m, "kind": kind, "shots": [list(args.shot)]}
+                "located_by": "landmark+footprints", "error_m": round(error, 1), "kind": kind, "shots": [list(args.shot)]}
 
     seen = island(1, islands[0][2], islands[0][1], "seen")
     seen["view"] = {"eye": (rotation @ [0.0, CAMERA_M, 0.0]).round(3).tolist(),
@@ -328,7 +441,7 @@ def main() -> None:
         "islands": [seen] + ([island(2, islands[1][2], islands[1][1], "imagined")] if islands[1][1] else []),
     }
     path = store.save(vault, args.date, world, {i["splat"]: data for i, (data, _, _) in zip(world["islands"], islands, strict=False)})
-    print(path, {"keyframe_s": round(t, 2), **found["notes"]})
+    print(path, {"keyframe_s": round(t, 2), "wall": [wall.a, wall.b], "street": wall.street, "along_m": round(along, 1), **found["notes"]})
 
 
 if __name__ == "__main__":
