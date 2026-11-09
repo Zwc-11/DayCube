@@ -20,6 +20,7 @@ It does not install GPU model weights or create external accounts.
 | Native capture | pywin32, psutil, mss, Pillow, pystray, pynput | Separate capture project, optional `windows` extra |
 | OCR | RapidOCR ONNX, RapidFuzz | Separate capture project, optional `ocr` extra |
 | Gaze | EyeTrax 0.4.0 (MIT), which brings MediaPipe, OpenCV, scikit-learn and numpy<2 | Separate `services/gaze` environment, because of numpy<2 |
+| Recon | PyTorch, torchvision, kornia, transformers, pycolmap, OpenCV 5 (headless; its DNN runs LaMa's ONNX for the islands' fill) | Separate `services/recon` environment, on the PC's GPU ([world.md](world.md)) |
 
 Install optional backend groups only when working on those integrations:
 
@@ -41,6 +42,8 @@ No external credentials are needed for the sample demo. Anthropic needs `ANTHROP
 `DAYCUBE_ANTHROPIC_MODEL` in your local environment or `.env`. Modal uses its own authenticated
 CLI setup. Hugging Face tokens are reserved for a future consented diarization pipeline.
 Overpass is a keyless lookup but sends coordinates to the configured endpoint when called.
+Nominatim (the islands' `--at`) is keyless too and sends the place name; each answer is kept in
+`vault/maps/places`, so a name is sent once.
 
 The frontend dependency manifest is maintained separately. The current synchronized npm lockfile
 reports zero audit vulnerabilities. The Python API and tests do not use the frontend build-tool

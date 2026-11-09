@@ -18,8 +18,24 @@ function daycubeNodeEphemeralPlugin(): Plugin {
   };
 }
 
+// DRACOLoader names two decoder builds at load time, so both ship (about 1 MB); the world uses
+// only the glTF build (DRACO_GLTF_CONFIG). Build only: the dev server pre-bundles it untouched.
+function dracoGltfOnly(): Plugin {
+  const full = /new URL\( '\.\.\/libs\/draco\/draco_\w+\.(?:js|wasm)', import\.meta\.url \)\.toString\(\)/g;
+  return {
+    name: 'daycube-draco-gltf-only',
+    apply: 'build',
+    transform(code, id) {
+      if (!/three[\\/]examples[\\/]jsm[\\/]loaders[\\/]DRACOLoader\.js$/.test(id)) return;
+      const found = code.match(full)?.length ?? 0;
+      if (found !== 3) this.error(`DRACOLoader changed: expected 3 full-decoder URLs, found ${found}`);
+      return { code: code.replace(full, "''"), map: null };
+    },
+  };
+}
+
 export default defineConfig(({ mode }) => ({
-  plugins: [react(), daycubeNodeEphemeralPlugin()],
+  plugins: [react(), daycubeNodeEphemeralPlugin(), dracoGltfOnly()],
   // Imported only when a scan's mesh or a world opens: bundled up front, or the dev server finds
   // them on that first open and reloads the page.
   optimizeDeps: {

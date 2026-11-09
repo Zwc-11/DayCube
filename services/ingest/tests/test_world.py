@@ -12,6 +12,7 @@ import pytest
 from fastapi.testclient import TestClient
 from ingest.api import create_app
 from ingest.config import Settings
+from ingest.integrations import nominatim as nominatim_module
 from ingest.integrations import overpass as overpass_module
 from ingest.vault import Vault
 from ingest.world import geo, osm, store
@@ -171,6 +172,38 @@ def test_buildings_are_fetched_once_and_kept_for_offline(client: TestClient, vau
     assert missing.status_code == 503 and "not reachable" in missing.json()["detail"]
     for bad in ({"lat": 91, "lon": 0}, {"lat": 0, "lon": 0, "radius_m": 20}, {"lat": 0, "lon": 0, "radius_m": 601}):
         assert client.get("/maps/buildings", params=bad).status_code == 422
+
+
+def test_streets_are_asked_for_by_name_and_kept_apart_from_buildings(tmp_path: Path, overpass_calls: list[str],
+                                                                     monkeypatch: pytest.MonkeyPatch) -> None:  # fmt: skip
+    adapter = overpass_module.OverpassAdapter(tmp_path)
+    adapter.buildings(43.6447, -79.3801, 265)
+    adapter.streets(43.6447, -79.3801, 265)
+    assert '"highway"~"^(primary|' in overpass_calls[1] and '["name"]' in overpass_calls[1]
+    assert "footway" not in overpass_calls[1]  # paths and sidewalks are not streets a wall faces
+    assert sorted(p.name.startswith("streets-") for p in tmp_path.iterdir()) == [False, True]  # its own file
+    adapter.streets(43.6447, -79.3801, 265)
+    assert len(overpass_calls) == 2  # the vault's copy answers the second time
+
+
+def test_a_place_is_looked_up_once_by_name(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[dict] = []
+    found = [{"lat": "43.6447091", "lon": "-79.3801352", "osm_type": "way", "osm_id": 14744491, "display_name": "Union Station",
+              "geojson": {"type": "Polygon", "coordinates": [[[-79.38, 43.64], [-79.37, 43.64], [-79.37, 43.65], [-79.38, 43.64]]]}}]
+
+    def get(url: str, params: dict, timeout: float, headers: dict) -> Answer:
+        assert headers["User-Agent"].startswith("DAYCUBE/")  # Nominatim's policy: an identifying agent
+        calls.append(params)
+        return Answer(found if params["q"] != "Nowhere" else [])  # type: ignore[arg-type]
+
+    monkeypatch.setattr(nominatim_module.httpx, "get", get)
+    adapter = nominatim_module.NominatimAdapter(tmp_path)
+    place = adapter.place("Union  Station, Toronto")
+    assert place["osm"] == "way/14744491" and place["lat"] == pytest.approx(43.6447091) and place["geojson"]["type"] == "Polygon"
+    assert calls[0]["polygon_geojson"] == 1 and calls[0]["limit"] == 1
+    assert adapter.place("union station, toronto") == place and len(calls) == 1  # kept: case and spaces aside
+    with pytest.raises(LookupError):
+        adapter.place("Nowhere")
 
 
 def test_the_google_key_needs_the_vault_token_and_is_null_without_one(vault: Vault, client: TestClient,

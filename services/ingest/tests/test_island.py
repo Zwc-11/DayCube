@@ -65,3 +65,19 @@ def test_records_are_the_viewers_splats() -> None:
     assert len(data) == 32
     assert np.frombuffer(data[:12], "<f4").tolist() == [1, 2, 3]
     assert list(data[24:32]) == [10, 20, 30, 255, 255, 128, 128, 128]
+
+
+def test_the_hole_takes_the_feet_and_its_depth_meets_the_seen() -> None:
+    pytest.importorskip("cv2", reason="the recon environment's OpenCV")
+    gone = np.zeros((500, 350), bool)
+    gone[100:300, 150:200] = True  # a person whose feet the segmenter missed
+    hole = island.hole(gone)
+    rows = np.flatnonzero(hole.any(1))
+    assert rows[0] > 100 - 10 and rows[-1] >= 300 + 500 // 25 - 1  # widened a little, carried down a lot
+    # Depth of a sloping street; the filled frame read 20% long, and a little more on one side.
+    v, u = np.mgrid[0:500, 0:350]
+    d = (2 + v / 50 + u / 100).astype(np.float32)
+    d_filled = d * (1.2 + u / 3500)
+    out = island.depth_behind(d, d_filled, hole)
+    assert np.array_equal(out[~hole], d[~hole])
+    assert np.abs(out[hole] / d[hole] - 1).max() < 0.01
