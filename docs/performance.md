@@ -1,5 +1,9 @@
 # Performance measurements
 
+The [2026-10-26 codebase pass](codebase-efficiency-2026-10-26.md) adds capture projection,
+graph redraw and job-history measurements, with unchanged-output checks and a refreshed file ledger.
+The report records both gains and unchanged/regressing measurements on the named workloads.
+
 The [2026-10-24 review](review-2026-10-24.md) adds notes/graph/cache measurements and a
 production-build viewer profile. Its renderer and scope limits are recorded with the results.
 
@@ -238,4 +242,12 @@ batched binocular prediction, calibration frame freshness and recovery after gaz
 head prediction was about 10% faster and 1080p frame preparation 30% faster with identical outputs.
 The current 640×480 preparation case showed a small median gain and a slightly worse sampled tail.
 Freshness and recovery checks are separate from the CPU measurements; live accuracy needs calibration.
+
+## Continued codebase review, 2026-10-26
+
+The [continuation report](codebase-continuation-2026-10-26.md) records exact-output camera-map,
+phone-segmentation and voice-clustering comparisons, plus failed-loader resource/draw counters.
+Each named workload retains before/after source provenance and its allocation/latency limits.
+These CPU/browser fixtures do not establish camera FPS, production startup latency, real-GPU
+performance or general DeepInfer parity. Per-file review findings remain visible in the ledger.
 

@@ -24,13 +24,14 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from pathlib import Path
 from urllib.parse import urlsplit
 
 from ..time import instant
-from ..vault import Record, Vault, file_stamp, read_text, stored
+from ..vault import Record, Vault, file_stamp, stored, text_lines
 
 LOGS = ("browser.jsonl", "blocks.jsonl", "gaze.jsonl", "attention.jsonl", "reading.jsonl", "windows.jsonl")
 MIN_VISIT_S = 3.0  # shorter spans in front are tab flipping, not visits
@@ -58,21 +59,58 @@ APP_NAMES = {
 LOCK_APPS = frozenset({"lockapp.exe", "logonui.exe"})
 
 
-def _records(path: Path) -> list[Record]:
+def _iter_records(path: Path) -> Iterator[Record]:
     """JSON lines, skipping any that do not parse (a torn append, a hand edit): one bad line must
     not hide a day of capture."""
     if not stored(path).exists():
-        return []
-    out = []
-    for line in read_text(path).split("\n"):
+        return
+    for line in text_lines(path):
         if line.strip():
             try:
                 value = json.loads(line)
             except ValueError:
                 continue
             if isinstance(value, dict):
-                out.append(value)
-    return out
+                yield value
+
+
+def _records(path: Path) -> list[Record]:
+    return list(_iter_records(path))
+
+
+def _block_texts(vault: Vault, path: Path) -> tuple[dict, dict]:
+    """Retain only document metadata and block text, keyed by the physical file and write version."""
+    source = stored(path)
+    key = (source, vault.stamp(path), file_stamp(source))
+    cached = vault.capture_texts.get(path)
+    if cached is not None and cached[0] == key:
+        return cached[1], cached[2]
+    docs: dict = {}
+    texts: dict = {}
+    for record in _iter_records(path):
+        doc = record.get("doc")
+        if not doc:
+            continue
+        docs[doc] = (record.get("url", ""), record.get("title", "") or docs.get(doc, ("", ""))[1])
+        for block in record.get("blocks", []):
+            if block.get("text"):
+                texts[(doc, block["id"])] = (block.get("tag", ""), block["text"])
+    # A concurrent append/replacement cannot become a cache entry for the earlier stamp.
+    if key == (stored(path), vault.stamp(path), file_stamp(stored(path))):
+        vault.capture_texts.put_metadata(path, (key, docs, texts))
+    return docs, texts
+
+
+def has_capture_day(vault: Vault, day: str) -> bool:
+    """Whether a single valid date has capture logs, without scanning the history."""
+    if len(day) != 10:
+        return False
+    try:
+        date.fromisoformat(day)
+    except ValueError:
+        return False
+    folder = vault.root / "capture" / day
+    return folder.is_dir() and any(stored(folder / name).exists() for name in LOGS)
 
 
 def capture_days(vault: Vault) -> list[str]:
@@ -178,14 +216,10 @@ def read_capture(vault: Vault, day: str) -> CaptureDay:
     out = CaptureDay(day)
     previous = (date.fromisoformat(day) - timedelta(days=1)).isoformat()
     for path in (vault.root / "capture" / previous / "blocks.jsonl", folder / "blocks.jsonl"):
-        for record in _records(path):
-            doc = record.get("doc")
-            if not doc:
-                continue
-            out.docs[doc] = (record.get("url", ""), record.get("title", "") or out.docs.get(doc, ("", ""))[1])
-            for block in record.get("blocks", []):
-                if block.get("text"):
-                    out.texts[(doc, block["id"])] = (block.get("tag", ""), block["text"])
+        docs, texts = _block_texts(vault, path)
+        for doc, (url, title) in docs.items():
+            out.docs[doc] = (url, title or out.docs.get(doc, ("", ""))[1])
+        out.texts.update(texts)
     browser = sorted(_records(folder / "browser.jsonl"), key=lambda r: instant(r["t"]))
     out.visits = _visits(browser)
     for record in browser:
@@ -235,6 +269,8 @@ def _apps(windows: list[Record], last_seen: str) -> list[AppSpan]:
 
     for record in windows:
         t = record["t"]
+        if record.get("kind") == "still":
+            continue  # the reader saying it still records: nothing changed in front
         if record.get("kind") == "away" and record.get("since"):
             # Away after minutes without input: the app was not in use since the last input.
             t = max(record["since"], current.t0, key=instant) if current is not None else t
@@ -264,6 +300,23 @@ def _apps(windows: list[Record], last_seen: str) -> list[AppSpan]:
 
 def _visits(browser: list[Record]) -> list[Visit]:
     """Spans of the page in front, merged when the same page comes back within ``MERGE_GAP_S``."""
+    merged: list[Visit] = []
+    for span in _tab_spans(browser):
+        last = merged[-1] if merged else None
+        if last and last.url == span.url and (instant(span.t0) - instant(last.t1)).total_seconds() <= MERGE_GAP_S:
+            last.t1 = span.t1
+            last.seconds += span.seconds
+            last.title = span.title or last.title
+        else:
+            merged.append(span)
+    return [v for v in merged if v.seconds >= MIN_VISIT_S]
+
+
+def _tab_spans(browser: list[Record], end: str | None = None) -> list[Visit]:
+    """The page in front from each focus, navigation or return from idle to the next, unmerged
+    and however short: consecutive spans never overlap. The last one ends at ``end`` (default:
+    the last record). Without ``idle`` records (the day timeline, which takes presence from the
+    screen reader) a page stays in front while its browser window has focus."""
     spans: list[Visit] = []
     current: Visit | None = None
     tabs: dict[int, tuple[str, str]] = {}  # tab -> (url, title) last navigated
@@ -314,17 +367,8 @@ def _visits(browser: list[Record]) -> list[Visit]:
                 close(t)
                 active = False
     if current is not None and browser:
-        close(browser[-1]["t"])
-    merged: list[Visit] = []
-    for span in spans:
-        last = merged[-1] if merged else None
-        if last and last.url == span.url and (instant(span.t0) - instant(last.t1)).total_seconds() <= MERGE_GAP_S:
-            last.t1 = span.t1
-            last.seconds += span.seconds
-            last.title = span.title or last.title
-        else:
-            merged.append(span)
-    return [v for v in merged if v.seconds >= MIN_VISIT_S]
+        close(end or browser[-1]["t"])
+    return spans
 
 
 def _media(browser: list[Record]) -> list[Record]:

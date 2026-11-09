@@ -1,0 +1,188 @@
+# Phone recordings
+
+A phone carried through the day records what the computer cannot: where you went, how you got
+there, which floor you were on, what was said and what was in front of you. DayCube imports the
+exports of three free iPhone apps (Sensor Logger also runs on Android) into the vault day they
+were recorded on (`services/ingest/ingest/phone`).
+
+| App | What to export | Becomes |
+| --- | --- | --- |
+| [Sensor Logger](https://www.tszheichoi.com/sensorlogger) | the recording as a zip of CSVs (Location, Barometer, Pedometer, Activity; others are ignored) | visits, trips, floors, every GPS fix as the day's skeleton |
+| Voice Memos | the `.m4a` | an audio moment with its transcript |
+| [Stray Scanner](https://docs.strayrobots.io/apps/scanner/) | the capture folder (`rgb.mp4`, `odometry.csv`, `camera_matrix.csv`, and `depth/` when there) | a video moment with keyframes and the camera's path on the map |
+
+## Getting them in
+
+Copy the exports into `vault/inbox/phone` (an iCloud Drive or OneDrive folder synced to the PC
+works). While the capture receiver runs, it looks every minute and imports what has stopped
+changing for 30 s, then moves it to `inbox/phone/imported/<when>/`. A memo or scan that cannot be
+read (FFmpeg not on PATH, say) is left in the inbox while the rest is imported; it and any failed
+import are written to `inbox/phone/errors.jsonl` and not tried again until the file changes (copy
+it in again once fixed). By hand:
+
+    .\capture import-phone "C:\path\to\export.zip" "C:\path\to\memo.m4a" "C:\path\to\scan folder"
+    uv run daycube import-phone <files...> [--no-transcribe] [--inbox]
+
+Importing again replaces exactly what an earlier import wrote: places `ph-HHMMSS`, events `ph_...`,
+moments `mo_voice_...` and `mo_scan_...`, skeleton points with source `sensor-logger`. Anything else
+in the day (computer capture, edits, other sources) is kept.
+
+### Straight from the phone (`capture/phone_api.py`)
+
+The DayCube Capture app uploads to the receiver, over Tailscale, through `/phone/*`:
+
+| Endpoint | Token | What |
+| --- | --- | --- |
+| `POST /phone/pair {name}` | the vault's | a device id and its own token; only the token's SHA-256 is kept (`vault/capture/phone-devices.json`) |
+| `POST /phone/uploads {item, name, bytes, sha256}` | the phone's | an upload's id, and how much has arrived; `done` if the file is there already |
+| `PUT /phone/uploads/{id}?offset=` | the phone's | a chunk of at most 4 MB at that offset; 409 with the right offset otherwise |
+| `POST /phone/uploads/{id}/complete` | the phone's | the size and SHA-256 checked; a mismatch is refused and the upload starts over |
+| `POST /phone/items/complete {item}` | the phone's | the item's files moved into the inbox together; asking again later answers `done` |
+| `POST /phone/heartbeat {battery, storage_free_mb, state, queue_files, ...}` | the phone's | kept for doctor; every one appended to `vault/capture/phone-heartbeats.jsonl` |
+| `GET /phone/status` | the vault's | devices, their last heartbeat, uploads in progress |
+| `POST /phone/events {app, event, t}` (or a list) | the phone's | an app `opened` or `closed`, into `vault/capture/<date>/phone-events.jsonl`; the same event twice is kept once; nothing while recording is paused |
+
+- **Items.** An item is what is imported together: one audio hour, one sensor recording, one scan.
+  Its files wait in `inbox/phone/.staging/` until the item is complete, then land in the inbox as
+  `<device>-<item>`. A scan whose upload paused half way is never imported half made.
+- **Deleting on the phone.** The phone deletes a file only after the receiver has acknowledged it.
+- **Doctor.** `.\capture doctor` shows each phone: when it was last heard from, its battery, the
+  queue and what it records. It warns after two hours of silence.
+
+### Phone apps from iOS Shortcuts (no app needed)
+
+The day's review counts pickups and minutes per app from app events ([review](review.md)). Until
+DayCube Capture reads Screen Time, Shortcuts sends them:
+
+1. Pair the phone once (`POST /phone/pair` from the viewer's settings) and keep its token.
+2. Shortcuts › Automation › New Automation › **App**: choose the apps (one automation per app, so
+   its name can be written into the request), tick **Is Opened**, choose **Run Immediately**.
+3. Action **Get Contents of URL**: `https://<pc>.<tailnet>.ts.net/phone/events`, Method POST,
+   Header `Authorization: Bearer <the phone's token>`, Request Body JSON:
+   `app` = the app's name, `event` = `opened`, `t` = **Current Date** (format ISO 8601).
+4. The same automation with **Is Closed** and `event` = `closed`.
+
+An opening whose closing never arrives counts at most 30 minutes, and ends at the next app's
+opening. `.\capture doctor` lists `phone-events` in today's logs.
+
+### DayCube Capture's own files
+
+The app writes in formats the importer already reads, so nothing on the PC tells it apart from
+the exports:
+
+- **Sensors.** An hour of sensors is a folder `sensors-<UTC start>` in Sensor Logger's CSV layout:
+  `Metadata.csv`, `Location.csv`, `Barometer.csv`, `Pedometer.csv`, `Activity.csv`.
+- **Sound.** An hour of sound is `audio-<UTC start>.m4a`, AAC, mono, 16 kHz. Its start comes from
+  its name, not the file's stamp. It is kept in `vault/sources/audio/<device>/`, and the
+  `conversations` job cuts the talks out of it ([speech.md](speech.md)):
+  - Speech with less than 2 minutes of silence between it is one talk, and holds at least 8 s of
+    speech.
+  - Each talk becomes a moment `mo_talk_<local start>` with its clip of the hour (copied, not
+    re-encoded), and its speech is the next job.
+- **Scans.** A scan is a Stray Scanner folder, as before.
+
+### Every recording of a day, every time
+
+The five CSVs the importer reads from each sensor recording (Sensor Logger's, or an hour of the
+app's) are kept in `vault/sources/sensors/` (`phone/sources.py`):
+
+- **Rebuilt days.** An import rebuilds the places, trips and GPS fixes of each day it touches from
+  all the recordings kept for that day.
+- **Joined recordings.** Recordings from the same phone less than 10 minutes apart are joined first,
+  so a stay across an hour is one visit. Relative altitude and steps carry on across the join.
+- **The old bug.** Importing a second recording of a day replaced what the first had given it.
+- **Backfill.** Recordings imported before they were kept are kept from `inbox/phone/imported/`
+  the first time.
+
+## Visits and trips
+
+`visits.py` cuts the recording into stays and trips. The phone's motion activity (Core Motion:
+stationary, walking, running, cycling, automotive) says how it moved; GPS alone confuses a drive
+in traffic with a walk. The most common known activity over a sliding minute decides; driving or
+cycling for two minutes or more is a trip, and a stop shorter than three minutes stays part of
+it. Without activity, a minute's median speed over 6 m/s is driving. What lies between trips is a
+stay, split where the phone was still for five minutes at two places over 250 m apart (the walk
+between becomes a trip on foot).
+
+A stay mostly on foot and wider than 75 m is an outdoor visit; the stay the recording starts and
+ends at is home (Sensor Logger names a recording after where it began, and that name is the
+place's); any other stay is a building. Floors come from the barometer inside each building visit
+(`skeleton/floors.py`, [floors](floors.md)), as `place.floor` events.
+
+GPS inside a building wanders tens of metres, so fixes in a house or building visit carry no
+position on the stage (the viewer walks its stage instead); an outdoor visit's fixes are metres east
+and north of its middle, and the viewer shrinks a walk wider than the stage to fit it
+(`frame.scale`). The skeleton keeps every fix's latitude and longitude.
+
+## Voice memos
+
+**When.** Voice Memos stamps a file with the moment it was saved: its end. A memo recorded
+alongside a Sensor Logger recording on 2026-10-24 (18 min 51 s), read so, began on the drive back a
+few hundred metres from home, and what was said in its first minutes matched the arrival; read as
+its start, it would have begun after the sensor recording had ended, though the memo itself
+mentions both recording. A recording app that stamps the start: `--audio-stamped-at-start`.
+
+**What was said.** Transcribed on the CPU with faster-whisper (`small`, int8, word times, voice
+activity filtering): `uv sync --extra transcribe` to install it. A transcript beside the memo
+(`<memo name>.json`, faster-whisper's segments or the vault's transcript format) is used instead.
+Without either, the moment keeps its audio and says it was not transcribed. Transcript segments
+are search units, so Ask finds what was said and replays the moment there.
+
+**Others' voices.** Speakers are not told apart (no diarization yet), and the consent workflow for
+other people recorded ([consent](consent.md)) is not implemented: an imported memo lists no
+consented people. It stays in your vault, on your PC.
+
+## Stray Scanner captures
+
+**When.** The video's `creation_time` is when recording began: on 2026-10-24 the camera's own path
+(ARKit) matched the phone's GPS track best with the video starting 1 s after it (speed correlation
+0.42, against -0.01 taking it as the end).
+
+**Where.** ARKit's positions are metres in a frame of its own, gravity aligned, so the horizontal
+path differs from metres east and north by a rotation and a shift, fitted by least squares
+(Kabsch, no scaling) to the GPS fixes over the capture. A start other than the stamped one (within
+20 s) is taken only when it fits with under 80% of the residual. The 2026-10-24 capture (2 min 9 s,
+a 160 m walk) went onto the map with 2.0 m RMS residual. Every camera position, with its compass
+heading, is in `camera.json`; a keyframe every 8 s lets the moment be browsed without the video.
+
+**Upright.** The sensor is landscape, so a phone held upright records sideways, and nothing in the
+file says so. ARKit's poses do: on 2026-10-24 the world's up was the camera's -x (-0.99), so the
+frames are turned 90 degrees clockwise. The keyframes and `preview.mp4` (540 px, 15 frames/s,
+H.264: 14 MB for the 2 min capture) are upright; `video.mp4` is the original, kept for
+reconstruction.
+
+**3D.** With the capture's `depth/` folder, `daycube splat` makes a LiDAR preview at once and then
+trains a Gaussian splat on the GPU ([splat.md](splat.md)). The importer keeps the depth, confidence
+and poses in the moment's `capture/` folder for that. Stray Scanner's poses are in the OpenCV camera
+convention (looking along +z); the scan's heading on the map is read that way.
+
+## In the viewer
+
+Each visit is a layer (an outdoor visit on an open park stage); drives are the trips between them.
+Double-click a voice memo or scan on the day to open it: the recording itself (audio, or the upright
+preview), the transcript by time (a line seeks the recording there), the keyframes, and for a scan
+the capture's details and its path seen from above with where the camera is and which way it
+looks. A scan with a 3D scene opens in 3D, following the walk with the video ([splat.md](splat.md)).
+
+## Tests
+
+- `services/ingest/tests/test_phone_api.py` covers:
+  - pairing, and that a token is never stored
+  - a resumed upload, a wrong offset and a corrupted file
+  - an item reaching the inbox only when complete, and being acknowledged again
+  - a Stray scan uploaded file by file becoming a scan moment with no command
+  - heartbeats in doctor
+- `services/ingest/tests/test_phone_app.py` covers:
+  - the app's two back-to-back hours giving the same visits, trips and floors as one recording
+  - a later recording adding to its day
+  - the backfill
+  - an hour of sound uploaded through the receiver becoming two talk moments with their clips,
+    each queued for its speech
+
+
+`services/ingest/tests/test_phone_import.py` builds a synthetic afternoon the way the apps export
+it (home, a drive, a walk around a park with a scan turned 30 degrees from north, the drive back
+with a memo, upstairs at home) and checks the visits, trips and floor, the memo's start and place,
+the scan's rotation and fit, re-importing, the inbox, and the viewer's day and media.
+`fixtures/phone-day` (`scripts/build-phone-fixture.py`) is a fictional afternoon the viewer's
+end-to-end tests import as 2026-10-21 (`apps/viewer/e2e/phone.spec.ts`).

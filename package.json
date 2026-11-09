@@ -14,7 +14,9 @@
     "test:transport": "node --test packages/api-client/tests/sse.test.mjs",
     "test:gaze": "uv --directory services/gaze run pytest",
     "test:extension:unit": "node --test extensions/tests/lib.test.mjs",
-    "check": "npm run lint:api && npm run test:api && npm run test:gaze && npm run test:extension:unit && npm run build",
+    "test:viewer:unit": "node --test scripts/graph-labels.test.mjs scripts/scene-resources.test.mjs scripts/camera-map.test.mjs scripts/memories.test.mjs scripts/film.test.mjs scripts/world.test.mjs scripts/camera-pose.test.mjs",
+    "test:speech:unit": "uv run python scripts/test-speech-unit.py",
+    "check": "npm run lint:api && npm run test:api && npm run test:gaze && npm run test:extension:unit && npm run test:viewer:unit && npm run test:speech:unit && npm run build",
     "setup:api": "uv sync --locked --python 3.11 && uv run daycube init",
     "test:e2e:api": "playwright test",
     "test:e2e:viewer": "playwright test --config playwright.viewer.config.ts",
@@ -28,6 +30,7 @@
     "api": "uv run uvicorn ingest.api:app --host 127.0.0.1 --port 7701 --reload",
     "demo:seed": "uv run daycube seed && uv run daycube index --date 2026-10-20",
     "demo": "concurrently \"npm run api\" \"npm run dev\"",
+    "media": "node scripts/readme-media.mjs",
     "schemas": "node scripts/generate-contracts.mjs && uv run python scripts/generate-models.py",
     "test": "uv run pytest -q && npm run typecheck"
   },

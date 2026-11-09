@@ -18,6 +18,7 @@ import hashlib
 import json
 import os
 import sqlite3
+import threading
 from collections.abc import Iterable, Iterator, Sequence
 from contextlib import contextmanager, suppress
 from datetime import datetime, timedelta
@@ -26,7 +27,7 @@ from time import monotonic
 from zoneinfo import ZoneInfo
 
 from ..capture import capture_days, capture_stamp, capture_units, read_capture
-from ..capture.synthesize import LOGS
+from ..capture.synthesize import LOGS, has_capture_day
 from ..graph import Graph, extract
 from ..index.build import UNIT_COLUMNS, collect_units, source_stamp
 from ..index.embed import Embedder
@@ -150,6 +151,7 @@ class LifeStore:
         self.fresh = vault.fresh_index
         self.index = VectorIndex()
         self._ready = False
+        self._migrating = threading.Lock()  # the warm-up and the first request open it together
         self.notes_root = vault.root / "notes"
         self._notes: dict[str, tuple[int, int]] | None = None  # the notes folder as last synced
         self._everything_at = -FULL_CHECK_S  # when every day's files were last checked (monotonic)
@@ -169,7 +171,9 @@ class LifeStore:
             db.row_factory = sqlite3.Row
             db.execute("PRAGMA synchronous = NORMAL")  # WAL + NORMAL: safe for a rebuildable cache
             if not self._ready:
-                self._migrate(db)
+                with self._migrating:
+                    if not self._ready:
+                        self._migrate(db)
             yield db
 
     @contextmanager
@@ -337,12 +341,43 @@ class LifeStore:
             row = known.get(day)
             changed = row is None or row["stamp"] != stamp
             # Vectors missing after an append, or after search was switched on: fill them now
-            # if that is quick; a day with more waits for `daycube index`.
+            # if that is quick; a day with more waits for fill_backlog (the API runs it).
             fill = self.vectors and row is not None and 0 < row["unembedded"] <= INLINE_EMBED_LIMIT
             if changed or fill:
                 self.update(day, embed_limit=INLINE_EMBED_LIMIT)
             else:
                 self.fresh.put_metadata(day, key)
+
+    def fill_backlog(self, stop: threading.Event | None = None) -> int:
+        """Embed what the days were stored without (more new texts than a request embeds inline,
+        or search switched on later), newest day first, a day at a time; ``stop`` ends it between
+        days. Returns how many texts gained vectors."""
+        if not self.vectors:
+            return 0
+        with self.read() as db:
+            days = [row[0] for row in db.execute("SELECT day FROM days WHERE unembedded > 0 ORDER BY day DESC")]
+        filled = 0
+        for day in days:
+            if stop is not None and stop.is_set():
+                break
+            with suppress(FileNotFoundError):  # removed since: the next ensure() drops it
+                before = self._unembedded(day)
+                filled += before - self.update(day)["unembedded"]
+        return filled
+
+    def purge(self) -> None:
+        """After a deletion: fold the keyword indexes' deleted entries away and rewrite the file, so
+        no page of it still holds deleted text, then empty the write-ahead log."""
+        with self.vault.lock, self.connect() as db:
+            for table in ("units_fts", "note_chunks_fts"):
+                db.execute(f"INSERT INTO {table}({table}) VALUES ('optimize')")
+            db.execute("VACUUM")
+            db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+
+    def _unembedded(self, day: str) -> int:
+        with self.read() as db:
+            row = db.execute("SELECT unembedded FROM days WHERE day = ?", (day,)).fetchone()
+        return row[0] if row else 0
 
     def update(self, day: str, *, embed_limit: int | None = None) -> Record:
         """Replace the day's rows from its files. ``embed_limit`` caps how many new texts this
@@ -359,7 +394,7 @@ class LifeStore:
                     events = snapshot.events.records
                     renamed = self.vault.place_names()
                     places = {p["id"]: renamed.get(p["id"], p["name"]) for p in snapshot.day["places"]}
-                elif day in capture_days(self.vault):
+                elif has_capture_day(self.vault, day):
                     units, zone = [], self.zone
                 else:
                     raise FileNotFoundError(f"No vault day or capture for {day}")
@@ -605,6 +640,28 @@ class LifeStore:
             # their file still exists; the next query can rank the new text.
             found = {key: row for key, row in found.items() if row["path"] not in stale}
         return found
+
+    def window_units(self, since: float, until: float, types: Sequence[str]) -> list[Record]:
+        """Units of ``types`` that start in [since, until) (epoch seconds), in time order, across
+        however many days the window spans. The caller brings those days up to date first."""
+        marks = ",".join("?" for _ in types)
+        with self.read() as db:
+            return [dict(r) for r in db.execute(
+                "SELECT day, t, t_end, type, text, evidence_id, attention, fidelity, confidence, moment_id, place, ts "
+                f"FROM units WHERE ts >= ? AND ts < ? AND type IN ({marks}) ORDER BY ts, evidence_id",
+                (since, until, *types))]  # fmt: skip
+
+    def deadlines(self, first: str, last: str, seen_until: str) -> list[Record]:
+        """Deadlines due from ``first`` to ``last`` (ISO dates, inclusive) that a record on a day up
+        to ``seen_until`` showed, the latest such record first for each."""
+        with self.read() as db:
+            return [dict(r) for r in db.execute(
+                "SELECT d.key, d.name, l.day, l.evidence_id, u.t, u.text, u.type, u.fidelity "
+                "FROM entities d JOIN links l ON l.dst = d.id "
+                "LEFT JOIN units u ON u.day = l.day AND u.evidence_id = l.evidence_id "
+                "WHERE d.kind = 'deadline' AND d.key >= ? AND d.key < ? AND l.kind = 'due' AND l.day <= ? "
+                "ORDER BY d.key, l.day DESC, u.ts DESC",
+                (first, last + "\uffff", seen_until))]  # fmt: skip
 
     def rows(self, ids: Sequence[int], *, db: sqlite3.Connection | None = None) -> dict[int, Record]:
         found: dict[int, Record] = {}

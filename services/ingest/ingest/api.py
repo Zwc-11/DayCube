@@ -8,9 +8,10 @@ import secrets
 import threading
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from datetime import date as date_type
 from datetime import time as time_type
+from pathlib import Path
 from time import perf_counter
 from uuid import uuid4
 from zoneinfo import ZoneInfo
@@ -29,16 +30,33 @@ from .config import Settings
 from .contracts import ContractError
 from .generated.event import Event
 from .index.embed import Embedder, default_embedder
+from .integrations.overpass import OverpassAdapter
+from .notes.graph import NoteGraph
 from .notes.read import DayNotes, attach_notes, read_note
 from .store import EmbeddingModelChanged, LifeStore
 from .time import instant
-from .vault import Record, Vault, read_json
+from .vault import Record, Vault, atomic_bytes, overlaps, read_json
+from .world import osm
+from .world import store as worlds
 
 log = logging.getLogger("daycube.api")
 
-MEDIA_SUFFIXES = frozenset({".jpg", ".jpeg", ".png", ".svg", ".mp4", ".wav", ".glb", ".ply", ".spz"})
+MEMORY_FILES = {"photo.jpg": "image/jpeg", "memory.splat": "application/octet-stream"}
+FILMS = ("film-portrait.mp4", "film-landscape.mp4")  # a memory's film, as the viewer exports it
+FILM_MAX = 512 * 1024 * 1024
+MEDIA_SUFFIXES = frozenset({".jpg", ".jpeg", ".png", ".svg", ".mp4", ".wav", ".m4a", ".mp3", ".glb", ".ply", ".spz", ".splat"})
+# Types the platform may not know (Windows has no .m4a in its registry by default).
+MEDIA_TYPES = {
+    ".m4a": "audio/mp4",
+    ".mp3": "audio/mpeg",
+    ".glb": "model/gltf-binary",
+    ".spz": "application/octet-stream",
+    ".splat": "application/octet-stream",
+}
 SAFE_ID = re.compile(r"[A-Za-z0-9_-]+")
+SAFE_FILE = re.compile(r"[A-Za-z0-9_-]+\.json")
 MAX_JOBS = 100
+FILL_EVERY_S = 60.0  # how often a warm API looks for days stored without their vectors
 
 
 class RequestModel(BaseModel):
@@ -68,7 +86,32 @@ class SpeakerRequest(RequestModel):
     date: str
     moment_id: str
     diar_label: str
-    person_id: str = Field(pattern=r"^person:[A-Za-z0-9_-]+$")
+    person_id: str = Field(pattern=r"^person:[\w-]{1,80}$")  # letters of any script: names are not only ASCII
+
+
+class LabelRequest(RequestModel):
+    """A correction of what a window or page, or a whole app or site, is (ingest/review/labels.py).
+    ``category`` absent: unchanged; ``project`` null: no project; ``clear``: back to the rules."""
+
+    date: str
+    key: str = Field(min_length=5, max_length=2200)
+    category: str | None = Field(default=None, max_length=32)
+    project: str | None = Field(default=None, max_length=80)
+    clear: bool = False
+
+
+class MemoryEdit(RequestModel):
+    """A memory's caption: the line shown under its photo at the end of its film; empty removes it."""
+
+    caption: str = Field(max_length=280)
+
+
+class HoursRequest(RequestModel):
+    """A span of the day to delete (ingest/forget.py), as times with their UTC offset."""
+
+    t0: datetime
+    t1: datetime
+    reason: str | None = Field(default=None, max_length=200)
 
 
 def sse(event: str, value: Record) -> str:
@@ -78,7 +121,8 @@ def sse(event: str, value: Record) -> str:
 def create_app(settings: Settings | None = None, *, embedder: Embedder | None = None, warm: bool = False) -> FastAPI:
     """``embedder`` replaces the configured model (tests pass a deterministic one). ``warm``: at
     startup, bring the vault database up to date and load the embedding model and vector index in
-    the background, so the first question is answered as fast as the rest."""
+    the background, so the first question is answered as fast as the rest, then keep embedding
+    the days stored without vectors (``LifeStore.fill_backlog``)."""
     settings = settings or Settings()
     vault = Vault(settings.vault_root)
     store = LifeStore(
@@ -89,8 +133,17 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
     bearer = HTTPBearer(auto_error=False)
 
     day_notes = DayNotes(store)
+    note_graph = NoteGraph(store, day_notes)
+    # The end-of-day review (ingest/review): which language model words it and labels unknown apps
+    # and sites, if any (off by default: the template, and nothing leaves this machine).
+    from .integrations.models import language_model
+    from .review.labels import llm_labeler
 
-    def warm_up() -> None:
+    review_model, review_by = language_model(settings.summary_llm, "DAYCUBE_SUMMARY_LLM")
+    labeler, labels_by = llm_labeler(settings.category_llm)
+    writers = {"summary": review_by if review_model else f"template ({review_by})", "categories": labels_by}
+
+    def warm_up(stop: threading.Event) -> None:
         started = perf_counter()
         try:
             store.ensure()
@@ -99,13 +152,23 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
             log.exception("Warming up search failed")
         else:
             log.info("Search warm in %.1f s", perf_counter() - started)
+        # Then, while the API runs, vectors for the days stored without them, so meaning search
+        # covers every day and not only those small enough to embed inside a request.
+        while not stop.wait(FILL_EVERY_S):
+            try:
+                if filled := store.fill_backlog(stop):
+                    log.info("Meaning search: %d more texts embedded", filled)
+            except Exception:  # noqa: BLE001 - tried again later; keywords answer meanwhile
+                log.exception("Embedding the vault's backlog failed")
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         vault.initialize()
+        stop = threading.Event()
         if warm:
-            threading.Thread(target=warm_up, name="warm-up", daemon=True).start()
+            threading.Thread(target=warm_up, args=(stop,), name="warm-up", daemon=True).start()
         yield
+        stop.set()
 
     app = FastAPI(
         title="DAYCUBE Local API",
@@ -158,7 +221,8 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
                 "vector_search": store.vectors,
                 "capture": False,
                 "gpu_pipeline": False,
-                "delete_hours": False,
+                "delete_hours": True,
+                "world": True,
             },
         }
 
@@ -254,6 +318,17 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
         the notes it links to and that link to it, and its local graph."""
         return day_notes.view(date)
 
+    @app.get("/notes/graph")
+    def notes_graph(request: Request) -> Response:
+        """Every note in vault/notes (path, kind) and every [[link]] between them, links to notes
+        not written yet as their own nodes (``missing``): the vault's graph. Every recorded day gets
+        its daily note first. Tagged: a client holding the current copy gets an empty 304."""
+        body, etag = note_graph.tagged()
+        headers = {"ETag": etag, "Cache-Control": "no-cache"}
+        if etag in (tag.strip().removeprefix("W/") for tag in request.headers.get("if-none-match", "").split(",")):
+            return Response(status_code=304, headers=headers)
+        return Response(body, media_type="application/json", headers=headers)
+
     @app.get("/note")
     def note(path: str = Query(..., max_length=1000)) -> Record:
         """One note in vault/notes: its Markdown, its links (each with the note it opens) and backlinks."""
@@ -266,6 +341,23 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
         from .datacenter import report
 
         return report(store)
+
+    @app.get("/training")
+    def training_runs() -> list[Record]:
+        """Every training run on this PC (vault/training), newest first, with its last measurement."""
+        from .training import runs
+
+        return runs(store.vault.root)
+
+    @app.get("/training/{run_id}")
+    def training_run(run_id: str) -> Record:
+        """One run and its measurements as columns."""
+        from .training import series
+
+        found = series(store.vault.root, run_id)
+        if found is None:
+            raise FileNotFoundError(run_id)
+        return found
 
     @app.get("/gaze/learning")
     def gaze_learning(request: Request) -> Response:
@@ -302,11 +394,22 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
         if not SAFE_ID.fullmatch(moment_id):
             raise ValueError("Invalid moment id")
         path = vault.day_path(date) / "moments" / moment_id
-        return {
-            "meta": read_json(path / "meta.json"),
-            "scene": read_json(path / "scene.json"),
-            "transcript": read_json(path / "transcript.json"),
-        }
+        scene = read_json(path / "scene.json")
+        out = {"meta": read_json(path / "meta.json"), "scene": scene, "transcript": read_json(path / "transcript.json")}
+        # A capture's camera path (phone imports): small enough to send with the moment.
+        camera = scene.get("path") if isinstance(scene, dict) else None
+        if isinstance(camera, str) and SAFE_FILE.fullmatch(camera) and (path / camera).is_file():
+            out["camera"] = read_json(path / camera)
+        # A scan in 3D: where the camera was every few frames, for the viewer to follow the walk.
+        splat = scene.get("splat") if isinstance(scene, dict) else None
+        if isinstance(splat, dict) and (path / "splat" / "cameras.json").is_file():
+            out["splat_cameras"] = read_json(path / "splat" / "cameras.json")
+        # A recording's speech (services/speech): per turn its emotion and fillers, sound events,
+        # and whose voice each speaker is.
+        if (path / "speech.json").is_file():
+            speech = read_json(path / "speech.json")
+            out["speech"] = {k: speech.get(k) for k in ("languages", "speakers", "turns", "events", "voices", "models")}
+        return out
 
     @app.get("/vault/{date}/{asset_path:path}")
     def asset(date: str, asset_path: str) -> FileResponse:
@@ -320,8 +423,122 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
             raise HTTPException(404, "Asset not found")
         return FileResponse(
             candidate,
+            media_type=MEDIA_TYPES.get(candidate.suffix.lower()),
             headers={"X-Content-Type-Options": "nosniff", "Content-Security-Policy": "default-src 'none'; sandbox"},
         )
+
+    # Memories: photos you can step into (ingest/recon/memory.py), in their day's ``memories``.
+    @app.get("/memories")
+    def memories() -> list[Record]:
+        """Newest first: each memory's day, id and what the viewer needs to show it."""
+        out = []
+        for meta_path in vault.root.glob("????-??-??/memories/mem_*/memory.json"):
+            try:
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            keep = ("width", "height", "fx", "fov_y_deg", "splats", "depth_m", "model", "made", "source", "caption")
+            date = meta_path.parents[2].name
+            item = {"date": date, "id": meta_path.parent.name, **{k: meta.get(k) for k in keep}}
+            # A photo from a scan stands in that scan's world: its splat (trained, else the LiDAR's)
+            # and where the photo was taken in it.
+            world = meta.get("world")
+            if isinstance(world, dict) and re.fullmatch(r"[\w.-]+", str(world.get("moment", ""))):
+                scene = read_json(vault.root / date / "moments" / world["moment"] / "scene.json") or {}
+                splat = scene.get("splat") if isinstance(scene.get("splat"), dict) else {}
+                name = splat.get("trained") or splat.get("lidar")
+                if name:
+                    item["world"] = {**world, "splat": f"moments/{world['moment']}/{name}", "trained": bool(splat.get("trained")),
+                                     "bounds": splat.get("bounds")}  # fmt: skip
+            out.append(item)
+        return sorted(out, key=lambda m: (m["date"], str(m.get("made"))), reverse=True)
+
+    def memory_path(date: str, ident: str, name: str = "memory.json") -> Path:
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date) or not re.fullmatch(r"mem_[0-9a-f]{12}", ident):
+            raise HTTPException(404, "Memory not found")
+        path = vault.safe_path(f"{date}/memories/{ident}/{name}")
+        if not (path.parent / "memory.json").is_file():
+            raise HTTPException(404, "Memory not found")
+        return path
+
+    @app.get("/memories/{date}/{ident}/{name}")
+    def memory_file(date: str, ident: str, name: str) -> FileResponse:
+        if name not in MEMORY_FILES and name not in FILMS:
+            raise HTTPException(404, "Memory not found")
+        path = memory_path(date, ident, name)
+        if not path.is_file():
+            raise HTTPException(404, "Memory not found")
+        media = MEMORY_FILES.get(name, "video/mp4")
+        return FileResponse(path, media_type=media, headers={"X-Content-Type-Options": "nosniff"})
+
+    @app.patch("/memories/{date}/{ident}", dependencies=[Depends(authorize)])
+    def edit_memory(date: str, ident: str, body: MemoryEdit) -> Record:
+        path = memory_path(date, ident)
+        with vault.lock:
+            meta = {k: v for k, v in read_json(path).items() if k != "caption"}
+            caption = " ".join(body.caption.split())
+            vault.write_json(path, {**meta, "caption": caption} if caption else meta)
+        return {"caption": caption or None}
+
+    @app.put("/memories/{date}/{ident}/{name}", dependencies=[Depends(authorize)])
+    async def save_film(date: str, ident: str, name: str, request: Request) -> Record:
+        """A film the viewer exported (MP4), kept beside its memory; the newest of each shape wins."""
+        if name not in FILMS:
+            raise HTTPException(404, "Memory not found")
+        path = memory_path(date, ident, name)
+        data = await request.body()
+        if len(data) > FILM_MAX or data[4:8] != b"ftyp":
+            raise HTTPException(422, "Not an MP4 film")
+        await asyncio.to_thread(atomic_bytes, path, data)
+        return {"film": name, "bytes": len(data)}
+
+    # Worlds made from videos (ingest/world, docs/world.md): islands of a video's own splats, and
+    # the open map they stand in. Google's tiles are streamed by the viewer and never touch here.
+    @app.get("/worlds")
+    def world_list() -> list[Record]:
+        return worlds.list_worlds(vault)
+
+    def world_of(date: str, wid: str) -> tuple[Path, Record]:
+        try:
+            path = worlds.folder(vault, date, wid)
+        except ValueError:
+            raise HTTPException(404, "World not found") from None
+        if not (path / "world.json").is_file():
+            raise HTTPException(404, "World not found")
+        return path, read_json(path / "world.json")
+
+    @app.get("/worlds/{date}/{wid}")
+    def world(date: str, wid: str) -> Record:
+        return world_of(date, wid)[1]
+
+    @app.get("/worlds/{date}/{wid}/{name}")
+    def world_file(date: str, wid: str, name: str) -> FileResponse:
+        path, found = world_of(date, wid)
+        if name not in {island.get("splat") for island in found.get("islands") or []} or not (path / name).is_file():
+            raise HTTPException(404, "World not found")
+        headers = {"X-Content-Type-Options": "nosniff"}
+        return FileResponse(path / name, media_type="application/octet-stream", headers=headers)
+
+    overpass = OverpassAdapter(vault.root / "maps" / "osm")
+
+    @app.get("/maps/buildings")
+    def buildings(
+        lat: float = Query(ge=-90, le=90),
+        lon: float = Query(ge=-180, le=180),
+        radius_m: int = Query(300, ge=50, le=600),
+    ) -> Record:
+        """OpenStreetMap footprints with heights around a point (ODbL), fetched once and kept in
+        vault/maps/osm; the rounded location is sent to Overpass the first time."""
+        try:
+            return osm.footprints(overpass.buildings(lat, lon, radius_m))
+        except (httpx.HTTPError, ValueError) as error:
+            why = f"OpenStreetMap is not reachable and this area is not kept yet ({type(error).__name__})"
+            raise HTTPException(503, why) from None
+
+    @app.get("/maps/config", dependencies=[Depends(authorize)])
+    def maps_config() -> Record:
+        """The Google Maps key for the viewer to stream Photorealistic 3D Tiles with; null without one."""
+        return {"google_tiles_key": settings.google_maps_key.get_secret_value() or None}
 
     @app.post("/ask", dependencies=[Depends(authorize)], response_model=None)
     def answer(body: AskRequest, stream: bool = False) -> Record | StreamingResponse:
@@ -439,14 +656,172 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
             transcript["speaker_map"][body.diar_label] = body.person_id
             vault.write_json(path, transcript)
             vault.invalidate_index(body.date)
-        return {"ok": True, "message": "Speaker map saved; quote event regeneration is not implemented yet"}
+            # Given by hand, even when it is the name the voice already had.
+            speech_path = path.with_name("speech.json")
+            speech = read_json(speech_path) if speech_path.is_file() else None
+            if isinstance(speech, dict) and isinstance(speech.get("voices"), dict):
+                entry = speech["voices"].setdefault(body.diar_label, {"voice": None})
+                entry.update(person=body.person_id, how="confirmed")
+                vault.write_json(speech_path, speech)
+        # The name goes with the voice: every other recording where it speaks gets it too.
+        from .voices import update as spread_names
+
+        spread_names(vault)
+        return {"ok": True, "message": "Speaker named here and wherever their voice speaks"}
+
+    def local_now() -> datetime:
+        return datetime.now(ZoneInfo(settings.timezone))
+
+    def refresh_daily(date: str) -> None:
+        """The day's daily note shows its review at the top: written again with it."""
+        if store.knows(date):
+            from .notes import Notes
+
+            Notes(store).write_day(date)
+
+    @app.get("/day/{date}/review")
+    def day_review(date: str) -> Record:
+        """The day's end-of-day review (null until one is written), its timeline (written now if
+        the day has none yet), the categories to relabel with, and who words the review."""
+        from .review.summary import view
+
+        vault.day_path(date, must_exist=False)  # a valid date, or 400
+        return view(vault, date, settings.timezone, now=local_now(), writers=writers)
+
+    @app.post("/day/{date}/review", dependencies=[Depends(authorize)])
+    def summarize_day(date: str) -> Record:
+        """Write the day's review now (a draft while the day is under way), then return the view."""
+        from .review.summary import view, write_review
+
+        vault.day_path(date, must_exist=False)
+        now = local_now()
+        out = write_review(vault, store, date, settings.timezone, now=now, model=review_model, labeler=labeler, force=True)
+        if out["review"] is not None:
+            refresh_daily(date)
+        return view(vault, date, settings.timezone, now=now, writers=writers) | {
+            "result": {"written": out["written"], "why": out["why"]}
+        }
+
+    @app.post("/labels", dependencies=[Depends(authorize)])
+    def relabel(body: LabelRequest) -> Record:
+        """Correct a category or project, rebuild that day's timeline, and write its review again
+        if it has one and its facts changed. Other days follow when they are next written."""
+        from .review import timeline as day_timeline
+        from .review.labels import UNSET, correct
+        from .review.summary import day_zone, read_review, view, write_review
+
+        vault.day_path(body.date, must_exist=False)
+        given = body.model_fields_set
+        correct(
+            vault, body.key, clear=body.clear,
+            category=body.category if "category" in given and body.category is not None else UNSET,
+            project=body.project if "project" in given else UNSET,
+        )  # fmt: skip
+        now = local_now()
+        if read_review(vault, body.date) is not None:
+            out = write_review(vault, store, body.date, settings.timezone, now=now, model=review_model, labeler=labeler)
+            if out["written"]:
+                refresh_daily(body.date)
+        elif day_timeline.has_inputs(vault, body.date):
+            zone = day_zone(vault, body.date, settings.timezone)
+            under_way = now < day_timeline.window(body.date, ZoneInfo(zone))[1]
+            day_timeline.write(vault, body.date, zone, now=now if under_way else None, labeler=labeler)
+        return view(vault, body.date, settings.timezone, now=now, writers=writers)
 
     @app.delete("/day/{date}/hours", dependencies=[Depends(authorize)])
-    def delete_hours(date: str) -> None:
-        vault.day_path(date)
-        raise HTTPException(
-            501, "Hour deletion is not implemented. Do not use this starter for personal recording yet."
-        )
+    def delete_hours(date: str, body: HoursRequest) -> Record:
+        """Delete a span of the day from the vault (ingest/forget.py), then write again what was made
+        from it: the search database (rewritten, so no page of the file keeps deleted text), the
+        notes it touched, and the timelines, reviews and week of the review days it falls in."""
+        from .forget import forget
+        from .notes import Notes
+        from .review import timeline as day_timeline
+        from .review import weekly
+        from .review.summary import FILE as REVIEW
+        from .review.summary import day_zone, read_review, write_review
+
+        vault.day_path(date, must_exist=False)
+        zone_name = day_zone(vault, date, settings.timezone)
+        zone = ZoneInfo(zone_name)
+        first = date_type.fromisoformat(date)
+        start, end = (datetime.combine(d, time_type(0), zone) for d in (first, first + timedelta(days=1)))
+        if body.t0.tzinfo is None or body.t1.tzinfo is None or not start <= body.t0 < body.t1 <= end:
+            raise HTTPException(422, f"The span must start before it ends, within {date}, with UTC offsets")
+        span = (body.t0, body.t1)
+        days = [d.isoformat() for d in (first - timedelta(days=1), first)]
+        days = [d for d in days if overlaps(*day_timeline.window(d, zone), span)]  # review days: 04:00 to 04:00
+        reviewed = {d for d in days if read_review(vault, d) is not None}
+        notes = Notes(store)
+        touched = notes.touched(date, span) if store.knows(date) else set()
+        try:
+            report = forget(vault, date, span, reason=body.reason)
+        except RuntimeError as error:
+            raise HTTPException(409, str(error)) from error
+        try:
+            store.update(date)
+        except FileNotFoundError:
+            store.ensure()  # nothing of the day is left: its rows go
+        now = local_now()
+        for day in days:
+            for derived in ("timeline.jsonl", REVIEW):
+                (vault.day_path(day, must_exist=False) / derived).unlink(missing_ok=True)
+            if day in reviewed:
+                write_review(vault, store, day, settings.timezone, now=now, model=review_model, labeler=labeler, force=True)
+            elif day_timeline.has_inputs(vault, day):
+                under_way = now < day_timeline.window(day, zone)[1]
+                day_timeline.write(vault, day, zone_name, now=now if under_way else None, labeler=labeler)
+            year, week, _ = date_type.fromisoformat(day).isocalendar()
+            if weekly.path_of(vault, f"{year}-W{week:02d}").exists():
+                weekly.write(vault, store, day, zone_name, now=now)
+        for day in sorted({date} | reviewed):
+            try:
+                notes.write_day(day)
+            except FileNotFoundError:
+                notes.rewrite({f"day {day}"})  # nothing left to write: the generated part goes
+        notes.rewrite(touched)
+        store.sync_notes()
+        store.purge()
+        return report
+
+    @app.get("/morning")
+    def morning() -> Record:
+        """Yesterday's final review as the desktop app's morning notification shows it, from
+        ``DAYCUBE_PUSH_AT`` (08:00) local time; ``date`` null before then or without one."""
+        from .review.push import due, message
+
+        found = due(vault, settings, local_now(), settings.timezone)
+        if found is None:
+            return {"date": None}
+        title, text = message(found[1])
+        return {"date": found[0], "title": title, "text": text}
+
+    @app.get("/day/{date}/seen")
+    def day_seen(date: str) -> Record:
+        """What was on screen through the day, page by page (ingest/seen.py)."""
+        from .seen import seen
+
+        vault.day_path(date, must_exist=False)
+        return seen(store, date)
+
+    @app.get("/day/{date}/deletions")
+    def day_deletions(date: str) -> list[Record]:
+        """The spans deleted from the day: when, why, and how many records of each kind went."""
+        from .forget import deletions
+
+        vault.day_path(date, must_exist=False)
+        return deletions(vault, date)
+
+    @app.delete("/recent", dependencies=[Depends(authorize)])
+    def delete_recent(minutes: int = Query(60, ge=1, le=24 * 60)) -> Record:
+        """Delete the last ``minutes`` up to now (the tray's Delete the last hour), a day at a time."""
+        now = local_now()
+        start, deleted = now - timedelta(minutes=minutes), []
+        while start < now:
+            midnight = datetime.combine(start.date() + timedelta(days=1), time_type(0), start.tzinfo)
+            end = min(now, midnight)
+            deleted.append(delete_hours(start.date().isoformat(), HoursRequest(t0=start, t1=end)))
+            start = end
+        return {"deleted": deleted}
 
     def capture_control(action: str) -> Record:
         try:

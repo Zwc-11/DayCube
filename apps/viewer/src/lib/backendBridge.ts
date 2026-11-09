@@ -1,6 +1,7 @@
-import { DaycubeClient, ApiError } from '@daycube/api-client';
+import { DaycubeClient, ApiError, type Deletion, type LabelCorrection, type MapsConfig, type Seen } from '@daycube/api-client';
 import type {
-  AskResult as SchemaAskResult, DataCenter, DayNotes, DayResponse, Entity, GazeLearning, KnowledgeGraph, Note, SearchResult,
+  AskResult as SchemaAskResult, DataCenter, DayNotes, DayResponse, DayReview, Entity, GazeLearning, KnowledgeGraph, Note,
+  SearchResult, NoteGraph, TrainingListed, TrainingSeries,
 } from '@daycube/schemas';
 import {
   AskResult,
@@ -83,8 +84,18 @@ export interface ApiCallLog {
   summary: string;
 }
 
+/** The middle of a stage in diorama metres: where a visit's measured positions are centred. */
+const STAGE_MIDDLE: [number, number] = [13, 9];
+
+/** The vault token the desktop app (apps/desktop) sets on its own window before this script runs,
+ * so the app needs no pasting in Settings › Vault connection. Empty in a browser. */
+function desktopToken(): string {
+  const injected = (globalThis as { __DAYCUBE_DESKTOP__?: { token?: unknown } }).__DAYCUBE_DESKTOP__;
+  return typeof injected?.token === 'string' ? injected.token.trim() : '';
+}
+
 export class BackendBridge {
-  private token = '';
+  private token = desktopToken();
   private client: DaycubeClient;
   private listeners: Array<(log: ApiCallLog) => void> = [];
 
@@ -249,7 +260,15 @@ export class BackendBridge {
 
       // Stage geometry is illustrative: pick the preset that fits the kind of place.
       const stage: StageId =
-        bLayer.kind === 'venue' ? 'hall' : bLayer.kind === 'cafe' ? (idx === 1 ? 'morningCafe' : 'courtyardCafe') : 'home';
+        bLayer.kind === 'venue'
+          ? 'hall'
+          : bLayer.kind === 'cafe'
+          ? idx === 1
+            ? 'morningCafe'
+            : 'courtyardCafe'
+          : bLayer.kind === 'outdoor'
+          ? 'park'
+          : 'home';
       const boxes = buildStageBoxes(stage, idx >= 4);
       const spots = STAGE_SPOTS[stage];
       const wakesHere = idx === 0 && stage === 'home';
@@ -295,22 +314,26 @@ export class BackendBridge {
         };
       });
 
-      // A path with only illustrative points carries no real positions; walk the stage instead.
-      const pathPts: PathPoint[] = bLayer.path.every((p) => p.fidelity === 'illustrative')
-        ? stageWalk(spots, t0Hours, t1Hours, events, {
-            wakesHere,
-            sleepsHere,
-            conf: Math.min(...bLayer.path.map((p) => p.pos_conf), 0.4),
-          })
-        : bLayer.path.map((p, pi) => ({
-            x: p.x !== null ? p.x + 6 : fallback.path[pi % fallback.path.length]?.x ?? 12,
-            y: p.y !== null ? p.y + 4 : fallback.path[pi % fallback.path.length]?.y ?? 9,
-            floor: p.floor ?? 0,
-            t: Number((p.t / 3600).toFixed(3)),
-            conf: p.pos_conf,
-            fidelity: p.fidelity,
-            altRel: (p.floor ?? 0) * 3.2,
-          }));
+      // A path with only illustrative points carries no real positions, and one with no position at
+      // all (GPS inside a building) nothing to draw; walk the stage instead.
+      const drawn = bLayer.path.filter((p) => p.x !== null && p.y !== null);
+      const pathPts: PathPoint[] =
+        drawn.length === 0 || drawn.every((p) => p.fidelity === 'illustrative')
+          ? stageWalk(spots, t0Hours, t1Hours, events, {
+              wakesHere,
+              sleepsHere,
+              conf: bLayer.path.reduce((confidence, p) => Math.min(confidence, p.pos_conf), 0.4),
+            })
+          : drawn.map((p) => ({
+              // Metres from the visit's middle (shrunk to fit, `frame.scale`), around the stage's middle.
+              x: (p.x as number) + STAGE_MIDDLE[0],
+              y: (p.y as number) + STAGE_MIDDLE[1],
+              floor: p.floor ?? 0,
+              t: Number((p.t / 3600).toFixed(3)),
+              conf: p.pos_conf,
+              fidelity: p.fidelity,
+              altRel: (p.floor ?? 0) * 3.2,
+            }));
 
       const quotes: Quote[] = bLayer.quotes.map((q, qi) => {
         const todHours = Number((q.tod / 3600).toFixed(3));
@@ -517,6 +540,50 @@ export class BackendBridge {
     }
   }
 
+  /** Delete a span of the day from the vault, and what was made from it. */
+  deleteHours(date: string, t0: string, t1: string, reason: string): Promise<boolean> {
+    return this.write(`/api/day/${date}/hours`, () => this.client.deleteHours(date, t0, t1, reason),
+      `Deleted a span of ${date} from the vault`);
+  }
+
+  /** A memory's caption, shown under its photo at the end of its film (needs the vault token). */
+  editMemory(date: string, id: string, caption: string): Promise<boolean> {
+    return this.write(`/api/memories/${date}/${id}`, () => this.client.editMemory(date, id, caption), `Captioned a memory of ${date}`);
+  }
+
+  /** Keep a memory's exported film in the vault, beside the memory (needs the vault token). */
+  saveFilm(date: string, id: string, name: 'film-portrait.mp4' | 'film-landscape.mp4', film: Blob): Promise<boolean> {
+    return this.write(`/api/memories/${date}/${id}/${name}`, () => this.client.saveFilm(date, id, name, film), `Kept a memory's film of ${date}`);
+  }
+
+  /** The map settings (the Google tiles key); null without the vault token or the API. */
+  async mapsConfig(): Promise<MapsConfig | null> {
+    if (!this.token) return null;
+    try {
+      return await this.client.mapsConfig();
+    } catch {
+      return null;
+    }
+  }
+
+  /** What was on screen through the day; null when the day has nothing or the vault is unreachable. */
+  async seen(date: string): Promise<Seen | null> {
+    try {
+      return await this.client.seen(date);
+    } catch {
+      return null;
+    }
+  }
+
+  /** The spans deleted from the day; empty when the vault cannot be reached. */
+  async deletions(date: string): Promise<Deletion[]> {
+    try {
+      return await this.client.deletions(date);
+    } catch {
+      return [];
+    }
+  }
+
   renamePlace(placeId: string, name: string): Promise<boolean> {
     return this.write('/api/places/rename', () => this.client.renamePlace(placeId, name),
       `Renamed place "${placeId}" → "${name}" in vault/places.json`);
@@ -599,6 +666,16 @@ export class BackendBridge {
     );
   }
 
+  /** Training runs on this PC (null offline). */
+  async trainingRuns(): Promise<TrainingListed[] | null> {
+    return this.read('/api/training', () => this.client.trainingRuns(), (runs) => `${runs.length} runs`);
+  }
+
+  /** One training run's measurements (null offline or when it is gone). */
+  async trainingRun(id: string): Promise<TrainingSeries | null> {
+    return this.read(`/api/training/${id}`, () => this.client.trainingRun(id), (s) => `${s.steps.length} steps`);
+  }
+
   /** The eye tracker's learning from clicks: the new copy, 'same' while `etag` still matches
    * (an empty 304: nothing parsed or redrawn), or null offline. */
   async gazeLearning(etag?: string | null): Promise<{ etag: string | null; learning: GazeLearning } | 'same' | null> {
@@ -611,9 +688,32 @@ export class BackendBridge {
     return result;
   }
 
+  /** A recorded moment of a vault day (meta, transcript, scene, camera path), or null offline. */
+  moment(date: string, id: string) {
+    return this.read(
+      `/api/moment/${id}?date=${date}`,
+      () => this.client.moment(date, id),
+      (m) => `${m.transcript.segments.length} transcript segments${m.camera ? `, ${m.camera.points.length} camera points` : ''}`
+    );
+  }
+
+  /** The URL of a file in a vault day (a moment's keyframes, audio or video). */
+  assetUrl(date: string, path: string): string {
+    return this.client.assetUrl(date, path);
+  }
+
   /** The day's knowledge base (notes, links, local graph), or null when it cannot be loaded. */
   dayNotes(date: string) {
     return this.read<DayNotes>(`/api/day/${date}/notes`, () => this.client.dayNotes(date), (d) => `${d.notes.length} notes, ${d.records} records`);
+  }
+
+  /** The vault's graph: the new copy, 'same' while `etag` still matches, or null offline. */
+  async noteGraph(etag?: string | null): Promise<{ etag: string | null; graph: NoteGraph } | 'same' | null> {
+    return this.read(
+      '/api/notes/graph',
+      async () => (await this.client.noteGraphIfChanged(etag)) ?? ('same' as const),
+      (g) => (g === 'same' ? 'unchanged (304)' : `${g.graph.notes.length} notes, ${g.graph.edges.length} links`)
+    );
   }
 
   note(path: string) {
@@ -623,6 +723,44 @@ export class BackendBridge {
   /** Search as you type. Not logged: one request per keystroke would flood the request log. */
   search(q: string, date: string | null, signal?: AbortSignal): Promise<SearchResult> {
     return this.client.search(q, date, signal);
+  }
+
+  /** The day's end-of-day review and timeline, or null offline. */
+  dayReview(date: string) {
+    return this.read<DayReview>(
+      `/api/day/${date}/review`,
+      () => this.client.dayReview(date),
+      (d) => `${d.segments.length} segments, ${d.review ? `${d.review.kind} review` : 'no review yet'}`
+    );
+  }
+
+  /** A write that returns the day's review view; throws, with the reason, when it is not saved. */
+  private async reviewWrite(endpoint: string, run: () => Promise<DayReview>, summary: (d: DayReview) => string): Promise<DayReview> {
+    const t0 = performance.now();
+    try {
+      if (!this.token) throw new ApiError(401, 'Connect your vault token in Settings › Connection to change the review.');
+      const view = await run();
+      this.emitLog({ method: 'POST', endpoint, status: 200, latencyMs: performance.now() - t0, mode: 'live-backend', summary: summary(view) });
+      return view;
+    } catch (error) {
+      this.emitLog({
+        method: 'POST', endpoint, status: error instanceof ApiError ? error.status : 503,
+        latencyMs: performance.now() - t0, mode: 'live-backend', summary: 'Change was not saved',
+      });
+      throw error;
+    }
+  }
+
+  /** Write the day's review now (needs the vault token). */
+  summarizeDay(date: string): Promise<DayReview> {
+    return this.reviewWrite(`/api/day/${date}/review`, () => this.client.summarizeDay(date),
+      (d) => (d.result ? `Review ${d.result.why}` : 'Review written'));
+  }
+
+  /** Correct what a window, page, app or site is (needs the vault token). */
+  relabel(correction: LabelCorrection): Promise<DayReview> {
+    return this.reviewWrite('/api/labels', () => this.client.relabel(correction),
+      () => `${correction.key} → ${correction.clear ? 'the rules' : correction.category ?? correction.project ?? 'no project'}`);
   }
 
   /** Write a day's linked notes into vault/notes (needs the vault token); returns the notes written. */

@@ -1,0 +1,158 @@
+# The built-in category rules of the day timeline (ingest/review/labels.py).
+#
+# vault/categories.yaml has the same form; its rules are tried first, so a rule there overrides
+# these. The first rule that matches decides. A rule matches when any of its conditions does:
+#
+#   apps:    the program in front ("code.exe") or its name ("Visual Studio Code")
+#   sites:   a page's domain, subdomains included ("youtube.com" matches m.youtube.com); a path
+#            after it narrows the rule ("linkedin.com/jobs"); * is any text ("*.myworkdayjobs.com")
+#   titles:  a word or phrase in the window or page title, any case
+#   courses: true, a course code such as "CS 136" in the title
+#
+# Order matters: strong signals (the meeting app, the editor) come before title words, title words
+# before sites, so a lecture on YouTube is studying and an assignment open in the editor is coding.
+
+rules:
+  - category: meetings
+    apps: [zoom.exe, ms-teams.exe, teams.exe, webex.exe, ciscocollabhost.exe]
+    sites: [meet.google.com, zoom.us, teams.microsoft.com, teams.live.com, webex.com]
+
+  - category: coding
+    apps: [
+      code.exe, "code - insiders.exe", cursor.exe, kiro.exe, windsurf.exe, antigravity.exe, zed.exe,
+      devenv.exe, pycharm64.exe, idea64.exe, webstorm64.exe, clion64.exe, rider64.exe, goland64.exe,
+      datagrip64.exe, studio64.exe, sublime_text.exe, windowsterminal.exe, wt.exe, powershell.exe,
+      pwsh.exe, cmd.exe, conhost.exe, mintty.exe, githubdesktop.exe, rstudio.exe, matlab.exe,
+      docker desktop.exe, postman.exe, dbeaver.exe,
+    ]
+
+  - category: studying
+    courses: true
+    titles: [lecture, tutorial, midterm, final exam, homework, problem set, syllabus, course notes]
+    sites: [
+      learn.uwaterloo.ca, piazza.com, edstem.org, crowdmark.com, gradescope.com, gradescope.ca,
+      marmoset.student.cs.uwaterloo.ca, student.cs.uwaterloo.ca, odyssey.uwaterloo.ca, coursera.org,
+      edx.org, khanacademy.org, quizlet.com, brilliant.org, mobius.uwaterloo.ca, "*.instructure.com",
+    ]
+
+  - category: career
+    titles: [job application, cover letter]
+    sites: [
+      "*.myworkdayjobs.com", "*.myworkdaysite.com", jobs.ashbyhq.com, "*.greenhouse.io", jobs.lever.co,
+      "*.icims.com", "*.successfactors.com", "*.sapsf.com", "*.avature.net", "*.tal.net", "*.taleo.net",
+      "*.smartrecruiters.com", "*.jobvite.com", waterlooworks.uwaterloo.ca, app.joinhandshake.com,
+      joinhandshake.com, simplify.jobs, glassdoor.com, glassdoor.ca, indeed.com, ca.indeed.com,
+      wellfound.com, levels.fyi, linkedin.com/jobs, "careers.*", "*.careers", "jobs.*", leetcode.com,
+      hackerrank.com, codesignal.com,
+    ]
+
+  - category: coding
+    sites: [
+      github.com, gitlab.com, bitbucket.org, stackoverflow.com, superuser.com, serverfault.com,
+      "*.stackexchange.com", docs.python.org, developer.mozilla.org, npmjs.com, pypi.org,
+      huggingface.co, kaggle.com, colab.research.google.com, vercel.com, netlify.com, railway.app,
+      render.com, console.cloud.google.com, console.aws.amazon.com, portal.azure.com, cloudflare.com,
+      devpost.com, localhost, 127.0.0.1, readthedocs.io, "*.readthedocs.io", cursor.com, replit.com,
+      codepen.io, modal.com, supabase.com, firebase.google.com,
+    ]
+
+  - category: ai
+    apps: [claude.exe, chatgpt.exe, copilot.exe, "grok bot.exe", perplexity.exe]
+    sites: [
+      claude.ai, chatgpt.com, chat.openai.com, gemini.google.com, aistudio.google.com, grok.com,
+      perplexity.ai, poe.com, chat.deepseek.com, kimi.moonshot.cn, kimi.com, doubao.com, copilot.microsoft.com,
+      chat.mistral.ai,
+    ]
+
+  - category: writing
+    apps: [
+      winword.exe, wps.exe, et.exe, wpp.exe, excel.exe, powerpnt.exe, onenote.exe, obsidian.exe,
+      notion.exe, notepad.exe, "notepad++.exe", typora.exe, typeless.exe, logseq.exe,
+    ]
+    sites: [docs.google.com, sheets.google.com, slides.google.com, overleaf.com, notion.so, notion.site,
+            office.com, "*.sharepoint.com", onedrive.live.com, "*.onedrive.live.com", dropbox.com/paper, hackmd.io,
+            grammarly.com, translate.google.com, translate.google.ca, deepl.com]
+
+  - category: creating
+    apps: [jianyingpro.exe, capcut.exe, figma.exe, photoshop.exe, illustrator.exe, "adobe premiere pro.exe",
+           resolve.exe, obs64.exe, blender.exe, audacity.exe, gimp.exe]
+    sites: [figma.com, canva.com, creator.douyin.com, studio.youtube.com, excalidraw.com]
+
+  - category: messaging
+    apps: [
+      slack.exe, discord.exe, weixin.exe, wechat.exe, wechatappex.exe, qq.exe, telegram.exe,
+      whatsapp.exe, whatsapp.root.exe, signal.exe, outlook.exe, olk.exe, thunderbird.exe, hxoutlook.exe,
+      messenger.exe, line.exe, kakaotalk.exe, feishu.exe, lark.exe, dingtalk.exe,
+    ]
+    sites: [
+      mail.google.com, outlook.live.com, outlook.office.com, outlook.office365.com, web.whatsapp.com,
+      discord.com, app.slack.com, slack.com, messenger.com, web.telegram.org, wx.qq.com, mail.yahoo.com,
+      proton.me/mail, mail.proton.me, linkedin.com/messaging, x.com/messages, instagram.com/direct,
+    ]
+
+  - category: reading
+    apps: [acrobat.exe, acrord32.exe, sumatrapdf.exe, zotero.exe, kindle.exe, foxitpdfreader.exe, "foxit pdf reader.exe"]
+    sites: [
+      wikipedia.org, arxiv.org, scholar.google.com, semanticscholar.org, researchgate.net, jstor.org,
+      sciencedirect.com, springer.com, nature.com, acm.org, ieee.org, medium.com, substack.com,
+      zhihu.com, quora.com, wikiwand.com, britannica.com, paulgraham.com, lesswrong.com,
+    ]
+
+  - category: news
+    sites: [
+      news.ycombinator.com, nytimes.com, bbc.com, bbc.co.uk, cbc.ca, theguardian.com, reuters.com,
+      apnews.com, bloomberg.com, wsj.com, ft.com, economist.com, theverge.com, techcrunch.com,
+      arstechnica.com, cnn.com, globalnews.ca, thestar.com, theglobeandmail.com, news.google.com,
+    ]
+
+  - category: watching
+    apps: [vlc.exe, potplayer.exe, potplayermini64.exe, mpc-hc64.exe, netflix.exe]
+    sites: [
+      youtube.com, youtu.be, netflix.com, twitch.tv, bilibili.com, disneyplus.com, primevideo.com,
+      crunchyroll.com, iq.com, iqiyi.com, v.qq.com, youku.com, yfsp.tv, muse.ai, vimeo.com, tv.apple.com,
+      hulu.com, max.com, kick.com,
+    ]
+
+  - category: listening
+    apps: [spotify.exe, applemusic.exe, cloudmusic.exe, qqmusic.exe, foobar2000.exe]
+    sites: [open.spotify.com, music.youtube.com, soundcloud.com, music.apple.com, music.163.com, y.qq.com]
+
+  - category: social
+    sites: [
+      x.com, twitter.com, reddit.com, instagram.com, facebook.com, tiktok.com, douyin.com, linkedin.com,
+      threads.net, bsky.app, weibo.com, xiaohongshu.com, pinterest.com, snapchat.com, tumblr.com,
+      t.co, mastodon.social,
+    ]
+
+  - category: games
+    apps: [steam.exe, steamwebhelper.exe, epicgameslauncher.exe, battle.net.exe, riotclientservices.exe,
+           leagueclient.exe, minecraft.exe]
+    sites: [chess.com, lichess.org, store.steampowered.com, steamcommunity.com, poki.com, itch.io]
+
+  - category: shopping
+    sites: ["amazon.*", "*.amazon.*", ebay.com, ebay.ca, taobao.com, tmall.com, jd.com, aliexpress.com,
+            bestbuy.ca, bestbuy.com, walmart.ca, walmart.com, costco.ca, costco.com, etsy.com, temu.com,
+            shein.com, apple.com/shop, newegg.ca, newegg.com, "*.shopify.com", ikea.com]
+
+  - category: admin
+    apps: [
+      explorer.exe, shellhost.exe, searchhost.exe, searchapp.exe, shellexperiencehost.exe,
+      startmenuexperiencehost.exe, textinputhost.exe, systemsettings.exe, taskmgr.exe, control.exe,
+      mmc.exe, snippingtool.exe, screenclippinghost.exe, photos.exe, photolaunch.exe, openwith.exe,
+      applicationframehost.exe, calculatorapp.exe, windowsterminalsettings.exe,
+      pickerhost.exe, rundll32.exe, msiexec.exe, setup.exe, "1password.exe", bitwarden.exe, keepassxc.exe,
+      fxsound.exe, huyanbao.exe, qqpctray.exe, qmui.exe, lockapp.exe, consent.exe, credentialuibroker.exe,
+      securityhealthsystray.exe,
+    ]
+    sites: [
+      accounts.google.com, myaccount.google.com, login.microsoftonline.com, "*.duosecurity.com",
+      adfs.uwaterloo.ca, idp.uwaterloo.ca, quest.uwaterloo.ca, ceac.state.gov, "*.usvisa-info.com",
+      ais.usvisa-info.com, canada.ca, "*.canada.ca", "*.gc.ca", calendar.google.com, drive.google.com,
+      app.clockify.me, chromewebstore.google.com, addons.opera.com, td.com, rbc.com, cibc.com,
+      scotiabank.com, bmo.com, wise.com, paypal.com, uber.com, maps.google.com, google.com/maps,
+    ]
+
+  - category: browsing
+    sites: [google.com/search, google.ca/search, bing.com/search, duckduckgo.com, search.brave.com,
+            ecosia.org, baidu.com, search.yahoo.com, google.com, google.ca, bing.com, newtab, startpage,
+            startpageshared, start.opera.com]

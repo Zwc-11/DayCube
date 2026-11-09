@@ -18,6 +18,34 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = {".py", ".ts", ".tsx", ".js", ".mjs", ".mts"}
 ASSETS = {".png", ".gif", ".mp4", ".woff2", ".svg"}
+BINARY = ASSETS | {
+    ".zip",
+    ".m4a",
+    ".mp3",
+    ".wav",
+    ".webm",
+    ".npz",
+    ".npy",
+    ".jpg",
+    ".jpeg",
+    ".glb",
+    ".ply",
+    ".splat",
+    ".pdf",
+    ".zst",
+    ".gz",
+}
+TREATMENTS = {
+    "source": "First-party implementation: current manual notes record the examined algorithms, resources and limits.",
+    "test": "Test or browser harness: current manual notes record coverage, fixtures and environment limitations.",
+    "configuration": "Supporting build/runtime/presentation configuration: current manual notes record behavior and limits.",
+    "generated": "Mechanical output of canonical JSON Schemas; verify regeneration and review producers/consumers, not an independent algorithm audit.",
+    "lockfile": "Resolved dependency inventory and syntax/hash checks; dependency implementations and supply-chain auditing are outside this review.",
+    "asset": "Static UI/media asset: hash and size, with producer/consumer review; no first-party executable algorithm to optimize.",
+    "fixture": "Identifiable sample/synthetic input: inventory/hash and producer/consumer correctness; not live telemetry or performance proof.",
+    "measurement_or_fixture": "Retained measurement or fixture with its original provenance; inventory/parsing does not mean the workload was rerun.",
+    "documentation": "Supporting or historical documentation: inventory and current report updates; historical results retain their original scope.",
+}
 
 
 def category(path: str) -> str:
@@ -64,11 +92,15 @@ def python_signals(text: str, path: str) -> tuple[list[str], list[str]]:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=ROOT / "docs/review-ledger.json")
+    parser.add_argument("--tracked-only", action="store_true", help="Exclude unrelated untracked drafts")
     args = parser.parse_args()
     target = args.output.resolve()
     previous = json.loads(target.read_text(encoding="utf-8")) if target.exists() else {}
     notes = {entry["path"]: entry for entry in previous.get("files", [])}
-    raw = subprocess.check_output(["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"], cwd=ROOT)
+    command = ["git", "ls-files", "--cached", "-z"]
+    if not args.tracked_only:
+        command.extend(["--others", "--exclude-standard"])
+    raw = subprocess.check_output(command, cwd=ROOT)
     paths = sorted(set(raw.decode("utf-8").strip("\0").split("\0")))
     files, scripts = [], []
     for path in paths:
@@ -78,7 +110,7 @@ def main() -> None:
         data = source.read_bytes()
         kind = category(path)
         entry: dict = {"path": path, "sha256": hashlib.sha256(data).hexdigest(), "category": kind, "bytes": len(data)}
-        if kind != "asset":
+        if kind != "asset" and source.suffix not in BINARY:
             text = data.decode("utf-8")
             entry["lines"] = len(text.splitlines())
             if source.suffix == ".py":
@@ -100,12 +132,16 @@ def main() -> None:
             else:
                 entry["structural_check"] = "UTF-8 text inventory; build/configuration review is separate"
         else:
-            entry["structural_check"] = "Asset hash and size; no runtime algorithm to optimize"
+            entry["structural_check"] = (
+                "Binary fixture/media or asset hash and size; producer/consumer review is separate"
+            )
         old = notes.get(path, {})
         if old.get("sha256") == entry["sha256"] and old.get("manual_review"):
             entry["manual_review"] = old["manual_review"]
         elif old.get("manual_review"):
             entry["previous_review_needs_refresh"] = old["manual_review"]
+        elif old.get("previous_review_needs_refresh"):
+            entry["previous_review_needs_refresh"] = old["previous_review_needs_refresh"]
         files.append(entry)
     script = """
 import ts from 'typescript';
@@ -133,14 +169,25 @@ process.stdout.write(JSON.stringify(errors));
         raise SystemExit(json.dumps(errors, indent=2))
     report = {
         "baseline_revision": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
-        "scope": "Every tracked file and new non-ignored file, except this generated ledger itself. No vendored source is tracked; dependencies live in ignored environments and lockfiles.",
+        "scope": ("Every tracked file" if args.tracked_only else "Every tracked file and new non-ignored file")
+        + ", except this generated ledger itself. No vendored source is tracked; dependencies live in ignored environments and lockfiles.",
         "limits": "Structural checks cover every listed file; manual_review only identifies implementations actually examined. Neither is a proof of maximum efficiency, a dependency audit or DeepInfer throughput parity. Missing manual_review is explicitly unreviewed at the semantic level.",
         "counts": dict(Counter(entry["category"] for entry in files)),
+        "category_treatments": TREATMENTS,
         "manual_reviews": sum("manual_review" in entry for entry in files),
+        "coverage": {
+            kind: {
+                "files": sum(entry["category"] == kind for entry in files),
+                "current_manual_reviews": sum(
+                    entry["category"] == kind and "manual_review" in entry for entry in files
+                ),
+            }
+            for kind in ("source", "test", "configuration")
+        },
         "files": files,
     }
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    target.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8", newline="\n")
     print(json.dumps({"files": len(files), "counts": report["counts"], "manual_reviews": report["manual_reviews"]}))
 
 

@@ -8,6 +8,7 @@ and stops it on exit, so one autostart entry covers both.
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 import sys
 import threading
@@ -18,17 +19,28 @@ from ingest.config import PROJECT_ROOT
 
 log = logging.getLogger("capture.gaze")
 
+
+def environment_python(name: str, root: Path, *, windowless: bool = True) -> Path | None:
+    """The interpreter of the ``services/<name>`` environment: ``DAYCUBE_<NAME>_PYTHON`` when set (the
+    desktop app's own runtimes and packs), else the checkout's ``.venv``. None when neither exists."""
+    override = os.environ.get(f"DAYCUBE_{name.upper()}_PYTHON")
+    if override:
+        return Path(override) if Path(override).is_file() else None
+    venv = root / "services" / name / ".venv"
+    names = ("pythonw.exe", "python.exe") if windowless else ("python.exe",)
+    for candidate in (*(venv / "Scripts" / n for n in names), venv / "bin" / "python"):
+        if candidate.is_file():
+            return candidate
+    return None
+
+
 NOT_CALIBRATED = 3  # the tracker's exit code when vault/calibration/gaze.json is missing or unusable
 OTHER_MONITOR = 4  # the primary monitor is not the calibrated one (undocked, or a monitor off)
 CALIBRATION = Path("calibration") / "gaze.json"
 
 
 def gaze_python(root: Path = PROJECT_ROOT) -> Path | None:
-    venv = root / "services" / "gaze" / ".venv"
-    for candidate in (venv / "Scripts" / "pythonw.exe", venv / "Scripts" / "python.exe", venv / "bin" / "python"):
-        if candidate.is_file():
-            return candidate
-    return None
+    return environment_python("gaze", root)
 
 
 class GazeSupervisor(threading.Thread):
@@ -101,5 +113,53 @@ class GazeSupervisor(threading.Thread):
             process.terminate()
             try:
                 process.wait(5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+
+
+def speech_python(root: Path = PROJECT_ROOT) -> Path | None:
+    """The speech worker's interpreter (``services/speech``, its own environment), if installed."""
+    return environment_python("speech", root)
+
+
+class WorkerSupervisor(threading.Thread):
+    """A job worker in its own environment (the speech worker), run as a child of the receiver:
+    started with it, restarted when it stops (quickly after a long run, backing off to 5 minutes
+    when it keeps failing), stopped with it. It logs to its own file in vault/logs."""
+
+    def __init__(self, name: str, command: list[str]) -> None:
+        super().__init__(name=f"{name}-supervisor", daemon=True)
+        self.label, self.command = name, command
+        self.stopping = threading.Event()
+        self.process: subprocess.Popen | None = None
+
+    def run(self) -> None:
+        delay = 5.0
+        while not self.stopping.is_set():
+            started = time.monotonic()
+            try:
+                flags = 0x08000000 if sys.platform == "win32" else 0  # CREATE_NO_WINDOW
+                self.process = subprocess.Popen(
+                    self.command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    creationflags=flags,
+                )  # fmt: skip
+            except OSError as error:
+                log.error("%s failed to start: %s", self.label, error)
+                self.stopping.wait(300)
+                continue
+            code = self.process.wait()
+            if self.stopping.is_set():
+                break
+            delay = 5.0 if time.monotonic() - started > 300 else min(delay * 2, 300.0)
+            log.warning("%s exited with code %s; restarting in %.0f s", self.label, code, delay)
+            self.stopping.wait(delay)
+
+    def stop(self) -> None:
+        self.stopping.set()
+        process = self.process
+        if process is not None and process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(10)
             except subprocess.TimeoutExpired:
                 process.kill()

@@ -14,6 +14,7 @@ import contextlib
 import copy
 import hashlib
 import heapq
+import io
 import json
 import os
 import re
@@ -22,7 +23,7 @@ import shutil
 import tempfile
 from bisect import bisect_left
 from collections import Counter, defaultdict
-from collections.abc import Container
+from collections.abc import Container, Iterator
 from dataclasses import dataclass
 from datetime import date as Date
 from datetime import datetime, timedelta
@@ -51,15 +52,18 @@ MOMENT_ID = re.compile(r"[A-Za-z0-9_-]+")
 SNAPSHOT_CACHE_BYTES = 64 << 20
 PAYLOAD_CACHE_BYTES = 32 << 20
 METADATA_CACHE_BYTES = 8 << 20  # each secondary cache; includes Python metadata and entry allowance
+CAPTURE_TEXT_CACHE_BYTES = 32 << 20  # decoded text projections, never retained capture geometry
 # Finished days can be compacted: large logs become zstd frames beside their name (events.jsonl
 # -> events.jsonl.zst) and every reader decompresses transparently. Level 10 gets within a few
 # percent of the maximum ratio at a fraction of its time.
 COMPACTABLE = ("events.jsonl", "skeleton.geojson", "screens/ocr.jsonl")
+DELETIONS = "deletions.jsonl"  # spans deleted from the vault (ingest/forget.py)
 COMPACT_MIN_BYTES = 4096
 ZSTD_LEVEL = 10
 # The viewer path: 10 cm, well under one voxel, and the fields the viewer's contract reads.
 PATH_TOLERANCE_M = 0.1
 PATH_FIELDS = ("t", "x", "y", "floor", "pos_conf", "fidelity")
+STAGE_HALF = (9.5, 6.5)  # metres from the stage's middle a drawn path may reach (the stage is 20 x 14)
 
 
 def atomic_bytes(path: Path, data: bytes) -> FileStamp:
@@ -109,6 +113,19 @@ def read_text(path: Path) -> str:
     if source is path:
         return path.read_text(encoding="utf-8")
     return zstandard.ZstdDecompressor().decompress(source.read_bytes()).decode("utf-8")
+
+
+def text_lines(path: Path) -> Iterator[str]:
+    """Iterate UTF-8 lines; validate compacted frames before exposing their records."""
+    source = stored(path)
+    if source == path:
+        with path.open(encoding="utf-8") as text:
+            yield from text
+    else:
+        # Keep the existing whole-frame integrity checks, including truncated frames. A stream
+        # reader can reach EOF without reporting an incomplete frame. Plain live logs stream.
+        with io.StringIO(read_text(path)) as text:
+            yield from text
 
 
 def append_text(path: Path, content: str) -> FileStamp:
@@ -331,6 +348,8 @@ class Vault:
         self._summaries: SegmentedLRU[Path, tuple[tuple, Record]] = SegmentedLRU(METADATA_CACHE_BYTES)
         # day -> key of the inputs the vault database was last confirmed fresh for.
         self.fresh_index: SegmentedLRU[str, tuple] = SegmentedLRU(METADATA_CACHE_BYTES)
+        self.capture_texts: SegmentedLRU[Path, tuple] = SegmentedLRU(CAPTURE_TEXT_CACHE_BYTES)
+        self._deleted: tuple[FileStamp, tuple[tuple[datetime, datetime], ...]] = (None, ())
 
     # -- files -------------------------------------------------------------------------------
 
@@ -379,14 +398,32 @@ class Vault:
         return self._replace(path, text + "\n")
 
     def write_lines(self, path: Path, values: list[Record]) -> tuple[FileStamp, int]:
+        values = self.unforgotten(values)
         return self._replace(path, "".join(json.dumps(v, ensure_ascii=False) + "\n" for v in values))
 
     def append_lines(self, path: Path, values: list[Record]) -> tuple[FileStamp, int]:
+        values = self.unforgotten(values)
         with self.lock:
             self._expand(path)
             stamp = append_text(path, "".join(json.dumps(v, ensure_ascii=False) + "\n" for v in values))
             self._writes[path] += 1
             return stamp, self._writes[path]
+
+    def deleted_spans(self) -> tuple[tuple[datetime, datetime], ...]:
+        """The spans deleted from the vault (``deletions.jsonl``), read again when the file changes:
+        a stat per write, as the receiver and the API are separate processes."""
+        path = self.root / DELETIONS
+        stamp = file_stamp(path)
+        if stamp != self._deleted[0]:
+            spans = tuple((instant(r["t0"]), instant(r["t1"])) for r in read_lines(path))
+            self._deleted = (stamp, spans)
+        return self._deleted[1]
+
+    def unforgotten(self, values: list[Record]) -> list[Record]:
+        """``values`` without the records timed inside a deleted span: what a receiver still held,
+        or an import of the same recording, does not bring a deleted span back."""
+        spans = self.deleted_spans()
+        return [v for v in values if not spans or not in_spans(v, spans)]
 
     def _replace(self, path: Path, text: str) -> tuple[FileStamp, int]:
         with self.lock:
@@ -694,6 +731,7 @@ class Vault:
         layers = []
         for place in sorted(data["places"], key=lambda p: p["layer_index"]):
             venue = self.venue(place["venue"]) if place.get("venue") else None
+            path, scale = viewer_path(fixes_by_place[place["id"]], zone)
             pins = [dict(e, tod=tod(e["t"], zone)) for e in events_by_place[place["id"]]]
             layers.append(
                 {
@@ -710,13 +748,14 @@ class Vault:
                         "lon": place["lon"],
                         "axisDeg": venue["axis_deg"] if venue else 0,
                         "size": [20, 14],
+                        "scale": scale,
                     },
                     "geometry": {
                         "fidelity": "illustrative",
                         "footprint": [[-10, -7], [10, -7], [10, 7], [-10, 7]],
                         "levels": venue["levels"] if venue else [],
                     },
-                    "path": viewer_path(fixes_by_place[place["id"]], zone),
+                    "path": path,
                     "events": pins,
                     "quotes": [e for e in pins if e["type"] == "said.quote"],
                     "moments": sorted({e["moment_id"] for e in pins if e.get("moment_id")}),
@@ -741,14 +780,47 @@ class Vault:
         return cached[1], cached[2]
 
 
-def viewer_path(fixes: list[Record], zone: str) -> list[Record]:
-    """A visit's fixes as the viewer draws them: its fields only, in time order, simplified so
-    the interpolated position at every fix time stays within PATH_TOLERANCE_M. Stationary
-    stretches collapse to their two ends. The full fixes stay available as the skeleton."""
+def viewer_path(fixes: list[Record], zone: str) -> tuple[list[Record], float]:
+    """A visit's fixes as the viewer draws them, and the scale they were drawn at: its fields only,
+    in time order, simplified so the interpolated position at every fix time stays within
+    PATH_TOLERANCE_M. Stationary stretches collapse to their two ends. Fixes with no position on
+    the stage (GPS inside a building) cannot be drawn and are left out; if none has one, the two
+    ends say so. A path wider than the stage (an outdoor walk) is shrunk to fit it, by ``scale``
+    metres per stage metre. The full fixes stay available as the skeleton."""
     points = sorted(
         ({**{k: f.get(k) for k in PATH_FIELDS}, "t": tod(f["t"], zone)} for f in fixes), key=lambda p: p["t"]
     )
-    return simplify(points, PATH_TOLERANCE_M)
+    known = [p for p in points if p["x"] is not None and p["y"] is not None]
+    if not known:
+        return points[:1] + points[-1:] if len(points) > 1 else points, 1.0
+    path = simplify(known, PATH_TOLERANCE_M)
+    half_w, half_h = STAGE_HALF
+    scale = max(1.0, max(abs(p["x"]) for p in path) / half_w, max(abs(p["y"]) for p in path) / half_h)
+    if scale > 1.0:
+        path = [{**p, "x": round(p["x"] / scale, 3), "y": round(p["y"] / scale, 3)} for p in path]
+    return path, round(scale, 3)
+
+
+def record_bounds(record: object) -> tuple[datetime, datetime] | None:
+    """A record's start and end from its ``t`` and ``t_end`` (or ``until``); None if it is not timed."""
+    start = record.get("t") if isinstance(record, dict) else None
+    if not isinstance(start, str):
+        return None
+    try:
+        end = record.get("t_end") or record.get("until")
+        return instant(start), instant(end) if isinstance(end, str) else instant(start)
+    except ValueError:
+        return None
+
+
+def overlaps(start: datetime, end: datetime, span: tuple[datetime, datetime]) -> bool:
+    """[start, end] meets the half-open span [t0, t1); a record ending at t0 counts."""
+    return start < span[1] and max(start, end) >= span[0]
+
+
+def in_spans(record: object, spans: tuple[tuple[datetime, datetime], ...]) -> bool:
+    bounds = record_bounds(record)
+    return bounds is not None and any(overlaps(*bounds, span) for span in spans)
 
 
 def check_event(

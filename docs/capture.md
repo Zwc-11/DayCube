@@ -132,6 +132,8 @@ way. `services/gaze/gaze/stabilize.py`:
 
 - **Resting:** each sample pulls the estimate by `max(1/n, 1 - exp(-dt/0.2 s))`: the plain mean of
   a fixation's first samples, then an exponential average, so reading along a line glides.
+  Vertically, once a look is 0.3 s old, the average is over 0.5 s instead: text runs across, so up
+  and down within a look is mostly noise.
 - **A far jump:** a sample more than 4.5 times the noise away (within 1-12% of the screen width) is
   held back; a single one is a bad frame and ignored; two in a row that agree are a saccade, and
   the ring jumps to them.
@@ -142,22 +144,65 @@ way. `services/gaze/gaze/stabilize.py`:
   long blink starts over.
 
 On simulated webcam gaze with the PC's error model (`eval/ring_filter.py`, 10 two-minute sessions
-of reading, looking around and nearby targets; `eval/results/ring-filter.json`), measured at
-240 Hz the way the overlay draws it:
+of prose, code (short indented lines, long fixations), looking around, nearby targets and stares;
+`eval/results/ring-filter.json`), measured at 240 Hz the way the overlay draws it, at 30 frames/s:
 
-| | One Euro (before), 30 fps | ring filter, 30 fps | One Euro, 60 fps | ring filter, 60 fps |
-| --- | --- | --- | --- | --- |
-| shake while resting (RMS per display frame) | 6.0 px | **3.3 px** | 8.3 px | **3.6 px** |
-| wander within a fixation (RMS) | 38 px | **20 px** | 38 px | **19 px** |
-| to 70% of a jump of 300+ px (median) | 104 ms | 123 ms | 79 ms | 85 ms |
-| to 70% of a jump of 120-300 px | 119 ms | 182 ms | 80 ms | 94 ms |
-| median distance from the eyes | 103 px | 116 px | 96 px | 113 px |
-| cost per sample | 2 us | 7 us | 2 us | 7 us |
+| | One Euro (first) | ring filter before | ring filter now |
+| --- | --- | --- | --- |
+| shake while resting (RMS per display frame) | 5.9 px | 3.6 px | **3.5 px** |
+| wander within a fixation (RMS) | 44 px | 25 px | **23 px** |
+| on the line being read (within half a line of the eyes), prose | 32% | 46% | **55%** |
+| ... code | 34% | 46% | **50%** |
+| to 70% of a jump of 300+ px (median) | 86 ms | 104 ms | 102 ms |
+| to 70% of a jump of 120-300 px | 127 ms | 193 ms | 210 ms |
+| behind a smooth vertical pursuit (a touchpad scroll, 150 px/s) | 11 px | 28 px | 51 px |
+| median distance from the eyes | 97 px | 106 px | 107 px |
+| cost per sample | 2 us | 7 us | 7 us |
 
-The ring is half as jittery; the price is one more frame before a far jump (the second sample
-that confirms it is not a bad frame) and about 60 ms on near ones at 30 fps, both a third of
-that at 60 fps (`python -m gaze calibrate --fps 60` where the webcam offers it). Fixations are
-still found in the One Euro output, whose thresholds the detector was measured on.
+The ring is half as jittery as One Euro's; the price is one more frame before a far jump (the
+second sample that confirms it is not a bad frame) and 80 ms on near ones, and following a smooth
+scroll more loosely. At 60 frames/s (`python -m gaze calibrate --fps 60` where the webcam offers
+it) jumps take a third less. Fixations are still found in the One Euro output, whose thresholds
+the detector was measured on. "On the line" takes each block's mean offset out (the calibration's
+bias, which learning from clicks and the line snapping below deal with): it is the ring's own
+steadiness at line scale, and at webcam noise half the time is about what a filter can do.
+
+**On the line being read.** While the receiver's line decoder follows reading (`capture/reading.py`,
+on web pages and, by OCR, in other apps such as a code editor), it sends the line the eyes are on
+with each `/gaze` reply: its middle and extent on the monitor (exact page geometry) and how sure it
+is. When it is sure (p 0.6 or more) and the gaze within 120 px of the line, the ring sits on the
+line, held to its extent across. One fixation cannot resolve a line at webcam error; reading as a
+sequence can. The decoder hears of a fixation when it ends, so through a long look at one spot its
+line grows old while the eyes are still on it: the ring stays on the line as long as the ring filter
+holds the look it was in when the line was fresh, and lets go after a jump or when the gaze drifts
+120 px away (`Tracker._snap`, tested in `test_track.py`). The live point a page draws is not
+snapped.
+
+### When the ring slides down
+
+A ring that slides slowly down while the eyes rest on one spot is the gaze estimate drifting, not
+the eyes (between saccades they hold still to a fraction of a degree). The head-aware model reads
+the vertical largely from the lids, since a webcam resolves the iris's vertical position poorly and
+the upper lid follows the eye down; so a lid that relaxes over a long look moves the gaze down. On
+MPIIFaceGaze the calibrated model puts the gaze 20 mm lower on the screen for every 0.5 mm the upper
+lid comes down (15 people, median; learning from clicks makes it 23.5 mm): about 86 px on the PC's
+monitor. A filter cannot tell such a slide from a slow look down; holding the height harder stopped
+half of a 20 px/s slide in simulation but cut the time on the line in code from 50% to 33%, so the
+filter follows it and the rest is done elsewhere:
+
+- **On text** the ring sits on the line being read, through long looks too (above).
+- **Measured in ordinary use.** `gaze/drift.py` takes every look of 2 s or more that does not move
+  across (not reading) and fits a slope through time to the gaze's height, the lid gap, the
+  irises' vertical direction, the head's tilt and its distance. `doctor` reports the median slide
+  and what moved with it ("the gaze slid 14 px/s down; meanwhile the lids closed 1.2 mm a minute"),
+  and the tracker's state carries the numbers. No test session is needed.
+- **Learned, if it helps you.** Each such stare is also a label: the gaze at its end must be where
+  it was at its start (`gaze.learn.Stare`, kept in `vault/calibration/stares.jsonl`). On
+  MPIIFaceGaze with lids drooped 0.2-1.0 mm in synthetic stares (`eval/stare_learning.py`), stares
+  in the fit cut the droop's effect from 23.5 to 15.2 mm, but cost 4% median accuracy (32.4 to
+  33.8 mm), since a stare's droop moves the lids the way a look down does. They are off by default
+  and offered to tuning (below), which takes them only if they are 3% better on your own newest
+  clicks.
 
 ### Processing rate and live checks
 
@@ -280,10 +325,14 @@ Failed text writes stay visible in `/status.screen.error` and retry at the norma
 even when the window's pixels have not changed.
 
 The app in front is logged in `windows.jsonl` each time it changes, and `away` when the screen
-locks or there has been no input for 5 minutes and no gaze; a pause ends it too. The vault turns
+locks, when 5 minutes pass with neither input nor gaze (`since` is the last of the two, so losing
+the eyes for a moment is not away), and when the computer slept (`asleep`: the reader's rounds
+stopped for a minute; `since` is the last one); a pause ends it too, and so does the reader
+stopping (`stopped`). A `still` record every 5 minutes says the reader is still recording, so a
+computer switched off without a word ends what was in front within 5 minutes. The vault turns
 it into time per app (`screen.app` units, "Used Visual Studio Code for 25 min: screen.py -
 daycube") and an **Apps** section in the daily note; "which apps did I use yesterday" and "what
-did I read in VS Code" filter to them.
+did I read in VS Code" filter to them. The [day timeline](timeline.md) takes presence from it.
 
 Never read: browsers (the extension covers their pages, with its own exclusions), password
 managers (1Password, Bitwarden, KeePass and others), Windows' lock, sign-in and permission
@@ -295,11 +344,6 @@ for web pages. `python -m capture screen --exclude slack` adds an app to never r
 the window in front once and prints what OCR found, and the receiver's `--no-screen` leaves it
 out.
 
-After `git pull`, `python -m capture restart` stops the running receiver and eye tracker and
-starts them on the new code (`install-autostart` does it too when the running receiver is older;
-`/status` reports a stamp of the code it loaded, and `doctor` says "receiver code: older than this
-checkout" until then).
-
 `doctor` reports it: `screen reading: windows OCR (zh-Hans-CN + en-US), 14 reads in 10 min of code.exe,
 sumatrapdf.exe, 182 ms each; reading code.exe now`. Checked here: the window-finding, capture and
 reader loop in Wine 9 (a window on top wins over the one beneath, the desktop is
@@ -308,6 +352,43 @@ OCR (RapidOCR on rendered text: one read record with all three lines and no text
 and the receiver path in `services/ingest/tests/test_screen.py` with a simulated Windows and OCR.
 `Windows.Media.Ocr` itself runs only on Windows: `python -m capture screen check` and `doctor`
 show it working there.
+
+## Updating
+
+Double-click `update.cmd` in the repository folder after an update is pushed. It:
+
+1. pulls it (`git pull --ff-only`), and stops there if that fails
+2. runs `npm install` when the viewer's packages changed (`package-lock.json`); a running
+   `viewer.cmd` then needs closing and opening again
+3. syncs the receiver's, the eye tracker's and, once installed, the speech worker's environments
+4. runs the speech check on the GPU (`python -m speech canary`) when `services/speech` changed
+5. restarts the receiver and eye tracker on the new code, and waits 45 s for them
+6. runs `doctor`, and shows its rows in the window for a minute
+
+Two more double-clicks sit beside it:
+
+- `viewer.cmd` starts the vault's API and the viewer (`npm run demo`), at http://127.0.0.1:3000,
+  logging to `vault\logs\viewer.log`. Closing its window stops them.
+- `check-3d.cmd` measures a scan's 3D view on the PC's GPU, with the NVIDIA GPU and with the one Windows gives the browser by default (docs/splat.md, "Measuring on the GPU").
+
+Everything `update.cmd` does goes to `vault\logs\update.log`. `services/ingest/tests/test_update_cmd.py` runs it in
+Wine's `cmd` with git, uv and the receiver stood in for: each step in each case (speech changed or
+not, no speech worker, a failed pull, install, sync or check), and that it gets to the end.
+
+After `git pull`, `python -m capture restart` stops the running receiver and eye tracker and
+starts them on the new code (`install-autostart` does it too when the running receiver is older;
+`/status` reports a stamp of the code it loaded, and `doctor` says "receiver code: older than this
+checkout" until then). The stamp covers the receiver's package and the ingest and gaze packages it
+runs (the review, the eye tracker).
+
+Without either, the receiver restarts on new code by itself (`capture/update.py`): every 5 minutes
+it compares the stamp it loaded with the files', and when they differ, have stayed the same since
+the last look, import in a fresh interpreter, and you are away (the screen reader's away: no real
+keyboard or mouse input and no gaze for 5 minutes, or the lock screen), it starts
+`python -m capture restart --unattended` outside its own process tree. The outcome goes to
+`capture.log`; the same code is not tried twice within an hour (`vault/logs/update.json`). A
+checkout that does not import leaves the running receiver as it is, and `doctor` shows the error
+on the "receiver code" row. `DAYCUBE_AUTO_RESTART=false` turns it off.
 
 ## Everyday use
 
@@ -379,7 +460,10 @@ the dwell is detected. The program runs at once; one runs at a time.
 | `reading.jsonl` | One record per block read: each line read with its text, seconds on it and passes over it, the share of the block's lines read (`coverage`), when the eyes moved to each line (`path`), the tracker offset the decoder found and its mean confidence (see [Which line you are reading](#which-line-you-are-reading)) |
 | `attention.jsonl` | Dwell `start` and `end` records |
 | `health.jsonl` | Every 10 minutes while tracking: the tracker's state (frame rate, face, fixation share, noise) and the live accuracy from clicks |
-| `windows.jsonl` | The app in front each time it changes (program, window title and `app://` address; only the program for a browser or a private app), and `away` (locked, idle with `since`, paused, reading turned off, no window) |
+| `windows.jsonl` | The app in front each time it changes (program, window title and `app://` address; only the program for a browser or a private app), `away` (locked, idle with `since`, asleep with `since`, paused, reading turned off, no window, stopped; idle is time since a real keyboard or mouse was used; `input` says what decided: `devices`, `software` when only programs' input kept Windows from idling, `unseen` when Windows saw input the counter could not and its time was taken), and `still` every 5 minutes while the reader records |
+| `inputs.jsonl` | Typing and mouse counts per 10 s, only for buckets with input: keys pressed (a held key once), mouse buttons, wheel notches, mouse distance in pixels, and `injected` (input sent by software, not counted as typing). Never which keys; nothing while a password manager, the lock or sign-in screen or an excluded app is in front ([review](review.md#beside-the-timeline)) |
+| `doing.jsonl` | Lines saying what you are doing, from the `Alt+Shift+N` box, `python -m capture doing "..."` or `POST /doing` |
+| `phone-events.jsonl` | Apps opened and closed on the phone, from iOS Shortcuts ([phone](phone.md)) |
 | `history.jsonl` | Visits imported from Opera's history |
 
 Not recorded:
@@ -388,6 +472,7 @@ Not recorded:
 - the text, clicks, selections and media of a page while it, a frame in it (an embedded sign-in
   or payment form) or an open shadow root shows a password field. The page's address and title
   are still recorded;
+- which keys were pressed (only how many, per 10 s);
 - anything typed: fields, editable areas, and code editors that draw typed text in plain
   elements (Monaco, CodeMirror, Ace). In other apps, text on screen is read as shown, typed or
   not, except in the apps and windows that are never read ([Reading other apps](#reading-other-apps));
@@ -405,6 +490,27 @@ ignores an id it has already stored, and stores an id only once its record is wr
 resend after a lost reply or a failed write is stored once per receiver run. Records older than
 24 hours are refused. After a restart the receiver reloads block texts from today's and
 yesterday's snapshots, so dwells on pages already open still know their text.
+
+## Deleting a span
+
+Settings › Privacy and capture › **Delete a time range**, the tray's **Delete the last hour…**, or
+`DELETE /day/{date}/hours` with `{t0, t1}` (`DELETE /recent?minutes=60` for the last hour). What
+the span held goes from the vault (`ingest/forget.py`):
+
+| From | What goes |
+| --- | --- |
+| `capture/<date>/` | Every record timed in the span, in every log, plain or compacted |
+| The day's folder | Its events, GPS fixes, screen text and shots in the span; each recording that overlaps it, whole (audio, video, transcript, and its 3D and speech outputs); a place visit that starts or ends in it is cut at its edge, one inside it goes, one around it keeps its times |
+| `sources/` | The phone's sensor rows in the span; a kept hour of sound loses the span (FFmpeg cuts it out) |
+| `inbox/phone/imported/` | Sensor rows in the span, in folders and zips; a memo that overlaps it, whole |
+| Memories | A photo taken in the span, or a frame of a recording that went, with its 3D scene and films ([memories](memories.md)) |
+| Derived | The search database is rewritten (keyword index optimized, `VACUUM`, write-ahead log emptied), the notes it touched and the day's note are written again or removed, and the timelines, reviews and week of the review days it falls in |
+
+The span is written to `deletions.jsonl` first, with when, the reason given and what went. From
+then on the vault drops any record written into it, so the receiver still holding a page open,
+the extension resending, Opera's history or an import of the same recording cannot bring it back.
+A backup made before is not reached. `tests/test_forget.py` checks that a phrase from the span is
+in no byte of the vault afterwards.
 
 ## How gaze is placed on a page
 
@@ -560,8 +666,10 @@ update marked, and every fit with its held-out errors and why it was or was not 
 
 Clicks are kept in `vault/calibration/clicks.jsonl` (time, the pixel, the look's head pose and eye
 measurements as numbers, both errors, the model version in use, whether it passed the gate),
-each fit and each update's first frame in `learning.jsonl`, and what was learned in
-`gaze-learned.json`, all for the current calibration only: a new calibration starts over. The receiver's click correction (the offsets of
+lines read in `lines.jsonl` (the same, with the line's extent; no text), each fit, each update's
+first frame and each tuning in `learning.jsonl`, what was learned in `gaze-learned.json` and the
+tuned settings in `gaze-tuned.json`, all for the current calibration only: a new calibration
+starts over. The receiver's click correction (the offsets of
 [How gaze is placed on a page](#how-gaze-is-placed-on-a-page)) starts over at each update, since
 it was measured on the old model. `doctor` reports it: `learning: from clicks: update 3 at 17:40
 UTC; on clicks it had not seen, 168 px with the calibration alone, 121 px now; 260 clicks since
@@ -599,7 +707,75 @@ exact labels: 45 to 30 mm. The calibration alone grows worse over the days (40 t
 the head moves from where it was (37 to 53 mm); the learned model gets better. Tried on the same replay
 and not taken: weighting the two eyes by how reliable each is on the clicks (30.9 to 30.9 mm), and
 second-order eye terms (squares and products of each eye's measurements, from 100 clicks: 30.9 to
-30.5 mm, p90 68.6 to 67.5 mm), too small a gain for another model format. These are single laptop-webcam images, noisier than fixations at a desk; the
+30.5 mm, p90 68.6 to 67.5 mm), too small a gain for another model format.
+
+### Reading as labels
+
+Clicks give a few hundred labels a day; reading gives thousands an hour. While the line decoder
+([Which line you are reading](#which-line-you-are-reading)) follows reading, the eyes are on the
+line being read, whose height on the monitor is known exactly. Screen content as a weak label is
+how EVE (Park et al., ECCV 2020) cut webcam error from 3.48 to 2.49 degrees. The danger is
+circularity: the decoder picks the line partly from the gaze, so a model a line off could be told
+it is right. So a line becomes a label only when reading's own structure confirms it
+(`capture/labels.py`):
+
+- it was read between the line above and the line below, in that order, in the same block (each
+  move on is a return sweep, which a vertical offset cannot fake);
+- the decoder was sure of it (mean probability 0.8 or more over at least 2 fixations);
+- the page's position on the monitor was measured from mouse events, not estimated from the
+  window's size.
+
+The receiver returns each confirmed line's fixations with the line's middle height and extent (in
+the `/gaze` reply); the tracker kept each fixation's frames, so it pairs them
+(`gaze/learn.py: line`). A line labels the vertical fully; across it, the target is where the
+model being fitted puts the gaze, held to the line's extent, recomputed at each round of the fit,
+so a line moves the horizontal only when the gaze falls off its ends. A line counts a quarter of a
+click, and only clicks judge a fit: a decoder astray can move a candidate, never get it taken.
+
+Measured (`eval/reading_labels.py`):
+
+- **Are the labels right?** In the end-to-end simulation (the eyes reading measured page layouts,
+  the PC's error model, the real tracker and receiver; 10 seeds per scenario;
+  `eval/results/reading-labels-sim.json`): at the recalibrated error, 66 labels a minute of
+  reading an article (85 at 200% zoom, 68 re-reading a paragraph, 14 reading slowly under a
+  heading), **all 2,795 on the right line**. At the first, coarse calibration (183 px), the decoder
+  is rarely sure: 1.4 labels a minute at 100% zoom, 29 at 200%, again all on the right line. The
+  simulation reads line by line more regularly than people do; the structure test is what guards
+  real reading.
+- **Do they help?** MPIIFaceGaze replayed with 15% of the images as clicks and the rest as
+  reading lines (about six lines a click; `eval/results/reading-labels.json`): 32.7 mm with the
+  clicks alone, **32.1 mm** with the lines (8 of 15 people better, 3 worse by more than 2%); with
+  10% of the lines a line off either way, 32.0 mm; with every line a line too low (a decoder
+  consistently astray), 32.6 mm, no worse than the clicks alone. The gain is small on this
+  dataset, whose remaining error is mostly not a vertical offset, and which way it goes differs by
+  person: that is what tuning (below) settles for you, since the lines' weight is one of the
+  settings it chooses, including 0.
+
+### Tuned to you
+
+The settings of learning (the click gate, the half-life of old labels, how hard the head terms and
+the eye's resting direction are held, how many clicks before the head terms, how often to fit,
+how much a line and a stare count) were chosen on MPIIFaceGaze. `gaze/tune.py` chooses them on your
+own data: `clicks.jsonl` keeps every click's frame vector and pixel, `lines.jsonl` every line with
+its extent and `stares.jsonl` every stare's start and end, so learning can be run again from the
+calibration exactly as it ran live, each click
+predicted by the model of that moment before anything learned from it. Settings are searched by
+coordinate descent from those in use (two passes over a small grid) on the older 70% of clicks,
+and the best is compared with the settings in use on the newest 30%, which the search never saw;
+it is taken only if 3% better there. The tracker starts it on its own once there are 300 clicks,
+at most once a day and after 200 new clicks, in a process of its own at idle priority; the
+learner reads `gaze-tuned.json` before its next fit. `python -m gaze tune` runs it by hand and
+prints what it tried.
+
+Measured on MPIIFaceGaze (`eval/tune_replay.py`, `eval/results/tune-replay.json`): each person's
+first 1,000 clicks after calibration (20 mm label noise, 15% made without looking), tuned as on
+the PC from the clicks' labels alone, then judged on the newest 30% against where the eyes really
+were, which tuning never saw. Tuning changed the settings for 2 of 15 people and both got better:
+23.0 to 22.0 mm, and the person tracked worst, 66.6 to 55.7 mm (shorter half-life, fits twice as
+often, the head terms held less). For the other 13 the defaults stayed; no one got worse. On a
+dataset the defaults were chosen on, little else was to be expected; on your desk the defaults
+are someone else's, so this is where it can matter, and the 3% rule keeps it from doing harm.
+Each replay of 1,000 clicks takes a few seconds; a tuning runs 15-30 of them. These are single laptop-webcam images, noisier than fixations at a desk; the
 comparison is what carries over.
 
 ## Which line you are reading

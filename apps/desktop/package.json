@@ -1,0 +1,16 @@
+{
+  "name": "@daycube/desktop",
+  "private": true,
+  "version": "0.1.0",
+  "description": "DayCube for Windows: the viewer, the vault API and capture in one app (Tauri 2)",
+  "scripts": {
+    "tauri": "tauri",
+    "icons": "tauri icon src-tauri/icons/daycube.svg -o src-tauri/icons",
+    "bundle": "uv run --no-project python scripts/bundle-runtimes.py",
+    "build": "tauri build --config src-tauri/tauri.bundle.json",
+    "dev": "tauri dev"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.12.4"
+  }
+}

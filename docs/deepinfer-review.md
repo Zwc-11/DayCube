@@ -1,5 +1,9 @@
 # DeepInfer reference review
 
+The [2026-10-26 codebase pass](codebase-efficiency-2026-10-26.md) pins the current reference at
+`553741557a57df44a46fb3ab72b6aafeaf945337` and applies bounded projections, reusable label buffers
+and indexed job lookups. Its reference review scope and measurement limits are explicit.
+
 The [final algorithm pass](algorithm-review-2026-10-24.md) rechecks the current reference and
 applies scoped work sharing to reading geometry, with a sorted interval index for history filtering.
 
@@ -124,3 +128,10 @@ includes before/after search measurements, output checks and remaining profiling
 Follow the [engineering guide](engineering.md) for further changes. Earlier viewer fixes and
 idle measurements are in [performance notes](performance.md). These reviews do not establish
 performance parity with DeepInfer; live-mode and capture acceptance work remains open.
+
+The [October 26 continuation](codebase-continuation-2026-10-26.md) uses the same principles in
+scene cleanup, prepared camera-map buffers, indexed time windows and cached clustering winners.
+It completes the previously missing scoped manual notes across DAYCUBE's first-party source,
+tests and supporting configuration. Per-file notes document remaining allocations, failure paths
+and measurement limits; historical fixture-specific claims above are not a statement that every
+current frame callback or module is allocation-free. Dependency internals are outside that audit.

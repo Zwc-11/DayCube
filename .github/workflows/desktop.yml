@@ -1,0 +1,54 @@
+name: DayCube for Windows
+on:
+  push:
+    paths:
+      - apps/desktop/**
+      - apps/viewer/**
+      - services/**
+      - packages/**
+      - extensions/chrome/**
+      - package-lock.json
+      - .github/workflows/desktop.yml
+  workflow_dispatch:
+
+jobs:
+  installer:
+    runs-on: windows-latest
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.12.17'
+          enable-cache: true
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+      - run: npm ci
+      - name: Build the viewer
+        run: npm run build
+      - name: Rust tests (job objects and the sign-in entry on Windows)
+        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
+      - name: Bundle Python runtimes, sources, viewer and extension
+        run: uv run --no-project --python 3.11 python apps/desktop/scripts/bundle-runtimes.py
+      - name: Build the installer
+        run: npm run build --workspace @daycube/desktop
+      - name: Install it and run its self-test
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem apps/desktop/src-tauri/target/release/bundle/nsis/*.exe | Select-Object -First 1
+          ./apps/desktop/scripts/smoke-test.ps1 -Installer $installer.FullName -Out "$env:RUNNER_TEMP/smoke"
+      - name: Keep the installer and the smoke test's evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: daycube-windows
+          retention-days: 14
+          path: |
+            apps/desktop/src-tauri/target/release/bundle/nsis/*.exe
+            ${{ runner.temp }}/smoke

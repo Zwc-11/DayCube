@@ -1,5 +1,5 @@
 import React, { Suspense, lazy, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Database } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Database, Globe2, Images, Waypoints } from 'lucide-react';
 import type { VaultView } from './VaultDialog';
 import { BrandMark } from '../shell/TopBar';
 import type { DaySummary } from '../../lib/days';
@@ -77,9 +77,17 @@ interface DayCalendarProps {
   days: DaySummary[] | null;
   today: string;
   onOpen: (date: string) => void;
+  /** Back to the graph of notes. */
+  onHome: () => void;
+  /** The DayCube logo: back to a day's page. */
+  onDayPage?: () => void;
+  /** Photos you can step into. */
+  onMemories?: () => void;
+  /** Videos made into worlds (WorldPage). */
+  onWorlds?: () => void;
 }
 
-export const DayCalendar: React.FC<DayCalendarProps> = ({ days, today, onOpen }) => {
+export const DayCalendar: React.FC<DayCalendarProps> = ({ days, today, onOpen, onHome, onDayPage, onMemories, onWorlds }) => {
   const byDate = useMemo(() => new Map((days ?? []).map((d) => [d.date, d])), [days]);
   const first = days?.[0]?.date ?? today;
   const last = days?.[days.length - 1]?.date ?? today;
@@ -105,11 +113,24 @@ export const DayCalendar: React.FC<DayCalendarProps> = ({ days, today, onOpen })
   return (
     <div className="home">
       <header className="home__bar">
-        <span className="brand">
+        <button type="button" className="brand brand--btn" onClick={onDayPage ?? onHome} aria-label="Day pages">
           <BrandMark />
           <span className="brand__name">DayCube</span>
-        </span>
+        </button>
         <span className="row">
+          <button type="button" className="btn btn--ghost btn--sm" onClick={onHome}>
+            <Waypoints size={14} aria-hidden /> Graph
+          </button>
+          {onMemories && (
+            <button type="button" className="btn btn--ghost btn--sm" onClick={onMemories}>
+              <Images size={14} aria-hidden /> Memories
+            </button>
+          )}
+          {onWorlds && (
+            <button type="button" className="btn btn--ghost btn--sm" onClick={onWorlds}>
+              <Globe2 size={14} aria-hidden /> Worlds
+            </button>
+          )}
           {sample && (
             <span className="tag" title="Bundled sample day; the local vault isn't connected">
               Sample

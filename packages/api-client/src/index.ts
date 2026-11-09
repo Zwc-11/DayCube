@@ -1,9 +1,16 @@
 import {
-  askResultSchema, dataCenterSchema, dayNotesSchema, gazeLearningSchema, dayResponseSchema, entitySchema, eventSchema, graphSchema,
-  knowledgeGraphSchema, momentSchema, noteSchema, searchResultSchema, skeletonSchema, transcriptSchema,
-  type AskResult, type DataCenter, type Day, type GazeLearning, type DayNotes, type DayResponse, type Entity, type Event,
-  type KnowledgeGraph, type Note, type SearchResult,
+  askResultSchema, dataCenterSchema, dayNotesSchema, dayReviewSchema, gazeLearningSchema, dayResponseSchema, entitySchema,
+  eventSchema, graphSchema, knowledgeGraphSchema, momentSchema, noteGraphSchema, noteSchema, searchResultSchema, skeletonSchema,
+  trainingListSchema, trainingSeriesSchema, transcriptSchema,
+  type AskResult, type DataCenter, type Day, type DayReview, type GazeLearning, type DayNotes, type DayResponse, type Entity,
+  type Event, type KnowledgeGraph, type Note, type NoteGraph, type SearchResult, type TrainingListed, type TrainingSeries,
 } from '@daycube/schemas';
+
+/** A correction of what a window or page, or a whole app or site, is: `category` absent leaves it,
+ *  `project: null` means none, `clear` goes back to the rules. */
+export interface LabelCorrection {
+  date: string; key: string; category?: string; project?: string | null; clear?: boolean;
+}
 import { consumeSse } from './sse.mjs';
 
 export class ApiError extends Error {
@@ -17,8 +24,118 @@ export class ApiError extends Error {
 
 /** `capture`: the day has computer capture logs (a day with no places has only those);
  *  `records`: its searchable record count, once indexed. */
+/** A span deleted from a day (``deletions.jsonl``): what went, per kind of record. */
+export interface Deletion {
+  t0: string;
+  t1: string;
+  at: string;
+  date: string;
+  reason: string | null;
+  removed: Record<string, number>;
+}
+
+/** What was on screen through a day, page by page (``GET /day/{date}/seen``). */
+export interface SeenItem {
+  t: string;
+  kind: 'read' | 'stay' | 'look' | 'copy' | 'click' | 'media' | 'search';
+  text: string;
+  value: number | null; // a read's share of the lines; seconds of a stay or look
+}
+export interface SeenPage {
+  key: string;
+  title: string;
+  site: string;
+  spans: [string, string][];
+  seconds: number;
+  items: SeenItem[];
+}
+/** A video's world (docs/world.md): islands of the user's footage, georeferenced. */
+export interface WorldOrigin { lat: number; lon: number; ground_m: number }
+export interface WorldIsland {
+  id: string;
+  splat: string;
+  points: number;
+  enu: number[][];
+  bounds: { min: [number, number, number]; max: [number, number, number] } | null;
+  located_by: string;
+  error_m: number | null;
+  kind: 'seen' | 'imagined';
+  shots?: unknown;
+}
+export interface World {
+  id: string; date: string; title: string; source?: unknown; made?: string;
+  origin: WorldOrigin; islands: WorldIsland[];
+}
+export interface WorldSummary { date: string; id: string; title: string; islands: number; origin: WorldOrigin }
+export interface MapsConfig { google_tiles_key: string | null }
+
+export interface Seen {
+  date: string;
+  pages: SeenPage[];
+  totals: { seconds: number; pages: number; read: number };
+}
+
 export interface DaySummary {
   date: string; stats: Day['stats']; kinds?: string[]; capture?: boolean; records?: number | null;
+}
+
+/** A capture's camera path (``camera.json`` of a phone scan): ARKit positions and, when placed on
+ *  the map, latitude, longitude and the compass heading the camera looked along. */
+export interface MomentCamera {
+  fit: { offset_s: number; rmse_m: number; rotation_deg: number } | null;
+  points: { t: number; xyz: [number, number, number]; lat?: number; lon?: number; heading_deg?: number }[];
+}
+
+/** A scan's splats (``scene.splat``): the LiDAR preview, then the trained splat when it is done. */
+export interface SceneSplat {
+  status: 'lidar' | 'training' | 'trained' | 'failed';
+  lidar: string;
+  trained?: string;
+  cameras: string;
+  points: number;
+  splats?: number;
+  bounds: { min: [number, number, number]; max: [number, number, number] } | null;
+  training?: { trainer: string; steps: number; minutes: number; psnr_db: number | null; ssim: number | null };
+  error?: string;
+}
+
+/** A scan's surfaces as a mesh (scene.json ``mesh``): the LiDAR's depth fused at ARKit's poses. */
+export interface SceneMesh {
+  status: 'made';
+  file: string;
+  triangles: number;
+  vertices: number;
+  voxel_m: number;
+  bounds: { min: [number, number, number]; max: [number, number, number] } | null;
+  check: { points: number; median_m: number | null; p90_m: number | null };
+}
+
+/** A recording's speech (``speech.json``, services/speech): who spoke, how each turn sounded, sound
+ *  events, and whose voice each speaker is across recordings. */
+export interface MomentSpeech {
+  languages: Record<string, number> | null;
+  speakers: { label: string; talk_s: number; turns: number }[] | null;
+  turns: {
+    segment: number; speaker: string; start: number; end: number; language: string | null;
+    emotion: { label: string; scores: Record<string, number> } | null;
+    fillers: Record<string, number>;
+  }[] | null;
+  events: { start: number; end: number; events: string[] }[] | null;
+  /** Per speaker label: the voice it is, its name, and how the name is known: given here
+   *  ('confirmed'), given to the same voice in another recording ('same voice'), or found as you,
+   *  the voice in the most recordings ('you'). */
+  voices: Record<string, { voice: string | null; person: string | null; how: 'confirmed' | 'same voice' | 'you' | null }> | null;
+  models: Record<string, string> | null;
+}
+
+/** Where a scan's camera was every few frames (world metres, y up), for following the walk in 3D. */
+export interface SplatCameras {
+  t: number[];
+  position: [number, number, number][];
+  forward: [number, number, number][];
+  up: [number, number, number][];
+  fov_long_deg: number;
+  fov_short_deg: number;
 }
 
 export interface ClientOptions {
@@ -40,7 +157,7 @@ export class DaycubeClient {
 
   private async response(path: string, init: RequestInit = {}): Promise<Response> {
     const headers = new Headers(init.headers);
-    if (init.body) headers.set('Content-Type', 'application/json');
+    if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
     if (init.method && init.method !== 'GET') {
       const token = this.getToken();
       if (!token) throw new ApiError(401, 'Connect your vault token to use this action.');
@@ -95,6 +212,14 @@ export class DaycubeClient {
   async dataCenter(signal?: AbortSignal): Promise<DataCenter> {
     return dataCenterSchema.parse(await this.request('/data', { signal }));
   }
+  /** Every training run on this PC, newest first. */
+  async trainingRuns(signal?: AbortSignal): Promise<TrainingListed[]> {
+    return trainingListSchema.parse(await this.request('/training', { signal }));
+  }
+  /** One training run and its measurements as columns. */
+  async trainingRun(id: string, signal?: AbortSignal): Promise<TrainingSeries> {
+    return trainingSeriesSchema.parse(await this.request(`/training/${encodeURIComponent(id)}`, { signal }));
+  }
   /** The eye tracker's learning from clicks for the current calibration. */
   async gazeLearning(signal?: AbortSignal): Promise<GazeLearning> {
     return gazeLearningSchema.parse(await this.request('/gaze/learning', { signal }));
@@ -111,6 +236,14 @@ export class DaycubeClient {
   async dayNotes(date: string, signal?: AbortSignal): Promise<DayNotes> {
     return dayNotesSchema.parse(await this.request(`/day/${encodeURIComponent(date)}/notes`, { signal }));
   }
+  /** The vault's graph, or null while `etag` is still current (an empty 304). */
+  async noteGraphIfChanged(etag?: string | null, signal?: AbortSignal): Promise<{ etag: string | null; graph: NoteGraph } | null> {
+    const headers = new Headers(etag ? { 'If-None-Match': etag } : undefined);
+    const response = await this.transport(`${this.baseUrl}/notes/graph`, { headers, cache: 'no-store', signal });
+    if (response.status === 304) return null;
+    if (!response.ok) throw await ApiError.from(response);
+    return { etag: response.headers.get('ETag'), graph: noteGraphSchema.parse(await response.json()) };
+  }
   async note(path: string, signal?: AbortSignal): Promise<Note> {
     return noteSchema.parse(await this.request(`/note?path=${encodeURIComponent(path)}`, { signal }));
   }
@@ -120,13 +253,31 @@ export class DaycubeClient {
     if (date) query.set('date', date);
     return searchResultSchema.parse(await this.request(`/search?${query}`, { signal }));
   }
+  /** The day's end-of-day review (null until written), its timeline and the categories to relabel with. */
+  async dayReview(date: string, signal?: AbortSignal): Promise<DayReview> {
+    return dayReviewSchema.parse(await this.request(`/day/${encodeURIComponent(date)}/review`, { signal }));
+  }
+  /** Write the day's review now (a draft while the day is under way); needs the vault token. */
+  async summarizeDay(date: string): Promise<DayReview> {
+    return dayReviewSchema.parse(await this.request(`/day/${encodeURIComponent(date)}/review`, { method: 'POST' }));
+  }
+  /** Correct a category or project; the day's timeline and review follow. Needs the vault token. */
+  async relabel(correction: LabelCorrection): Promise<DayReview> {
+    return dayReviewSchema.parse(await this.request('/labels', { method: 'POST', body: JSON.stringify(correction) }));
+  }
   notes() { return this.request('/notes') as Promise<{ path: string; title: string; identity: string | null }[]>; }
   writeNotes(date: string) {
     return this.request(`/notes/${encodeURIComponent(date)}`, { method: 'POST' }) as Promise<{ notes: string[] }>;
   }
   async moment(date: string, id: string) {
     const data = await this.request(`/moment/${encodeURIComponent(id)}?date=${encodeURIComponent(date)}`) as Record<string, unknown>;
-    return { meta: momentSchema.parse(data.meta), transcript: transcriptSchema.parse(data.transcript), scene: data.scene };
+    return {
+      meta: momentSchema.parse(data.meta), transcript: transcriptSchema.parse(data.transcript),
+      scene: (data.scene ?? {}) as Record<string, unknown>,
+      camera: (data.camera ?? null) as MomentCamera | null,
+      splatCameras: (data.splat_cameras ?? null) as SplatCameras | null,
+      speech: (data.speech ?? null) as MomentSpeech | null,
+    };
   }
   /** `date: null` searches every day in the vault. */
   async ask(date: string | null, question: string, signal?: AbortSignal): Promise<AskResult> {
@@ -168,6 +319,36 @@ export class DaycubeClient {
   confirmSpeaker(date: string, moment_id: string, diar_label: string, person_id: string) {
     return this.request('/speakers/confirm', { method: 'POST', body: JSON.stringify({ date, moment_id, diar_label, person_id }) });
   }
+  /** Delete a span of the day (``DELETE /day/{date}/hours``); ``t0`` and ``t1`` carry their offset. */
+  deleteHours(date: string, t0: string, t1: string, reason?: string) {
+    return this.request(`/day/${encodeURIComponent(date)}/hours`, {
+      method: 'DELETE', body: JSON.stringify({ t0, t1, reason: reason || null }),
+    }) as Promise<Deletion>;
+  }
+  worlds() { return this.request('/worlds') as Promise<WorldSummary[]>; }
+  world(date: string, id: string) {
+    return this.request(`/worlds/${encodeURIComponent(date)}/${encodeURIComponent(id)}`) as Promise<World>;
+  }
+  /** The map settings, with the Google tiles key when one is set (needs the vault token). */
+  mapsConfig() {
+    const token = this.getToken();
+    if (!token) return Promise.reject(new ApiError(401, 'Connect your vault token to use the map.'));
+    return this.request('/maps/config', { headers: { Authorization: `Bearer ${token}` } }) as Promise<MapsConfig>;
+  }
+  /** A memory's caption (docs/memories.md); empty removes it. */
+  editMemory(date: string, id: string, caption: string) {
+    return this.request(`/memories/${encodeURIComponent(date)}/${encodeURIComponent(id)}`, {
+      method: 'PATCH', body: JSON.stringify({ caption }),
+    }) as Promise<{ caption: string | null }>;
+  }
+  /** Keep a memory's exported film (MP4) beside it in the vault. */
+  saveFilm(date: string, id: string, name: 'film-portrait.mp4' | 'film-landscape.mp4', film: Blob) {
+    return this.request(`/memories/${encodeURIComponent(date)}/${encodeURIComponent(id)}/${name}`, {
+      method: 'PUT', body: film, headers: { 'Content-Type': 'video/mp4' },
+    }) as Promise<{ film: string; bytes: number }>;
+  }
+  seen(date: string) { return this.request(`/day/${encodeURIComponent(date)}/seen`) as Promise<Seen>; }
+  deletions(date: string) { return this.request(`/day/${encodeURIComponent(date)}/deletions`) as Promise<Deletion[]>; }
   assetUrl(date: string, ref: string) {
     return `${this.baseUrl}/vault/${encodeURIComponent(date)}/${ref.split('/').map(encodeURIComponent).join('/')}`;
   }

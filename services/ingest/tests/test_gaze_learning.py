@@ -132,3 +132,23 @@ def test_the_endpoint_serves_it_and_answers_304_until_a_click_lands(client: Test
         out.write(json.dumps(click(3, 40.0, 70.0, 1)) + "\n")
     again = client.get("/gaze/learning", headers={"If-None-Match": etag})
     assert again.status_code == 200 and len(again.json()["clicks"]["t"]) == 4
+
+
+def test_reading_lines_and_tunings_are_reported(tmp_path: Path) -> None:
+    folder = tmp_path / "calibration"
+    tuned = {"event": "tuned", "t": "2026-10-24T18:00:00+00:00", "accepted": True, "clicks": 400, "lines": 900,
+             "replay": {"search_px": {"in_use": 90.0, "best": 80.0}, "held_out_px": {"in_use": 95.0, "best": 85.0},
+                        "held_out_clicks": 120, "trials": 30, "seconds": 210.0},
+             "changed": {"refit_every": [20, 10]}, "settings": {"refit_every": 10}}  # fmt: skip
+    write(folder, [click(k, 90.0, 90.0, 0) for k in range(3)], [tuned])
+    (folder / "lines.jsonl").write_text("".join(
+        json.dumps({"t": T0 + k, "x": 1.0, "y": 2.0, "X": vector(600.0), "used": k % 4 != 0}) + "\n" for k in range(8)
+    ))  # fmt: skip
+    (folder / "gaze-tuned.json").write_text(json.dumps({"settings": {"refit_every": 10, "gate_k": 3.0}}))
+    out = report(tmp_path)
+    assert out["lines"] == {"labels": 8, "used": 6}
+    assert out["settings"] == {"refit_every": 10, "gate_k": 3.0}
+    (event,) = out["tunings"]
+    assert event["accepted"] and event["changed"] == {"refit_every": [20, 10]}
+    assert event["replay"] == {"held_out_px": {"in_use": 95.0, "best": 85.0}, "held_out_clicks": 120, "trials": 30,
+                               "seconds": 210.0}  # fmt: skip

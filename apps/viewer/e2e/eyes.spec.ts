@@ -20,7 +20,13 @@ async function seed(): Promise<void> {
   const fit = { event: 'fit', t: new Date((t0 + 20 * 59) * 1000).toISOString(), version: 1, accepted: true, clicks: 54,
     held_out: 11, penalty: 10, head_terms: false, error_px: { calibration: 150, in_use: 150, learned: 104, fixed_guess: 600 } };
   const applied = { event: 'applied', t: new Date((t0 + 20 * 59 + 0.04) * 1000).toISOString(), version: 1, after_ms: 33.4 };
-  await writeFile(path.join(folder, 'learning.jsonl'), `${JSON.stringify(fit)}\n${JSON.stringify(applied)}\n`);
+  const tuned = { event: 'tuned', t: new Date((t0 + 20 * 119) * 1000).toISOString(), accepted: true, clicks: 120, lines: 40,
+    replay: { held_out_px: { in_use: 112.4, best: 101.9 }, held_out_clicks: 36, trials: 24, seconds: 95.2 },
+    changed: { refit_every: [20, 10] }, settings: { refit_every: 10 } };
+  await writeFile(path.join(folder, 'learning.jsonl'), [fit, applied, tuned].map((e) => JSON.stringify(e)).join('\n') + '\n');
+  await writeFile(path.join(folder, 'gaze-tuned.json'), JSON.stringify({ t: tuned.t, settings: { refit_every: 10, gate_k: 3 } }));
+  const lines = Array.from({ length: 40 }, (_, k) => ({ t: t0 + 20 * k + 7, x: 900, y: 500, X, used: k % 5 !== 0, span: [600, 1200] }));
+  await writeFile(path.join(folder, 'lines.jsonl'), lines.map((l) => JSON.stringify(l)).join('\n') + '\n');
   await writeFile(path.join(folder, 'gaze-learned.json'), JSON.stringify({ calibration: calibrated, version: 1, t: fit.t, fit, pose_ref: null }));
 }
 
@@ -41,6 +47,11 @@ test('the eye-tracking dashboard shows the live error, the loss ratio and each u
     await expect(page.getByText(/Click \d+ · .* · model v1/)).toBeVisible();
     await page.getByRole('button', { name: 'Show table' }).click();
     await expect(page.getByTestId('fit-table')).toContainText('v1, live in 33 ms');
+    await expect(page.getByText(/and 32 lines you read/)).toBeVisible();
+    const tuning = page.getByTestId('tuning');
+    await expect(tuning).toContainText('Newest 36 clicks: 112 px with the settings in use, 102 px with the best found');
+    await expect(tuning).toContainText('Clicks between fits: 20 → 10');
+    await expect(page.getByTestId('settings-table')).toContainText('Click gate (× recent error)');
     // The next poll finds nothing new: an empty 304, not the whole report again.
     const poll = await page.waitForResponse((r) => r.url().includes('/gaze/learning'), { timeout: 8000 });
     expect(poll.status()).toBe(304);
