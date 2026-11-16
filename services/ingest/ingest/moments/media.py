@@ -21,28 +21,3 @@ def probe(path: Path) -> dict:
         timeout=30,
     )
     return json.loads(result.stdout)
-
-
-def extract_audio(source: Path, destination: Path) -> None:
-    """Explicit call only; never overwrites an existing file."""
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    subprocess.run(
-        [
-            executable("ffmpeg"),
-            "-nostdin",
-            "-n",
-            "-i",
-            str(source.resolve(strict=True)),
-            "-vn",
-            "-ac",
-            "1",
-            "-ar",
-            "16000",
-            "-c:a",
-            "pcm_s16le",
-            str(destination.resolve()),
-        ],
-        check=True,
-        capture_output=True,
-        timeout=180,
-    )

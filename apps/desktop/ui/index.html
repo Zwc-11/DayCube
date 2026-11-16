@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>DayCube</title>
+  <link rel="stylesheet" href="shell.css">
+  <script src="shell.js" defer></script>
+  <script src="startup.js" defer></script>
+</head>
+<body>
+<main>
+  <h1><img src="cube.svg" alt=""> DayCube</h1>
+
+  <section id="starting">
+    <div class="row"><div class="spinner"></div><span id="step">Starting</span></div>
+  </section>
+
+  <section id="vault" hidden>
+    <h2>Your vault</h2>
+    <p class="muted" id="vault-hint">Where DayCube keeps your days.</p>
+    <div class="row">
+      <input class="grow" type="text" id="vault-path" spellcheck="false">
+      <button id="browse">Browse…</button>
+    </div>
+    <p class="bad" id="vault-error" hidden></p>
+    <div class="row" style="margin-top:12px"><button class="primary" id="use">Use this folder</button></div>
+  </section>
+
+  <section id="failed" hidden>
+    <h2>DayCube could not start</h2>
+    <p class="bad" id="message"></p>
+    <pre id="log"></pre>
+    <div class="row" style="margin-top:12px">
+      <button class="primary" id="retry">Try again</button>
+      <button id="logs">Open logs</button>
+      <button id="tools">Doctor…</button>
+    </div>
+  </section>
+</main>
+</body>
+</html>

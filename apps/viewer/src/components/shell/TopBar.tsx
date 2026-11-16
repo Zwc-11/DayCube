@@ -64,7 +64,7 @@ export const TopBar = React.memo(function TopBar({
         >
           <PanelLeft size={17} />
         </button>
-        <button type="button" className="brand brand--btn" onClick={onHome} aria-label="All days">
+        <button type="button" className="brand brand--btn" onClick={onHome} aria-label="Day pages">
           <BrandMark />
           <span className="brand__name">DayCube</span>
         </button>
@@ -110,14 +110,14 @@ export const TopBar = React.memo(function TopBar({
           onClick={onToggleCapture}
           aria-label={
             capture === 'off'
-              ? 'Capture is off. Open privacy settings'
+              ? 'Capture status unavailable. Open privacy settings'
               : capture === 'paused'
               ? 'Capture paused. Resume capture'
               : 'Capturing. Pause capture'
           }
           data-tip={
             capture === 'off'
-              ? 'The capture service isn’t running'
+              ? 'Check recording status in the DayCube extension'
               : capture === 'paused'
               ? 'Resume capture (Ctrl Alt P)'
               : 'Pause capture (Ctrl Alt P)'

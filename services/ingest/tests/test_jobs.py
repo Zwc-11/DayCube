@@ -43,7 +43,7 @@ def test_same_day_reuses_job_at_capacity_and_failed_jobs_can_retry(
 ) -> None:
     tasks: list = []
     monkeypatch.setattr(BackgroundTasks, "add_task", lambda self, fn, *args: tasks.append((fn, args)))
-    monkeypatch.setattr("ingest.api.MAX_JOBS", 1)
+    monkeypatch.setattr("ingest.api.jobs.MAX_JOBS", 1)
     other = "2026-10-21"
     clone_day(vault, DAY, other)
 

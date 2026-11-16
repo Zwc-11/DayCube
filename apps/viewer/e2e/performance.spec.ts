@@ -100,7 +100,9 @@ test('the scene stays within its draw-call budget', async ({ page }) => {
   await page.getByRole('button', { name: 'Performance', exact: true }).click();
   const drawCalls = page.locator('.stat', { hasText: 'Draw calls' }).locator('.stat__value');
   await expect(drawCalls).toHaveText(/^\d+$/);
-  expect(Number(await drawCalls.textContent())).toBeLessThanOrEqual(8);
+  // Every draw of a frame: three.js 0.186 counts them all, 0.168 reported at most 8 of the same 10
+  // WebGL draws (7 instanced, 2 indexed, 1 plain, counted on both, 2026-10-25).
+  expect(Number(await drawCalls.textContent())).toBeLessThanOrEqual(10);
 });
 
 test('the 2D fallback rests when idle and redraws when scrubbing', async ({ page }) => {

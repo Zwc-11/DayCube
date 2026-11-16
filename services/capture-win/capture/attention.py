@@ -64,6 +64,7 @@ from datetime import datetime
 from urllib.parse import urlsplit
 
 from .anchors import RAYLEIGH_MEDIAN, Anchors
+from .labels import LineLabels
 from .reading import OFF, OFFSET, SCATTER, LineBox, PageReader, Visit
 from .records import Block, Blocks, Click, Fixation, GazeState, Geometry, Record, View
 
@@ -150,6 +151,13 @@ def _box(v: float, lo: float, size: float, sigma: float) -> float:
     return _between((v - lo) / k, (v - lo - size) / k) / size
 
 
+def _on_monitor(box: LineBox, g: Geometry) -> tuple[float, float, float]:
+    """A line's middle height and horizontal extent on the monitor, as fractions of it (the inverse
+    of how ``Attention._place`` puts a fixation on the page)."""
+    y = ((box.y + box.h / 2 - g.scroll_y) * g.scale + g.vy) / g.screen_h
+    return y, (box.x * g.scale + g.vx) / g.screen_w, ((box.x + box.w) * g.scale + g.vx) / g.screen_w
+
+
 class Attention:
     def __init__(
         self,
@@ -203,6 +211,8 @@ class Attention:
         self.visit: Visit | None = None  # the block the line decoder has the eyes on, line by line
         self.pending: Visit | None = None  # another block the decoder moved to, until it holds
         self.reading: dict | None = None  # the line being read now, for /status
+        self.labels = LineLabels()  # lines confirmed by reading order: calibration labels for the tracker
+        self.line_now: dict | None = None  # the decoded line, where it is on the monitor, for the ring
         # Where the last fixations went (NO_PAGE ... ON_LINE), the text the last page sent, and the
         # last point placed on a page: why no line is shown, and where the eyes are, for /status.
         self.outcomes: deque[int] = deque(maxlen=300)
@@ -297,6 +307,8 @@ class Attention:
         self.belief, self.belief_doc = {}, None
         self.reading = None
         self.page = None
+        self.labels.off()
+        self.line_now = None
         return self.end() + self.end_visit()
 
     def gaze_state(self, state: GazeState) -> None:
@@ -575,6 +587,8 @@ class Attention:
         front, x, y = located
         g = front.geometry
         if self.monitor is None or not (0 <= x <= g.inner_w and 0 <= y <= g.inner_h):
+            self.labels.off()
+            self.line_now = None
             return None, []  # off the page: the toolbar, another window
         reader = self._reader(front, fixation.t.timestamp())
         if not reader.blocks:
@@ -583,8 +597,18 @@ class Attention:
         reader.update(x, y + g.scroll_y, t, (g.scroll_y, g.scroll_y + g.inner_h, g.inner_w))
         key, p = reader.best()
         if key is OFF:
+            self.labels.off()
+            self.line_now = None
             return None, []
         block, line = key
+        box = reader.blocks[block][line]
+        place = _on_monitor(box, g) if g.exact else None
+        self.labels.add(fixation.id, reader.doc, block, line, p, place)
+        # The line for the tracker's ring to sit on (sent with the next /gaze reply).
+        self.line_now = None if place is None else {
+            "t": round(t_end, 3), "y": round(place[0], 5), "x0": round(place[1], 5), "x1": round(place[2], 5),
+            "p": round(p, 3),
+        }  # fmt: skip
         ended: list[dict] = []
         visit = self.visit
         if visit is not None and t - visit.t1 > VISIT_GAP_S:

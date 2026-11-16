@@ -98,7 +98,7 @@ def test_index_jobs_and_unsupported_stages(client: TestClient, auth: dict[str, s
     assert client.get(f"/jobs/{job_id}").json()["status"] == "complete"
     assert "event: progress" in client.get(f"/jobs/{job_id}?stream=1").text
     assert client.post(f"/ingest/{DAY}", json={"steps": ["moments"]}, headers=auth).status_code == 501
-    assert client.delete(f"/day/{DAY}/hours", headers=auth).status_code == 501
+    assert client.delete(f"/day/{DAY}/hours", headers=auth).status_code == 422  # a span is required (test_forget.py)
     assert client.post("/pause", headers=auth).status_code == 503
 
 

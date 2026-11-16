@@ -573,6 +573,39 @@ def test_the_ring_over_every_window_gets_every_frame_in_memory() -> None:
     assert ring.closed
 
 
+def test_the_ring_sits_on_the_line_being_read_while_the_decoder_is_fresh_and_sure() -> None:
+    made: list[FakeRing] = []
+
+    def factory() -> FakeRing:
+        made.append(FakeRing())
+        return made[-1]
+
+    t, scene, receiver, *_, clock, log = tracker(overlay=factory)
+    receiver.ring = True
+    run_for(t, clock, 1)  # the gaze rests at (0.5, 0.5)
+
+    def shown(line: dict | None, seconds: float = 0.5) -> tuple[float, float]:
+        receiver.reading = line
+        run_for(t, clock, seconds)
+        return made[0].points[-1]
+
+    # A line 22 px below the gaze, ending left of it: on the line, at its end.
+    line = {"t": clock.now, "y": 0.52, "x0": 0.3, "x1": 0.45, "p": 0.9}
+    assert shown(line) == pytest.approx((0.45, 0.52))
+    # The eyes have rested on the spot since: the line grows old (2.5 s) but the ring stays on it.
+    assert shown(line, 2.0) == pytest.approx((0.45, 0.52))
+    assert shown(dict(line, t=clock.now - 2.0, y=0.53)) == pytest.approx((0.5, 0.5))  # an old line never seen fresh
+    assert shown(dict(line, t=clock.now, p=0.4)) == pytest.approx((0.5, 0.5))  # unsure
+    assert shown(dict(line, t=clock.now, y=0.7)) == pytest.approx((0.5, 0.5))  # 216 px away: left the line
+    assert shown(None) == pytest.approx((0.5, 0.5))
+    stale = dict(line, t=clock.now)
+    assert shown(stale) == pytest.approx((0.45, 0.52))
+    scene.point = (1500.0, 540.0)  # the eyes go 600 px past the line's end: off it
+    assert shown(stale, 1.5) == pytest.approx((1500 / 1920, 0.5))
+    scene.point = (960.0, 540.0)  # and back, with the line old by now: it is let go
+    assert shown(stale, 0.5) == pytest.approx((0.5, 0.5))
+
+
 def test_a_ring_window_that_cannot_open_leaves_tracking_alone() -> None:
     t, scene, receiver, *_, clock, log = tracker(overlay=lambda: FakeRing(running=False))
     receiver.ring = True
@@ -633,3 +666,55 @@ def test_clicks_and_the_frames_before_them_go_to_the_learner() -> None:
     computer.presses.append((10, 10))
     run_for(t, clock, 0.5)
     assert receiver.states[-1]["tracking"] is True
+
+
+def test_fixations_keep_their_look_and_read_lines_reach_the_learner() -> None:
+    """Each fixation sent is named to the learner (so its frames are kept), and the line labels the
+    receiver returns go to the learner in monitor pixels."""
+
+    class Learner:
+        def __init__(self) -> None:
+            self.looks: list = []
+            self.labels: list = []
+
+        def frame(self, *args: object) -> None:
+            pass
+
+        def click(self, *args: object) -> str:
+            return "used"
+
+        def fixation(self, fixation_id: str, t0: float, t1: float) -> None:
+            self.looks.append((fixation_id, t0, t1))
+
+        def line(self, fixation_id: str, y: float, x0: float, x1: float) -> str:
+            self.labels.append((fixation_id, y, x0, x1))
+            return "used"
+
+        def maybe_tune(self, now: float) -> bool:
+            return False
+
+        def state(self) -> dict:
+            return {}
+
+    @dataclass
+    class Named(Receiver):
+        lines: list = field(default_factory=list)
+
+        def add(self, fixation: object) -> str:
+            super().add(fixation)
+            return f"f{len(self.fixations)}"
+
+        def take_lines(self) -> list:
+            out, self.lines = self.lines, []
+            return out
+
+    learner = Learner()
+    scene, receiver, computer, clock, log = Scene(), Named(), Computer(), Clock(), []
+    t = Tracker(Estimator(), lambda: Camera(scene, log), receiver, CALIBRATION, system=computer, clock=clock,
+                sleep=clock.sleep, timer=clock, learner=learner)  # fmt: skip
+    run_for(t, clock, 2.0)
+    assert learner.looks and learner.looks[0][0] == "f1" and learner.looks[0][1] < learner.looks[0][2]
+    receiver.lines = [{"id": "f1", "y": 0.5, "x0": 0.25, "x1": 0.75}]
+    t.reported_at = -1e9
+    t._report(clock.now)
+    assert learner.labels == [("f1", 540.0, 480.0, 1440.0)]

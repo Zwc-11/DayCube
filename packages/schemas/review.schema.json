@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Review",
+  "description": "vault/<date>/review.json: the end-of-day summary of a review day (04:00 to 04:00 local). Every number comes from code; the words come from a template or a language model whose output passed the validator. Every cited id is a key of evidence.",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema", "date", "zone", "kind", "made", "window", "writer", "facts", "headline", "sentences", "numbers", "categories", "done", "improvements", "tomorrow", "evidence", "gaps", "illustrative"],
+  "properties": {
+    "schema": {"const": "daycube.review/1"},
+    "date": {"type": "string", "format": "date"},
+    "zone": {"type": "string", "minLength": 1},
+    "kind": {"enum": ["draft", "final"], "description": "draft: written before the review day ended (23:00, or on request); final: after it."},
+    "made": {"type": "string", "format": "date-time"},
+    "window": {
+      "type": "object", "additionalProperties": false, "required": ["t0", "t1"],
+      "properties": {"t0": {"type": "string", "format": "date-time"}, "t1": {"type": "string", "format": "date-time"}}
+    },
+    "writer": {
+      "type": "object", "additionalProperties": false, "required": ["name", "attempts", "rejected"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1, "description": "template, or the model that wrote the words."},
+        "attempts": {"type": "integer", "minimum": 0},
+        "rejected": {"type": "array", "items": {"type": "string"}, "description": "Why the validator rejected a model's answer."}
+      }
+    },
+    "facts": {"type": "string", "pattern": "^[0-9a-f]{32}$", "description": "Hash of the facts the review was written from: the same facts are never written twice."},
+    "headline": {"type": "string", "minLength": 1, "maxLength": 120},
+    "sentences": {"type": "array", "description": "At most 8 (the writer and its validator hold to it).", "items": {"$ref": "#/$defs/Cited"}},
+    "numbers": {"type": "array", "items": {
+      "type": "object", "additionalProperties": false, "required": ["key", "label", "display", "value", "evidence"],
+      "properties": {
+        "key": {"type": "string", "minLength": 1}, "label": {"type": "string", "minLength": 1},
+        "display": {"type": "string", "minLength": 1}, "value": {"type": ["number", "null"]},
+        "evidence": {"$ref": "#/$defs/Ids"}
+      }
+    }},
+    "categories": {"type": "array", "items": {
+      "type": "object", "additionalProperties": false, "required": ["name", "seconds", "share", "display", "evidence"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1}, "seconds": {"type": "number", "minimum": 0},
+        "share": {"type": "number", "minimum": 0, "maximum": 1}, "display": {"type": "string"},
+        "evidence": {"$ref": "#/$defs/Ids"}
+      }
+    }},
+    "apps": {"type": "array", "description": "Phone apps by time, from iOS Shortcuts' opened and closed events (share: of the phone time).", "items": {
+      "type": "object", "additionalProperties": false, "required": ["name", "seconds", "share", "display", "evidence"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1}, "seconds": {"type": "number", "minimum": 0},
+        "share": {"type": "number", "minimum": 0, "maximum": 1}, "display": {"type": "string"},
+        "evidence": {"$ref": "#/$defs/Ids"}
+      }
+    }},
+    "plan": {"type": "array", "description": "Blocks planned in the daily note's Plan section or the calendar files, against what the day was.", "items": {
+      "type": "object", "additionalProperties": false, "required": ["text", "status", "from", "to", "source", "evidence"],
+      "properties": {
+        "text": {"type": "string", "minLength": 1}, "status": {"enum": ["done", "partly", "elsewhere", "missed"]},
+        "from": {"type": "string", "format": "date-time"}, "to": {"type": "string", "format": "date-time"},
+        "source": {"enum": ["note", "calendar"]}, "evidence": {"$ref": "#/$defs/Ids"}
+      }
+    }},
+    "done": {"type": "array", "items": {
+      "type": "object", "additionalProperties": false, "required": ["text", "kind", "evidence"],
+      "properties": {"text": {"type": "string", "minLength": 1}, "kind": {"enum": ["project", "commits", "site", "read"]}, "evidence": {"$ref": "#/$defs/Ids"}}
+    }},
+    "improvements": {"type": "array", "description": "At most 3, each tied to a number or a category by its key.", "items": {
+      "type": "object", "additionalProperties": false, "required": ["text", "metric", "evidence"],
+      "properties": {"text": {"type": "string", "minLength": 1}, "metric": {"type": "string", "minLength": 1}, "evidence": {"$ref": "#/$defs/Ids"}}
+    }},
+    "tomorrow": {"type": "array", "items": {
+      "type": "object", "additionalProperties": false, "required": ["text", "kind", "due", "evidence"],
+      "properties": {
+        "text": {"type": "string", "minLength": 1}, "kind": {"enum": ["deadline", "resume", "hours"]},
+        "due": {"type": ["string", "null"], "minLength": 10, "description": "A deadline's date, or date and local time."},
+        "evidence": {"$ref": "#/$defs/Ids"}
+      }
+    }},
+    "evidence": {"type": "object", "additionalProperties": {
+      "type": "object", "additionalProperties": false, "required": ["t", "until", "day", "kind", "text", "fidelity"],
+      "properties": {
+        "t": {"type": ["string", "null"], "format": "date-time"}, "until": {"type": ["string", "null"], "format": "date-time"},
+        "day": {"type": ["string", "null"], "format": "date"},
+        "kind": {"type": "string", "minLength": 1, "description": "timeline (a segment of the day's timeline) or the type of the search unit."},
+        "text": {"type": "string"}, "fidelity": {"enum": ["known", "estimated", "illustrative"]},
+        "records": {"type": "array", "items": {"type": "string", "minLength": 1}, "description": "A segment's first records (capture:app:..., place:...), at most 5."}
+      }
+    }},
+    "gaps": {"type": "array", "items": {"type": "string", "minLength": 1}, "description": "What the review could not see: unrecorded sources, known limits of the day's records."},
+    "illustrative": {"type": "boolean", "description": "Some of the records behind it are synthetic or sample data."}
+  },
+  "$defs": {
+    "Ids": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "Cited": {
+      "type": "object", "additionalProperties": false, "required": ["text", "evidence"],
+      "properties": {"text": {"type": "string", "minLength": 1}, "evidence": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}}
+    }
+  }
+}

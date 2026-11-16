@@ -1,0 +1,4 @@
+# Rust build output, Tauri-generated schemas, and the bundle scripts/bundle-runtimes.py assembles
+src-tauri/target/
+src-tauri/gen/
+build/

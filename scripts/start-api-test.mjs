@@ -1,9 +1,28 @@
 import { spawn, spawnSync } from 'node:child_process';
+import { rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const cwd = fileURLToPath(new URL('../', import.meta.url));
 const env = { ...process.env, DAYCUBE_VAULT_ROOT: '.daycube-e2e-vault' };
-for (const args of [['run', 'daycube', 'init'], ['run', 'daycube', 'seed', '--capture'], ['run', 'daycube', 'index', '--date', '2026-10-20']]) {
+for (const command of ['ffmpeg', 'ffprobe']) {
+  const result = spawnSync(command, ['-version'], { cwd, env, stdio: 'pipe', windowsHide: true, timeout: 10_000 });
+  if (result.error || result.status !== 0) {
+    console.error(`Phone test fixtures require ${command} on PATH. Install FFmpeg before running browser tests.`);
+    process.exit(1);
+  }
+}
+// A fictional afternoon exported from a phone (scripts/build-phone-fixture.py), imported as 2026-10-21.
+const phone = ['12 Example Ave-2026-10-21_18-00-00.zip', 'Example Ave 2.m4a', 'Example Ave 2.json', 'scan'].map(name => `fixtures/phone-day/${name}`);
+rmSync(new URL('../.daycube-e2e-vault/2026-10-21', import.meta.url), { recursive: true, force: true }); // imported fresh each run
+// The scripted capture morning is written fresh too, and with it go its timeline and review and any
+// label corrections a run left behind (apps/viewer/e2e/review.spec.ts relabels and restores).
+for (const made of ['capture/2026-10-22', '2026-10-22', 'label-corrections.json']) {
+  rmSync(new URL(`../.daycube-e2e-vault/${made}`, import.meta.url), { recursive: true, force: true });
+}
+for (const args of [
+  ['run', 'daycube', 'init'], ['run', 'daycube', 'seed', '--capture'], ['run', 'daycube', 'index', '--date', '2026-10-20'],
+  ['run', 'daycube', 'import-phone', ...phone, '--no-transcribe'], ['run', 'daycube', 'index', '--date', '2026-10-21'],
+]) {
   const result = spawnSync('uv', args, { cwd, env, stdio: 'inherit', windowsHide: true });
   if (result.status !== 0) process.exit(result.status ?? 1);
 }

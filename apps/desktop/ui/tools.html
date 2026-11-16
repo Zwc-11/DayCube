@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>DayCube tools</title>
+  <link rel="stylesheet" href="shell.css">
+  <script src="shell.js" defer></script>
+  <script src="tools.js" defer></script>
+</head>
+<body>
+<main>
+  <h1><img src="cube.svg" alt=""> DayCube <span class="muted" id="version"></span></h1>
+
+  <section>
+    <h2>Capture</h2>
+    <div class="row">
+      <span class="grow" id="receiver">…</span>
+      <label class="switch"><input type="checkbox" id="capture"> Run capture</label>
+      <label class="switch"><input type="checkbox" id="autostart"> Start at sign-in</label>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button class="primary" id="doctor">Run doctor</button>
+      <button id="calibrate">Calibrate eye tracker</button>
+      <button id="open">Open DayCube</button>
+    </div>
+    <pre id="doctor-out"></pre>
+  </section>
+
+  <section>
+    <h2>GPU packs</h2>
+    <div class="row" data-pack="speech">
+      <span class="grow"><b>Speech</b> <span class="muted">transcripts, speakers, emotion · about 4 GB</span></span>
+      <span class="state"></span><button>Install</button>
+    </div>
+    <div class="row" data-pack="recon" style="margin-top:10px">
+      <span class="grow"><b>3D memories</b> <span class="muted">photos to walk-in scenes · about 4 GB</span></span>
+      <span class="state"></span><button>Install</button>
+    </div>
+    <pre id="pack-out"></pre>
+  </section>
+
+  <section>
+    <h2>Opera extension</h2>
+    <p class="muted">opera://extensions → Developer mode → Load unpacked → this folder.</p>
+    <div class="row"><span class="grow path" id="extension"></span><button id="extension-open">Open folder</button></div>
+  </section>
+
+  <section>
+    <h2>Vault</h2>
+    <div class="row"><span class="grow path" id="vault"></span><button id="vault-open">Open</button><button id="logs-open">Logs</button></div>
+  </section>
+
+</main>
+</body>
+</html>

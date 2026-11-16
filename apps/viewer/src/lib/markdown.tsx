@@ -184,6 +184,21 @@ function parseList(lines: string[], from: number): [Block, number] {
 
 /* -------------------------------------------------------------------------- */
 
+/** The note without the section DayCube writes under `heading` (level 2) in its generated region:
+ *  for a part of the note the page shows another way (a daily note's Summary, shown as a card). */
+export function withoutSection(blocks: Block[], heading: string): Block[] {
+  return blocks.map((block) => {
+    if (block.type !== 'generated') return block;
+    const kept: Block[] = [];
+    let skipping = false;
+    for (const inner of block.blocks) {
+      if (inner.type === 'heading' && inner.level <= 2) skipping = inner.level === 2 && inner.text === heading;
+      if (!skipping) kept.push(inner);
+    }
+    return { ...block, blocks: kept };
+  });
+}
+
 /** The words of a line of Markdown as they read: link targets, marks and syntax removed. */
 export function plain(text: string): string {
   return text

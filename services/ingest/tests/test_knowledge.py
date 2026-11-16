@@ -91,3 +91,38 @@ def test_search_as_you_type_points_each_result_at_its_note(vault: Vault) -> None
         assert everywhere["evidence"][0]["type"] == "web.search"
         assert everywhere["evidence"][0]["note"] == "Daily/2026-10-22.md"  # a search has no page note
         assert client.get("/search", params={"q": ""}).status_code == 422
+
+
+def test_the_vault_graph_has_every_note_and_link_and_writes_days_not_yet_written(vault: Vault) -> None:
+    capture_session(vault)
+    own = vault.root / "notes" / "Ideas" / "Plan.md"
+    own.parent.mkdir(parents=True)
+    own.write_text("See [[Daily/2026-10-22]], [[2026-10-22]] again, [[Not yet]], [[not yet.md]] and [[Plan]].\n")
+    with client_for(vault) as client:
+        first = client.get("/notes/graph")  # no day opened yet: both days get their daily notes
+        assert first.status_code == 200
+        graph = first.json()
+        paths = [n["path"] for n in graph["notes"]]
+        assert paths == sorted(paths)
+        kinds = {n["path"]: n["kind"] for n in graph["notes"]}
+        assert kinds["Daily/2026-10-22.md"] == "daily" and kinds[f"Daily/{DAY}.md"] == "daily"
+        assert kinds["Courses/CS 136.md"] == "course" and kinds["Sources/Hash table - Wikipedia.md"] == "source"
+        assert kinds["Ideas/Plan.md"] == "note"
+        assert graph["missing"] == ["Not yet"]  # one node however it is spelled
+        edges = {(paths[a] if a < len(paths) else graph["missing"][a - len(paths)], paths[b] if b < len(paths)
+                  else graph["missing"][b - len(paths)]): n for a, b, n in graph["edges"]}  # fmt: skip
+        assert edges[("Ideas/Plan.md", "Daily/2026-10-22.md")] == 2  # a path and a bare name, one note
+        assert edges[("Ideas/Plan.md", "Not yet")] == 2
+        assert ("Ideas/Plan.md", "Ideas/Plan.md") not in edges  # a note linking to itself
+        assert edges[("Daily/2026-10-22.md", "Sources/Hash table - Wikipedia.md")] >= 1
+        assert edges[("Daily/2026-10-22.md", "Courses/CS 136.md")] >= 1
+        assert all(a != b and n >= 1 for a, b, n in graph["edges"])
+
+        etag = first.headers["ETag"]
+        assert client.get("/notes/graph", headers={"If-None-Match": etag}).status_code == 304
+        (vault.root / "notes" / "Later.md").write_text("Back to [[Ideas/Plan]].\n")
+        changed = client.get("/notes/graph", headers={"If-None-Match": etag})
+        assert changed.status_code == 200 and changed.headers["ETag"] != etag
+        later = changed.json()
+        at = [n["path"] for n in later["notes"]]
+        assert [at[a] for a, b, _ in later["edges"] if b == at.index("Ideas/Plan.md")] == ["Later.md"]
