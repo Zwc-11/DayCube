@@ -229,14 +229,14 @@ def _segment_names(segment: Record) -> set[str]:
     return names
 
 
-def _units(store: LifeStore, start: datetime, stop: datetime) -> list[Record]:
-    """The day's search units of the kinds a review counts, from the vault database, after
-    bringing the calendar days the review day spans up to date."""
+def units_in(store: LifeStore, start: datetime, stop: datetime, types: tuple[str, ...] = UNIT_TYPES) -> list[Record]:
+    """The search units of ``types`` (default: the kinds a review counts) from ``start`` to
+    ``stop``, from the vault database, after bringing the calendar days they span up to date."""
     days = sorted({start.date().isoformat(), (stop - timedelta(seconds=1)).date().isoformat()})
     known = [d for d in days if store.knows(d)]
     if known:
         store.ensure(known)
-    return store.window_units(start.timestamp(), stop.timestamp(), UNIT_TYPES) if known else []
+    return store.window_units(start.timestamp(), stop.timestamp(), types) if known else []
 
 
 def collect(vault: Vault, store: LifeStore, built: Built) -> Facts:
@@ -355,7 +355,7 @@ def collect(vault: Vault, store: LifeStore, built: Built) -> Facts:
     projects = shares("project")
 
     # Units: reading, searching, copying, conversations; the most attended first for citing.
-    units = _units(store, start, stop)
+    units = units_in(store, start, stop)
     by_type: dict[str, list[Record]] = defaultdict(list)
     for unit in units:
         by_type[unit["type"]].append(unit)

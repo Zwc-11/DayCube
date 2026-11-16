@@ -189,3 +189,59 @@ def test_an_hour_of_sound_from_the_phone_becomes_talk_moments_queued_for_speech(
             assert [j["status"] for j in speech] == ["queued"]
     finally:
         jobs.close()
+
+
+@needs_ffmpeg
+def test_a_recorders_long_file_is_sound_of_the_day_and_a_short_one_a_memo(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A pocket recorder stamps nothing in the file: the start is in its name, read as local time."""
+    from ingest.phone import voice
+
+    def tone(name: str, seconds: int) -> Path:
+        path = tmp_path / name
+        subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", f"sine=f=440:d={seconds}", "-ac", "1",
+                        "-ar", "8000", str(path)], check=True)  # fmt: skip
+        return path
+
+    vault = Vault(tmp_path / "vault")
+    vault.initialize()
+    monkeypatch.setattr("ingest.phone.importer.vault_timezone", lambda v: "America/Toronto")
+    monkeypatch.setattr(voice, "LONG_S", 60.0)  # a minute stands in for half an hour
+    files = [tone("261024_1500.wav", 90), tone("2026-10-24 16-30-05.wav", 20), tone("REC001.wav", 20)]
+    result = import_phone(vault, files, transcribe=False, say=lambda _: None)
+    assert [s["reason"] for s in result["skipped"]] == [
+        "REC001.wav: no creation time in the file and no time in its name; give the start time"
+    ]
+    kept = read_json(vault.root / "sources" / "audio" / "index.json")
+    assert list(kept) == ["sources/audio/recorder/20261024T190000Z.wav"]  # 15:00 in Toronto
+    assert [(h["audio"], h["duration_s"], bool(h["job"])) for h in result["hours"]] == [(list(kept)[0], 90.0, True)]
+    memo = vault.root / "2026-10-24" / "moments" / "mo_voice_20261024_203005"
+    assert read_json(memo / "meta.json")["t0"] == "2026-10-24T16:30:05-04:00"
+    assert read_json(memo / "scene.json")["stamped"] == "the time in the file's name, taken as the start"
+    assert not list((vault.root / "2026-10-24" / "moments").glob("mo_voice_20261024_19*"))  # the long one is no memo
+    # What the conversations job then finds in it lands in the day, at the recorder's own time.
+    from ingest.phone.importer import add_talks
+
+    found = {"audio": list(kept)[0], "t0": "2026-10-24T19:00:00+00:00", "duration_s": 90.0}
+    assert add_talks(vault, found, [[10.0, 40.0]], say=lambda _: None) == ["mo_talk_20261024_150010"]
+    talk = vault.root / "2026-10-24" / "moments" / "mo_talk_20261024_150010"
+    meta = read_json(talk / "meta.json")
+    assert meta["t0"] == "2026-10-24T15:00:10-04:00" and meta["duration_s"] == pytest.approx(30.0)
+    assert (talk / read_json(talk / "scene.json")["audio"]).stat().st_size > 0
+
+
+def test_a_start_time_is_read_from_the_names_recorders_give_their_files() -> None:
+    from zoneinfo import ZoneInfo
+
+    from ingest.phone.voice import named_start
+
+    zone = ZoneInfo("America/Toronto")
+    read = {name: named_start(Path(name), zone) for name in (
+        "261115_1432.mp3", "2026-11-15 14-32-10.wav", "20261115_143210.m4a", "REC_20261115T143210.wav",
+        "meeting 2026-11-15.m4a", "ZOOM0001.WAV", "269915_1432.mp3",
+    )}  # fmt: skip
+    assert [t and t.isoformat() for t in read.values()] == [
+        "2026-11-15T14:32:00-05:00", "2026-11-15T14:32:10-05:00", "2026-11-15T14:32:10-05:00",
+        "2026-11-15T14:32:10-05:00", None, None, None,
+    ]  # fmt: skip

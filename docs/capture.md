@@ -502,15 +502,19 @@ the span held goes from the vault (`ingest/forget.py`):
 | `capture/<date>/` | Every record timed in the span, in every log, plain or compacted |
 | The day's folder | Its events, GPS fixes, screen text and shots in the span; each recording that overlaps it, whole (audio, video, transcript, and its 3D and speech outputs); a place visit that starts or ends in it is cut at its edge, one inside it goes, one around it keeps its times |
 | `sources/` | The phone's sensor rows in the span; a kept hour of sound loses the span (FFmpeg cuts it out) |
-| `inbox/phone/imported/` | Sensor rows in the span, in folders and zips; a memo that overlaps it, whole |
+| `inbox/phone/imported/` | Sensor rows in the span, in folders and zips; a memo or an hour of sound that overlaps it, whole |
 | Memories | A photo taken in the span, or a frame of a recording that went, with its 3D scene and films ([memories](memories.md)) |
-| Derived | The search database is rewritten (keyword index optimized, `VACUUM`, write-ahead log emptied), the notes it touched and the day's note are written again or removed, and the timelines, reviews and week of the review days it falls in |
+| Items | A set made from a scan that went, or from a recording that overlaps the span, whole; a set that says neither goes with any deletion on its day ([items](items.md)) |
+| Derived | The search database is rewritten (keyword index optimized, `VACUUM`, write-ahead log emptied), the notes it touched and the day's note are written again or removed, and the timelines, reviews, week and [episodes](recall.md) of the review days it falls in; kept recall questions about those days go |
 
 The span is written to `deletions.jsonl` first, with when, the reason given and what went. From
 then on the vault drops any record written into it, so the receiver still holding a page open,
 the extension resending, Opera's history or an import of the same recording cannot bring it back.
 A backup made before is not reached. `tests/test_forget.py` checks that a phrase from the span is
 in no byte of the vault afterwards.
+
+The timeline says nothing of a deleted span: what was in front before it ends where the span
+starts, what follows starts where it ends, and nothing is joined across it.
 
 ## How gaze is placed on a page
 

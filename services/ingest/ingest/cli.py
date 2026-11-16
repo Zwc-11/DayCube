@@ -131,6 +131,23 @@ def review(args: argparse.Namespace, vault: Vault, settings: Settings) -> Any:
     return review_command(vault, settings, args.date, check=args.check)
 
 
+def recall(args: argparse.Namespace, vault: Vault, settings: Settings) -> Any:
+    from .recall import episodes, history, today
+    from .review import timeline as day_timeline
+
+    zone = settings.timezone
+    now = datetime.now(ZoneInfo(zone))
+    store = LifeStore(vault, zone=zone)
+    if args.date:
+        if day_timeline.read(vault, args.date) is None and day_timeline.has_inputs(vault, args.date):
+            day_timeline.write(vault, args.date, zone)
+        found = episodes.write(vault, store, args.date, zone)
+        return {"date": args.date, "episodes": history.with_strength(vault, found, now)}
+    day = day_timeline.review_day(now, ZoneInfo(zone))
+    return {"written": today.night(vault, store, zone, now), **today.questions(vault, day, now),
+            "cards": today.cards(vault, day, now), "status": history.status(vault)}  # fmt: skip
+
+
 def import_phone(args: argparse.Namespace, vault: Vault, settings: Settings) -> Any:
     options = {"transcribe": not args.no_transcribe, "audio_ends_at_creation": not args.audio_stamped_at_start}
     if args.inbox:
@@ -249,6 +266,9 @@ def build_parser() -> argparse.ArgumentParser:
     command.add_argument(
         "--check", action="store_true", help="Also check the words against the day's facts, and time it"
     )
+    add(
+        "recall", recall, "Write a day's episodes, or run the nightly round and print today's questions and cue cards"
+    ).add_argument("--date", help="The review day whose episodes to write (vault/<date>/episodes.json) and print")
     add("graph", graph, "The most mentioned entities and their links, as JSON")
     add("data", data, "The data center: every source stream and the database, with sizes")
 

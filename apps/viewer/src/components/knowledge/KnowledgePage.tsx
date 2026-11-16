@@ -1,5 +1,5 @@
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, CalendarDays, Database, Eye, Maximize2, Minus, PanelLeft, Plus, RotateCw, Search, X } from 'lucide-react';
+import { Activity, Box, CalendarDays, Database, Eye, History, Maximize2, Minus, PanelLeft, Plus, RotateCw, Search, X } from 'lucide-react';
 import type { SearchEvidence, SearchResult } from '@daycube/schemas';
 import { backendBridge } from '../../lib/backendBridge';
 import type { DaySummary } from '../../lib/days';
@@ -35,6 +35,8 @@ interface KnowledgePageProps {
   onOpenTraining: () => void;
   /** What was on screen through a day (components/seen/SeenPage.tsx). */
   onOpenSeen: (date: string) => void;
+  onOpenRecall: () => void;
+  onOpenItems: () => void;
   /** The DayCube logo: back to a day's page. */
   onOpenDayPage?: () => void;
 }
@@ -108,7 +110,7 @@ const wide = () => typeof window !== 'undefined' && window.innerWidth >= WIDE;
  * it. Opening a note anywhere (the graph, the list, a link, a result) shows it on the right and
  * brings it into view on the graph.
  */
-const KnowledgePage: React.FC<KnowledgePageProps> = ({ note, date, days, onOpenNote, onOpenDate, onOpenDays, onOpenDayPage, onOpenTraining, onOpenSeen }) => {
+const KnowledgePage: React.FC<KnowledgePageProps> = ({ note, date, days, onOpenNote, onOpenDate, onOpenDays, onOpenDayPage, onOpenTraining, onOpenSeen, onOpenRecall, onOpenItems }) => {
   const [model, setModel] = useState<GraphModel | null>(null);
   // What I saw opens on the day whose note is open, else the newest day with computer capture.
   const seenDay = date ?? [...(days ?? [])].reverse().find((d) => d.capture)?.date ?? null;
@@ -435,6 +437,12 @@ const KnowledgePage: React.FC<KnowledgePageProps> = ({ note, date, days, onOpenN
             <Eye size={15} />
           </button>
         )}
+        <button type="button" className="icon-btn" aria-label="Recall" title="Recall" onClick={onOpenRecall}>
+          <History size={15} />
+        </button>
+        <button type="button" className="icon-btn" aria-label="Items" title="Items" onClick={onOpenItems}>
+          <Box size={15} />
+        </button>
         <button type="button" className="icon-btn" aria-label="Training" title="Training" onClick={onOpenTraining}>
           <Activity size={15} />
         </button>

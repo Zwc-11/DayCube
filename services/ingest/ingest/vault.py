@@ -397,8 +397,10 @@ class Vault:
         )
         return self._replace(path, text + "\n")
 
-    def write_lines(self, path: Path, values: list[Record]) -> tuple[FileStamp, int]:
-        values = self.unforgotten(values)
+    def write_lines(self, path: Path, values: list[Record], *, made: bool = False) -> tuple[FileStamp, int]:
+        """``made``: lines made from records a deleted span has already left (a timeline), so one
+        that ends where a deleted span starts stays."""
+        values = values if made else self.unforgotten(values)
         return self._replace(path, "".join(json.dumps(v, ensure_ascii=False) + "\n" for v in values))
 
     def append_lines(self, path: Path, values: list[Record]) -> tuple[FileStamp, int]:

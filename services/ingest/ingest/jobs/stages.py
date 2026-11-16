@@ -115,6 +115,62 @@ register(Stage("splat_train", 1, "gpu", _splat_train, ready=_training_allowed, a
                install="uv run daycube splat --date <day>, which installs Brush (docs/splat.md)"))  # fmt: skip
 
 
+# ---- items (ingest/items) ---------------------------------------------------------------------
+
+ITEMS_TIMEOUT_S = 3600.0
+
+
+def items_set(moment: str) -> str:
+    """The id of the items set made from a scan: the same for the same scan, so making it again
+    replaces it."""
+    import hashlib
+
+    return "it_" + hashlib.blake2b(moment.encode(), digest_size=6).hexdigest()
+
+
+def _recon_python() -> Path | None:
+    from ..config import environment_python
+
+    return environment_python("recon", windowless=False)
+
+
+def _scan_items(vault: Vault, inputs: dict, say: Say) -> dict:
+    """The things in a scan, each placed in 3D (docs/items.md). The models need PyTorch, so they
+    run as a child process in the 3D environment, their output in ``vault/logs/items.log``."""
+    import os
+    import subprocess
+
+    from ..config import PROJECT_ROOT
+    from ..splat.run import find_capture
+
+    moment = vault.day_path(inputs["date"]) / "moments" / inputs["moment"]
+    capture = find_capture(vault, moment)
+    if capture is None:
+        raise Permanent(f"{inputs['moment']}: the capture's depth folder is not in the vault")
+    out = vault.root / inputs["date"] / "items" / items_set(inputs["moment"])
+    command = [str(_recon_python()), "-m", "ingest.items.run", "scan", str(capture), "--out", str(out)]
+    logs = vault.root / "logs"
+    logs.mkdir(parents=True, exist_ok=True)
+    env = os.environ | {"PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"}
+    with open(logs / "items.log", "a", encoding="utf-8") as log:
+        log.write(f"\n{inputs['date']} {inputs['moment']}: {' '.join(command[1:])}\n")
+        log.flush()
+        done = subprocess.run(command, cwd=PROJECT_ROOT, env=env, stdin=subprocess.DEVNULL, stdout=log,
+                              stderr=subprocess.STDOUT, timeout=ITEMS_TIMEOUT_S,
+                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))  # fmt: skip
+    if done.returncode != 0 or not (out / "items.json").is_file():
+        raise RuntimeError(f"finding the items stopped with {done.returncode} (vault/logs/items.log)")
+    record = read_json(out / "items.json")
+    record["source"] = {**record.get("source", {}), "moment": inputs["moment"]}  # so it goes when the scan does
+    vault.write_json(out / "items.json", record)
+    say(f"{len(record['items'])} items in {inputs['moment']}")
+    return {"set": out.name, "items": len(record["items"])}
+
+
+register(Stage("scan_items", 1, "gpu", _scan_items, ready=lambda: _recon_python() is not None, attempts=2,
+               title="items", install="uv sync --project services/recon, or the 3D pack in the app (docs/items.md)"))  # fmt: skip
+
+
 # ---- speech (services/speech: its own environment, leasing over HTTP) --------------------------
 
 
@@ -175,9 +231,9 @@ def scan_inputs(vault_root: Path) -> list[tuple[dict, dict]]:
 
 
 def discover(vault: Vault, jobs: Jobs) -> list[int]:
-    """Queue what the vault still needs: for a scan with its depth, its mesh, its preview and then
-    its training; for a recording of sound, its speech. Ids of the jobs that are new; a stage already run on
-    an input (done or failed) is not queued again."""
+    """Queue what the vault still needs: for a scan with its depth, its mesh, its items, its
+    preview and then its training; for a recording of sound, its speech. Ids of the jobs that are
+    new; a stage already run on an input (done or failed) is not queued again."""
     from ..splat.run import find_capture
 
     new = []
@@ -186,6 +242,10 @@ def discover(vault: Vault, jobs: Jobs) -> list[int]:
         has_capture = find_capture(vault, moment) is not None
         if has_capture and not (read_json(moment / "scene.json") or {}).get("mesh"):
             job_id, created = enqueue(jobs, "scan_mesh", inputs)
+            if created:
+                new.append(job_id)
+        if has_capture and not (vault.root / inputs["date"] / "items" / items_set(inputs["moment"])).is_dir():
+            job_id, created = enqueue(jobs, "scan_items", inputs)
             if created:
                 new.append(job_id)
         if not splat:

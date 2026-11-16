@@ -20,14 +20,17 @@ each (8,050 indexed units). Linux x86-64 container, one warm-up then five runs, 
 
 | Operation | Time |
 | --- | ---: |
-| Full index rebuild, new `Vault` (parse, validate, collect, write) | 239 ms |
-| Full index rebuild, warm snapshot | 79 ms |
-| Assemble the viewer's day | 35 ms |
-| Collect index evidence | 18 ms |
-| Events overlapping a 15-minute window | 0.17 ms |
-| `/day` payload, first request after a change | 191 ms |
-| `/day` payload, unchanged day | 0.63 ms |
-| Warm retrieval | 0.59 ms |
+| Full index rebuild, new `Vault` (parse, validate, collect, write) | 277 ms |
+| Full index rebuild, warm snapshot | 119 ms |
+| Assemble the viewer's day | 12 ms |
+| Collect index evidence | 8.0 ms |
+| Events overlapping a 15-minute window | 0.16 ms |
+| `/day` payload, first request after a change | 164 ms |
+| `/day` payload, unchanged day | 0.46 ms |
+| Warm retrieval | 1.2 ms |
+
+The table is the `large` case of [core-storage.json](../eval/results/core-storage.json), recorded
+on 2026-11-15 on two cores.
 
 Through FastAPI's test client (about 2.5 ms of each figure is the client itself):
 `GET /day/{date}` 2.7 ms, `GET /day/{date}/events` over 30 minutes 3.7 ms, `POST /ask` 4.0 ms.

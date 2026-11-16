@@ -135,6 +135,22 @@ def test_alike_things_apart_and_unlike_things_together_stay_separate() -> None:
     assert sorted(len(i.observations) for i in again) == [1, 1, 2]
 
 
+def test_two_alike_things_in_one_frame_are_two_items_however_near() -> None:
+    """A row of bottles: each frame sees both, 20 cm apart and looking the same. Near and alike
+    would join them; being seen together keeps them apart, each with its own sightings."""
+    look = vector(7)
+    seen = []
+    for frame in range(6):
+        for x in (0.0, 0.2):
+            where = np.array([x, 0.0, -1.5]) + np.random.default_rng(frame).normal(0, 0.01, 3)
+            seen.append(
+                Observation(frame, float(frame), (0, 0, 10, 10), "bottle", 1.0, where, (0.08, 0.25), 1.5, "lidar", look)
+            )
+    items = merge(seen)
+    assert sorted(len(i.observations) for i in items) == [6, 6]
+    assert sorted(round(float(i.position[0]), 1) for i in items) == [0.0, 0.2]
+
+
 @pytest.mark.parametrize("turn", [0, 90, 180, 270])
 def test_a_box_found_in_the_upright_picture_goes_back_to_the_stored_frame(turn: int) -> None:
     stored = np.zeros((48, 64, 3), np.uint8)
@@ -143,6 +159,22 @@ def test_a_box_found_in_the_upright_picture_goes_back_to_the_stored_frame(turn: 
     ys, xs = np.nonzero(up[:, :, 0])
     box = (xs.min(), ys.min(), xs.max() + 1, ys.max() + 1)
     assert sources.box_back(box, turn, 64, 48) == (30, 10, 50, 20)
+
+
+@needs_ffmpeg
+def test_a_set_keeps_when_its_recording_was_made(tmp_path: Path) -> None:
+    import subprocess
+
+    def video(name: str, *stamp: str) -> Path:
+        path = tmp_path / name
+        subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-f", "lavfi", "-i", "testsrc=size=64x48:rate=5:duration=2",
+                        "-pix_fmt", "yuv420p", *stamp, str(path)], check=True)  # fmt: skip
+        return path
+
+    stamped = video("rgb.mp4", "-metadata", "creation_time=2026-10-24T19:00:00.000000Z")
+    assert sources.recorded(stamped) == {"t0": "2026-10-24T19:00:00.000000+00:00", "duration_s": 2.0}
+    assert sources.recorded(video("plain.mp4")) is None  # the file does not say
+    assert sources.recorded(tmp_path / "missing.mp4") is None
 
 
 @needs_ffmpeg
@@ -211,3 +243,53 @@ def test_the_api_lists_serves_and_finds_items_by_name(client: TestClient, vault:
     for bad in ("/items/2026-10-24/it_zzz", "/items/2026-10-24/it_0123456789ab/crops/..%2Fitems.json",
                 "/items/2026-10-24/it_0123456789ab/crops/i9999.jpg", "/items/2026-13-40/it_0123456789ab"):  # fmt: skip
         assert client.get(bad).status_code == 404
+
+
+def test_a_scans_items_are_made_by_a_job_in_the_3d_environment(
+    vault: Vault, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The stage's own part: where the capture is, the child process it starts, the set it names
+    and marks with its scan. The models are the child's business (docs/items.md)."""
+    import subprocess
+
+    from ingest.jobs import stages
+
+    day, moment = "2026-10-24", "mo_scan_20261024_190000"
+    folder = vault.root / day / "moments" / moment
+    (folder / "capture" / "depth").mkdir(parents=True)
+    (folder / "capture" / "odometry.csv").write_text("timestamp,frame\n")
+    (folder / "scene.json").write_text(json.dumps({"kind": "camera-path"}))
+    (vault.root / day / "day.json").write_text("{}")  # the day exists; nothing here reads it
+    stage = stages.STAGES["scan_items"]
+    monkeypatch.delenv("DAYCUBE_RECON_PYTHON", raising=False)
+    monkeypatch.setattr(stages, "_recon_python", lambda: None)
+    assert not stage.ready() and stage.needs == "gpu"
+    python = tmp_path / "python"
+    python.write_text("")
+    monkeypatch.setattr(stages, "_recon_python", lambda: python)
+    assert stage.ready()
+    ran = []
+
+    def child(command: list[str], **options: object) -> subprocess.CompletedProcess:
+        ran.append(command)
+        out = Path(command[command.index("--out") + 1])
+        out.mkdir(parents=True)
+        record = {"id": out.name, "source": {"kind": "scan", "file": "capture"}, "items": [{"id": "i0001"}]}
+        (out / "items.json").write_text(json.dumps(record))
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(subprocess, "run", child)
+    inputs = {"date": day, "moment": moment}
+    made = stage.run(vault, inputs, lambda _: None)
+    name = stages.items_set(moment)
+    assert made == {"set": name, "items": 1} and store.SET.fullmatch(name) and stages.items_set(moment) == name
+    assert ran[0][1:5] == ["-m", "ingest.items.run", "scan", str(folder / "capture")]
+    kept = json.loads((vault.root / day / "items" / name / "items.json").read_text())
+    assert kept["source"] == {"kind": "scan", "file": "capture", "moment": moment}
+    assert moment in (vault.root / "logs" / "items.log").read_text()
+    monkeypatch.setattr(subprocess, "run", lambda command, **options: subprocess.CompletedProcess(command, 1))
+    with pytest.raises(RuntimeError, match="items.log"):
+        stage.run(vault, inputs, lambda _: None)
+    (folder / "capture" / "odometry.csv").unlink()
+    with pytest.raises(stages.Permanent, match="depth folder"):
+        stage.run(vault, inputs, lambda _: None)

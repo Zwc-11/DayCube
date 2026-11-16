@@ -18,6 +18,10 @@ whenever that day's facts change (a phone import, a relabel). In its first round
 final of each of the last ``CATCH_UP_DAYS`` days that has records and no final (the computer was
 off at 04:00). Not at shutdown: Windows gives a program a few seconds. The same facts are never
 written twice, so a model is asked once per day and change, not once per round.
+
+And the episodes (``vault/<date>/episodes.json``, ``ingest/recall``): once a review day, in the
+first round after 04:00, the episodes of the days just finished are written and the forgetting
+curve is fitted again to the answers given so far.
 """
 
 from __future__ import annotations
@@ -57,13 +61,15 @@ class Librarian(threading.Thread):
         self.timelines: dict[str, tuple[dict, bool]] = {}
         self.report: dict[str, dict] = {}  # review day -> its timeline's last report
         self.caught_up = False
+        self.recalled: str | None = None  # the review day whose nightly round has run
 
     def run(self) -> None:
         if self.stopping.wait(FIRST_S):
             return
         while True:
             steps = ((self.step, "notes"), (self.step_timeline, "timeline"), (self.step_review, "review"),
-                     (self.step_week, "week"), (self.step_push, "morning push"))  # fmt: skip
+                     (self.step_recall, "episodes"), (self.step_week, "week"),
+                     (self.step_push, "morning push"))  # fmt: skip
             for step, what in steps:
                 try:
                     step()
@@ -175,6 +181,25 @@ class Librarian(threading.Thread):
             if store.knows(day):
                 with contextlib.suppress(FileNotFoundError):  # a day with records only after midnight
                     Notes(store).write_day(day)  # its Summary section
+        return written
+
+    def step_recall(self, now: datetime | None = None) -> list[str]:
+        """Once a review day (ingest/recall/today.py ``night``): the episodes of the days just
+        finished and the curve's weights; returns the days whose episodes changed."""
+        from ingest.recall import today
+        from ingest.review import review_day
+        from ingest.store import LifeStore
+        from ingest.vault import Vault
+
+        now = now or datetime.now(ZoneInfo(self.zone))
+        current = review_day(now, ZoneInfo(self.zone))
+        if self.recalled == current:
+            return []
+        vault = Vault(self.vault_root)
+        written = today.night(vault, LifeStore(vault, zone=self.zone), self.zone, now)
+        self.recalled = current
+        if written:
+            log.info("episodes written for %s", ", ".join(written))
         return written
 
     def step_week(self, now: datetime | None = None) -> str | None:

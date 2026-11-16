@@ -59,7 +59,9 @@ records in `test_screen.py`.
 4. **Phone.** Places and walks take over away time they overlap and fill time the computer did not
    record. Time at the desk stays at the desk.
 5. **Talk.** A moment with a transcript is listed on the segment it overlaps most.
-6. **Segments.** Pieces with the same where, category and project merge across gaps up to 60 s.
+6. **Deleted spans.** A [deleted span](capture.md#deleting-a-span) is cut out of whatever crosses
+   it, and nothing merges across it.
+7. **Segments.** Pieces with the same where, category and project merge across gaps up to 60 s.
    Something else in front for under 20 s beside desk time is a switch: counted on the segment it
    interrupted. `doing` is what was in front longest.
 

@@ -40,9 +40,14 @@ too. `npm run build && npm run media` makes them again.
   mouse use with no key identities ([capture](docs/capture.md)). The eye tracker keeps learning
   from your clicks, and shows whether that helps. Any span can be deleted, from the vault and
   everything made from it ([deleting a span](docs/capture.md#deleting-a-span)).
-- **Phone.** Sensor Logger (visits, walks, floors), voice memos and Stray Scanner LiDAR captures,
-  dropped into the vault's inbox ([phone](docs/phone.md)). Speech becomes transcripts with who
+- **Phone.** Sensor Logger (visits, walks, floors), voice memos, a recorder's files and Stray
+  Scanner LiDAR captures, dropped into the vault's inbox ([phone](docs/phone.md)). Speech becomes transcripts with who
   spoke and how, in English and Mandarin, on the GPU ([speech](docs/speech.md)).
+- **Recall.** Each stretch of a day gets a strength that fades as memory does, starts higher when
+  it held attention or mattered, and grows when recalled. Three questions each morning and a few
+  cue cards bring back what is fading, each leading back to where and when it happened; your
+  answers fit the curve to you ([recall](docs/recall.md)).
+  How you felt is what you report, kept beside what was recorded ([feeling](docs/feeling.md)).
 - **Memories.** One photo becomes a small 3D scene you can step into ([memories](docs/memories.md)).
   Each also plays as a film: the photo opens into its points, its subject floats, the scanned
   place grows around it, and the points stream back into the photo with its date and caption,
@@ -54,8 +59,9 @@ too. `npm run build && npm run media` makes them again.
 - **Your memory for AI agents.** `daycube mcp` lets Claude, Cursor and other MCP clients search
   your days, read a day's review, timeline and notes, read-only and on your computer; a policy
   file says what they may see ([mcp](docs/mcp.md)).
-- **Items.** The things in a scan or a video are found, named and placed in 3D, so you can ask
-  where something was and when you last saw it ([items](docs/items.md)).
+- **Items.** The things in a scan or a video are found, named and placed in 3D, shown where they
+  were and found by name, so you can ask where something was and when you last saw it
+  ([items](docs/items.md)).
 - **Training.** Models trained on this PC, each metric charted against the step
   ([training](docs/training.md)).
 

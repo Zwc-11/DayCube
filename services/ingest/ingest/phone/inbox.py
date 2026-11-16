@@ -1,7 +1,7 @@
 """A folder to drop phone exports into: ``vault/inbox/phone``.
 
-Whatever lands there (Sensor Logger zips, voice memos, Stray Scanner folders or their files,
-transcripts) is imported together once nothing in it has changed for ``SETTLE_S`` (a copy or a
+Whatever lands there (Sensor Logger zips, voice memos, a recorder's files, Stray Scanner folders
+or their files, transcripts) is imported together once nothing in it has changed for ``SETTLE_S`` (a copy or a
 sync still in progress is left alone), then moved to ``imported/<when>/``. A failed import is
 logged in ``errors.jsonl`` and its files are not tried again until one of them changes, so a bad
 file cannot make the receiver retry it every minute. The capture receiver looks every minute
@@ -29,7 +29,7 @@ def folder(vault: Vault) -> Path:
     readme = path / "README.txt"
     if not readme.exists():
         readme.write_text(
-            "Drop phone exports here: Sensor Logger zips, voice memos, Stray Scanner captures.\n"
+            "Drop recordings here: Sensor Logger zips, voice memos, a recorder's files, Stray Scanner captures.\n"
             "DAYCUBE imports them into the day they were recorded and moves them to imported/.\n",
             encoding="utf-8",
         )

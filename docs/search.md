@@ -22,6 +22,7 @@ deleting it costs nothing but the time to rebuild.
 | `days` | One row per indexed day: time zone, the source stamp it was built from, unit count, embedding model, units still without a vector, and `generation`, a vault-wide write counter that tells in-memory search blocks to reload |
 | `units` | Events, transcript segments, on-screen text runs and visits, with `ts` (epoch seconds, since ISO strings with offsets do not sort across DST) and `text_hash` (blake2b-128) |
 | `units_fts` | FTS5 over `units.text` (external content) |
+| `units_cjk`, `note_chunks_cjk` | FTS5 over the same text with each Chinese, Japanese or Korean character as its own token (contentless; needs SQLite 3.43), because the default tokenizer keeps a run of them as one word and finds no phrase inside a sentence (`ingest/store/cjk.py`) |
 | `vectors` | Per embedded unit: the int8 embedding (384 bytes) and its sign bits (48 bytes) |
 | `meta` | Embedding model and dimension, the write counter, and the version of what is derived. A model change replaces every vector; a change in what is derived (`DERIVED_VERSION`: units, graph, note links) reads every day and note again on the next use, keeping vectors, which are found again by text |
 | `entities` | The knowledge graph's nodes: kind (site, page, query, course, deadline, place, person, topic, note, day), a canonical key, a display name. Shared by every day |
@@ -145,7 +146,11 @@ are searched only by questions without filters, since they have no time, kind or
 ## Retrieval
 
 1. **Keywords.** FTS5 with every question word quoted, so punctuation can never become an
-   operator; best BM25 first; the top 50.
+   operator; best BM25 first; the top 50. A run of Chinese, Japanese or Korean characters in the
+   question is searched as its overlapping pairs in the per-character index (`机器学习` as `机器`,
+   `器学`, `学习`), and the two indexes' rankings alternate. On ten recorded days of one vault
+   (16,295 units, 1,791 with Chinese), of 139 four-character phrases cut from inside longer
+   runs the default index found none and this finds all 139, in 1.5 ms at the median.
 2. **Meaning.** The question is embedded with bge's query instruction, then searched in two
    passes (`ingest/store/vectors.py`):
    - Hamming distance on sign bits over every unit in scope. The bits are held in memory,

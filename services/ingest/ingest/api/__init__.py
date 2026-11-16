@@ -6,6 +6,7 @@ notes    the Markdown notes and their graph
 review   the end-of-day review and its labels
 forget   deleting a span of a day
 scenes   memories, worlds, items and the map
+recall   episodes, the morning's questions and cue cards, and how the day felt
 jobs     index jobs
 system   what the vault holds, training runs, the eye tracker's learning, pausing capture
 """
@@ -31,7 +32,7 @@ from ..notes.graph import NoteGraph
 from ..notes.read import DayNotes
 from ..store import EmbeddingModelChanged, LifeStore
 from ..vault import Vault
-from . import days, forget, jobs, notes, review, scenes, search, system
+from . import days, forget, jobs, notes, recall, review, scenes, search, system
 
 log = logging.getLogger("daycube.api")
 FILL_EVERY_S = 60.0  # how often a warm API looks for days stored without their vectors
@@ -117,7 +118,7 @@ def create_app(settings: Settings | None = None, *, embedder: Embedder | None = 
     async def contract_error(request: Request, error: ContractError) -> JSONResponse:
         return JSONResponse(status_code=422, content={"detail": error.message, "path": error.path})
 
-    for module in (days, search, notes, review, forget, scenes, jobs, system):
+    for module in (days, search, notes, review, forget, scenes, recall, jobs, system):
         app.include_router(module.router)
     return app
 

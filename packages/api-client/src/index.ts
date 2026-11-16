@@ -49,6 +49,87 @@ export interface SeenPage {
   seconds: number;
   items: SeenItem[];
 }
+/** A thing found in a scan or a video (docs/items.md): where it was, how big, when it was seen. */
+export interface Item {
+  id: string;
+  label: string;
+  labels: Record<string, number>;
+  position: [number, number, number];
+  size_m: number;
+  spread_m: number;
+  seen: number;
+  first_s: number;
+  last_s: number;
+  depth: 'lidar' | 'estimate' | 'model';
+  shot: number | null;
+  crop: string;
+}
+export interface ItemSetListed {
+  date: string;
+  id: string;
+  source: { kind: 'scan' | 'video'; file: string } | null;
+  frame: 'world' | 'shot';
+  items: number;
+  frames: number;
+  made: string;
+}
+export interface ItemSet { id: string; made: string; frame: 'world' | 'shot'; source: ItemSetListed['source']; items: Item[] }
+/** A stretch of a day that stayed with one thing (docs/recall.md), with how much of it is left now. */
+export interface Episode {
+  id: string;
+  t: string;
+  until: string;
+  kind: 'desk' | 'talk' | 'place';
+  title: string;
+  category: string | null;
+  project: string | null;
+  minutes: number;
+  signals: { attention: number; feeling: number; novelty: number; importance: number };
+  /** What the records say happened in it: searches made, lines read most closely, text copied
+   *  (absent on episodes written before this was kept). */
+  highlights?: EpisodeHighlight[];
+  strength: { stability_days: number; left: number; recalls: number };
+}
+export interface EpisodeHighlight { kind: 'search' | 'read' | 'copy'; text: string }
+export type RecallOutcome = 'remembered' | 'partly' | 'forgot';
+export interface RecallQuestion {
+  id: string; episode: string; day: string; cue: string; answer: string; highlights: EpisodeHighlight[];
+  kind: Episode['kind']; t: string; until: string; left: number;
+}
+export interface RecallCard {
+  episode: string; day: string; title: string; kind: Episode['kind']; when: string; t: string; until: string; left: number;
+}
+/** Today's questions with the answers given so far, and the cue cards (``GET /recall/today``). */
+export interface RecallToday {
+  date: string;
+  questions: RecallQuestion[];
+  answers: Record<string, RecallOutcome>;
+  cards: RecallCard[];
+}
+export interface RecallStatus {
+  recalls: Record<RecallOutcome | 'opened', number>;
+  graded: number;
+  came_back: number | null;
+  fit_from: number;
+  fitted: boolean;
+  weights: Record<string, number>;
+}
+/** What was recorded in the ten minutes before a feeling report (docs/feeling.md). */
+export interface FeelingEvidence {
+  keys_per_min: number;
+  clicks_per_min: number;
+  move_px_per_min: number;
+  switches_per_min: number;
+  doing: string;
+  part: string;
+}
+export interface FeelingReport { id: string; t: string; energy: number; mood: number; note?: string; evidence: FeelingEvidence }
+export interface FeelingModel {
+  reports: number;
+  enough: number;
+  verdict: 'collecting' | 'kept' | 'dropped';
+  targets: Record<string, { usual_error: number; model_error: number; kept: boolean }>;
+}
 /** A video's world (docs/world.md): islands of the user's footage, georeferenced. */
 export interface WorldOrigin { lat: number; lon: number; ground_m: number }
 export interface WorldIsland {
@@ -348,6 +429,37 @@ export class DaycubeClient {
     }) as Promise<{ film: string; bytes: number }>;
   }
   seen(date: string) { return this.request(`/day/${encodeURIComponent(date)}/seen`) as Promise<Seen>; }
+  /** Every set of items in the vault, newest day first. */
+  itemSets() { return this.request('/items') as Promise<ItemSetListed[]>; }
+  itemSet(date: string, id: string) {
+    return this.request(`/items/${encodeURIComponent(date)}/${encodeURIComponent(id)}`) as Promise<ItemSet>;
+  }
+  /** An item's picture; ``crop`` as its item gives it (``crops/i0001.jpg``). */
+  itemCropUrl(date: string, id: string, crop: string) {
+    return `${this.baseUrl}/items/${encodeURIComponent(date)}/${encodeURIComponent(id)}/${crop.split('/').map(encodeURIComponent).join('/')}`;
+  }
+  /** A review day's episodes, each with its strength now. */
+  episodes(date: string) {
+    return this.request(`/day/${encodeURIComponent(date)}/episodes`) as Promise<{ date: string; written: boolean; episodes: Episode[] }>;
+  }
+  recallToday() { return this.request('/recall/today') as Promise<RecallToday>; }
+  /** Grade one of today's questions after trying to recall it; the first verdict counts. */
+  answerRecall(question: string, outcome: RecallOutcome) {
+    return this.request('/recall/answer', { method: 'POST', body: JSON.stringify({ question, outcome }) }) as Promise<RecallToday>;
+  }
+  /** An episode opened from a card: a recall that asked nothing. */
+  openedEpisode(date: string, episode: string) {
+    return this.request('/recall/opened', { method: 'POST', body: JSON.stringify({ date, episode }) }) as Promise<unknown>;
+  }
+  recallStatus() { return this.request('/recall') as Promise<RecallStatus>; }
+  /** Keep how you feel now: energy and mood from 1 to 5, with an optional note. */
+  reportFeeling(energy: number, mood: number, note?: string) {
+    return this.request('/feeling', { method: 'POST', body: JSON.stringify({ energy, mood, note: note || undefined }) }) as Promise<FeelingReport>;
+  }
+  feeling(date: string) {
+    return this.request(`/day/${encodeURIComponent(date)}/feeling`) as Promise<{ date: string; reports: FeelingReport[] }>;
+  }
+  feelingModel() { return this.request('/feeling/model') as Promise<FeelingModel>; }
   deletions(date: string) { return this.request(`/day/${encodeURIComponent(date)}/deletions`) as Promise<Deletion[]>; }
   assetUrl(date: string, ref: string) {
     return `${this.baseUrl}/vault/${encodeURIComponent(date)}/${ref.split('/').map(encodeURIComponent).join('/')}`;

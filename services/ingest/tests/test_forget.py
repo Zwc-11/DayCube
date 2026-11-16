@@ -5,6 +5,9 @@ bring it back."""
 from __future__ import annotations
 
 import json
+import shutil
+import subprocess
+import time
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -101,6 +104,49 @@ def test_a_recording_in_the_span_goes_whole_and_the_day_stays_valid(vault: Vault
         assert not (span[0] <= a < span[1] or span[0] < b <= span[1]) or (a < span[0] and b > span[1])
 
 
+@pytest.mark.skipif(shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None, reason="FFmpeg is not installed")
+def test_an_imported_memo_in_the_span_goes_with_the_original_the_inbox_kept(vault: Vault, api: TestClient) -> None:
+    from ingest.phone import inbox
+
+    drop = inbox.folder(vault)
+    subprocess.run(
+        ["ffmpeg", "-nostdin", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=300:duration=30", "-c:a", "aac",
+         "-metadata", "creation_time=2026-10-24T19:40:30.000000Z", str(drop / "memo.m4a")],
+        check=True,
+    )  # fmt: skip
+    assert inbox.process(vault, now=time.time() + 60, say=lambda _: None, transcribe=False)["imported"]
+    original = next((drop / "imported").rglob("memo.m4a"))
+    moment = vault.root / "2026-10-24" / "moments" / "mo_voice_20261024_194030"
+    assert moment.is_dir()
+    response = delete(api, "2026-10-24", "15:39:00", "15:41:00")  # the memo ran from 15:40:00 to 15:40:30
+    assert response.status_code == 200, response.text
+    removed = response.json()["removed"]
+    assert removed["recordings"] == 1 and removed["phone originals"] == 1
+    assert not original.exists() and not moment.exists()
+
+
+def test_items_made_from_a_recording_in_the_span_go(vault: Vault, api: TestClient) -> None:
+    def items(day: str, ident: str, recorded: dict | None, moment: str | None = None) -> Path:
+        folder = vault.root / day / "items" / ident
+        (folder / "crops").mkdir(parents=True)
+        source = {"kind": "scan", "file": "walk", "recorded": recorded, "moment": moment}
+        (folder / "items.json").write_text(json.dumps({"id": ident, "source": source, "items": []}), encoding="utf-8")
+        return folder
+
+    at = lambda clock: f"{DAY}T{clock}-04:00"  # noqa: E731
+    inside = items(DAY, "it_000000000001", {"t0": at("12:35:00"), "duration_s": 600})  # 12:35 to 12:45
+    before = items(DAY, "it_000000000002", {"t0": at("11:00:00"), "duration_s": 600})
+    unknown = items(DAY, "it_000000000003", None)  # does not say when: cannot be shown to lie outside
+    elsewhere = items("2026-10-19", "it_000000000004", None)
+    of_the_recording = items("2026-10-19", "it_000000000005", None, moment="mo_001")  # mo_001 began at 12:40
+    response = delete(api, DAY, "12:40:00", "12:41:00")
+    assert response.status_code == 200, response.text
+    assert response.json()["removed"]["item sets"] == 3
+    assert not inside.exists() and not unknown.exists() and not of_the_recording.exists()
+    assert before.exists() and elsewhere.exists()
+    assert [s["id"] for s in api.get("/items").json()] == ["it_000000000002", "it_000000000004"]
+
+
 def test_memories_taken_in_the_span_go_with_their_scene(vault: Vault, api: TestClient) -> None:
     def memory(ident: str, source: dict) -> Path:
         folder = vault.root / DAY / "memories" / ident
@@ -180,3 +226,18 @@ def test_the_last_hour_is_deleted_a_day_at_a_time(
     assert response.status_code == 200, response.text
     spans = [(d["date"], d["t0"][11:16], d["t1"][11:16]) for d in response.json()["deleted"]]
     assert spans == [("2026-10-22", "23:20", "00:00"), ("2026-10-23", "00:00", "00:20")]
+
+
+def test_a_span_deleted_inside_a_stretch_is_cut_out_of_the_timeline(vault: Vault, api: TestClient) -> None:
+    """Five minutes deleted from ninety of coding: the timeline keeps what was in front before
+    and after, says nothing of the span, and joins nothing across it."""
+    from ingest.review import timeline
+    from test_day_review import DAY as CODED
+    from test_day_review import ZONE, golden
+
+    golden(vault, CODED)
+    timeline.write(vault, CODED, ZONE)
+    assert delete(api, CODED, "09:40:00", "09:45:00").status_code == 200
+    desk = [(s["t"][11:19], s["until"][11:19]) for s in timeline.read(vault, CODED) if s["category"] == "coding"]
+    assert desk == [("09:00:00", "09:40:00"), ("09:45:00", "10:30:00")]
+    assert timeline.write(vault, CODED, ZONE)["desk_s"] == 9000 - 300

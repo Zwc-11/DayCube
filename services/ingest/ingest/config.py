@@ -10,6 +10,20 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 ENV_FILE = Path(os.environ.get("DAYCUBE_ENV_FILE") or PROJECT_ROOT / ".env")
 
 
+def environment_python(name: str, root: Path = PROJECT_ROOT, *, windowless: bool = True) -> Path | None:
+    """The interpreter of the ``services/<name>`` environment: ``DAYCUBE_<NAME>_PYTHON`` when set (the
+    desktop app's own runtimes and packs), else the checkout's ``.venv``. None when neither exists."""
+    override = os.environ.get(f"DAYCUBE_{name.upper()}_PYTHON")
+    if override:
+        return Path(override) if Path(override).is_file() else None
+    venv = root / "services" / name / ".venv"
+    names = ("pythonw.exe", "python.exe") if windowless else ("python.exe",)
+    for candidate in (*(venv / "Scripts" / n for n in names), venv / "bin" / "python"):
+        if candidate.is_file():
+            return candidate
+    return None
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="DAYCUBE_", env_file=ENV_FILE, extra="ignore")
 

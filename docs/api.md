@@ -1,7 +1,7 @@
 # Local API
 
 The routes live in `services/ingest/ingest/api/`, one module per area (days, search, notes, review,
-forget, scenes, jobs, system); `create_app` in its `__init__.py` puts them together.
+forget, scenes, recall, jobs, system); `create_app` in its `__init__.py` puts them together.
 
 Run `npm run api`, then open <http://127.0.0.1:7701/docs>. FastAPI publishes the live OpenAPI
 contract at <http://127.0.0.1:7701/openapi.json>. Use its Authorize button with `vault/.token`
@@ -43,8 +43,16 @@ for actions. Do not paste external provider keys there.
 | DELETE | `/day/{date}/hours` | `{t0, t1, reason?}` (times with their offset, within the day) → the span deleted from the vault and what was made from it ([capture](capture.md#deleting-a-span)); the deletion with what went, per kind |
 | DELETE | `/recent?minutes=60` | The last minutes up to now, a day at a time (the tray's Delete the last hour) |
 | GET | `/day/{date}/deletions` | The spans deleted from the day |
-| GET | `/morning` | Yesterday's final review as the desktop app's morning notification shows it (`{date, title, text}`), from `DAYCUBE_PUSH_AT`; `date` null before then |
+| GET | `/morning` | Yesterday's final review as the desktop app's morning notification shows it (`{date, title, text}`), from `DAYCUBE_PUSH_AT`; `date` null before then; under its headline, how many recall questions wait |
 | GET | `/day/{date}/seen` | What was on screen, page by page: when each page or app was in front, and what was read, stared at, looked at, copied, clicked, played and searched on it (`ingest/seen.py`; the viewer's What I saw, `?date=…&view=seen`) |
+| GET | `/day/{date}/episodes` | The review day's episodes, each with its signals and its strength now (`stability_days`, `left`, `recalls`); `written` false when they were made for this reply ([recall](recall.md)) |
+| GET | `/recall/today` | Today's three recall questions (chosen at the first request of the review day, then kept), the `answers` given, and up to three cue `cards` |
+| POST | `/recall/answer` | `{question, outcome}` (`remembered`, `partly`, `forgot`): the person's verdict after trying; the first one counts; the same view |
+| POST | `/recall/opened` | `{date, episode}`: an episode opened from a card, logged as a recall that asked nothing |
+| GET | `/recall` | Recalls by outcome, the share of graded questions that came back, the curve's weights and whether they were fitted |
+| POST | `/feeling` | `{energy, mood, note?, t?}` (1 to 5) → the report with the `evidence` recorded in the ten minutes before ([feeling](feeling.md)) |
+| GET | `/day/{date}/feeling` | The calendar day's reports with their evidence |
+| GET | `/feeling/model` | The personal model's standing: reports so far, and from 100 its error beside the person's own average, `kept` or `dropped` |
 | GET | `/memories` | Memories, newest first: size, focal length, distances, source, `caption`, and the scan's world for a photo from a scan ([memories](memories.md)) |
 | GET | `/memories/{date}/{id}/{file}` | `photo.jpg`, `memory.splat`, and a kept film (`film-portrait.mp4`, `film-landscape.mp4`) |
 | PATCH | `/memories/{date}/{id}` | `{caption}` (at most 280 characters; empty removes it) → `{caption}` |

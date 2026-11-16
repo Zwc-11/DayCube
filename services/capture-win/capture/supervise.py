@@ -8,30 +8,15 @@ and stops it on exit, so one autostart entry covers both.
 from __future__ import annotations
 
 import logging
-import os
 import subprocess
 import sys
 import threading
 import time
 from pathlib import Path
 
-from ingest.config import PROJECT_ROOT
+from ingest.config import PROJECT_ROOT, environment_python
 
 log = logging.getLogger("capture.gaze")
-
-
-def environment_python(name: str, root: Path, *, windowless: bool = True) -> Path | None:
-    """The interpreter of the ``services/<name>`` environment: ``DAYCUBE_<NAME>_PYTHON`` when set (the
-    desktop app's own runtimes and packs), else the checkout's ``.venv``. None when neither exists."""
-    override = os.environ.get(f"DAYCUBE_{name.upper()}_PYTHON")
-    if override:
-        return Path(override) if Path(override).is_file() else None
-    venv = root / "services" / name / ".venv"
-    names = ("pythonw.exe", "python.exe") if windowless else ("python.exe",)
-    for candidate in (*(venv / "Scripts" / n for n in names), venv / "bin" / "python"):
-        if candidate.is_file():
-            return candidate
-    return None
 
 
 NOT_CALIBRATED = 3  # the tracker's exit code when vault/calibration/gaze.json is missing or unusable

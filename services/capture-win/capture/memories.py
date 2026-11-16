@@ -17,7 +17,7 @@ import threading
 import time
 from pathlib import Path
 
-from ingest.config import PROJECT_ROOT
+from ingest.config import PROJECT_ROOT, environment_python
 
 log = logging.getLogger("capture.memories")
 
@@ -31,8 +31,6 @@ NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(subprocess, "BE
 
 
 def recon_python(root: Path = PROJECT_ROOT) -> Path | None:
-    from .supervise import environment_python
-
     return environment_python("recon", root, windowless=False)
 
 

@@ -4,12 +4,15 @@ import type { Seen, SeenItem, SeenPage as Page } from '@daycube/api-client';
 import { BrandMark } from '../shell/TopBar';
 import { backendBridge } from '../../lib/backendBridge';
 import type { DaySummary } from '../../lib/days';
+import { hoursOf } from '../../lib/review';
 
 // What I saw (GET /api/day/{date}/seen): the day's pages and apps in the order they came to the
 // front, a strip of when each was on screen, and what was read, stared at and copied on each.
 
 interface SeenPageProps {
   date: string;
+  /** A time of that day (`HH:MM`): the page in front then opens in view. */
+  at?: string | null;
   days: DaySummary[] | null;
   onDate: (date: string) => void;
   onHome: () => void;
@@ -110,17 +113,36 @@ const PageCard: React.FC<{ page: Page; focused: boolean }> = ({ page, focused })
   );
 };
 
-const SeenPage: React.FC<SeenPageProps> = ({ date, days, onDate, onHome, onGraph }) => {
+/** The page in front at `at` (an hour on the day's own clock), else the one that came to the
+ *  front nearest to it. */
+const pageAt = (pages: Page[], date: string, at: number): string | null => {
+  let best: { key: string; gap: number } | null = null;
+  for (const page of pages) {
+    for (const span of page.spans) {
+      const [a, b] = span.map((iso) => hoursOf(iso, date));
+      const gap = at < a ? a - at : at > b ? at - b : 0;
+      if (!best || gap < best.gap) best = { key: page.key, gap };
+    }
+  }
+  return best?.key ?? null;
+};
+
+const SeenPage: React.FC<SeenPageProps> = ({ date, at, days, onDate, onHome, onGraph }) => {
   const [seen, setSeen] = useState<Seen | null | undefined>(undefined);
   const [focus, setFocus] = useState<string | null>(null);
   useEffect(() => {
     let live = true;
     setSeen(undefined);
-    backendBridge.seen(date).then((s) => live && setSeen(s));
+    backendBridge.seen(date).then((s) => {
+      if (!live) return;
+      setSeen(s);
+      const [h, m] = (at ?? '').split(':').map(Number);
+      if (s && at) setFocus(pageAt(s.pages, date, h + m / 60));
+    });
     return () => {
       live = false;
     };
-  }, [date]);
+  }, [date, at]);
   const [prev, next] = useMemo(() => {
     const captured = (days ?? []).filter((d) => d.capture).map((d) => d.date).sort();
     return [captured.filter((d) => d < date).pop() ?? null, captured.find((d) => d > date) ?? null];

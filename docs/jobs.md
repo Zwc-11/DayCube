@@ -10,6 +10,7 @@ They are queued in `vault/jobs.sqlite` and run by the capture receiver with no c
 | `splat_preview` | CPU | 1 | the scan's training set and LiDAR preview (`ingest/splat`, a minute or two) | `splat_train` |
 | `splat_train` | GPU | 1 | Brush on the RTX 5070 (tens of minutes); ready once Brush is installed | |
 | `scan_mesh` | CPU | 1 | the scan's mesh (`ingest/splat/mesh.py`); ready once Open3D is installed | |
+| `scan_items` | GPU | 1 | the things in the scan, each placed in 3D ([items.md](items.md)): a child process in the 3D environment (`services/recon`, or the app's 3D pack), its output in `vault/logs/items.log`; ready once that environment exists | |
 | `conversations` | CPU | 1 | the speech worker finds the talks in an hour of the app's sound; the receiver makes them talk moments | `speech` for each |
 | `speech` | GPU | 1 | the speech worker, in its own environment, leased over HTTP ([speech.md](speech.md)) | |
 
@@ -27,7 +28,7 @@ They are queued in `vault/jobs.sqlite` and run by the capture receiver with no c
   runs. If the lease runs out (the worker died), the job goes back to the queue and the attempt is
   counted. A late result from that worker is refused.
 - **Failures.** A failure is retried after 1 minute, then 4 minutes. After the stage's attempts
-  (3, or 2 for `splat_train`) the job is `failed`, with the error kept.
+  (3, or 2 for `splat_train` and `scan_items`) the job is `failed`, with the error kept.
 - **Permanent failures.** A failure that a retry would only repeat, such as a scan whose poses
   disagree with its depth, is `failed` at once.
 - **Order.** Highest priority first, then oldest.

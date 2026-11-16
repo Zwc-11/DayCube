@@ -2,7 +2,8 @@
 
 ``items.json``::
 
-    {"id": "it_<12 hex>", "made": ISO time, "source": {"kind": "scan" | "video", "file", ...},
+    {"id": "it_<12 hex>", "made": ISO time,
+     "source": {"kind": "scan" | "video", "file", "recorded": {"t0", "duration_s"} | null, ...},
      "frame": "world" | "shot",            # world: one frame for the whole recording (a scan's ARKit
                                            # metres, y up); shot: each shot's own camera
      "models": {"detector", "embedder", "depth"},

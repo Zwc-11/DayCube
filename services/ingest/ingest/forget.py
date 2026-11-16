@@ -11,9 +11,11 @@ recording, cannot bring it back. Then everything it holds leaves the source file
   cut without breaking its timing); a place visit that starts or ends in the span is cut at its
   edge, one inside it goes, one around it keeps its times;
 - the phone's kept sources: sensor rows, hours of sound (the span cut out, the rest kept), and the
-  originals in ``inbox/phone/imported`` (sensor rows; a memo that overlaps the span, whole);
+  originals in ``inbox/phone/imported`` (sensor rows; a memo or an hour of sound that overlaps
+  the span, whole);
 - memories: a photo taken in the span, or a frame of a recording that went, with its 3D scene and
-  films.
+  films;
+- items: a set made from a recording that overlaps the span, whole.
 
 What is derived from them (the search database, notes, timeline, review, week) is the caller's to
 rebuild (``api.py``). The vault's own copies are gone; a backup made before is not reached.
@@ -60,6 +62,7 @@ def forget(vault: Vault, day: str, span: Span, *, reason: str | None = None, now
         if (vault.day_path(day, must_exist=False) / "day.json").is_file():  # a phone or sample day
             gone = _day_files(vault, day, span, removed)
         _memories(vault, span, gone, removed)
+        _items(vault, day, span, gone, removed)
         _sensor_sources(vault, span, removed)
         _audio_sources(vault, audio_cuts, span, removed)
         _imported(vault, span, removed)
@@ -163,6 +166,25 @@ def _memories(vault: Vault, span: Span, gone: set[str], removed: Counter[str]) -
         if source.get("moment") in gone or _taken_in(source, span):
             shutil.rmtree(meta_path.parent)
             removed["memories"] += 1
+
+
+def _items(vault: Vault, day: str, span: Span, gone: set[str], removed: Counter[str]) -> None:
+    """A set of items (``docs/items.md``) goes whole when it was made from a scan that went, or
+    from a recording that overlaps the span. A set that says neither cannot be shown to lie
+    outside the span, so it goes with any deletion on the day it is filed under."""
+    for path in vault.root.glob("????-??-??/items/it_*/items.json"):
+        try:
+            source = (read_json(path) or {}).get("source") or {}
+        except (OSError, ValueError):
+            source = {}
+        if made := source.get("recorded"):
+            start = instant(made["t0"])
+            inside = overlaps(start, start + timedelta(seconds=float(made.get("duration_s") or 0)), span)
+        else:
+            inside = path.parents[2].name == day
+        if inside or source.get("moment") in gone:
+            shutil.rmtree(path.parent)
+            removed["item sets"] += 1
 
 
 def _taken_in(source: Record, span: Span) -> bool:
@@ -275,16 +297,20 @@ def _stamp(epoch: float) -> str:
 def _imported(vault: Vault, span: Span, removed: Counter[str]) -> None:
     """The phone's own files as imported (``inbox/phone/imported``): sensor rows in the span go
     (in a folder or inside its zip), and a memo that overlaps the span goes whole."""
+    from zoneinfo import ZoneInfo
+
     from .phone import voice
+    from .phone.importer import vault_timezone
 
     root = vault.root / "inbox" / "phone" / "imported"
+    zone = ZoneInfo(vault_timezone(vault))
     for path in sorted(root.glob("*/*")) if root.is_dir() else []:
         if path.suffix.lower() in voice.AUDIO_SUFFIXES:
             try:
-                audio = voice.read(path)
-            except (OSError, ValueError):
-                continue
-            if overlaps(audio.start, audio.start + timedelta(seconds=audio.duration_s), span):
+                audio = voice.read(path, zone=zone)
+            except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
+                continue  # its time cannot be read: it was not imported either
+            if overlaps(audio.t0, audio.t0 + timedelta(seconds=audio.duration_s), span):
                 path.unlink()
                 path.with_suffix(".json").unlink(missing_ok=True)
                 removed["phone originals"] += 1

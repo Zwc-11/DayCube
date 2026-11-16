@@ -55,6 +55,20 @@ def _turn(c2w: np.ndarray) -> int:
     return 0 if up[1] >= 0 else 180
 
 
+def recorded(video: Path) -> dict | None:
+    """When a recording was made, from the video's own creation time (taken as its start) and
+    length: ``{"t0": ISO time, "duration_s"}``, or None when the file does not say. Kept with the
+    items so that deleting a span of a day (ingest/forget.py) can tell whether they came from it."""
+    from ..moments.media import probe
+
+    try:
+        info = probe(video)["format"]
+        created = (info.get("tags") or {})["creation_time"]
+        return {"t0": created.replace("Z", "+00:00"), "duration_s": round(float(info["duration"]), 2)}
+    except (OSError, RuntimeError, KeyError, ValueError, subprocess.SubprocessError):
+        return None
+
+
 def scan_frames(
     capture: Path, every_s: float = KEY_EVERY_S, width: int = SCAN_WIDTH, limit: int | None = None
 ) -> Iterator[Frame]:

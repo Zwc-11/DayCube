@@ -89,13 +89,11 @@ def best_crop(item: Item, frames: dict[int, Frame]) -> np.ndarray:
     return sources.upright(models.crop(f.image, o.box, margin=0.15), f.turn)
 
 
-def index_frames(frames: dict[int, Frame], out: Path, source: dict, depth: str = "lidar", captions: bool = True,
-                 say: Callable[[str], None] = print, seconds: dict[str, float] | None = None) -> dict:  # fmt: skip
-    """Frames that share one world (each with its pose and depth) into an items folder."""
-    timing: dict[str, float] = dict(seconds or {})
+def observe_frames(frames: dict[int, Frame], captions: bool = True,
+                   say: Callable[[str], None] = print) -> tuple[list[Observation], list[dict]]:  # fmt: skip
+    """Every frame looked at: the observations (with their embeddings) and the frames' index entries."""
     observations: list[Observation] = []
     entries = []
-    t0 = time.time()
     for n, f in enumerate(frames.values()):
         found, entry = observe(f, captions)
         embed(f, found)
@@ -104,6 +102,17 @@ def index_frames(frames: dict[int, Frame], out: Path, source: dict, depth: str =
         say(
             f"frame {n + 1}/{len(frames)} ({f.index}): {len(found)} things: {', '.join(sorted({o.label for o in found}))[:90]}"
         )
+    return observations, entries
+
+
+def index_frames(frames: dict[int, Frame], out: Path, source: dict, depth: str = "lidar", captions: bool = True,
+                 say: Callable[[str], None] = print, seconds: dict[str, float] | None = None,
+                 seen: tuple[list[Observation], list[dict]] | None = None) -> dict:  # fmt: skip
+    """Frames that share one world (each with its pose and depth) into an items folder. ``seen``:
+    what ``observe_frames`` already found in them, to make the items again without the models."""
+    timing: dict[str, float] = dict(seconds or {})
+    t0 = time.time()
+    observations, entries = seen or observe_frames(frames, captions, say)
     timing["detect_embed_s"] = time.time() - t0
     t0 = time.time()
     merged = merge(observations) if observations else []
@@ -145,8 +154,13 @@ def index_scan(capture: Path, out: Path, every_s: float = sources.KEY_EVERY_S, l
     frames = {f.index: f for f in sources.scan_frames(capture, every_s, limit=limit)}
     took = time.time() - t0
     say(f"{len(frames)} frames decoded in {took:.0f} s")
-    return index_frames(frames, out, {"kind": "scan", "file": capture.name, "every_s": every_s}, "lidar", captions, say,
-                        {"frames_s": took})  # fmt: skip
+    source = {
+        "kind": "scan",
+        "file": capture.name,
+        "every_s": every_s,
+        "recorded": sources.recorded(capture / "rgb.mp4"),
+    }
+    return index_frames(frames, out, source, "lidar", captions, say, {"frames_s": took})
 
 
 def index_video(video: Path, out: Path, captions: bool = True, say: Callable[[str], None] = print) -> dict:
@@ -172,7 +186,8 @@ def index_video(video: Path, out: Path, captions: bool = True, say: Callable[[st
         shots += [n] * len(merged)
         crops += [sources.upright(models.crop(f.image, i.best().box, margin=0.15), f.turn) for i in merged]
         say(f"shot {n} ({a:.1f}-{b:.1f} s): {len(merged)} things; {entry.get('caption', '')[:70]}")
-    record = store.write(out, items, crops, source={"kind": "video", "file": video.name, "shots": len(entries)}, frame="shot",
+    source = {"kind": "video", "file": video.name, "shots": len(entries), "recorded": sources.recorded(video)}
+    record = store.write(out, items, crops, source=source, frame="shot",
                          models={"detector": models.DETECTOR, "embedder": models.EMBEDDER, "depth": "Depth Anything V2 Metric Small"},
                          frames=entries, shots=shots)  # fmt: skip
     report = {"shots": len(entries), "items": len(items), "seconds": round(time.time() - timing["start"], 1)}

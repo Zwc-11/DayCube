@@ -6,7 +6,12 @@ a Sensor Logger recording (2026-10-24, 18 min 51 s) put its start, so read, on t
 hundred metres from home, and what was said in its first minutes matched the arrival; read as its
 start, it would have begun after the sensor recording had ended, though the memo itself mentions
 both recording. ``ends_at_creation`` says which reading to take;
-a recording app that stamps the start sets it False.
+a recording app that stamps the start sets it False. A pocket or wearable recorder often stamps
+nothing in the file and puts the start in its name (``261115_1432.mp3``, ``2026-11-15 14-32-10.wav``):
+that is read as local time when the file itself says nothing.
+
+**How long.** A recording of ``LONG_S`` or more is not one memo but sound of the day: the importer
+keeps it whole and the ``conversations`` job finds the talks in it, as with the phone app's hours.
 
 **What was said.** Transcribed with faster-whisper (the ``transcribe`` extra) on the CPU: the
 ``small`` model, int8, words with times, voice activity filtering. Without it, the moment keeps
@@ -18,17 +23,26 @@ its audio and an empty transcript, and ``scene.json`` says why. Speakers are not
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, tzinfo
 from pathlib import Path
 from typing import Any
 
 from ..moments.media import executable, probe
+from . import sources
 
 AUDIO_SUFFIXES = frozenset({".m4a", ".wav", ".mp3", ".aac", ".caf"})
 MODEL = "small"
+LONG_S = 1800.0  # a recording this long is sound of the day, not one memo
+# A start time in a file's name, with seconds (2026-11-15 14-32-10, 20261115_143210) or as Sony
+# recorders write it (261115_1432).
+NAMED = (
+    (re.compile(r"(?<!\d)(\d{4})-?(\d{2})-?(\d{2})[ T_-](\d{2})[-_.:]?(\d{2})[-_.:]?(\d{2})(?!\d)"), 0),
+    (re.compile(r"(?<!\d)(\d{2})(\d{2})(\d{2})_(\d{2})(\d{2})(?!\d)"), 2000),
+)
 
 
 @dataclass
@@ -40,19 +54,41 @@ class Audio:
     stamp: datetime | None = None  # the file's own time, whatever it is taken to mean: the moment's id
 
 
-def read(path: Path, *, ends_at_creation: bool = True, start: datetime | None = None) -> Audio:
-    """When the recording began and how long it is."""
+def named_start(path: Path, zone: tzinfo) -> datetime | None:
+    """The start time in the file's name (NAMED), read as local to ``zone``; None if it has none."""
+    for pattern, century in NAMED:
+        if found := pattern.search(path.stem):
+            year, *rest = (int(value) for value in found.groups())
+            try:
+                return datetime(century + year, *rest, tzinfo=zone)
+            except ValueError:
+                continue  # digits that are not a date
+    return None
+
+
+def read(
+    path: Path, *, ends_at_creation: bool = True, start: datetime | None = None, zone: tzinfo | None = None
+) -> Audio:
+    """When the recording began and how long it is. Its start is ``start`` if given, else the
+    phone app's stamp in its name (``sources.app_start``), else the file's creation time, else a
+    time in its name read as local to ``zone``."""
     info = probe(path)
     duration = float(info["format"]["duration"])
+    app = sources.app_start(path)
+    start = start or (app[1] if app and app[0] == "audio" else None)
     if start is not None:
         return Audio(path, start.astimezone(UTC), duration, "given", start.astimezone(UTC))
     created = (info["format"].get("tags") or {}).get("creation_time")
-    if not created:
-        raise ValueError(f"{path.name}: no creation time in the file; give the start time")
-    stamp = datetime.fromisoformat(created.replace("Z", "+00:00")).astimezone(UTC)
-    if ends_at_creation:
-        return Audio(path, stamp - timedelta(seconds=duration), duration, "creation time, taken as the end", stamp)
-    return Audio(path, stamp, duration, "creation time, taken as the start", stamp)
+    if created:
+        stamp = datetime.fromisoformat(created.replace("Z", "+00:00")).astimezone(UTC)
+        if ends_at_creation:
+            return Audio(path, stamp - timedelta(seconds=duration), duration, "creation time, taken as the end", stamp)
+        return Audio(path, stamp, duration, "creation time, taken as the start", stamp)
+    named = named_start(path, zone) if zone is not None else None
+    if named is None:
+        raise ValueError(f"{path.name}: no creation time in the file and no time in its name; give the start time")
+    named = named.astimezone(UTC)
+    return Audio(path, named, duration, "the time in the file's name, taken as the start", named)
 
 
 def transcribe(path: Path, say: Any = print) -> dict | None:

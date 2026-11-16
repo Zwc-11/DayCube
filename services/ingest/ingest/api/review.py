@@ -121,11 +121,24 @@ def relabel(
 @router.get("/morning")
 def morning(vault: TheVault, settings: TheSettings, now: Now) -> Record:
     """Yesterday's final review as the desktop app's morning notification shows it, from
-    ``DAYCUBE_PUSH_AT`` (08:00) local time; ``date`` null before then or without one."""
+    ``DAYCUBE_PUSH_AT`` (08:00) local time; ``date`` null before then or without one. Under its
+    headline it says how many of the day's recall questions wait (docs/recall.md): a Windows
+    notification shows only its first lines."""
+    from ..recall import today
     from ..review.push import due, message
+    from ..review.timeline import review_day
 
     found = due(vault, settings, now, settings.timezone)
     if found is None:
         return {"date": None}
     title, text = message(found[1])
+    waiting = today.waiting(vault, review_day(now, ZoneInfo(settings.timezone)), now)
+    if waiting:
+        headline, _, rest = text.partition("\n")
+        asks = (
+            "1 question about an earlier day is waiting in Recall."
+            if waiting == 1
+            else f"{waiting} questions about earlier days are waiting in Recall."
+        )
+        text = "\n".join(part for part in (headline, asks, rest) if part)
     return {"date": found[0], "title": title, "text": text}

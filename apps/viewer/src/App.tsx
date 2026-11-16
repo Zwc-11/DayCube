@@ -64,8 +64,15 @@ function shiftDate(iso: string, delta: number): string {
   return new Date(Date.UTC(year, month - 1, day + delta)).toISOString().slice(0, 10);
 }
 
-/** Where a day opens: golden hour at home for the sample day, else the last place visited. */
-function initialFocus(date: string, layers: Layer[]): { index: number; tod: number; pin: EventPin | null } {
+/** Where a day opens: at the hour asked for (the place visited then, or the nearest one); else
+ *  golden hour at home for the sample day, else the last place visited. */
+function initialFocus(date: string, layers: Layer[], at?: number): { index: number; tod: number; pin: EventPin | null } {
+  if (at !== undefined && layers.length > 0) {
+    const gap = (layer: Layer) => (at < layer.t0 ? layer.t0 - at : at > layer.t1 ? at - layer.t1 : 0);
+    const index = layers.reduce((best, layer, i) => (gap(layer) < gap(layers[best]) ? i : best), 0);
+    const tod = Math.min(layers[index].t1, Math.max(layers[index].t0, at));
+    return { index, tod, pin: layers[index].events.find((e) => !e.deleted && e.t >= tod) ?? null };
+  }
   if (date === SAMPLE_DATE && layers.length > 4) return { index: 4, tod: 17.8, pin: layers[4].events[0] ?? null };
   const index = Math.max(0, layers.length - 1);
   const layer = layers[index];
@@ -78,6 +85,8 @@ interface AppProps {
   day: LoadedDay;
   /** Recorded days, oldest first; null while loading. */
   days: DaySummary[] | null;
+  /** The hour of the day to open at (13.5 = 13:30); the day's usual start without it. */
+  at?: number;
   /** Open another day, or the graph of notes with null. */
   onOpenDate: (date: string | null) => void;
   /** Show this day as its notes (the knowledge page). */
@@ -94,9 +103,9 @@ function isTypingTarget(target: EventTarget | null): boolean {
   return el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName);
 }
 
-const App: React.FC<AppProps> = ({ date, day, days, onOpenDate, onOpenNotes, onHome, onOpenDays }) => {
+const App: React.FC<AppProps> = ({ date, day, days, at, onOpenDate, onOpenNotes, onHome, onOpenDays }) => {
   const pageVisible = usePageVisible();
-  const [focus] = useState(() => initialFocus(date, day.layers));
+  const [focus] = useState(() => initialFocus(date, day.layers, at));
   const [layers, setLayers] = useState<Layer[]>(day.layers);
   const [dataSource, setDataSource] = useState<'vault' | 'sample'>(day.fromBackend ? 'vault' : 'sample');
   const [activeLayerIndex, setActiveLayerIndex] = useState<number>(focus.index);

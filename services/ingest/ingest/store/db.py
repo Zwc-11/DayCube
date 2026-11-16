@@ -22,6 +22,7 @@ import threading
 from collections.abc import Iterable, Iterator, Sequence
 from contextlib import contextmanager, suppress
 from datetime import datetime, timedelta
+from itertools import zip_longest
 from pathlib import Path
 from time import monotonic
 from zoneinfo import ZoneInfo
@@ -33,6 +34,7 @@ from ..index.build import UNIT_COLUMNS, collect_units, source_stamp
 from ..index.embed import Embedder
 from ..time import instant
 from ..vault import Record, Vault, stored
+from . import cjk
 from . import notes as note_index
 from .graph import entity_view, graph_view
 from .vectors import VectorIndex, sign_bits
@@ -44,8 +46,9 @@ FULL_CHECK_S = 2.0  # how often a search across days re-checks every day's files
 # when it changes, every day and note is read again on the next use, keeping the stored vectors
 # (they are found again by text). 2: readable deadline names, note links from the person's text only.
 # 3: every note link kept with its resolution (outgoing links and backlinks). 4: note links keep
-# the target's file name (the table is rebuilt).
-DERIVED_VERSION = "4"
+# the target's file name (the table is rebuilt). 5: Chinese, Japanese and Korean text is indexed
+# character by character as well (store/cjk.py).
+DERIVED_VERSION = "5"
 SCHEMA_VERSION = 4  # 1: sqlite-vec vectors and per-row triggers, never released; 2: no graph; 3: no notes
 # A query may embed this many new texts before it answers (a few seconds on CPU); a day with
 # more waits for `daycube index`, and is searched by keywords until then.
@@ -117,6 +120,7 @@ CREATE INDEX IF NOT EXISTS mentions_unit ON mentions(unit_id);
 CREATE INDEX IF NOT EXISTS notes_identity ON notes(identity);
 CREATE INDEX IF NOT EXISTS units_ts ON units(ts);
 """
+    + (cjk.DDL if cjk.AVAILABLE else "")
 )
 
 
@@ -234,6 +238,8 @@ class LifeStore:
                 _script(db, note_index.LINKS_DDL)
                 db.execute("UPDATE days SET stamp = ''")  # every day is extracted again
                 db.execute("INSERT INTO note_chunks_fts(note_chunks_fts) VALUES ('delete-all')")
+                if cjk.AVAILABLE:
+                    db.execute("DELETE FROM note_chunks_cjk")
                 db.execute("DELETE FROM note_chunks")
                 db.execute("DELETE FROM notes")
                 db.execute("DELETE FROM links WHERE day = ''")
@@ -459,6 +465,9 @@ class LifeStore:
             ),
         )
         db.execute("INSERT INTO units_fts(rowid, text) SELECT id, text FROM units WHERE day = ?", (day,))
+        if cjk.AVAILABLE:
+            apart = ((first + i, cjk.spaced(unit["text"])) for i, unit in enumerate(units))
+            db.executemany("INSERT INTO units_cjk(rowid, text) VALUES (?, ?)", (row for row in apart if row[1]))
         rows = [(first + i, *vectors[h]) for i, h in enumerate(hashes) if h in vectors]
         db.executemany("INSERT INTO vectors VALUES (?, ?, ?)", rows)
         embedded = len(rows)
@@ -492,6 +501,8 @@ class LifeStore:
         db.execute(
             "INSERT INTO units_fts(units_fts, rowid, text) SELECT 'delete', id, text FROM units WHERE day = ?", (day,)
         )
+        if cjk.AVAILABLE:
+            db.execute("DELETE FROM units_cjk WHERE rowid IN (SELECT id FROM units WHERE day = ?)", (day,))
         db.execute("DELETE FROM vectors WHERE id IN (SELECT id FROM units WHERE day = ?)", (day,))
         db.execute("DELETE FROM units WHERE day = ?", (day,))
         db.execute("DELETE FROM days WHERE day = ?", (day,))
@@ -529,16 +540,22 @@ class LifeStore:
         types: Sequence[str] | None = None,
         site: str | None = None,
         k: int,
+        cjk_expression: str = "",
         db: sqlite3.Connection | None = None,
     ) -> list[int]:
-        """Unit ids matching an FTS5 expression, best BM25 first."""
+        """Unit ids matching an FTS5 expression, best BM25 first. ``cjk_expression`` is matched
+        against the character index (store/cjk.py); with both, their rankings alternate."""
         clauses, values = self._filters(day, since, until, types, site)
-        sql = (
-            "SELECT u.id FROM units_fts JOIN units u ON u.id = units_fts.rowid "
-            f"WHERE units_fts MATCH ?{clauses} ORDER BY bm25(units_fts), u.ts LIMIT ?"
-        )
+        ranked = []
         with self.read(db) as connection:
-            return [row[0] for row in connection.execute(sql, (expression, *values, k))]
+            for table, match in (("units_fts", expression), ("units_cjk", cjk_expression if cjk.AVAILABLE else "")):
+                if match:
+                    sql = (
+                        f"SELECT u.id FROM {table} JOIN units u ON u.id = {table}.rowid "
+                        f"WHERE {table} MATCH ?{clauses} ORDER BY bm25({table}), u.ts LIMIT ?"
+                    )
+                    ranked.append([row[0] for row in connection.execute(sql, (match, *values, k))])
+        return _alternate(ranked)[:k]
 
     def listing(
         self,
@@ -601,14 +618,20 @@ class LifeStore:
                 connection, query, k, days=None if day is None else [day], since=since, until=until
             )
 
-    def note_keyword(self, expression: str, *, k: int, db: sqlite3.Connection | None = None) -> list[int]:
-        """Note chunk ids matching an FTS5 expression, best BM25 first."""
-        sql = (
-            "SELECT c.id FROM note_chunks_fts JOIN note_chunks c ON c.id = note_chunks_fts.rowid "
-            "WHERE note_chunks_fts MATCH ? ORDER BY bm25(note_chunks_fts) LIMIT ?"
-        )
+    def note_keyword(
+        self, expression: str, *, k: int, cjk_expression: str = "", db: sqlite3.Connection | None = None
+    ) -> list[int]:
+        """Note chunk ids matching an FTS5 expression, best BM25 first; ``cjk_expression`` as in ``keyword``."""
+        ranked = []
         with self.read(db) as connection:
-            return [row[0] for row in connection.execute(sql, (expression, k))]
+            for table, match in (
+                ("note_chunks_fts", expression),
+                ("note_chunks_cjk", cjk_expression if cjk.AVAILABLE else ""),
+            ):
+                if match:
+                    sql = f"SELECT rowid FROM {table} WHERE {table} MATCH ? ORDER BY bm25({table}) LIMIT ?"
+                    ranked.append([row[0] for row in connection.execute(sql, (match, k))])
+        return _alternate(ranked)[:k]
 
     def note_rows(self, ids: Sequence[int], *, db: sqlite3.Connection | None = None) -> dict[int, Record]:
         found: dict[int, Record] = {}
@@ -768,6 +791,11 @@ def _drop_orphans(db: sqlite3.Connection) -> None:
         "DELETE FROM entities WHERE NOT EXISTS (SELECT 1 FROM mentions WHERE entity_id = entities.id) "
         "AND NOT EXISTS (SELECT 1 FROM links WHERE src = entities.id OR dst = entities.id)"
     )
+
+
+def _alternate(ranked: list[list[int]]) -> list[int]:
+    """Rankings merged by taking from each in turn, an id once: the best of each stays at the top."""
+    return list(dict.fromkeys(i for group in zip_longest(*ranked) for i in group if i is not None))
 
 
 def _drop_all(db: sqlite3.Connection) -> None:

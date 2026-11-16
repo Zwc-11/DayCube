@@ -1,4 +1,7 @@
-import { DaycubeClient, ApiError, type Deletion, type LabelCorrection, type MapsConfig, type Seen } from '@daycube/api-client';
+import {
+  DaycubeClient, ApiError, type Deletion, type Episode, type FeelingModel, type FeelingReport, type ItemSet, type ItemSetListed,
+  type LabelCorrection, type MapsConfig, type RecallOutcome, type RecallStatus, type RecallToday, type Seen,
+} from '@daycube/api-client';
 import type {
   AskResult as SchemaAskResult, DataCenter, DayNotes, DayResponse, DayReview, Entity, GazeLearning, KnowledgeGraph, Note,
   SearchResult, NoteGraph, TrainingListed, TrainingSeries,
@@ -573,6 +576,57 @@ export class BackendBridge {
     } catch {
       return null;
     }
+  }
+
+  /** Every set of items; empty when there are none or the vault cannot be reached. */
+  itemSets(): Promise<ItemSetListed[]> {
+    return this.client.itemSets().catch(() => []);
+  }
+
+  itemSet(date: string, id: string): Promise<ItemSet | null> {
+    return this.client.itemSet(date, id).catch(() => null);
+  }
+
+  itemCropUrl(date: string, id: string, crop: string): string {
+    return this.client.itemCropUrl(date, id, crop);
+  }
+
+  /** A review day's episodes with their strength now; empty when it has none. */
+  episodes(date: string): Promise<Episode[]> {
+    return this.client.episodes(date).then((day) => day.episodes, () => []);
+  }
+
+  /** Today's recall questions and cue cards; null when the vault cannot be reached. */
+  recallToday(): Promise<RecallToday | null> {
+    return this.client.recallToday().catch(() => null);
+  }
+
+  /** Grade a question (needs the vault token); null when it could not be kept. */
+  answerRecall(question: string, outcome: RecallOutcome): Promise<RecallToday | null> {
+    return this.client.answerRecall(question, outcome).catch(() => null);
+  }
+
+  /** Note that an episode was opened from its card; nothing is lost if it cannot be kept. */
+  openedEpisode(date: string, episode: string): Promise<void> {
+    return this.client.openedEpisode(date, episode).then(() => undefined, () => undefined);
+  }
+
+  recallStatus(): Promise<RecallStatus | null> {
+    return this.client.recallStatus().catch(() => null);
+  }
+
+  /** Keep how you feel now (needs the vault token); null when it could not be kept. */
+  reportFeeling(energy: number, mood: number, note: string): Promise<FeelingReport | null> {
+    return this.client.reportFeeling(energy, mood, note).catch(() => null);
+  }
+
+  /** The calendar day's feeling reports with their evidence; empty when there are none. */
+  feeling(date: string): Promise<FeelingReport[]> {
+    return this.client.feeling(date).then((day) => day.reports, () => []);
+  }
+
+  feelingModel(): Promise<FeelingModel | null> {
+    return this.client.feelingModel().catch(() => null);
   }
 
   /** The spans deleted from the day; empty when the vault cannot be reached. */

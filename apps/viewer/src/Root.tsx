@@ -2,6 +2,7 @@ import React, { Suspense, lazy, useCallback, useEffect, useMemo, useState } from
 import { DayCalendar } from './components/home/DayCalendar';
 import { BrandMark } from './components/shell/TopBar';
 import { type DaySummary, type LoadedDay, cachedDay, isIsoDate, listDays, loadDay } from './lib/days';
+import type { Relived } from './components/recall/RecallPage';
 
 // The graph of notes is the home page; three.js and a day's scene load when a day opens in 3D.
 const App = lazy(() => import('./App'));
@@ -10,6 +11,8 @@ const MemoriesPage = lazy(() => import('./components/memories/MemoriesPage'));
 const WorldPage = lazy(() => import('./components/world/WorldPage'));
 const TrainingPage = lazy(() => import('./components/training/TrainingPage'));
 const SeenPage = lazy(() => import('./components/seen/SeenPage'));
+const RecallPage = lazy(() => import('./components/recall/RecallPage'));
+const ItemsPage = lazy(() => import('./components/items/ItemsPage'));
 
 type DayView = 'notes' | '3d';
 
@@ -19,8 +22,10 @@ type Route =
   | { page: 'memories'; memory: string | null; film?: boolean }
   | { page: 'world'; world: string | null }
   | { page: 'training'; run: string | null }
-  | { page: 'seen'; date: string }
-  | { page: 'day'; date: string };
+  | { page: 'seen'; date: string; at?: string }
+  | { page: 'recall' }
+  | { page: 'items'; set: string | null }
+  | { page: 'day'; date: string; at?: string };
 
 const Loading: React.FC = () => (
   <div className="loading" role="status" aria-label="Loading">
@@ -29,13 +34,16 @@ const Loading: React.FC = () => (
 );
 
 /** `/` is the graph of notes, `?note=<path>` with that note open, `?date=YYYY-MM-DD&view=notes`
- *  with that day's note open; `?date=YYYY-MM-DD` is the day in 3D, `?view=days` the calendar.
+ *  with that day's note open; `?date=YYYY-MM-DD` is the day in 3D, `?view=days` the calendar,
+ *  `?view=recall` the day's questions, `?view=items` the things found in a recording. `&at=HH:MM`
+ *  opens a day in 3D, or its What I saw page, at that time.
  *  Back and forward work. */
 const readRoute = (): Route => {
   const q = new URLSearchParams(window.location.search);
   const date = q.get('date');
   const view = q.get('view');
   const note = q.get('note');
+  const at = /^([01]\d|2[0-3]):[0-5]\d$/.test(q.get('at') ?? '') ? q.get('at')! : undefined;
   if (view === 'days') return { page: 'days' };
   if (view === 'memories') {
     const memory = q.get('memory');
@@ -50,8 +58,13 @@ const readRoute = (): Route => {
     const run = q.get('run');
     return { page: 'training', run: run && /^[A-Za-z0-9_.-]+$/.test(run) ? run : null };
   }
-  if (view === 'seen' && isIsoDate(date)) return { page: 'seen', date };
-  if (isIsoDate(date) && view !== 'notes') return { page: 'day', date };
+  if (view === 'seen' && isIsoDate(date)) return { page: 'seen', date, at };
+  if (view === 'recall') return { page: 'recall' };
+  if (view === 'items') {
+    const set = q.get('items');
+    return { page: 'items', set: isIsoDate(date) && set && /^it_[0-9a-f]{12}$/.test(set) ? `${date}/${set}` : null };
+  }
+  if (isIsoDate(date) && view !== 'notes') return { page: 'day', date, at };
   return { page: 'graph', note: note && /\.md$/i.test(note) ? note : null, date: isIsoDate(date) ? date : null };
 };
 
@@ -64,12 +77,21 @@ const urlOf = (route: Route): string => {
     return `?view=world&date=${date}&world=${world}`;
   }
   if (route.page === 'training') return route.run ? `?view=training&run=${route.run}` : '?view=training';
-  if (route.page === 'seen') return `?date=${route.date}&view=seen`;
-  if (route.page === 'day') return `?date=${route.date}`;
+  if (route.page === 'seen') return `?date=${route.date}&view=seen${route.at ? `&at=${route.at}` : ''}`;
+  if (route.page === 'recall') return '?view=recall';
+  if (route.page === 'items') {
+    if (!route.set) return '?view=items';
+    const [date, set] = route.set.split('/');
+    return `?view=items&date=${date}&items=${set}`;
+  }
+  if (route.page === 'day') return `?date=${route.date}${route.at ? `&at=${route.at}` : ''}`;
   if (route.note) return `?note=${encodeURIComponent(route.note)}`;
   if (route.date) return `?date=${route.date}&view=notes`;
   return window.location.pathname;
 };
+
+/** `13:30` as the hour 13.5. */
+const hourOf = (at?: string): number | undefined => (at ? Number(at.slice(0, 2)) + Number(at.slice(3)) / 60 : undefined);
 
 const localToday = (): string => {
   const now = new Date();
@@ -130,6 +152,19 @@ export const Root: React.FC = () => {
     [days, openDate]
   );
 
+  /** Back to an episode (the Recall page): what was on screen then for time at the desk, the day
+   *  in 3D at that hour for a place or a conversation, else the day as the calendar opens it. */
+  const relive = useCallback(
+    ({ day: reviewDay, t, kind }: Relived) => {
+      const [on, at] = [t.slice(0, 10), t.slice(11, 16)]; // after midnight the calendar day is the next one
+      const summary = days?.find((d) => d.date === on);
+      if (summary?.capture && (kind === 'desk' || summary.places === 0)) go({ page: 'seen', date: on, at });
+      else if (summary && summary.places > 0) go({ page: 'day', date: on, at });
+      else openFromCalendar(reviewDay);
+    },
+    [days, go, openFromCalendar]
+  );
+
   useEffect(() => {
     if (!date) return setDay(null);
     let live = true;
@@ -173,8 +208,22 @@ export const Root: React.FC = () => {
   if (route.page === 'seen') {
     return (
       <Suspense fallback={<Loading />}>
-        <SeenPage date={route.date} days={days} onDate={(d) => go({ page: 'seen', date: d })} onHome={openDayPage}
+        <SeenPage date={route.date} at={route.at} days={days} onDate={(d) => go({ page: 'seen', date: d })} onHome={openDayPage}
                   onGraph={() => openDate(null)} />
+      </Suspense>
+    );
+  }
+  if (route.page === 'items') {
+    return (
+      <Suspense fallback={<Loading />}>
+        <ItemsPage open={route.set} onOpen={(set) => go({ page: 'items', set })} onHome={openDayPage} onGraph={() => openDate(null)} />
+      </Suspense>
+    );
+  }
+  if (route.page === 'recall') {
+    return (
+      <Suspense fallback={<Loading />}>
+        <RecallPage onRelive={relive} onHome={openDayPage} onGraph={() => openDate(null)} />
       </Suspense>
     );
   }
@@ -191,6 +240,8 @@ export const Root: React.FC = () => {
           onOpenDayPage={openDayPage}
           onOpenTraining={() => go({ page: 'training', run: null })}
           onOpenSeen={(d) => go({ page: 'seen', date: d })}
+          onOpenRecall={() => go({ page: 'recall' })}
+          onOpenItems={() => go({ page: 'items', set: null })}
         />
       </Suspense>
     );
@@ -198,7 +249,7 @@ export const Root: React.FC = () => {
   if (!day || day.date !== route.date) return <Loading />;
   return (
     <Suspense fallback={<Loading />}>
-      <App key={route.date} date={route.date} day={day} days={days} onOpenDate={openDate}
+      <App key={`${route.date} ${route.at ?? ''}`} date={route.date} day={day} days={days} at={hourOf(route.at)} onOpenDate={openDate}
            onOpenNotes={() => openDate(route.date, 'notes')} onHome={openDayPage} onOpenDays={() => go({ page: 'days' })} />
     </Suspense>
   );

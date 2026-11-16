@@ -14,6 +14,7 @@ seen again from every frame that observed it, falls inside the box found there.
 from __future__ import annotations
 
 import argparse
+import pickle
 import sys
 from pathlib import Path
 
@@ -74,11 +75,19 @@ def main() -> None:
     parser.add_argument("--every", type=float, default=1.5)
     parser.add_argument("--limit", type=int)
     parser.add_argument("--no-captions", action="store_true")
+    parser.add_argument("--seen", type=Path, help="Keep what the models saw here, and use it when it exists: "
+                        "the items are then made again without running the models")  # fmt: skip
     args = parser.parse_args()
     chosen = frames(args.folder, args.every, args.limit)
     print(f"{len(chosen)} frames, one every {args.every} s")
+    seen = None
+    if args.seen and args.seen.exists():
+        seen = pickle.loads(args.seen.read_bytes())
+    elif args.seen:
+        seen = run.observe_frames(chosen, not args.no_captions)
+        args.seen.write_bytes(pickle.dumps(seen))
     run.index_frames(chosen, args.out, {"kind": "scan", "file": args.folder.name, "every_s": args.every}, "kinect",
-                     not args.no_captions)  # fmt: skip
+                     not args.no_captions, seen=seen)  # fmt: skip
 
 
 if __name__ == "__main__":

@@ -7,6 +7,15 @@ count come from 50 questions about real days (spec 11.1).
     uv run --extra vector python eval/score_retrieval.py
 
 Without the vector extra, only keyword search is scored.
+
+Your own days, with questions you wrote (the gate in docs/recall.md: 70% of 30):
+
+    uv run --extra vector python eval/score_retrieval.py --vault C:\DAYCUBE\vault --questions my.jsonl
+
+One question a line: ``{"q": "where did I read about hash tables", "has": "open addressing"}``,
+with ``"date": "2026-11-12"`` to ask about one day. ``has`` is a phrase the right record holds.
+It searches as the app does (bringing the vault's database up to date first) and prints, for each
+question, the rank of the first record that holds the phrase.
 """
 
 from __future__ import annotations
@@ -69,7 +78,41 @@ def score(search: object, questions: list[dict], located_questions: list[dict]) 
     return {"summary": summary, "results": rows}
 
 
+GATE = 0.7  # of the questions, the right record among the first three
+
+
+def own(vault_root: Path, questions_file: Path) -> None:
+    """Score questions written about a real vault (see the module's docstring)."""
+    from ingest.config import Settings
+
+    settings = Settings()
+    vault = Vault(vault_root)
+    store = LifeStore(vault, default_embedder(settings.vector_search, settings.embedding_model), zone=settings.timezone)
+    asked = [json.loads(line) for line in questions_file.read_text(encoding="utf-8").splitlines() if line.strip()]
+    ranks = []
+    for question in asked:
+        found = retrieve(store, question["q"], day=question.get("date"), limit=10)
+        phrase = question["has"].casefold()
+        rank = next((n for n, record in enumerate(found, 1) if phrase in (record.get("text") or "").casefold()), None)
+        ranks.append(rank)
+        print(f"{'-' if rank is None else rank:>2}  {question['q']}")
+    top = {k: sum(r is not None and r <= k for r in ranks) / len(ranks) for k in (1, 3, 10)}
+    verdict = "met" if top[3] >= GATE else "not met"
+    print(f"{len(ranks)} questions: first {top[1]:.0%}, in the first three {top[3]:.0%}, in ten {top[10]:.0%}; "
+          f"the gate ({GATE:.0%} in the first three) is {verdict}")  # fmt: skip
+
+
 def main() -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--vault", type=Path, help="Your vault, to score your own questions on")
+    parser.add_argument("--questions", type=Path, help="Your questions, one JSON object a line")
+    args = parser.parse_args()
+    if args.vault or args.questions:
+        if not (args.vault and args.questions):
+            parser.error("--vault and --questions go together")
+        return own(args.vault, args.questions)
     questions = lines("questions_meaning.jsonl")
     located_questions = lines("questions.jsonl")
     with tempfile.TemporaryDirectory(prefix="daycube-eval-") as directory:

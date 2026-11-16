@@ -347,10 +347,11 @@ def test_new_scans_get_their_preview_then_train_when_the_pc_is_free(
 
     table = dict(stages.STAGES)
     table["scan_mesh"] = replace(table["scan_mesh"], ready=lambda: False, run=fake_mesh)
+    table["scan_items"] = replace(table["scan_items"], ready=lambda: False)  # its own test: test_items.py
     monkeypatch.setattr(stages, "STAGES", table)
     monkeypatch.setattr(worker, "STAGES", table)
 
-    assert len(discover(vault, jobs)) == 2 and discover(vault, jobs) == []  # mesh and preview, queued once
+    assert len(discover(vault, jobs)) == 3 and discover(vault, jobs) == []  # mesh, items and preview, queued once
     assert run_next(vault, jobs, "cpu", "cpu", **quiet)["stage"] == "splat_preview"
     assert run_next(vault, jobs, "cpu", "cpu", **quiet) is None
     assert jobs.status()["stages"]["scan_mesh"]["queued"] == 1  # optional tool unavailable

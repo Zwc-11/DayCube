@@ -18,6 +18,7 @@ from collections.abc import Callable, Container, Iterable
 from pathlib import Path
 
 from ..notes.markdown import chunks, front_matter, links, user_text
+from . import cjk
 
 # Every [[link]] of every note, generated or written, with the note it resolves to (NULL when no
 # such note exists yet): outgoing links and backlinks, as Obsidian shows them. ``name``: the
@@ -101,6 +102,11 @@ def sync(
             [(path, c.heading, c.text) for c in chunks(text)],
         )
         db.execute("INSERT INTO note_chunks_fts(rowid, text) SELECT id, text FROM note_chunks WHERE path = ?", (path,))
+        if cjk.AVAILABLE:
+            apart = (
+                (i, cjk.spaced(t)) for i, t in db.execute("SELECT id, text FROM note_chunks WHERE path = ?", (path,))
+            )
+            db.executemany("INSERT INTO note_chunks_cjk(rowid, text) VALUES (?, ?)", [row for row in apart if row[1]])
     # Which entity each note is, and what its links point at. A note added or removed changes what
     # links to its name open, and a note that now names another entity changes what links to it
     # stand for: those linking notes are read again, and only those.
@@ -189,6 +195,8 @@ def _forget(db: sqlite3.Connection, path: str) -> None:
         "INSERT INTO note_chunks_fts(note_chunks_fts, rowid, text) SELECT 'delete', id, text FROM note_chunks WHERE path = ?",
         (path,),
     )
+    if cjk.AVAILABLE:
+        db.execute("DELETE FROM note_chunks_cjk WHERE rowid IN (SELECT id FROM note_chunks WHERE path = ?)", (path,))
     db.execute("DELETE FROM note_chunks WHERE path = ?", (path,))
     db.execute("DELETE FROM notes WHERE path = ?", (path,))
     db.execute("DELETE FROM links WHERE day = '' AND evidence_id = ?", (path,))

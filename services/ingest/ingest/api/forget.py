@@ -34,6 +34,7 @@ def delete_span(
     """What ``DELETE /day/{date}/hours`` does; ``DELETE /recent`` calls it a day at a time."""
     from ..forget import forget
     from ..notes import Notes
+    from ..recall import today as asked
     from ..review import timeline as day_timeline
     from ..review import weekly
     from ..review.summary import FILE as REVIEW
@@ -73,6 +74,7 @@ def delete_span(
         year, week, _ = date_type.fromisoformat(day).isocalendar()
         if weekly.path_of(vault, f"{year}-W{week:02d}").exists():
             weekly.write(vault, store, day, zone_name, now=now)
+    asked.forget(vault, store, days, settings.timezone)
     for day in sorted({date} | reviewed):
         try:
             notes.write_day(day)
@@ -96,7 +98,8 @@ def delete_hours(
 ) -> Record:
     """Delete a span of the day from the vault (ingest/forget.py), then write again what was made
     from it: the search database (rewritten, so no page of the file keeps deleted text), the
-    notes it touched, and the timelines, reviews and week of the review days it falls in."""
+    notes it touched, and the timelines, reviews, week, episodes and recall questions of the
+    review days it falls in."""
     return delete_span(vault, store, settings, writers, now, date, body)
 
 

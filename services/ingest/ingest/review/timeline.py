@@ -40,6 +40,7 @@ from collections import defaultdict
 from contextlib import suppress
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
+from itertools import pairwise
 from zoneinfo import ZoneInfo
 
 from .. import contracts
@@ -598,11 +599,17 @@ def build(vault: Vault, day: str, zone: str, *, now: datetime | None = None, lab
     end = now.timestamp() if now is not None else max(seen, default=start)
     pc = _pc(browser, windows, read, end, tz) if seen else []
     phone, talks = _phone(vault, days, errors)
-    pieces = []
+    # A deleted span (ingest/forget.py) is cut out of what crosses it, and nothing is joined across it.
+    gone = [(a.timestamp(), b.timestamp()) for a, b in vault.deleted_spans()]
+    edges = sorted({start, stop, *(t for span in gone for t in span if start < t < stop)})
+    kept = [(a, b) for a, b in pairwise(edges) if not any(g0 <= a and b <= g1 for g0, g1 in gone)]
+    stretches: list[list[Piece]] = [[] for _ in kept]
     for piece in _overlay(pc, phone, talks):
-        a, b = max(piece.t0, start), min(piece.t1, stop)
-        if b > a:
-            pieces.append(replace(piece, t0=a, t1=b) if (a, b) != (piece.t0, piece.t1) else piece)
+        for stretch, (a, b) in zip(stretches, kept, strict=True):
+            a, b = max(piece.t0, a), min(piece.t1, b)
+            if b > a:
+                stretch.append(replace(piece, t0=a, t1=b) if (a, b) != (piece.t0, piece.t1) else piece)
+    pieces = [piece for stretch in stretches for piece in stretch]
     labels = Labels.load(vault)
     seconds: dict[Activity, float] = defaultdict(float)
     for piece in pieces:
@@ -613,7 +620,7 @@ def build(vault: Vault, day: str, zone: str, *, now: datetime | None = None, lab
     for piece in pieces:
         if piece.activity is not None and piece.label is None:
             piece.label = labelled[piece.activity]
-    runs = _runs(pieces)
+    runs = [run for stretch in stretches for run in _runs(stretch)]
     segments = [_segment(run, tz) for run in runs]
     for talk in talks:
         overlap = [(min(talk.t1, r.t1) - max(talk.t0, r.t0), n) for n, r in enumerate(runs)]
@@ -670,7 +677,7 @@ def write_built(vault: Vault, built: Built) -> Record:
         except OSError:
             same = False
         if not same:
-            vault.write_lines(path, built.segments)
+            vault.write_lines(path, built.segments, made=True)
     return {"date": built.day, "file": path.relative_to(vault.root).as_posix(), "written": written, **built.report}
 
 

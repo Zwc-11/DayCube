@@ -259,8 +259,16 @@ def test_the_desktop_app_gets_yesterdays_review_for_its_morning_notification(vau
         assert client.get("/morning").json() == {"date": None}  # before 08:00
         clock["now"] = datetime.fromisoformat(at("08:01:00", "2026-10-28"))
         morning = client.get("/morning").json()
-    assert morning["date"] == DAY and morning["title"] == "DayCube · 2026-10-27"
-    assert morning["text"].startswith("2 h 30 min at the desk, mostly coding")
+        assert morning["date"] == DAY and morning["title"] == "DayCube · 2026-10-27"
+        assert morning["text"].startswith("2 h 30 min at the desk, mostly coding") and "Recall" not in morning["text"]
+        # Once the day has episodes, the notification says a question about it waits.
+        from ingest.recall import episodes
+
+        episodes.write(vault, LifeStore(vault, zone=ZONE), DAY, ZONE)
+        text = client.get("/morning").json()["text"]
+    said, before = text.splitlines(), morning["text"].splitlines()
+    assert said[1] == "1 question about an earlier day is waiting in Recall."  # under the headline
+    assert [said[0], *said[2:]] == before
 
 
 def test_a_failed_push_is_retried_a_few_times_and_telegram_must_accept(vault: Vault) -> None:

@@ -122,6 +122,14 @@ few hundred metres from home, and what was said in its first minutes matched the
 its start, it would have begun after the sensor recording had ended, though the memo itself
 mentions both recording. A recording app that stamps the start: `--audio-stamped-at-start`.
 
+**A pocket or wearable recorder.** Its files go in the same inbox. Most stamp nothing in the
+file and put the start in its name, so when a file has no creation time its name is read as
+local time: `2026-11-15 14-32-10.wav`, `20261115_143210.m4a`, or Sony's `261115_1432.mp3`. A file
+with neither is left out and listed with the reason. A recording of half an hour or more is not
+one memo but sound of the day: it is kept whole (`sources/audio/recorder/`) and the
+`conversations` job finds the talks in it, each becoming a moment queued for
+[speech](speech.md), exactly as with [DayCube Capture's hours](#daycube-captures-own-files).
+
 **What was said.** Transcribed on the CPU with faster-whisper (`small`, int8, word times, voice
 activity filtering): `uv sync --extra transcribe` to install it. A transcript beside the memo
 (`<memo name>.json`, faster-whisper's segments or the vault's transcript format) is used instead.

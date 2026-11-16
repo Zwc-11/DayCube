@@ -3,7 +3,8 @@
 Two observations are the same thing when they are near each other in space and look alike. Near
 is judged against their own size (a tree's observations may lie a metre apart, a cup's cannot);
 alike is the cosine of their image embeddings. Each test alone is not enough: a row of identical
-chairs look alike, and a cup on a table sits inside the table's box.
+chairs look alike, and a cup on a table sits inside the table's box. Two boxes in the same frame
+are never the same thing, however alike and near: that is what keeps a row of bottles apart.
 
 Observations are taken in time order and joined to the best item within reach, then items are
 joined to each other once more (a thing seen at the start and at the end of a walk). An item's
@@ -77,6 +78,7 @@ def _reach(a: float, b: float) -> float:
 
 def merge(observations: list[Observation], alike: float = ALIKE) -> list[Item]:
     items: list[Item] = []
+    seen: list[set[int]] = []  # per item, the frames it was seen in
     positions = np.zeros((0, 3))
     vectors = np.zeros((0, len(observations[0].vector))) if observations else np.zeros((0, 1))
     sizes: list[float] = []
@@ -90,6 +92,8 @@ def merge(observations: list[Observation], alike: float = ALIKE) -> list[Item]:
             d = np.linalg.norm(positions - o.position, axis=1)
             cos = vectors @ o.vector
             for k in np.flatnonzero(cos >= alike):
+                if o.frame in seen[k]:
+                    continue
                 if d[k] <= _reach(sizes[k], max(o.size_m)) and cos[k] - 0.1 * d[k] > best_score:
                     best, best_score = int(k), float(cos[k] - 0.1 * d[k])
         if best < 0:
@@ -97,8 +101,10 @@ def merge(observations: list[Observation], alike: float = ALIKE) -> list[Item]:
             positions = np.vstack([positions, o.position])
             vectors = np.vstack([vectors, o.vector])
             sizes.append(max(o.size_m))
+            seen.append({o.frame})
         else:
             items[best].observations.append(o)
+            seen[best].add(o.frame)
             refresh(best)
     # Items joined to items: the same thing reached again later, by then an item of its own.
     joined = True
@@ -108,13 +114,14 @@ def merge(observations: list[Observation], alike: float = ALIKE) -> list[Item]:
             if not items[a].observations:
                 continue
             for b in range(a + 1, len(items)):
-                if not items[b].observations:
+                if not items[b].observations or seen[a] & seen[b]:
                     continue
                 if vectors[a] @ vectors[b] >= alike and np.linalg.norm(positions[a] - positions[b]) <= _reach(
                     sizes[a], sizes[b]
                 ):
                     items[a].observations += items[b].observations
                     items[b].observations = []
+                    seen[a] |= seen[b]
                     refresh(a)
                     joined = True
     return [item for item in items if item.observations]

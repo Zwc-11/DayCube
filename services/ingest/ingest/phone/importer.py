@@ -4,7 +4,9 @@
 
 - Sensor Logger recordings (zip or folder): visits and trips (``visits``), floors from the
   barometer (``skeleton.floors``) and every GPS fix as the day's skeleton;
-- voice memos (.m4a, .wav, ...): audio moments with their transcript (``voice``);
+- voice memos (.m4a, .wav, ...): audio moments with their transcript (``voice``); a recording of
+  half an hour or more (a pocket or wearable recorder's file) is kept as sound of the day and cut
+  into conversations, as the phone app's hours are;
 - Stray Scanner captures (folder, or rgb.mp4 + odometry.csv): video moments with keyframes and
   the camera's path on the map (``stray``).
 
@@ -122,10 +124,15 @@ def import_phone(
     spans = [(r, s) for r in recordings for s in segment(r)]
     moments: list[Moment] = []
     skipped: list[dict] = []
+    hours = []
     for path in found["audio"]:
         try:
-            moments.append(_voice(path, found["transcripts"], len(found["audio"]) == 1, transcribe,
-                                  audio_ends_at_creation, say))  # fmt: skip
+            audio = voice.read(path, ends_at_creation=audio_ends_at_creation, zone=zone)
+            beside = _beside(path, found["transcripts"], len(found["audio"]) == 1)
+            if audio.duration_s >= voice.LONG_S and beside is None:
+                hours.append(_hour(vault, audio, "recorder", say))
+            else:
+                moments.append(_voice(audio, beside, transcribe, say))
         except (RuntimeError, OSError, ValueError, subprocess.SubprocessError) as error:
             skipped.append({"paths": [str(path)], "reason": str(error)})
     for files in found["scans"]:
@@ -133,10 +140,10 @@ def import_phone(
             moments.append(_scan(files, fixes, say))
         except (RuntimeError, OSError, ValueError, subprocess.SubprocessError) as error:
             skipped.append({"paths": [str(f) for f in files.values()], "reason": str(error)})
-    hours = []
     for path in found["hours"]:
         try:
-            hours.append(_hour(vault, path, say))
+            device = path.name.split("-audio-")[0] if "-audio-" in path.name else "phone"
+            hours.append(_hour(vault, voice.read(path), device, say))
         except (RuntimeError, OSError, ValueError, subprocess.SubprocessError) as error:
             skipped.append({"paths": [str(path)], "reason": str(error)})
     for item in skipped:
@@ -163,25 +170,23 @@ def _days(t0: float, t1: float, zone: ZoneInfo) -> list[str]:
     return [(first + timedelta(days=k)).isoformat() for k in range((last - first).days + 1)]
 
 
-def _hour(vault: Vault, path: Path, say: Any) -> dict:
-    """Keep the app's hour of sound and queue the job that finds the conversations in it."""
+def _hour(vault: Vault, audio: voice.Audio, device: str, say: Any) -> dict:
+    """Keep sound of the day (the app's hour, a recorder's long file) and queue the job that finds
+    the conversations in it."""
     from ..jobs.stages import enqueue
     from ..jobs.store import Jobs
 
-    _, start = sources.app_start(path)  # type: ignore[misc]
-    audio = voice.read(path, start=start)
-    device = path.name.split("-audio-")[0] if "-audio-" in path.name else "phone"
-    relative = sources.keep_audio(vault, path, device, start, audio.duration_s)
+    relative = sources.keep_audio(vault, audio.path, device, audio.t0, audio.duration_s)
     jobs = Jobs.of(vault.root)
     try:
         job_id, _ = enqueue(
             jobs,
             "conversations",
-            {"audio": relative, "t0": start.isoformat(), "duration_s": round(audio.duration_s, 3)},
+            {"audio": relative, "t0": audio.t0.isoformat(), "duration_s": round(audio.duration_s, 3)},
         )
     finally:
         jobs.close()
-    say(f"{path.name}: {audio.duration_s / 60:.0f} min of sound kept; conversations job {job_id}")
+    say(f"{audio.path.name}: {audio.duration_s / 60:.0f} min of sound kept; conversations job {job_id}")
     return {"audio": relative, "job": job_id, "duration_s": round(audio.duration_s, 1)}
 
 
@@ -237,11 +242,16 @@ def vault_timezone(vault: Vault) -> str:
     return Settings().timezone
 
 
-def _voice(path: Path, transcripts: list[Path], only: bool, run: bool, ends: bool, say: Any) -> Moment:
-    audio = voice.read(path, ends_at_creation=ends)
-    beside = [t for t in transcripts if t.stem == path.stem] or (transcripts if only and len(transcripts) == 1 else [])
+def _beside(path: Path, transcripts: list[Path], only: bool) -> Path | None:
+    """The transcript given with a memo: ``<its stem>.json``, or the one .json given with one memo."""
+    named = [t for t in transcripts if t.stem == path.stem]
+    return named[0] if named else (transcripts[0] if only and len(transcripts) == 1 else None)
+
+
+def _voice(audio: voice.Audio, beside: Path | None, run: bool, say: Any) -> Moment:
+    path = audio.path
     transcript = (
-        voice.load_transcript(beside[0], audio.duration_s) if beside else (voice.transcribe(path, say) if run else None)
+        voice.load_transcript(beside, audio.duration_s) if beside else (voice.transcribe(path, say) if run else None)
     )
     # Named by the file's own time, so a later import that reads it differently replaces it.
     moment_id = "mo_voice_" + (audio.stamp or audio.t0).strftime("%Y%m%d_%H%M%S")
