@@ -4,6 +4,7 @@ are stood in for: what is tested is the geometry and the joining, on a made-up r
 places are known."""
 
 import json
+import shutil
 from pathlib import Path
 
 import numpy as np
@@ -16,6 +17,8 @@ from ingest.items.merge import Observation, merge
 from ingest.vault import Vault
 
 W, H, F = 640, 480, 500.0
+# Crops are written as JPEG by FFmpeg (store.jpeg); the Windows runner has none.
+needs_ffmpeg = pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="FFmpeg is not installed")
 K = (F, F, W / 2, H / 2)
 
 
@@ -142,6 +145,7 @@ def test_a_box_found_in_the_upright_picture_goes_back_to_the_stored_frame(turn: 
     assert sources.box_back(box, turn, 64, 48) == (30, 10, 50, 20)
 
 
+@needs_ffmpeg
 def test_items_are_stored_and_found_by_words(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     obs, frames = observations()
     items = merge(obs)
@@ -184,6 +188,7 @@ def test_one_frame_is_looked_at_turned_upright_and_its_things_placed(monkeypatch
     assert entry == {"index": 3, "t": 1.5, "caption": "a chair", "text": ""}
 
 
+@needs_ffmpeg
 def test_the_api_lists_serves_and_finds_items_by_name(client: TestClient, vault: Vault) -> None:
     obs, _ = observations()
     items = merge(obs)
