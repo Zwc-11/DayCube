@@ -16,6 +16,7 @@ dependencies = [
   "sharp @ git+https://github.com/apple/ml-sharp@aed6527499ef91cba3b54c18d49a870f25947190",
   "pycolmap>=4.2,<5",      # COLMAP: verification, mapping (BSD)
   "opencv-python-headless>=5,<6",  # frames, masks; LaMa fill through its DNN (OpenCV 5 runs the zoo's ONNX) (Apache-2.0)
+  "rapidocr-onnxruntime>=1.4,<2",  # the writing in a video's frames, Chinese and English: ingest.items (Apache-2.0)
   "pillow>=11,<13",
   "numpy>=1.26,<3",
 ]
@@ -25,6 +26,8 @@ dev = ["pytest>=8,<10"]
 
 [tool.uv]
 package = false
+# RapidOCR asks for opencv-python (OpenCV 4); it runs on the headless OpenCV 5 above, and two cv2 cannot be installed.
+override-dependencies = ["opencv-python ; sys_platform == 'never'"]
 
 [tool.uv.sources]
 daycube-ingest = { path = "../ingest", editable = true }

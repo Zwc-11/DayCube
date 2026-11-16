@@ -21,6 +21,13 @@ def path(vault: Vault, day: str = DAY) -> Path:
     return vault.root / "capture" / day / "blocks.jsonl"
 
 
+@pytest.fixture(autouse=True)
+def looked_at(vault: Vault) -> None:
+    """The eyes rest on the block that day: only the blocks a look or a dwell names are read."""
+    look = {"doc": "document", "block": "p", "t": f"{DAY}T10:00:00+00:00", "t_end": f"{DAY}T10:00:01+00:00"}
+    vault.write_lines(vault.root / "capture" / DAY / "gaze.jsonl", [look])
+
+
 def test_sparse_snapshots_inherit_title_and_text_across_midnight(vault: Vault) -> None:
     vault.write_lines(path(vault, PREVIOUS), [block("Earlier text", "Original", "old")])
     vault.write_lines(path(vault), [block(None, url="new"), block("New text", "Renamed"), block(None, url="last")])
@@ -43,9 +50,9 @@ def test_unchanged_files_are_not_reparsed_and_results_do_not_share_maps(
     original = synthesize._iter_records
     calls = []
 
-    def counted(source: Path):
+    def counted(source: Path, *docs: set):
         calls.append(source)
-        yield from original(source)
+        yield from original(source, *docs)
 
     monkeypatch.setattr(synthesize, "_iter_records", counted)
     result = read_capture(vault, DAY)
@@ -78,7 +85,7 @@ def test_external_replacement_and_file_removal_invalidate(vault: Vault) -> None:
 
 def test_compacted_capture_uses_its_physical_stamp_and_streams_unicode(vault: Vault) -> None:
     logical = path(vault)
-    logical.parent.mkdir(parents=True)
+    logical.parent.mkdir(parents=True, exist_ok=True)
     packed = logical.with_suffix(".jsonl.zst")
 
     def write(text: str) -> None:
@@ -94,7 +101,7 @@ def test_compacted_capture_uses_its_physical_stamp_and_streams_unicode(vault: Va
 
 def test_corrupt_records_and_valid_unterminated_tail_keep_existing_behavior(vault: Vault) -> None:
     logical = path(vault)
-    logical.parent.mkdir(parents=True)
+    logical.parent.mkdir(parents=True, exist_ok=True)
     logical.write_text(json.dumps(block("First")) + '\n{"broken":\n42\n' + json.dumps(block("Last")), encoding="utf-8")
     assert read_capture(vault, DAY).texts[("document", "p")][1] == "Last"
     assert len(list(text_lines(logical))) == 4
@@ -102,7 +109,7 @@ def test_corrupt_records_and_valid_unterminated_tail_keep_existing_behavior(vaul
 
 def test_truncated_compacted_capture_remains_an_explicit_read_failure(vault: Vault) -> None:
     logical = path(vault)
-    logical.parent.mkdir(parents=True)
+    logical.parent.mkdir(parents=True, exist_ok=True)
     packed = logical.with_suffix(".jsonl.zst")
     encoded = zstandard.ZstdCompressor().compress(json.dumps(block("Frame integrity")).encode())
     packed.write_bytes(encoded[:-3])
@@ -134,8 +141,8 @@ def test_a_file_changed_during_projection_is_not_cached_under_an_old_stamp(
     original = synthesize._iter_records
     once = [False]
 
-    def appending(source: Path):
-        yield from original(source)
+    def appending(source: Path, *docs: set):
+        yield from original(source, *docs)
         if source == path(vault) and not once[0]:
             once[0] = True
             vault.append_lines(source, [block("After")])
@@ -144,3 +151,33 @@ def test_a_file_changed_during_projection_is_not_cached_under_an_old_stamp(
     assert read_capture(vault, DAY).texts[("document", "p")][1] == "Before"
     assert vault.capture_texts.get(path(vault)) is None
     assert read_capture(vault, DAY).texts[("document", "p")][1] == "After"
+
+
+def test_only_the_blocks_a_day_names_are_kept_and_other_documents_are_not_parsed(
+    vault: Vault, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    other = {
+        "doc": "elsewhere",
+        "title": 'Says "doc": "document"',
+        "blocks": [{"id": "p", "tag": "p", "text": "Other"}],
+    }
+    spare = {"doc": "document", "blocks": [{"id": "q", "tag": "p", "text": "Not looked at"}]}
+    vault.write_lines(path(vault), [other, block("Looked at", "Title", "url"), spare, other, other])
+    parsed = []
+    loads = json.loads
+    monkeypatch.setattr(synthesize.json, "loads", lambda line: parsed.append(line) or loads(line))
+    result = read_capture(vault, DAY)
+    assert result.texts == {("document", "p"): ("p", "Looked at")} and result.docs == {"document": ("", "Title")}
+    assert sum('"elsewhere"' in line for line in parsed) == 0  # three records of another page: skipped whole
+    parsed.clear()
+    assert read_capture(vault, DAY).texts == result.texts
+    assert not any("blocks" in line for line in parsed)  # the second time from the cache
+
+    # A dwell logged without its text names its block too; the look's block stays.
+    dwell = {"kind": "dwell", "phase": "end", "dwell": "d1", "id": "a1", "doc": "document", "block": "q",
+             "t": f"{DAY}T11:00:00+00:00", "t_end": f"{DAY}T11:00:09+00:00", "dwell_s": 9}  # fmt: skip
+    vault.write_lines(vault.root / "capture" / DAY / "attention.jsonl", [dwell])
+    assert read_capture(vault, DAY).texts == {
+        ("document", "p"): ("p", "Looked at"),
+        ("document", "q"): ("p", "Not looked at"),
+    }

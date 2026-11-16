@@ -43,6 +43,46 @@ The benchmark builds its own temporary vault, never reads yours, and fails when 
 differs from the compared report. Search over many days, vectors and storage per day have their
 own measurements in [search](search.md) and [storage](storage.md).
 
+## A day's capture into the index (real days)
+
+Ten recorded days of one person (449 to 4,239 indexed units a day; `blocks.jsonl`, the text and
+geometry of every page shown, is 9 to 63 MB of each), on a two-core Linux VM, one process, each
+day indexed twice. Recorded on 2026-11-16; the index rows (units, entities, mentions) of all ten
+days are the same before and after.
+
+| | Before | After |
+| --- | ---: | ---: |
+| Index the ten days, first time | 4.88 s | 3.12 s |
+| Index them again in the same process | 3.17 s | 1.10 s |
+| The heaviest day (4,239 units, 63 MB of blocks): first, again | 1.36 s, 1.33 s | 0.75 s, 0.30 s |
+| The day after it (its text log is read too, for pages left open overnight) | 0.89 s, 0.72 s | 0.38 s, 0.05 s |
+| Block texts kept for the heaviest day | 108,579 (34 MB: over the cache's 32 MB, so never kept) | 845 (0.9 MB) |
+
+What changed: a day uses a block's text only when a look or a dwell names the block. The log is
+now read for those blocks alone, and a record of another document is passed over without being
+parsed (`capture/synthesize.py`). Before, every block's text was kept, a heavy day's did not fit
+its cache and was parsed again on every index, and half of the rest of the time went to measuring
+the size of what was cached.
+
+A whole background round for a day (index, notes, timeline, review, episodes) costs 0.5 to 2 s
+of one core every ten minutes on those days; the review is the largest part (0.4 to 1.7 s, a
+third of it two `git` calls for the day's commits).
+
+## A video's frames
+
+A 90.6 s phone video (1080×1920, 30 frames a second, a keyframe every 2.8 s), two CPU cores.
+
+| | Before | After |
+| --- | ---: | ---: |
+| The 92 looks of its 34 shots, decoded | 64 s (0.70 s a look: a seek each), twice with poses | 29 s, once |
+| Items of the whole video, with poses ([items](items.md#a-plain-video)) | 1,172 s | 883 s |
+| A scan's frames, one every 2 s of 128 s (HEVC, 1920×1440), same pixels | 62.1 s | 55.6 s |
+
+A shot's looks now come from one run of the decoder (`items/frames.py` `looks`), the pose model
+stays loaded for the whole video and takes the same pictures the detector does, and a scan's
+decoder scales and hands over only the picked frames. Finding the cuts still decodes the whole
+video once (27 s here): that is the decoder's own speed.
+
 ## Viewer
 
 Sample day, 1600×1000, headless Chromium with its software renderer (SwiftShader), medians of

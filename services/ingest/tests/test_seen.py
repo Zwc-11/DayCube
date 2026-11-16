@@ -41,3 +41,22 @@ def test_a_day_with_no_records_is_not_found(client: TestClient) -> None:
 def test_a_title_with_a_colon_keeps_the_words_whole() -> None:
     text = "Read in Assignment 3: Hash tables (learn.uwaterloo.ca): Open addressing: probes"
     assert _words("read", text, "Assignment 3: Hash tables") == "Open addressing: probes"
+
+
+def test_an_app_whose_windows_are_not_kept_is_listed_as_itself(vault: Vault, client: TestClient) -> None:
+    capture_session(vault)
+    log = vault.root / "capture" / CAPTURE_DAY / "windows.jsonl"
+    vault.append_lines(log, [
+        {"id": "w-vault", "t": f"{CAPTURE_DAY}T09:40:00-04:00", "kind": "window", "app": "keepass.exe", "private": True},
+        {"id": "w-code", "t": f"{CAPTURE_DAY}T09:42:00-04:00", "kind": "window", "app": "code.exe", "title": "notes.md"},
+        {"id": "w-end", "t": f"{CAPTURE_DAY}T09:43:00-04:00", "kind": "away", "since": f"{CAPTURE_DAY}T09:43:00-04:00"},
+    ])  # fmt: skip
+    seen = client.get(f"/day/{CAPTURE_DAY}/seen")
+    assert seen.status_code == 200  # it answered 500: the app has no page, only itself
+    app = next(p for p in seen.json()["pages"] if "keepass" in p["key"])
+    assert (app["title"], app["seconds"], app["items"]) == ("keepass", 120.0, [])
+
+
+def test_a_day_told_only_by_its_events_has_no_pages(client: TestClient) -> None:
+    seen = client.get("/day/2026-10-20/seen")  # the sample day: "Planned the day" is an event, not a page
+    assert seen.status_code == 200 and seen.json()["pages"] == []

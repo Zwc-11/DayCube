@@ -1,5 +1,5 @@
 """The frames things are looked for in: a LiDAR scan's, with pose and measured depth, or a plain
-video's, a keyframe per shot.
+video's, shot by shot.
 
 A scan (Stray Scanner: ``rgb.mp4``, ``odometry.csv``, ``depth/``, ``confidence/``) is read with
 ``ingest.splat.dataset``'s own functions, so poses and depth mean here what they mean for the
@@ -24,6 +24,9 @@ SCAN_WIDTH = 960  # frames are decoded this wide: enough for a detector, a quart
 KEY_EVERY_S = 2.0
 SCENE = 0.25  # ffmpeg's scene score above which a new shot begins
 PHONE_FOV_DEG = 69.0  # a phone's main camera across its long side
+LOOK_EVERY_S = 1.0  # with camera poses, a shot is looked at this often ...
+MAX_LOOKS = 24  # ... and at most this many times (a longer shot is looked at farther apart)
+FLIP = np.diag([1.0, -1.0, -1.0, 1.0])  # OpenCV axes (y down, z forward) to OpenGL (y up, z back), and back
 
 
 def upright(image: np.ndarray, turn: int) -> np.ndarray:
@@ -118,8 +121,9 @@ def shots(video: Path, scene: float = SCENE, shortest_s: float = 0.4) -> list[tu
     return spans or [(0.0, duration)]
 
 
-def frame_at(video: Path, t: float, width: int = SCAN_WIDTH) -> np.ndarray | None:
-    """One frame of a video at ``t`` seconds, RGB, ``width`` wide (its rotation tag applied by ffmpeg)."""
+def _size(video: Path, width: int) -> tuple[int, int]:
+    """(width, height) of the video's frames ``width`` wide, as ffmpeg hands them over (its rotation
+    tag applied, the height even)."""
     info = subprocess.run(
         [executable("ffprobe"), "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height:stream_side_data=rotation",
          "-of", "csv=p=0", str(video)],
@@ -128,15 +132,22 @@ def frame_at(video: Path, t: float, width: int = SCAN_WIDTH) -> np.ndarray | Non
     w, h = int(info[0]), int(info[1])
     if len(info) > 2 and info[2].strip().lstrip("-") in ("90", "270"):
         w, h = h, w
-    height = round(width * h / w / 2) * 2
+    return width, round(width * h / w / 2) * 2
+
+
+def looks(video: Path, start: float, every: float, count: int, size: tuple[int, int]) -> list[np.ndarray]:
+    """Up to ``count`` frames of a video, the first at ``start`` seconds and one every ``every``
+    after it, RGB at ``size``: one run of the decoder from the first to the last. (A seek for each
+    decodes from the keyframe before it every time: 0.7 s a frame on a phone's video.)"""
+    width, height = size
     raw = subprocess.run(
-        [executable("ffmpeg"), "-nostdin", "-v", "error", "-ss", f"{t:.3f}", "-i", str(video), "-frames:v", "1",
-         "-vf", f"scale={width}:{height}:flags=area,format=rgb24", "-f", "rawvideo", "pipe:1"],
-        capture_output=True, timeout=300,
+        [executable("ffmpeg"), "-nostdin", "-v", "error", "-ss", f"{start:.3f}", "-i", str(video),
+         "-vf", f"select='gte(t\\,{every:.3f}*selected_n)',scale={width}:{height}:flags=area,format=rgb24",
+         "-fps_mode", "passthrough", "-frames:v", str(count), "-f", "rawvideo", "pipe:1"],
+        capture_output=True, timeout=600,
     ).stdout  # fmt: skip
-    if len(raw) != width * height * 3:
-        return None
-    return np.frombuffer(raw, np.uint8).reshape(height, width, 3)
+    whole = len(raw) // (width * height * 3)
+    return list(np.frombuffer(raw, np.uint8)[: whole * width * height * 3].reshape(whole, height, width, 3))
 
 
 def sharpness(image: np.ndarray) -> float:
@@ -145,25 +156,61 @@ def sharpness(image: np.ndarray) -> float:
     return float(lap.var())
 
 
+def posed(first: int, looks: list[tuple[float, np.ndarray]], poses: dict[str, np.ndarray], key: int,
+           metres: np.ndarray, kind: str) -> list[Frame]:  # fmt: skip
+    """One shot's looks as frames in the key look's camera, in metres, the key first. The pose
+    model's unit of length is its own: the key look's depth in metres, over the model's depth of the
+    same pixels, is what one unit measures."""
+    w2c = np.concatenate([poses["w2c"], np.tile([[[0.0, 0.0, 0.0, 1.0]]], (len(looks), 1, 1))], 1)
+    h, w = poses["depth"].shape[1:]
+    H, W = metres.shape
+    rows, cols = ((np.arange(h) + 0.5) * H / h).astype(int), ((np.arange(w) + 0.5) * W / w).astype(int)
+    own = poses["depth"][key]
+    ok = np.isfinite(own) & (own > 0)
+    unit = float(np.median(metres[rows][:, cols][ok] / own[ok]))
+    frames = []
+    for k, (t, image) in enumerate(looks):
+        c2w = FLIP @ w2c[key] @ np.linalg.inv(w2c[k]) @ FLIP  # this look's camera to the key's
+        c2w[:3, 3] *= unit
+        fx, fy, cx, cy = (float(v) for v in poses["K"][k][[0, 1, 0, 1], [0, 1, 2, 2]])
+        frames.append(Frame(first + k, t, image, (fx * W / w, fy * H / h, cx * W / w, cy * H / h),
+                            poses["depth"][k] * unit, None, kind, c2w))  # fmt: skip
+    return [frames[key], *frames[:key], *frames[key + 1 :]]
+
+
 def video_frames(
     video: Path,
     depth_of: Callable[[np.ndarray], tuple[np.ndarray, str]],
+    poses_of: Callable[[np.ndarray], dict[str, np.ndarray]] | None = None,
     width: int = SCAN_WIDTH,
     fov_deg: float = PHONE_FOV_DEG,
-) -> Iterator[tuple[int, tuple[float, float], Frame]]:
-    """(shot number, (start, end), keyframe) for each shot: the sharpest of three looks into it,
-    with ``depth_of(image)`` -> (depth in metres, kind) from a model. No pose: each shot's things
-    are placed in its own camera's frame."""
+) -> Iterator[tuple[int, tuple[float, float], list[Frame]]]:
+    """(shot number, (start, end), frames) for each shot, its keyframe first: the sharpest of the
+    looks into it, with ``depth_of(image)`` -> (depth in metres, kind) from a model.
+
+    Without ``poses_of`` a shot gets three looks and only the keyframe is kept, with no pose and a
+    phone's field of view: its things are placed in its camera. With it (``models.Poses``) a shot
+    is looked at every ``LOOK_EVERY_S`` and every look is kept, placed in the keyframe's camera
+    with the focal length and depth the pose model gives. Frames are numbered through the video
+    in the order kept."""
+    size = _size(video, width)
+    first = 0
     for n, (a, b) in enumerate(shots(video)):
-        looks = [(t, frame_at(video, t, width)) for t in (a + (b - a) * f for f in (0.25, 0.5, 0.75))]
-        looks = [(t, image) for t, image in looks if image is not None]
-        if not looks:
+        count = 3 if poses_of is None else int(np.clip(round((b - a) / LOOK_EVERY_S), 2, MAX_LOOKS))
+        every = (b - a) / (count + 1)
+        seen = [(a + every * (k + 1), image) for k, image in enumerate(looks(video, a + every, every, count, size))]
+        if not seen:
             continue
-        t, image = max(looks, key=lambda look: sharpness(look[1]))
-        H, W = image.shape[:2]
-        f = 0.5 * max(W, H) / np.tan(np.radians(fov_deg) / 2)
-        depth, kind = depth_of(image)
-        yield n, (a, b), Frame(n, t, image, (f, f, W / 2, H / 2), depth, None, kind)
+        key = max(range(len(seen)), key=lambda k: sharpness(seen[k][1]))
+        t, image = seen[key]
+        metres, kind = depth_of(image)
+        if poses_of is None:
+            f = 0.5 * max(size) / np.tan(np.radians(fov_deg) / 2)
+            frames = [Frame(first, t, image, (f, f, size[0] / 2, size[1] / 2), metres, None, kind)]
+        else:
+            frames = posed(first, seen, poses_of(np.stack([image for _, image in seen])), key, metres, kind)
+        first += len(frames)
+        yield n, (a, b), frames
 
 
-__all__ = ["LIDAR_M", "box_back", "frame_at", "scan_frames", "shots", "upright", "video_frames"]
+__all__ = ["LIDAR_M", "box_back", "looks", "posed", "scan_frames", "shots", "upright", "video_frames"]

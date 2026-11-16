@@ -103,6 +103,7 @@ services/capture-win/   Capture receiver: browser and screen records, gaze, inpu
 services/gaze/          Webcam eye tracker (EyeTrax), its own environment
 services/speech/        Transcripts, speakers and emotion on the GPU, its own environment
 services/recon/         Photo and scan to 3D (SHARP, COLMAP), its own environment
+services/poses/         A video's camera poses (Depth Anything 3), its own environment
 extensions/chrome/      DayCube Capture extension (Opera, Chrome, Edge)
 fixtures/               Fictional sample day, phone day and capture morning
 eval/                   Simulations, benchmarks and their recorded results

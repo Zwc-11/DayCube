@@ -59,7 +59,7 @@ for actions. Do not paste external provider keys there.
 | PUT | `/memories/{date}/{id}/film-portrait.mp4` or `film-landscape.mp4` | The MP4 body (at most 512 MB), kept beside the memory; 422 for anything not an MP4 |
 | GET | `/worlds`, `/worlds/{date}/{id}`, `/worlds/{date}/{id}/{file}` | Worlds made from videos: the list, one world, and an island's splat ([worlds](world.md)) |
 | GET | `/items`, `/items/{date}/{id}`, `/items/{date}/{id}/crops/{file}` | The things found in a scan or video: every set, one set (each item's name, place in 3D, size, sightings), and an item's picture ([items](items.md)) |
-| GET | `/items/find?q=&top=` | Items by name over the whole vault: where and when each was seen |
+| GET | `/items/find?q=&top=` | Items by name, then by the caption and writing of a frame that shows them, over the whole vault: where and when each was seen |
 | GET | `/maps/buildings?lat=&lon=&radius_m=` | OpenStreetMap footprints with heights, fetched once and kept in the vault |
 | GET | `/maps/config` | The Google Maps key for the viewer's 3D tiles (token required) |
 | GET | `/gaze/learning` | The eye tracker's learning from clicks: live error per click, each fit, each update; `ETag` |

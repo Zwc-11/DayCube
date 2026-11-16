@@ -2,13 +2,14 @@
 ``... video <file> --out <folder>``.
 
 A scan's items share one frame (ARKit's metres), so the same thing seen from many frames joins into
-one item and its ``spread_m`` says how well the frames agree. A plain video has no camera path yet:
-each shot's things are placed in that shot's own camera, by a model's depth, and joined only within
-the shot.
+one item and its ``spread_m`` says how well the frames agree. A plain video is taken shot by shot:
+each shot's things are placed in that shot's keyframe camera, by a model's depth. Where the pose
+environment is installed (``services/poses``) a shot is looked at several times and the looks are
+joined; without it there is one look a shot.
 
-``report`` is written beside the items (``report.json``): counts, seconds per stage, and for a scan
-how often an item's place, seen again from each frame that observed it, falls inside the box found
-in that frame (the check that the 3D places are right, which needs no labels).
+``report`` is written beside the items (``report.json``): counts, seconds per stage, and how often
+an item's place, seen again from each frame that observed it, falls inside the box found in that
+frame (the check that the 3D places are right, which needs no labels).
 """
 
 from __future__ import annotations
@@ -17,6 +18,8 @@ import argparse
 import json
 import time
 from collections.abc import Callable
+from contextlib import nullcontext
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -164,33 +167,45 @@ def index_scan(capture: Path, out: Path, every_s: float = sources.KEY_EVERY_S, l
 
 
 def index_video(video: Path, out: Path, captions: bool = True, say: Callable[[str], None] = print) -> dict:
-    timing = {"start": time.time()}
+    """A plain video into an items folder. With poses, an item of a shot is kept when the keyframe
+    shows it or two looks do: what one other look alone shows is most often something that moved."""
+    start = time.time()
+    posed = models.poses_python() is not None
     items: list[Item] = []
     shots: list[int | None] = []
     crops: list[np.ndarray] = []
     entries = []
-    for n, (a, b), f in sources.video_frames(video, models.model_depth):
-        found, entry = observe(f, captions)
-        embed(f, found)
-        merged = merge(found) if found else []
-        entry.update(
-            {
-                "shot": n,
-                "t0": round(a, 2),
-                "t1": round(b, 2),
-                "items": [f"i{len(items) + k + 1:04d}" for k in range(len(merged))],
-            }
-        )
-        entries.append(entry)
-        items += merged
-        shots += [n] * len(merged)
-        crops += [sources.upright(models.crop(f.image, i.best().box, margin=0.15), f.turn) for i in merged]
-        say(f"shot {n} ({a:.1f}-{b:.1f} s): {len(merged)} things; {entry.get('caption', '')[:70]}")
+    cameras: dict[int, Frame] = {}  # the posed frames without their pictures, for the report
+    with models.Poses() if posed else nullcontext() as poses_of:
+        for n, (a, b), frames in sources.video_frames(video, models.model_depth, poses_of):
+            by = {f.index: f for f in frames}
+            key = frames[0]
+            found, entry = observe(key, captions)
+            for f in frames[1:]:
+                found += observe(f, False)[0]
+            for f in frames:
+                embed(f, [o for o in found if o.frame == f.index])
+            merged = [i for i in merge(found) if len(i.observations) > 1 or i.observations[0].frame == key.index]
+            ids = [f"i{len(items) + k + 1:04d}" for k in range(len(merged))]
+            entries.append(
+                entry | {"shot": n, "t0": round(a, 2), "t1": round(b, 2), "looks": len(frames), "items": ids}
+            )
+            items += merged
+            shots += [n] * len(merged)
+            crops += [best_crop(i, by) for i in merged]
+            cameras |= {f.index: replace(f, image=f.image[:1, :1], depth=None) for f in frames if f.c2w is not None}
+            say(
+                f"shot {n} ({a:.1f}-{b:.1f} s): {len(frames)} looks, {len(merged)} things; {entry.get('caption', '')[:70]}"
+            )
     source = {"kind": "video", "file": video.name, "shots": len(entries), "recorded": sources.recorded(video)}
-    record = store.write(out, items, crops, source=source, frame="shot",
-                         models={"detector": models.DETECTOR, "embedder": models.EMBEDDER, "depth": "Depth Anything V2 Metric Small"},
-                         frames=entries, shots=shots)  # fmt: skip
-    report = {"shots": len(entries), "items": len(items), "seconds": round(time.time() - timing["start"], 1)}
+    used = {"detector": models.DETECTOR, "embedder": models.EMBEDDER, "depth": "Depth Anything V2 Metric Small"}
+    record = store.write(out, items, crops, source=source, frame="shot", frames=entries, shots=shots,
+                         models=used | ({"poses": models.POSES} if posed else {}))  # fmt: skip
+    again = [i for i in items if len(i.observations) > 1]
+    report = {"shots": len(entries), "looks": sum(e["looks"] for e in entries), "items": len(items),
+              "seen_again": len(again),
+              "median_spread_m": round(float(np.median([i.spread_m for i in again])), 3) if again else None,
+              "reprojection": reprojection(items, cameras), "seconds": round(time.time() - start, 1)}  # fmt: skip
     (out / "report.json").write_text(json.dumps(report, indent=1) + "\n", encoding="utf-8")
     say(json.dumps(report))
     return record

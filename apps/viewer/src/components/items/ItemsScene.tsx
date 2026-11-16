@@ -13,6 +13,8 @@ interface ItemsSceneProps {
   items: Item[];
   picked: string | null;
   onPick: (id: string) => void;
+  /** The items are placed in a camera's own frame (a video's shot): look from where it stood. */
+  fromCamera?: boolean;
 }
 
 /** A steady colour per name, the same in the list. */
@@ -20,7 +22,7 @@ export const hueOf = (label: string) => [...label].reduce((h, c) => (h * 31 + c.
 
 type Live = { pick: (id: string | null) => void };
 
-const ItemsScene: React.FC<ItemsSceneProps> = ({ items, picked, onPick }) => {
+const ItemsScene: React.FC<ItemsSceneProps> = ({ items, picked, onPick, fromCamera = false }) => {
   const root = useRef<HTMLDivElement>(null);
   const live = useRef<Live | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'failed'>('loading');
@@ -51,7 +53,7 @@ const ItemsScene: React.FC<ItemsSceneProps> = ({ items, picked, onPick }) => {
       const centre = box.getCenter(new THREE.Vector3());
       const reach = Math.max(1, box.getSize(new THREE.Vector3()).length());
       const camera = new THREE.PerspectiveCamera(50, el.clientWidth / Math.max(1, el.clientHeight), 0.05, reach * 20);
-      camera.position.set(centre.x + reach * 0.7, centre.y + reach * 0.6, centre.z + reach * 0.7);
+      if (!fromCamera) camera.position.set(centre.x + reach * 0.7, centre.y + reach * 0.6, centre.z + reach * 0.7);
       const controls = new OrbitControls(camera, renderer.domElement);
       resources.own(() => controls.dispose());
       controls.enableDamping = false;
@@ -141,7 +143,7 @@ const ItemsScene: React.FC<ItemsSceneProps> = ({ items, picked, onPick }) => {
       live.current = null;
       resources.dispose();
     };
-  }, [items]);
+  }, [items, fromCamera]);
 
   useEffect(() => {
     live.current?.pick(picked);

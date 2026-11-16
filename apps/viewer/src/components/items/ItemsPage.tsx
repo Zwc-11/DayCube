@@ -47,10 +47,17 @@ const ItemsPage: React.FC<ItemsPageProps> = ({ open, onOpen, onHome, onGraph }) 
 
   const items = useMemo(() => [...(loaded?.items ?? [])].sort((a, b) => b.seen - a.seen || a.id.localeCompare(b.id)), [loaded]);
   const wanted = words.toLowerCase().split(/\s+/).filter(Boolean);
-  const listed = items.filter((item) => wanted.every((w) => Object.keys(item.labels).concat(item.label).some((name) => name.includes(w))));
+  // What each item's frames say (their caption and the writing in them), to find it by.
+  const said = useMemo(() => {
+    const by = new Map<string, string>();
+    for (const f of loaded?.frames ?? []) for (const iid of f.items ?? []) by.set(iid, `${by.get(iid) ?? ''} ${f.caption ?? ''} ${f.text ?? ''}`.toLowerCase());
+    return by;
+  }, [loaded]);
+  const listed = items.filter((item) => wanted.every((w) => Object.keys(item.labels).concat(item.label, said.get(item.id) ?? '').some((name) => name.includes(w))));
   const chosen = items.find((item) => item.id === picked) ?? null;
-  // A plain video has no camera path: each shot's items are placed in that shot's own camera.
-  const shot = loaded?.frame === 'shot' ? (chosen ?? items[0])?.shot ?? null : null;
+  // A plain video is shown a shot at a time: each shot's items are placed in that shot's own camera.
+  const shot = loaded?.frame === 'shot' ? (chosen ?? listed[0] ?? items[0])?.shot ?? null : null;
+  const scene = shot === null ? undefined : loaded?.frames?.find((f) => f.shot === shot);
   const placed = useMemo(() => (loaded?.frame === 'shot' ? items.filter((item) => item.shot === shot) : items), [loaded, items, shot]);
 
   return (
@@ -81,7 +88,7 @@ const ItemsPage: React.FC<ItemsPageProps> = ({ open, onOpen, onHome, onGraph }) 
           <section className="items__list" aria-label="Items">
             <label className="items__find">
               <Search size={14} aria-hidden />
-              <input type="search" placeholder={`Find among ${items.length} items`} aria-label="Find an item by name"
+              <input type="search" placeholder={`Find among ${items.length} items`} aria-label="Find an item by name or by what its shot says"
                      value={words} onChange={(e) => setWords(e.target.value)} />
             </label>
             <ul>
@@ -102,8 +109,15 @@ const ItemsPage: React.FC<ItemsPageProps> = ({ open, onOpen, onHome, onGraph }) 
           </section>
           <section className="items__view" aria-label="In 3D">
             <Suspense fallback={null}>
-              <ItemsScene items={placed} picked={picked} onPick={setPicked} />
+              <ItemsScene items={placed} picked={picked} onPick={setPicked} fromCamera={loaded.frame === 'shot'} />
             </Suspense>
+            {scene && (
+              <p className="items__shot" aria-label="Shot">
+                <span className="num faint">Shot {shot! + 1} · {clock(scene.t0 ?? scene.t)}</span>
+                {scene.text && <strong>{scene.text.split('\n').join(' · ')}</strong>}
+                {scene.caption}
+              </p>
+            )}
             {chosen && (
               <aside className="items__picked" aria-label="Selected item">
                 <img src={backendBridge.itemCropUrl(date!, id!, chosen.crop)} alt={chosen.label} />

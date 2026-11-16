@@ -6,8 +6,9 @@
      "source": {"kind": "scan" | "video", "file", "recorded": {"t0", "duration_s"} | null, ...},
      "frame": "world" | "shot",            # world: one frame for the whole recording (a scan's ARKit
                                            # metres, y up); shot: each shot's own camera
-     "models": {"detector", "embedder", "depth"},
+     "models": {"detector", "embedder", "depth", "poses"?},
      "frames": [{"index", "t", "caption", "text", "items": [item ids]}],     # the recording's index
+                                           # (a video's: one a shot, with "shot", "t0", "t1", "looks")
      "items": [{"id": "i0001", "label", "labels": {name: count}, "position": [x, y, z],
                 "size_m", "spread_m", "seen", "first_s", "last_s", "depth": "lidar" | "estimate" | "model",
                 "shot": n | null, "crop": "crops/i0001.jpg",
@@ -64,21 +65,28 @@ def list_sets(vault: Vault) -> list[dict]:
 
 
 def find(vault: Vault, words: str, top: int = 20) -> list[dict]:
-    """Items whose names hold every word asked for, over the whole vault: most seen first. (By
-    name only: finding by what a thing looks like needs the embedder, ``search.search``.)"""
+    """Items whose names, or the caption and writing of a frame that shows them, hold every word
+    asked for, over the whole vault: most seen first. (Finding by what a thing looks like needs the
+    embedder, ``search.search``.)"""
     wanted = [w for w in words.lower().split() if w]
-    hits = []
+    hits: list[tuple[bool, int, str, dict]] = []
     if not wanted:
-        return hits
+        return []
     for listed in list_sets(vault):
         path = vault.root / listed["date"] / "items" / listed["id"] / "items.json"
         record = json.loads(path.read_text(encoding="utf-8"))
+        shown: dict[str, str] = {}  # item id: what its frames say
+        for frame in record.get("frames") or []:
+            for iid in frame.get("items") or []:
+                shown[iid] = f"{shown.get(iid, '')} {frame.get('caption', '')} {frame.get('text', '')}".lower()
         for item in record.get("items") or []:
             names = " ".join(item.get("labels") or [item.get("label", "")])
-            if all(w in names for w in wanted):
-                hits.append({"date": listed["date"], "set": listed["id"], "frame": record.get("frame"), **item})
-    hits.sort(key=lambda h: (-h.get("seen", 0), h["date"]))
-    return hits[:top]
+            named = all(w in names for w in wanted)
+            if named or all(w in names + shown.get(item["id"], "") for w in wanted):
+                hit = {"date": listed["date"], "set": listed["id"], "frame": record.get("frame"), **item}
+                hits.append((not named, -item.get("seen", 0), listed["date"], hit))  # by name first
+    hits.sort(key=lambda h: h[:3])
+    return [h[3] for h in hits[:top]]
 
 
 def new_id() -> str:

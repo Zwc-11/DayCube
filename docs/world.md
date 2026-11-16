@@ -169,8 +169,10 @@ Expected error: about 15 m along the wall (where on it the walk started) and 3 m
 
 A walk through many frames needs poses and depth solved together. Depth Anything 3 does that
 (`depth-anything-3` on PyPI; DA3-SMALL and DA3-BASE are Apache-2.0, the larger ones CC BY-NC), as
-do MapAnything (its Apache-2.0 variant) and VGGT, which are not on PyPI. Installing them in the
-cloud workspace was refused, so none has been run on this shot yet. That is the next step.
+do MapAnything (its Apache-2.0 variant) and VGGT (non-commercial weights). Depth Anything 3 Small
+now runs in its own environment (`services/poses`) and gives a video's shots their cameras for
+[items](items.md#a-plain-video), where it is measured against a motion capture. It has not been
+run on this shot: a walk as a world from its poses is the next step.
 
 ## Viewer
 

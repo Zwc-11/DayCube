@@ -5,6 +5,7 @@ places are known."""
 
 import json
 import shutil
+from contextlib import nullcontext
 from pathlib import Path
 
 import numpy as np
@@ -220,13 +221,117 @@ def test_one_frame_is_looked_at_turned_upright_and_its_things_placed(monkeypatch
     assert entry == {"index": 3, "t": 1.5, "caption": "a chair", "text": ""}
 
 
+XS, YAWS = (-0.6, -0.2, -0.4), (-4.0, 0.0, 3.0)  # where the camera stands and how it is turned at a shot's three looks
+
+
+def shot_of_the_room(monkeypatch: pytest.MonkeyPatch) -> dict[float, dict]:
+    """A video of one shot, looked at from ``XS``, ``YAWS`` at 1, 2 and 3 s with the look at 2 s sharpest, and
+    a pose model that answers as Depth Anything 3 does (OpenCV axes, its own size) with 2 m as its
+    unit of length. Returns each look's boxes by its time."""
+    boxes = {}
+
+    def looks(video: Path, start: float, every: float, count: int, size: tuple[int, int]) -> list[np.ndarray]:
+        assert (start, every, count, size) == (1.0, 1.0, 3, (W, H))
+        pictures = []
+        for t, x, yaw in zip((1.0, 2.0, 3.0), XS, YAWS, strict=True):
+            frame, boxes[t] = render(camera(x, yaw), 0, t)
+            frame.image[:: 2 if t == 2 else 8] = 255  # stripes: the more, the sharper
+            pictures.append(frame.image)
+        return pictures
+
+    def poses_of(pictures: np.ndarray) -> dict:
+        assert pictures.shape == (3, H, W, 3)
+        flip = np.diag([1.0, -1.0, -1.0, 1.0])
+        w2c = np.stack([(flip @ np.linalg.inv(camera(x, yaw)) @ flip)[:3] for x, yaw in zip(XS, YAWS, strict=True)])
+        w2c[:, :, 3] /= 2.0
+        depth = np.stack([render(camera(x, yaw), 0, 0.0)[0].depth for x, yaw in zip(XS, YAWS, strict=True)]) / 2.0
+        return {"w2c": w2c, "K": np.tile([[F / 4, 0, W / 8], [0, F / 4, H / 8], [0, 0, 1]], (3, 1, 1)), "depth": depth}
+
+    metres = np.repeat(np.repeat(render(camera(XS[1]), 0, 0.0)[0].depth, 4, 0), 4, 1)
+    monkeypatch.setattr(sources, "LOOK_EVERY_S", 4 / 3)
+    monkeypatch.setattr(sources, "shots", lambda video: [(0.0, 4.0)])
+    monkeypatch.setattr(sources, "_size", lambda video, width: (W, H))
+    monkeypatch.setattr(sources, "looks", looks)
+    monkeypatch.setattr(models, "Poses", lambda: nullcontext(poses_of))
+    monkeypatch.setattr(models, "model_depth", lambda image: (metres, "model"))
+    return boxes
+
+
+def test_a_shots_looks_are_placed_in_its_keyframes_camera_in_metres(monkeypatch: pytest.MonkeyPatch) -> None:
+    boxes = shot_of_the_room(monkeypatch)
+    with models.Poses() as poses_of:
+        ((n, span, frames),) = list(sources.video_frames(Path("v.mp4"), models.model_depth, poses_of))
+    assert (n, span) == (0, (0.0, 4.0)) and [(f.index, f.t) for f in frames] == [(1, 2.0), (0, 1.0), (2, 3.0)]
+    for f in frames:  # the keyframe first; every look in its camera, in metres
+        assert np.allclose(f.K, K) and np.allclose(f.c2w[:3, 3], [XS[round(f.t) - 1] - XS[1], 0, 0], atol=1e-6)
+        assert np.allclose(f.c2w[:3, :3], camera(0.0, YAWS[round(f.t) - 1])[:3, :3], atol=1e-6)
+        for name, (centre, _, _) in THINGS.items():
+            where = place(f, boxes[f.t][name])
+            assert where is not None and np.allclose(where.position, centre - [XS[1], 1.5, 0], atol=0.06), (f.t, name)
+
+    # Without a pose model: the sharpest of three looks, no pose, a phone's field of view.
+    ((_, _, alone),) = list(sources.video_frames(Path("v.mp4"), models.model_depth))
+    assert len(alone) == 1 and (alone[0].index, alone[0].t, alone[0].c2w) == (0, 2.0, None)
+    assert alone[0].K[0] == pytest.approx(0.5 * W / np.tan(np.radians(sources.PHONE_FOV_DEG) / 2))
+
+
+@needs_ffmpeg
+def test_a_videos_shot_keeps_what_the_keyframe_shows_or_two_looks_show(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    boxes = shot_of_the_room(monkeypatch)
+    looked: list[float] = []
+
+    def look(picture: np.ndarray, caption: bool = True) -> models.Look:
+        t = (2.0, 1.0, 3.0)[len(looked)]  # the keyframe, then the others
+        looked.append(t)
+        found = [models.Detection(box, name) for name, box in boxes[t].items() if (name, t) != ("box", 2.0)]
+        if t == 1.0:  # someone walking through, in this look only
+            found.append(models.Detection((300.0, 300.0, 360.0, 360.0), "person"))
+        return models.Look(found, "a room" if caption else "", "9:16 AM\n到公司啦" if caption else "")
+
+    seeds = {"chair": 1, "lamp": 2, "box": 3, "person": 4}
+    monkeypatch.setattr(models, "look", look)
+    monkeypatch.setattr(models, "poses_python", lambda: Path("python"))
+    monkeypatch.setattr(
+        run, "embed", lambda frame, found: [setattr(o, "vector", vector(seeds[o.label])) for o in found]
+    )
+    record = run.index_video(tmp_path / "v.mp4", tmp_path / "it_0123456789ab", say=lambda line: None)
+    assert looked == [2.0, 1.0, 3.0] and record["models"]["poses"] == models.POSES
+    assert record["frames"] == [{"index": 1, "t": 2.0, "caption": "a room", "text": "9:16 AM\n到公司啦", "shot": 0,
+                                 "t0": 0.0, "t1": 4.0, "looks": 3, "items": ["i0001", "i0002", "i0003"]}]  # fmt: skip
+    # The box, hidden in the keyframe, was seen by the two other looks; the passer-by by one.
+    assert {i["label"]: i["seen"] for i in record["items"]} == {"chair": 3, "lamp": 3, "box": 2}
+    assert all(i["spread_m"] < 0.05 and i["shot"] == 0 for i in record["items"])
+    report = json.loads((tmp_path / "it_0123456789ab" / "report.json").read_text(encoding="utf-8"))
+    assert (report["looks"], report["seen_again"]) == (3, 3)
+    assert report["reprojection"] == {"observations": 8, "inside_box": 1.0, "median_offset_box_widths": pytest.approx(0, abs=0.1)}  # fmt: skip
+
+
+def test_the_writing_in_a_picture_is_read_by_rapidocr_where_it_is_installed(monkeypatch: pytest.MonkeyPatch) -> None:
+    asked = []
+
+    def florence(image: np.ndarray, tasks: dict) -> dict:
+        asked.append(list(tasks))
+        return {"<OD>": {"bboxes": [], "labels": []}, "<DETAILED_CAPTION>": "an elevator", "<OCR>": "9:16 AM江制"}
+
+    monkeypatch.setattr(models, "florence", florence)
+    monkeypatch.setattr(models, "read", lambda image: "9:16 AM\n到公司啦")
+    assert models.look(np.zeros((8, 8, 3), np.uint8)).text == "9:16 AM\n到公司啦"
+    monkeypatch.setattr(models, "read", lambda image: None)  # not installed: Florence-2 reads
+    assert models.look(np.zeros((8, 8, 3), np.uint8)).text == "9:16 AM江制"
+    assert models.look(np.zeros((8, 8, 3), np.uint8), caption=False).text == ""
+    assert asked == [["<OD>", "<DETAILED_CAPTION>"], ["<OD>", "<DETAILED_CAPTION>", "<OCR>"], ["<OD>"]]
+
+
 @needs_ffmpeg
 def test_the_api_lists_serves_and_finds_items_by_name(client: TestClient, vault: Vault) -> None:
     obs, _ = observations()
     items = merge(obs)
     folder = store.folder(vault, "2026-10-24", "it_0123456789ab")
     store.write(folder, items, [np.full((40, 30, 3), 100, np.uint8) for _ in items], source={"kind": "scan", "file": "trail"},
-                frame="world", models={"detector": "stand-in"}, frames=[{"index": 0, "t": 0.0, "caption": "a room"}])  # fmt: skip
+                frame="world", models={"detector": "stand-in"},
+                frames=[{"index": 0, "t": 0.0, "caption": "a room", "text": "到公司啦", "items": ["i0001", "i0003"]}])  # fmt: skip
     listed = client.get("/items").json()
     assert [(s["date"], s["id"], s["items"], s["frame"]) for s in listed] == [
         ("2026-10-24", "it_0123456789ab", 3, "world")
@@ -239,6 +344,12 @@ def test_the_api_lists_serves_and_finds_items_by_name(client: TestClient, vault:
     assert len(found) == 1 and found[0]["label"] == "lamp" and found[0]["date"] == "2026-10-24"
     assert np.allclose(found[0]["position"], THINGS["lamp"][0], atol=0.1)
     assert client.get("/items/find", params={"q": "sofa"}).json() == []
+    # The caption and the writing of a frame find the items it shows, after those found by name.
+    record["items"][1]["labels"] = {record["items"][1]["label"]: 1, "room divider": 1}
+    vault.write_json(folder / "items.json", record)
+    assert [i["id"] for i in client.get("/items/find", params={"q": "公司"}).json()] == ["i0001", "i0003"]
+    assert [i["id"] for i in client.get("/items/find", params={"q": "room"}).json()][0] == "i0002"
+    assert len(client.get("/items/find", params={"q": "room"}).json()) == 3
     # Nothing outside an items set is reachable through these routes.
     for bad in ("/items/2026-10-24/it_zzz", "/items/2026-10-24/it_0123456789ab/crops/..%2Fitems.json",
                 "/items/2026-10-24/it_0123456789ab/crops/i9999.jpg", "/items/2026-13-40/it_0123456789ab"):  # fmt: skip

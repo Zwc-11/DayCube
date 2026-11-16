@@ -17,14 +17,17 @@ under ``app://<program>/<window title>``. This module reads them once and derive
 
 Each becomes a unit in the vault database (``ingest.store``), so Ask finds "what did I read about
 X yesterday" the way it finds a transcript line. Block texts are sent once per page load, so the
-previous day's text snapshots are read too (a page opened before midnight and read after).
+previous day's text snapshots are read too (a page opened before midnight and read after). Of
+``blocks.jsonl``, by far the largest log, only the blocks a look or a dwell names are kept, and the
+records of other documents are not parsed.
 """
 
 from __future__ import annotations
 
 import json
+import re
 from collections import defaultdict
-from collections.abc import Iterator
+from collections.abc import Iterator, Set
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from pathlib import Path
@@ -41,6 +44,8 @@ MEDIA_S = 30.0
 TEXT_LIMIT = 1200  # characters of a unit's text
 MAX_APP_SPAN_S = 2 * 3600.0  # an app in front longer than this with no other record: the receiver stopped
 APP = "app://"
+DOC = re.compile(r'(?<!\\)"doc":\s*"([^"\\]*)"')  # a record's document, as it is written among its own fields
+HEAD = 4096  # the characters of a record searched for it: its own fields come before its blocks
 # How common programs are called; any other is its file name without ".exe".
 APP_NAMES = {
     "code.exe": "Visual Studio Code", "cursor.exe": "Cursor", "devenv.exe": "Visual Studio",
@@ -59,13 +64,16 @@ APP_NAMES = {
 LOCK_APPS = frozenset({"lockapp.exe", "logonui.exe"})
 
 
-def _iter_records(path: Path) -> Iterator[Record]:
+def _iter_records(path: Path, docs: Set[str] | None = None) -> Iterator[Record]:
     """JSON lines, skipping any that do not parse (a torn append, a hand edit): one bad line must
-    not hide a day of capture."""
+    not hide a day of capture. With ``docs``, a line that names another document before its blocks
+    is passed over unparsed."""
     if not stored(path).exists():
         return
     for line in text_lines(path):
         if line.strip():
+            if docs is not None and (named := DOC.search(line, 0, HEAD)) and named.group(1) not in docs:
+                continue
             try:
                 value = json.loads(line)
             except ValueError:
@@ -78,26 +86,33 @@ def _records(path: Path) -> list[Record]:
     return list(_iter_records(path))
 
 
-def _block_texts(vault: Vault, path: Path) -> tuple[dict, dict]:
-    """Retain only document metadata and block text, keyed by the physical file and write version."""
+def _block_texts(vault: Vault, path: Path, wanted: frozenset[tuple[str, str]]) -> tuple[dict, dict]:
+    """The url and title of the documents, and the tag and text of the blocks, that ``wanted``
+    names as (document, block): all a day uses of a log that is mostly other pages and geometry.
+    Kept per file for the pairs asked for so far, by the physical file and its write version."""
+    if not wanted:
+        return {}, {}
     source = stored(path)
     key = (source, vault.stamp(path), file_stamp(source))
     cached = vault.capture_texts.get(path)
     if cached is not None and cached[0] == key:
-        return cached[1], cached[2]
+        if wanted <= cached[1]:
+            return cached[2], cached[3]
+        wanted |= cached[1]  # asked for both ways (a day's own log, and the day before's)
+    named = {doc for doc, _ in wanted}
     docs: dict = {}
     texts: dict = {}
-    for record in _iter_records(path):
+    for record in _iter_records(path, named):
         doc = record.get("doc")
-        if not doc:
+        if doc not in named:
             continue
         docs[doc] = (record.get("url", ""), record.get("title", "") or docs.get(doc, ("", ""))[1])
         for block in record.get("blocks", []):
-            if block.get("text"):
+            if block.get("text") and (doc, block["id"]) in wanted:
                 texts[(doc, block["id"])] = (block.get("tag", ""), block["text"])
     # A concurrent append/replacement cannot become a cache entry for the earlier stamp.
     if key == (stored(path), vault.stamp(path), file_stamp(stored(path))):
-        vault.capture_texts.put_metadata(path, (key, docs, texts))
+        vault.capture_texts.put_metadata(path, (key, wanted, docs, texts))
     return docs, texts
 
 
@@ -207,16 +222,27 @@ class CaptureDay:
     media: list[Record] = field(default_factory=list)
     pages: list[Record] = field(default_factory=list)  # navigations, with how each was reached
     apps: list[AppSpan] = field(default_factory=list)  # apps other than the browser in front
-    texts: dict[tuple[str, str], tuple[str, str]] = field(default_factory=dict)  # (doc, block) -> (tag, text)
-    docs: dict[str, tuple[str, str]] = field(default_factory=dict)  # doc -> (url, title)
+    # Of the blocks the day's looks and dwells name: (doc, block) -> (tag, text), and doc -> (url, title).
+    texts: dict[tuple[str, str], tuple[str, str]] = field(default_factory=dict)
+    docs: dict[str, tuple[str, str]] = field(default_factory=dict)
 
 
 def read_capture(vault: Vault, day: str) -> CaptureDay:
     folder = vault.root / "capture" / day
     out = CaptureDay(day)
+    ends = {}
+    for record in _records(folder / "attention.jsonl"):
+        # One per dwell: its end when it ended today, else its start.
+        if record.get("kind") == "dwell" and (record.get("phase") == "end" or record.get("dwell") not in ends):
+            ends[record.get("dwell")] = record
+    out.dwells = sorted(ends.values(), key=lambda r: instant(r["t"]))
+    fixations = _records(folder / "gaze.jsonl")
+    # The blocks whose text the day uses: those the eyes rested on, and dwells logged without theirs.
+    wanted = frozenset((r["doc"], r["block"]) for r in (*fixations, *(d for d in out.dwells if not d.get("text")))
+                       if r.get("doc") and r.get("block"))  # fmt: skip
     previous = (date.fromisoformat(day) - timedelta(days=1)).isoformat()
     for path in (vault.root / "capture" / previous / "blocks.jsonl", folder / "blocks.jsonl"):
-        docs, texts = _block_texts(vault, path)
+        docs, texts = _block_texts(vault, path, wanted)
         for doc, (url, title) in docs.items():
             out.docs[doc] = (url, title or out.docs.get(doc, ("", ""))[1])
         out.texts.update(texts)
@@ -234,13 +260,6 @@ def read_capture(vault: Vault, day: str) -> CaptureDay:
             out.pages.append(record)
     out.media = _media(browser)
     out.reads = [r for r in _records(folder / "reading.jsonl") if r.get("kind") == "read"]
-    ends = {}
-    for record in _records(folder / "attention.jsonl"):
-        # One per dwell: its end when it ended today, else its start.
-        if record.get("kind") == "dwell" and (record.get("phase") == "end" or record.get("dwell") not in ends):
-            ends[record.get("dwell")] = record
-    out.dwells = sorted(ends.values(), key=lambda r: instant(r["t"]))
-    fixations = _records(folder / "gaze.jsonl")
     out.looks = _looks(fixations, out)
     windows = sorted(_records(folder / "windows.jsonl"), key=lambda r: instant(r["t"]))
     if windows:

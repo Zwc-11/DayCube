@@ -2,9 +2,11 @@
 
 | Role | Model | Licence |
 | --- | --- | --- |
-| Boxes and names, captions, text in the picture | Florence-2 base (``florence-community/Florence-2-base``) | MIT |
+| Boxes and names, captions | Florence-2 base (``florence-community/Florence-2-base``) | MIT |
+| The writing in a picture | RapidOCR (PP-OCRv4, Chinese and English) where installed, else Florence-2 | Apache-2.0 |
 | Image and text embeddings | SigLIP 2 base (``google/siglip2-base-patch16-224``) | Apache-2.0 |
 | Depth where no LiDAR is | Depth Anything V2 Metric Small, indoor and outdoor | Apache-2.0 |
+| The camera's poses through a video's shot | Depth Anything 3 Small, in ``services/poses`` (``poses.py``) | Apache-2.0 |
 
 They run on the CPU (seconds per frame) or a GPU; weights come from the Hugging Face hub on first
 use (``HF_HOME``). Loaded once per process and only when called.
@@ -12,12 +14,18 @@ use (``HF_HOME``). Loaded once per process and only when called.
 
 from __future__ import annotations
 
+import subprocess
+import tempfile
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from functools import cache
+from importlib.util import find_spec
+from pathlib import Path
 from typing import Any
 
 import numpy as np
+
+from ..config import environment_python
 
 DETECTOR = "florence-community/Florence-2-base"
 EMBEDDER = "google/siglip2-base-patch16-224"
@@ -26,6 +34,9 @@ DEPTH = {"indoor": "depth-anything/Depth-Anything-V2-Metric-Indoor-Small-hf",
 SCENE_WORDS = frozenset(
     {"sky", "ground", "floor", "wall", "ceiling", "road", "grass", "forest", "field", "land", "water"}
 )
+POSES = "depth-anything/DA3-SMALL"  # named in poses.py, where it runs
+POSES_TIMEOUT_S = 600  # for the model to finish and leave
+READ_SURE = 0.8  # RapidOCR's confidence in a line, under which the line is left out
 LARGEST = 0.6  # a box over this share of the frame is the scene, not a thing in it
 SMALLEST = 0.0008
 
@@ -87,13 +98,31 @@ class Look:
 def look(image: np.ndarray, caption: bool = True) -> Look:
     """The things in the picture (Florence-2's object detection, its own names) and, with
     ``caption``, a sentence about the picture and the writing in it."""
-    answers = florence(image, {"<OD>": 512, **({"<DETAILED_CAPTION>": 96, "<OCR>": 96} if caption else {})})
+    written = read(image) if caption else ""
+    tasks = {"<OD>": 512} | ({"<DETAILED_CAPTION>": 96} if caption else {}) | ({"<OCR>": 96} if written is None else {})
+    answers = florence(image, tasks)
     found = answers["<OD>"]
     return Look(
         things(zip(found["bboxes"], found["labels"], strict=False), image.shape[1], image.shape[0]),
         str(answers.get("<DETAILED_CAPTION>", "")).strip(),
-        str(answers.get("<OCR>", "")).strip(),
+        str(answers.get("<OCR>", "")).strip() if written is None else written,
     )
+
+
+@cache
+def _reader():
+    from rapidocr_onnxruntime import RapidOCR
+
+    return RapidOCR()
+
+
+def read(image: np.ndarray) -> str | None:
+    """The writing in the picture, a line each, by RapidOCR; None where it is not installed.
+    (Florence-2 reads Latin letters and makes up Chinese ones.)"""
+    if find_spec("rapidocr_onnxruntime") is None:
+        return None
+    lines, _ = _reader()(image[:, :, ::-1])  # it takes BGR
+    return "\n".join(text for _, text, sure in lines or [] if float(sure) >= READ_SURE)
 
 
 def clean(label: str) -> str:
@@ -187,10 +216,49 @@ def _depth(place: str):
     ).eval(), AutoImageProcessor.from_pretrained(DEPTH[place])
 
 
+def poses_python() -> Path | None:
+    return environment_python("poses", windowless=False)
+
+
+class Poses:
+    """Depth Anything 3, a child process in its own environment (``services/poses``) that stays
+    for the length of a video: called with a shot's pictures (N, H, W, 3), it returns what
+    ``poses.py`` answers (``w2c``, ``K``, ``depth``)."""
+
+    def __enter__(self) -> Poses:
+        self.folder = tempfile.TemporaryDirectory()
+        self.child = subprocess.Popen(
+            [str(poses_python()), str(Path(__file__).with_name("poses.py")), self.folder.name], text=True,
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )  # fmt: skip
+        return self
+
+    def __call__(self, pictures: np.ndarray) -> dict[str, np.ndarray]:
+        shot = Path(self.folder.name) / "shot.npy"
+        np.save(shot, pictures)
+        assert self.child.stdin is not None and self.child.stdout is not None
+        self.child.stdin.write("shot\n")
+        self.child.stdin.flush()
+        if self.child.stdout.readline().strip() != "shot":
+            raise RuntimeError("the pose model stopped: its own messages say why")
+        with np.load(shot.with_suffix(".npz")) as answer:
+            return dict(answer)
+
+    def __exit__(self, *error: object) -> None:
+        assert self.child.stdin is not None
+        self.child.stdin.close()
+        self.child.wait(timeout=POSES_TIMEOUT_S)
+        self.folder.cleanup()
+
+
+@cache
+def _places() -> np.ndarray:
+    return embed_texts(["a photo taken outdoors", "a photo taken indoors, inside a room"])
+
+
 def outdoors(image: np.ndarray) -> bool:
     """Whether the picture is outdoors, by which of two sentences its embedding is nearer."""
-    text = embed_texts(["a photo taken outdoors", "a photo taken indoors, inside a room"])
-    return bool((embed_images([image]) @ text.T)[0].argmax() == 0)
+    return bool((embed_images([image]) @ _places().T)[0].argmax() == 0)
 
 
 def model_depth(image: np.ndarray) -> tuple[np.ndarray, str]:

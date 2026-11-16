@@ -73,7 +73,9 @@ export interface ItemSetListed {
   frames: number;
   made: string;
 }
-export interface ItemSet { id: string; made: string; frame: 'world' | 'shot'; source: ItemSetListed['source']; items: Item[] }
+/** A frame things were looked for in; a video has one a shot, with the shot's times and what was read in it. */
+export interface ItemFrame { index: number; t: number; caption?: string; text?: string; shot?: number; t0?: number; t1?: number; items?: string[] }
+export interface ItemSet { id: string; made: string; frame: 'world' | 'shot'; source: ItemSetListed['source']; frames?: ItemFrame[]; items: Item[] }
 /** A stretch of a day that stayed with one thing (docs/recall.md), with how much of it is left now. */
 export interface Episode {
   id: string;

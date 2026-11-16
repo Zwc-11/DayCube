@@ -5151,6 +5151,25 @@ button.np-link:hover {
   position: absolute;
   inset: 0;
 }
+.items__shot {
+  position: absolute;
+  top: 12px;
+  left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: min(520px, calc(100% - 32px));
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: var(--radius-m);
+  background: var(--panel);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+.items__shot strong {
+  font-size: 14px;
+  font-weight: 600;
+}
 .items__picked {
   position: absolute;
   left: 16px;

@@ -41,8 +41,9 @@ def seen(store: LifeStore, day: str) -> Record:
     with store.read() as db:
         rows = db.execute(
             "SELECT u.t, u.t_end, u.type, u.text, u.attention, e.key, e.name FROM units u "
+            # The page a unit is on; of an app whose windows are not kept, the app itself.
             "LEFT JOIN entities e ON e.id = (SELECT m.entity_id FROM mentions m JOIN entities p ON p.id = m.entity_id "
-            "WHERE m.unit_id = u.id AND m.role = 'on' AND p.kind = 'page' LIMIT 1) "
+            "WHERE m.unit_id = u.id AND m.role = 'on' AND p.kind IN ('page', 'site') ORDER BY p.kind LIMIT 1) "
             f"WHERE u.day = ? AND u.type IN ({','.join('?' for _ in types)}) "
             "ORDER BY u.ts, u.type IN (?, ?) DESC",  # at one instant, the page comes to the front first
             (day, *types, *ON_SCREEN),
@@ -61,6 +62,8 @@ def seen(store: LifeStore, day: str) -> Record:
                 "items": [],
             }
         if kind in ON_SCREEN:
+            if page is None:
+                continue  # an event of the day told as time at the screen: no page was recorded for it
             page["spans"].append([t, t_end or t])
             page["seconds"] += (instant(t_end) - instant(t)).total_seconds() if t_end else 0.0
             front = page

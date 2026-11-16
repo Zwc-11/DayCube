@@ -145,7 +145,8 @@ def items_list(vault: TheVault) -> list[Record]:
 def items_find(
     vault: TheVault, q: str = Query(min_length=1, max_length=200), top: int = Query(20, ge=1, le=100)
 ) -> list[Record]:
-    """Items by name over the whole vault: where and when each was seen."""
+    """Items by name, then by the caption and writing of a frame that shows them, over the whole
+    vault: where and when each was seen."""
     return item_sets.find(vault, q, top)
 
 

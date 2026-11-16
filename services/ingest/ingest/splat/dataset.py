@@ -47,6 +47,7 @@ import numpy as np
 from ..moments.media import executable
 
 DEPTH_W, DEPTH_H = 256, 192
+SELECT_CHARS = 8000  # the longest frame selection handed to the decoder (a Windows command line holds 32,767)
 SCORE_W = 480
 
 
@@ -198,26 +199,30 @@ def frames_at(
     video: Path, picks: np.ndarray, size: tuple[int, int] = (DEPTH_W, DEPTH_H)
 ) -> tuple[np.ndarray, np.ndarray]:
     """The picked frames (decoded frame numbers, counted as in ``sharpness``) at ``size``, RGB, and
-    whether each was decoded (a video can decode a frame short of its packet count)."""
+    whether each was decoded (a video can decode a frame short of its packet count). When the picks
+    fit in a command line, the decoder scales and hands over only those; else every frame up to
+    the last pick, the others dropped here."""
     width, height = size
     frame_bytes = width * height * 3
     wanted = {int(i): k for k, i in enumerate(picks)}
     out = np.zeros((len(picks), height, width, 3), np.uint8)
+    select = "+".join(f"eq(n\\,{i})" for i in sorted(wanted))
+    few = 0 < len(select) <= SELECT_CHARS
     decode = subprocess.Popen(
         [executable("ffmpeg"), "-nostdin", "-v", "error", "-i", str(video),
-         "-vf", f"scale={width}:{height}:flags=area,format=rgb24", "-fps_mode", "passthrough", "-f", "rawvideo", "pipe:1"],
+         "-vf", (f"select='{select}'," if few else "") + f"scale={width}:{height}:flags=area,format=rgb24",
+         "-fps_mode", "passthrough", "-f", "rawvideo", "pipe:1"],
         stdout=subprocess.PIPE,
     )  # fmt: skip
     assert decode.stdout is not None
     found = np.zeros(len(picks), bool)
-    index = 0
-    last = max(wanted) if wanted else -1
     try:
-        while index <= last and len(frame := decode.stdout.read(frame_bytes)) == frame_bytes:
+        for index in sorted(wanted) if few else range(max(wanted, default=-1) + 1):
+            if len(frame := decode.stdout.read(frame_bytes)) != frame_bytes:
+                break
             if index in wanted:
                 out[wanted[index]] = np.frombuffer(frame, np.uint8).reshape(height, width, 3)
                 found[wanted[index]] = True
-            index += 1
     finally:
         if decode.poll() is None:
             decode.kill()

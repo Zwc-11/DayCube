@@ -19,7 +19,8 @@ It does not install GPU model weights or create external accounts.
 | Native capture | pywin32, psutil, mss, Pillow, pystray, pynput | Separate capture project, optional `windows` extra |
 | OCR | RapidOCR ONNX, RapidFuzz | Separate capture project, optional `ocr` extra |
 | Gaze | EyeTrax 0.4.0 (MIT), which brings MediaPipe, OpenCV, scikit-learn and numpy<2 | Separate `services/gaze` environment, because of numpy<2 |
-| Recon | PyTorch, torchvision, kornia, transformers, pycolmap, OpenCV 5 (headless; its DNN runs LaMa's ONNX for the islands' fill) | Separate `services/recon` environment, on the PC's GPU ([world.md](world.md)) |
+| Recon | PyTorch, torchvision, kornia, transformers, pycolmap, OpenCV 5 (headless; its DNN runs LaMa's ONNX for the islands' fill), RapidOCR ONNX (the writing in a video's frames; its `opencv-python` requirement is overridden, it runs on the headless OpenCV 5) | Separate `services/recon` environment, on the PC's GPU ([world.md](world.md)) |
+| Poses | depth-anything-3 0.1.1 (Apache-2.0, as are the DA3-SMALL weights it loads), which brings numpy<2 and OpenCV 4; its viewer, server and 3D-export requirements are overridden away | Separate, optional `services/poses` environment, because of numpy<2: a video's camera poses for [items](items.md) |
 
 Install optional backend groups only when working on those integrations:
 
