@@ -76,7 +76,11 @@ def test_a_world_that_breaks_its_shape_is_refused(vault: Vault, change: Callable
 
 def test_splats_must_be_the_islands_whole_records(vault: Vault) -> None:
     w = world(store.new_id())
-    for splats in ({"is_01.splat": bytes(63)}, {"is_01.splat": bytes(96)}, {"is_01.splat": bytes(64), "x.splat": bytes(32)}):
+    for splats in (
+        {"is_01.splat": bytes(63)},
+        {"is_01.splat": bytes(96)},
+        {"is_01.splat": bytes(64), "x.splat": bytes(32)},
+    ):
         with pytest.raises(ValueError, match="Invalid world"):
             store.save(vault, DATE, w, splats)
 
@@ -133,13 +137,27 @@ def test_osm_buildings_become_footprints_with_heights() -> None:
     assert fc["attribution"] == "© OpenStreetMap contributors, ODbL 1.0"
     props = {f["properties"]["id"]: f["properties"] for f in fc["features"]}
     assert list(props) == ["way/1", "way/2", "way/3", "relation/9"]  # a node is no building; the open outer is left out
-    assert (props["way/1"]["height_m"], props["way/1"]["min_height_m"], props["way/1"]["height_from"]) == (40.0, 3.0, "height")
-    assert (props["way/2"]["height_m"], props["way/2"]["min_height_m"], props["way/2"]["height_from"]) == (16.0, 3.2, "levels")
+    assert (props["way/1"]["height_m"], props["way/1"]["min_height_m"], props["way/1"]["height_from"]) == (
+        40.0,
+        3.0,
+        "height",
+    )
+    assert (props["way/2"]["height_m"], props["way/2"]["min_height_m"], props["way/2"]["height_from"]) == (
+        16.0,
+        3.2,
+        "levels",
+    )
     assert props["way/3"]["height_m"] == pytest.approx(30.48)
     assert props["relation/9"]["height_from"] == "default" and props["relation/9"]["height_m"] == osm.DEFAULT_M
     ring = fc["features"][0]["geometry"]["coordinates"][0]
     assert ring[0] == ring[-1] == [-79.381, 43.645] and len(ring) == 4  # closed, lon first
-    assert [osm.metres(v) for v in ("12", "12.5 m", "40'", "tall", None)] == [12.0, 12.5, pytest.approx(12.192), None, None]
+    assert [osm.metres(v) for v in ("12", "12.5 m", "40'", "tall", None)] == [
+        12.0,
+        12.5,
+        pytest.approx(12.192),
+        None,
+        None,
+    ]
 
 
 @pytest.fixture
@@ -167,7 +185,9 @@ def test_buildings_are_fetched_once_and_kept_for_offline(client: TestClient, vau
         raise httpx.ConnectError("offline")
 
     monkeypatch.setattr(overpass_module.httpx, "post", offline)
-    assert client.get("/maps/buildings", params={"lat": 43.6447, "lon": -79.3801, "radius_m": 300}).json() == first.json()
+    assert (
+        client.get("/maps/buildings", params={"lat": 43.6447, "lon": -79.3801, "radius_m": 300}).json() == first.json()
+    )
     missing = client.get("/maps/buildings", params={"lat": 43.70, "lon": -79.40})
     assert missing.status_code == 503 and "not reachable" in missing.json()["detail"]
     for bad in ({"lat": 91, "lon": 0}, {"lat": 0, "lon": 0, "radius_m": 20}, {"lat": 0, "lon": 0, "radius_m": 601}):
@@ -188,8 +208,19 @@ def test_streets_are_asked_for_by_name_and_kept_apart_from_buildings(tmp_path: P
 
 def test_a_place_is_looked_up_once_by_name(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[dict] = []
-    found = [{"lat": "43.6447091", "lon": "-79.3801352", "osm_type": "way", "osm_id": 14744491, "display_name": "Union Station",
-              "geojson": {"type": "Polygon", "coordinates": [[[-79.38, 43.64], [-79.37, 43.64], [-79.37, 43.65], [-79.38, 43.64]]]}}]
+    found = [
+        {
+            "lat": "43.6447091",
+            "lon": "-79.3801352",
+            "osm_type": "way",
+            "osm_id": 14744491,
+            "display_name": "Union Station",
+            "geojson": {
+                "type": "Polygon",
+                "coordinates": [[[-79.38, 43.64], [-79.37, 43.64], [-79.37, 43.65], [-79.38, 43.64]]],
+            },
+        }
+    ]
 
     def get(url: str, params: dict, timeout: float, headers: dict) -> Answer:
         assert headers["User-Agent"].startswith("DAYCUBE/")  # Nominatim's policy: an identifying agent
@@ -199,7 +230,11 @@ def test_a_place_is_looked_up_once_by_name(tmp_path: Path, monkeypatch: pytest.M
     monkeypatch.setattr(nominatim_module.httpx, "get", get)
     adapter = nominatim_module.NominatimAdapter(tmp_path)
     place = adapter.place("Union  Station, Toronto")
-    assert place["osm"] == "way/14744491" and place["lat"] == pytest.approx(43.6447091) and place["geojson"]["type"] == "Polygon"
+    assert (
+        place["osm"] == "way/14744491"
+        and place["lat"] == pytest.approx(43.6447091)
+        and place["geojson"]["type"] == "Polygon"
+    )
     assert calls[0]["polygon_geojson"] == 1 and calls[0]["limit"] == 1
     assert adapter.place("union station, toronto") == place and len(calls) == 1  # kept: case and spaces aside
     with pytest.raises(LookupError):
@@ -282,7 +317,11 @@ def test_an_island_may_say_where_it_was_filmed_from() -> None:
     w = world(store.new_id())
     w["islands"][0]["view"] = {"eye": [0, 1.45, 0], "look": [10, 1.45, 0]}
     store.validate(w, DATE)
-    for bad in ({"eye": [0, 1.45]}, {"eye": [0, 1, 0], "look": [0, 1, 0], "up": [0, 1, 0]}, {"eye": [0, "1", 0], "look": [1, 1, 1]}):
+    for bad in (
+        {"eye": [0, 1.45]},
+        {"eye": [0, 1, 0], "look": [0, 1, 0], "up": [0, 1, 0]},
+        {"eye": [0, "1", 0], "look": [1, 1, 1]},
+    ):
         w["islands"][0]["view"] = bad
         with pytest.raises(ValueError, match="view"):
             store.validate(w, DATE)

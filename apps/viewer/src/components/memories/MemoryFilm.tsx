@@ -176,7 +176,7 @@ function paint(ctx: CanvasRenderingContext2D, w: number, h: number, t: number, l
   ctx.globalAlpha = 1;
 }
 
-export const MemoryFilm: React.FC<MemoryFilmProps> = ({ memory, others = [], onClose }) => {
+const MemoryFilm: React.FC<MemoryFilmProps> = ({ memory, others = [], onClose }) => {
   const stage = useRef<HTMLDivElement>(null);
   const engine = useRef<Engine | null>(null);
   const captionRef = useRef(memory.caption ?? '');

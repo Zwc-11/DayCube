@@ -498,7 +498,9 @@ def checks(status: dict | None, vault: Path, zone: ZoneInfo, now: datetime, auto
     update = status.get("update") or {}
     if status.get("code") != code_stamp():  # it runs the code it started with, not the checkout's
         if update.get("problem"):
-            out.append((FAIL, "receiver code", f"older than this checkout, whose code does not import: {update['problem']}"))
+            out.append(
+                (FAIL, "receiver code", f"older than this checkout, whose code does not import: {update['problem']}")
+            )
         elif update.get("running"):
             out.append((WARN, "receiver code", "older than this checkout: it restarts on it by itself the next time "
                                                "you are away for 5 minutes, or " + RESTART))  # fmt: skip

@@ -161,7 +161,9 @@ class Librarian(threading.Thread):
                 due.append((current, "draft"))
         written = []
         for day, kind in due:
-            out = write_review(vault, store, day, self.zone, now=now, model=self.writer, labeler=self.labeler, kind=kind)
+            out = write_review(
+                vault, store, day, self.zone, now=now, model=self.writer, labeler=self.labeler, kind=kind
+            )
             if not out["written"]:
                 continue
             written.append((day, out["why"]))

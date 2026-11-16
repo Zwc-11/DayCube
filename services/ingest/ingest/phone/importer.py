@@ -49,6 +49,7 @@ KIND_NAMES = {"house": "Home", "venue": "Building", "outdoor": "Outdoors"}
 KEPT_FILES = ("splat", "mesh", "speech.json", "transcript.json", "transcript.whisper.json")
 KEPT_SCENE = ("splat", "mesh")  # scene.json entries, kept with their folder
 
+
 @dataclass
 class Moment:
     id: str
@@ -73,7 +74,11 @@ def classify(paths: list[Path]) -> dict[str, list]:
     for path in paths:
         if sensor_logger.is_recording(path):
             sensors.append(path)
-        elif path.is_file() and path.suffix.lower() in voice.AUDIO_SUFFIXES and (sources.app_start(path) or ("",))[0] == "audio":
+        elif (
+            path.is_file()
+            and path.suffix.lower() in voice.AUDIO_SUFFIXES
+            and (sources.app_start(path) or ("",))[0] == "audio"
+        ):
             hours.append(path)  # DayCube Capture's hour of sound: cut into conversations, not one memo
         elif path.is_file() and path.suffix.lower() in voice.AUDIO_SUFFIXES:
             audio.append(path)
@@ -169,7 +174,11 @@ def _hour(vault: Vault, path: Path, say: Any) -> dict:
     relative = sources.keep_audio(vault, path, device, start, audio.duration_s)
     jobs = Jobs.of(vault.root)
     try:
-        job_id, _ = enqueue(jobs, "conversations", {"audio": relative, "t0": start.isoformat(), "duration_s": round(audio.duration_s, 3)})
+        job_id, _ = enqueue(
+            jobs,
+            "conversations",
+            {"audio": relative, "t0": start.isoformat(), "duration_s": round(audio.duration_s, 3)},
+        )
     finally:
         jobs.close()
     say(f"{path.name}: {audio.duration_s / 60:.0f} min of sound kept; conversations job {job_id}")
@@ -203,9 +212,17 @@ def add_talks(vault: Vault, inputs: dict, spans: list[list[float]], say: Any = p
 
         minutes = (b - a) / 60
         by_day[t0.astimezone(zone).date().isoformat()].append(
-            Moment(moment_id, "audio", t0, b - a, f"Conversation · {minutes:.0f} min" if minutes >= 1 else "Conversation", 60.0,
-                   write, source={"kind": "daycube-capture", "ref": f"daycube-capture:{source.name}@{a:.0f}"},
-                   file={"name": f"{source.name}@{a:.1f}-{b:.1f}", "bytes": source.stat().st_size})  # fmt: skip
+            Moment(
+                moment_id,
+                "audio",
+                t0,
+                b - a,
+                f"Conversation · {minutes:.0f} min" if minutes >= 1 else "Conversation",
+                60.0,
+                write,
+                source={"kind": "daycube-capture", "ref": f"daycube-capture:{source.name}@{a:.0f}"},
+                file={"name": f"{source.name}@{a:.1f}-{b:.1f}", "bytes": source.stat().st_size},
+            )  # fmt: skip
         )
     made = []
     for day, moments in sorted(by_day.items()):

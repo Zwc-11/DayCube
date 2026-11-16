@@ -162,26 +162,6 @@ class Poser:
         R, _ = cv2.Rodrigues(rvec)
         return R, tvec.ravel()
 
-    def on_planes(self, pixels: np.ndarray, R: np.ndarray, t: np.ndarray, depths: np.ndarray) -> np.ndarray:
-        """Image points carried along their camera rays onto head-frame planes z = depth (planes
-        facing out of the face), returned in head coordinates. A landmark met at its own
-        canonical depth lands where it is in the head however the head is turned."""
-        rays = self.camera.rays(pixels)  # camera frame, z = 1
-        normal = R[:, 2]  # the head's z axis in camera coordinates
-        k = (t @ normal + depths) / (rays @ normal)
-        return (rays * k[:, None] - t) @ R  # R.T @ (hit - t) for each row
-
-    def on_eyeball(self, pixel: np.ndarray, R: np.ndarray, t: np.ndarray, centre: np.ndarray) -> np.ndarray:
-        """The unit direction, in head coordinates, from an eyeball's centre to where the iris
-        centre's camera ray meets the eyeball's front (or comes closest to it)."""
-        ray = self.camera.rays(pixel)
-        ray /= np.linalg.norm(ray)
-        c = R @ centre + t
-        along = ray @ c
-        k = along - math.sqrt(max(along**2 - c @ c + self.eyeball_mm**2, 0.0))
-        g = R.T @ (ray * k - c)
-        return g / np.linalg.norm(g)
-
     def measure(self, face: Face) -> Head:
         points = face.points
         R, t = self.pose(points)
@@ -365,7 +345,6 @@ def pose_terms(R: np.ndarray, eyes: np.ndarray, ref: tuple[np.ndarray, np.ndarra
 # A frame travels through the tracker and calibration as one flat vector, like EyeTrax features:
 # rotation (9), position (3), both eyeball centres (6), both eyes' measurements (2 x FEATURES).
 FEATURES = 4
-VECTOR = 9 + 3 + 6 + 2 * FEATURES
 
 
 def pack(head: Head) -> np.ndarray:

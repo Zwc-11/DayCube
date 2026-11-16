@@ -80,7 +80,7 @@ evicted block keeps its ID and resends its text and lines. The receiver's line d
 its layout cache's evictions too. Extension deliveries share one in-flight request and store
 pending records before sending; the receiver request and JSON response have a five-second
 deadline. Failed responses keep the queue for retry. These changes do not alter gaze calibration
-or confidence; [measurements and limits](review-2026-10-24.md) use synthetic data.
+or confidence.
 
 Recalibrate when your lighting, webcam or monitor changes, or the glasses you wear
 (`python -m gaze calibrate`); with the head-aware model, moving your chair or head does not need it. It pauses recording for

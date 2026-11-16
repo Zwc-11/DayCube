@@ -1,4 +1,7 @@
-"""Generate Pydantic models from the canonical JSON Schemas, never the reverse."""
+"""Generate Pydantic models from the canonical JSON Schemas, never the reverse.
+
+Python checks every contract against its JSON Schema (ingest/contracts.py). A Pydantic model is
+generated only for a contract a route takes as its request body: add its name to MODELS."""
 
 import subprocess
 import sys
@@ -7,8 +10,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 TARGET = ROOT / "services/ingest/ingest/generated"
-TARGET.mkdir(parents=True, exist_ok=True)
-for schema in sorted((ROOT / "packages/schemas").glob("*.schema.json")):
+MODELS = ("event",)
+for schema in (ROOT / "packages/schemas" / f"{name}.schema.json" for name in MODELS):
     with tempfile.TemporaryDirectory() as folder:
         output = Path(folder) / "models.py"
         subprocess.run(

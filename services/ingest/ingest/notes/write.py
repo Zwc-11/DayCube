@@ -27,7 +27,6 @@ from ..time import instant
 from ..vault import Record, atomic_text
 from .markdown import file_name, front_matter, merge, user_text, wikilink
 
-ATTENDED = ("web.read", "web.dwell", "web.look", "web.selection")
 SOURCE_MIN_S = 120.0  # on screen this long earns a page its own note
 LIST_LIMIT = 60  # entries per section of a source note
 
@@ -112,7 +111,9 @@ def _conversations(store: LifeStore, day: str, zone: str) -> list[str]:
         said = [s for s in moment.transcript["segments"] if s["text"].strip()]
         if not said:
             continue
-        people = sorted({p.removeprefix("person:").replace("-", " ").title() for p in moment.transcript["speaker_map"].values()})
+        people = sorted(
+            {p.removeprefix("person:").replace("-", " ").title() for p in moment.transcript["speaker_map"].values()}
+        )
         title = _plain(moment.meta.get("title") or "Recording")
         head = f"- {_local(moment.meta['t0'], zone):%H:%M} {title}, {_minutes(float(moment.meta['duration_s']))}, "
         head += f"{len(said)} line{'s' * (len(said) != 1)}" + (f", with {', '.join(people)}" if people else "")
@@ -216,7 +217,10 @@ class Notes:
             b = week["best_hours"]
             lines += [f"**Best hours:** the long stretches ran most between {b['from']} and {b['to']}.", ""]
         if week["next"]:
-            lines += ["**Next week:** " + "; ".join(f"{_plain(n['text'])} (due {n['due'][:10]})" for n in week["next"]), ""]
+            lines += [
+                "**Next week:** " + "; ".join(f"{_plain(n['text'])} (due {n['due'][:10]})" for n in week["next"]),
+                "",
+            ]
         lines += [f"*Written {week['made'][:16].replace('T', ' ')}.*"]
         front = {"daycube": f"week {key}", "tags": "[weekly]"}
         return self._write(path, "\n".join(lines), front)
@@ -253,9 +257,7 @@ class Notes:
                 (day,),
             ).fetchall()
         return {
-            f"{kind} {key}"
-            for t, t_end, kind, key in rows
-            if instant(t) < span[1] and instant(t_end or t) >= span[0]
+            f"{kind} {key}" for t, t_end, kind, key in rows if instant(t) < span[1] and instant(t_end or t) >= span[0]
         }
 
     def rewrite(self, identities: set[str]) -> None:
@@ -265,7 +267,9 @@ class Notes:
             for identity in sorted(identities):
                 path = self.paths().get(identity)
                 kind, key = identity.split(" ", 1)
-                row = db.execute("SELECT id, key, name FROM entities WHERE kind = ? AND key = ?", (kind, key)).fetchone()
+                row = db.execute(
+                    "SELECT id, key, name FROM entities WHERE kind = ? AND key = ?", (kind, key)
+                ).fetchone()
                 if row is not None and kind == "page":
                     self._source(db, self._pages(db, {row["id"]})[row["id"]])
                 elif row is not None:

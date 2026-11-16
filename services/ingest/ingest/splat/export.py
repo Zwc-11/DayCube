@@ -15,7 +15,17 @@ import numpy as np
 
 SH_C0 = 0.28209479177387814
 RECORD = np.dtype([("position", "<f4", 3), ("scale", "<f4", 3), ("rgba", "u1", 4), ("rotation", "u1", 4)])
-PLY_TYPES = {"float": "<f4", "float32": "<f4", "double": "<f8", "uchar": "u1", "uint8": "u1", "int": "<i4", "uint": "<u4", "short": "<i2", "ushort": "<u2"}
+PLY_TYPES = {
+    "float": "<f4",
+    "float32": "<f4",
+    "double": "<f8",
+    "uchar": "u1",
+    "uint8": "u1",
+    "int": "<i4",
+    "uint": "<u4",
+    "short": "<i2",
+    "ushort": "<u2",
+}
 
 
 def read_ply(path: Path) -> np.ndarray:
@@ -42,7 +52,9 @@ def read_ply(path: Path) -> np.ndarray:
         return np.frombuffer(stream.read(count * np.dtype(fields).itemsize), dtype=fields, count=count)
 
 
-def _records(position: np.ndarray, scale: np.ndarray, rgb: np.ndarray, alpha: np.ndarray, quat_wxyz: np.ndarray, cap: int | None) -> np.ndarray:
+def _records(
+    position: np.ndarray, scale: np.ndarray, rgb: np.ndarray, alpha: np.ndarray, quat_wxyz: np.ndarray, cap: int | None
+) -> np.ndarray:
     importance = alpha * np.prod(scale, axis=1)
     order = np.argsort(-importance, kind="stable")
     if cap is not None:

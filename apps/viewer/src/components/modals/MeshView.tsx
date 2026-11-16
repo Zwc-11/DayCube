@@ -40,7 +40,7 @@ function follow(v: Live, cameras: SplatCameras, t: number): void {
   v.touch();
 }
 
-export const MeshView: React.FC<MeshViewProps> = ({ url, cameras, bounds, t, clock, following, onLookAround, label }) => {
+const MeshView: React.FC<MeshViewProps> = ({ url, cameras, bounds, t, clock, following, onLookAround, label }) => {
   const root = useRef<HTMLDivElement>(null);
   const live = useRef<Live | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'failed'>('loading');

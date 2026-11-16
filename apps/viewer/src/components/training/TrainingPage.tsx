@@ -101,7 +101,7 @@ const RunDetail: React.FC<{ data: TrainingSeries }> = ({ data }) => {
 };
 
 /** Training runs on this PC, newest first; the one open charted. */
-export const TrainingPage: React.FC<TrainingPageProps> = ({ open, onOpen, onHome, onGraph }) => {
+const TrainingPage: React.FC<TrainingPageProps> = ({ open, onOpen, onHome, onGraph }) => {
   const [runs, setRuns] = useState<TrainingListed[] | null | undefined>(undefined);
   const [series, setSeries] = useState<TrainingSeries | null>(null);
   const visible = usePageVisible();

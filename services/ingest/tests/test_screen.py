@@ -988,3 +988,27 @@ def test_the_unattended_restart_starts_the_noted_command_and_logs_the_outcome(
     assert "restarted on this checkout's code" in caplog.text
     assert "has not answered on 127.0.0.1:7700 within 45 s" in caplog.text
     assert "a receiver on older code still answers" in caplog.text
+
+
+def test_a_window_that_changes_while_captured_is_skipped_without_a_traceback(
+    vault: Vault, caplog: pytest.LogCaptureFixture
+) -> None:
+    """On the PC, 28 rounds on 1 Nov logged a full traceback for this expected race."""
+    from capture.screen import WindowChanged
+
+    receiver = create_capture_app(Settings(vault_root=vault.root, _env_file=None), receive=True).state.receiver
+    reader, _system, _ocr, _clock = reader_for(vault, receiver)
+    rounds: list[int] = []
+
+    def step() -> None:
+        rounds.append(1)
+        if len(rounds) == 2:
+            reader.stopping.set()
+        raise WindowChanged("selected window changed before capture completed")
+
+    reader.step, reader.every_s = step, 0.0
+    with caplog.at_level("ERROR", logger="capture.screen"):
+        reader._run()
+    assert reader.changed == 2 and reader.error is None
+    assert reader.state()["skipped"] == "window changed" and reader.state()["window_changed"] == 2
+    assert "reading the screen failed" not in caplog.text

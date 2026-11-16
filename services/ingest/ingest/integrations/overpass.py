@@ -22,7 +22,9 @@ class OverpassAdapter:
 
     def buildings(self, lat: float, lon: float, radius_m: int = 40) -> dict:
         """Buildings (ways and multipolygon relations) within ``radius_m``, with their geometry."""
-        return self._ask(lat, lon, radius_m, 'way["building"]({at});relation["building"]["type"="multipolygon"]({at});', "")
+        return self._ask(
+            lat, lon, radius_m, 'way["building"]({at});relation["building"]["type"="multipolygon"]({at});', ""
+        )
 
     def streets(self, lat: float, lon: float, radius_m: int = 40) -> dict:
         """Named streets within ``radius_m``, with their geometry."""

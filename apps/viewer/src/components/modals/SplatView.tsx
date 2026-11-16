@@ -102,7 +102,7 @@ function gpuHint(gpu: GpuInfo): string {
   return `${drawn} On a laptop with an NVIDIA GPU, set this browser to High performance: Windows Settings › System › Display › Graphics.`;
 }
 
-export const SplatView: React.FC<SplatViewProps> = ({ url, cameras, bounds, t, clock, following, onLookAround, label }) => {
+const SplatView: React.FC<SplatViewProps> = ({ url, cameras, bounds, t, clock, following, onLookAround, label }) => {
   const root = useRef<HTMLDivElement>(null);
   const live = useRef<Live | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'failed'>('loading');

@@ -129,7 +129,10 @@ def test_planned_blocks_are_compared_with_the_day(vault: Vault) -> None:
     assert f.evidence["plan:2"]["text"] == "Planned 11:30–12:30: LeetCode"
     words = summary.template(f)
     said = next(s for s in words.sentences if s["text"].startswith("Of 4 planned"))
-    assert said["text"] == "Of 4 planned blocks, 1 went as planned; 10:30–11:00 rust reading: went to social instead (20 min)."
+    assert (
+        said["text"]
+        == "Of 4 planned blocks, 1 went as planned; 10:30–11:00 rust reading: went to social instead (20 min)."
+    )
     assert words.improvements[0]["metric"] == "plan"
     answer = {"headline": words.headline, "sentences": words.sentences, "improvements": words.improvements}
     assert summary.validate(answer, f, minimum=1) == []
@@ -251,7 +254,7 @@ def test_the_desktop_app_gets_yesterdays_review_for_its_morning_notification(vau
         def now(cls, tz=None):  # noqa: ANN001, ANN206
             return clock["now"].astimezone(tz)
 
-    monkeypatch.setattr(ingest.api, "datetime", Clock)
+    monkeypatch.setattr(ingest.api.deps, "datetime", Clock)
     with TestClient(app) as client:
         assert client.get("/morning").json() == {"date": None}  # before 08:00
         clock["now"] = datetime.fromisoformat(at("08:01:00", "2026-10-28"))
@@ -311,5 +314,8 @@ def test_accepted_leetcode_submissions_count_as_done(vault: Vault) -> None:
     found, errors = sites.rules(vault)
     assert [r.name for r in found] == ["LEARN", "LeetCode"] and errors == ["sites.yaml site 2 left out: KeyError"]
     f = facts_of(vault)
-    assert sorted(d["text"] for d in f.done if d["kind"] == "site") == ["LEARN: 1 submitted (A3)", "LeetCode: 1 accepted (two sum)"]
+    assert sorted(d["text"] for d in f.done if d["kind"] == "site") == [
+        "LEARN: 1 submitted (A3)",
+        "LeetCode: 1 accepted (two sum)",
+    ]
     assert "sites.yaml site 2 left out: KeyError" in f.gaps

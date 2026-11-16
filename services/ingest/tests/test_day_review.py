@@ -180,7 +180,9 @@ def test_the_words_say_what_the_day_boundary_and_unknowns_are(vault: Vault) -> N
     assert words.sentences[0]["text"].startswith(
         "You were at the desk 24 h, from 04:00, still at it from the night before, to 04:00, when the day ends"
     )
-    assert "pages not recorded" in words.sentences[1]["text"] and not any("By project" in s["text"] for s in words.sentences)
+    assert "pages not recorded" in words.sentences[1]["text"] and not any(
+        "By project" in s["text"] for s in words.sentences
+    )
     answer = {"headline": words.headline, "sentences": words.sentences, "improvements": words.improvements}
     assert validate(answer, f) == []
 

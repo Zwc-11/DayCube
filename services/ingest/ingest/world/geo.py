@@ -101,6 +101,8 @@ def elevation(lat: float, lon: float) -> float:
         altitude = response.json().get("altitude") if response.status_code == 200 else None
         if isinstance(altitude, (int, float)):
             return float(altitude)
-    response = httpx.get(ELEVATION_URL, params={"latitude": f"{lat:.5f}", "longitude": f"{lon:.5f}"}, timeout=20, headers=AGENT)
+    response = httpx.get(
+        ELEVATION_URL, params={"latitude": f"{lat:.5f}", "longitude": f"{lon:.5f}"}, timeout=20, headers=AGENT
+    )
     response.raise_for_status()
     return float(response.json()["elevation"][0])

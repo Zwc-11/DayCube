@@ -94,7 +94,7 @@ function isTypingTarget(target: EventTarget | null): boolean {
   return el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName);
 }
 
-export const App: React.FC<AppProps> = ({ date, day, days, onOpenDate, onOpenNotes, onHome, onOpenDays }) => {
+const App: React.FC<AppProps> = ({ date, day, days, onOpenDate, onOpenNotes, onHome, onOpenDays }) => {
   const pageVisible = usePageVisible();
   const [focus] = useState(() => initialFocus(date, day.layers));
   const [layers, setLayers] = useState<Layer[]>(day.layers);

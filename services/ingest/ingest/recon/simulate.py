@@ -42,8 +42,12 @@ MODES: dict[str, dict] = {
     "photo_3s": {"every_s": 3.0, "long_side": 1920, "label": "a photo every 3 s"},
     "photo_1s": {"every_s": 1.0, "long_side": 1920, "label": "a photo every second"},
     # Frames 25 cm apart share most of what they see: fewer features each, matched 4x faster.
-    "stream_5fps": {"every_s": 0.2, "long_side": 1280, "label": "the 720p stream at 5 frames a second",
-                    "features": 4096},
+    "stream_5fps": {
+        "every_s": 0.2,
+        "long_side": 1280,
+        "label": "the 720p stream at 5 frames a second",
+        "features": 4096,
+    },
 }
 HELD_OUT = 24
 MIN_HELD_OUT = 4  # fewer held-out frames inside the rebuilt stretch: no training

@@ -7,7 +7,9 @@ import httpx
 
 
 class LocalModel:
-    def __init__(self, url: str, model: str, *, timeout_s: float = 180.0, transport: httpx.BaseTransport | None = None) -> None:
+    def __init__(
+        self, url: str, model: str, *, timeout_s: float = 180.0, transport: httpx.BaseTransport | None = None
+    ) -> None:
         """``url``: the API's base, ``http://127.0.0.1:8080/v1``. Only addresses on this computer
         are accepted, so a setting cannot send the day elsewhere by mistake."""
         host = httpx.URL(url).host

@@ -230,7 +230,7 @@ def test_write_keeps_the_contract_and_skips_empty_days(vault: Vault) -> None:
 
 
 def test_categories_come_from_corrections_rules_the_cache_and_one_model_call(vault: Vault) -> None:
-    (vault.root / "categories.yaml").write_text("rules:\n  - category: coding\n    sites: [caesarzhou.com]\n", "utf-8")
+    (vault.root / "categories.yaml").write_text("rules:\n  - category: coding\n    sites: [casper.example]\n", "utf-8")
     (vault.root / "label-corrections.json").write_text(json.dumps({
         "site:youtube.com": {"category": "studying"}, "page:https://x.com/home": {"project": "Launch"},
     }), "utf-8")  # fmt: skip
@@ -240,7 +240,7 @@ def test_categories_come_from_corrections_rules_the_cache_and_one_model_call(vau
     pages = {
         name: Activity.page(url, title)
         for name, url, title in [
-            ("own", "https://caesarzhou.com/", "Caesar"), ("video", "https://www.youtube.com/watch?v=1", "A video"),
+            ("own", "https://casper.example/", "Casper"), ("video", "https://www.youtube.com/watch?v=1", "A video"),
             ("x", "https://x.com/home", "Home / X"), ("cached", "https://cached.example/a", "A"),
             ("new", "https://unknown.example/a", "Some news"), ("odd", "https://weird.example/", "?"),
         ]
@@ -294,7 +294,7 @@ def test_projects_from_folders_courses_and_repositories(vault: Vault) -> None:
     assert editor_folder(Activity.app("code.exe", "● main.py - DAYCUBE - Visual Studio Code")) == "DAYCUBE"
     assert editor_folder(Activity.app("pycharm64.exe", "proj – main.py")) == "proj"
     assert editor_folder(Activity.app("code.exe", "Untitled-1 - Visual Studio Code")) is None
-    assert repository(Activity.page("https://github.com/caesar/daycube/pull/1", "x")) == "daycube"
+    assert repository(Activity.page("https://github.com/casper/daycube/pull/1", "x")) == "daycube"
     assert repository(Activity.page("https://github.com/settings/profile", "x")) is None
     (vault.root / "projects.yaml").write_text(
         "projects:\n  DayCube:\n    folders: ['E:\\DAYCUBE']\n  Launch:\n    keywords: [launch plan]\n", "utf-8"
@@ -303,7 +303,7 @@ def test_projects_from_folders_courses_and_repositories(vault: Vault) -> None:
     project = labels.project
     assert project(Activity.app("windowsterminal.exe", "PS E:\\DAYCUBE\\services>")) == "DayCube"
     assert project(Activity.app("notepad.exe", "E:\\DAYCUBE2\\a.txt")) is None
-    assert project(Activity.page("https://github.com/caesar/daycube", "caesar/daycube")) == "DayCube"
+    assert project(Activity.page("https://github.com/casper/daycube", "casper/daycube")) == "DayCube"
     assert project(Activity.page("https://docs.google.com/d/1", "The launch plan - Google Docs")) == "Launch"
     assert project(Activity.app("code.exe", "a3.py - cs136 - Visual Studio Code")) == "CS 136"
     assert project(Activity.page("https://learn.uwaterloo.ca/x", "CS 136 Assignment 3")) == "CS 136"

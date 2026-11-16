@@ -1,4 +1,3 @@
-import React from 'react';
 import type { EventPin, Fidelity } from '../types/daycube';
 
 /**
@@ -62,37 +61,6 @@ export const FIDELITY_HINT: Record<Fidelity, string> = {
   estimated: 'Inferred from several signals; position or floor may be off',
   illustrative: 'Stage geometry or sample content, not your data',
 };
-
-/** Panel surface for the few components that still style inline. */
-export const glassPanelStyle = (extra?: React.CSSProperties): React.CSSProperties => ({
-  background: COLORS.bgPanel,
-  border: `1px solid ${COLORS.borderSubtle}`,
-  borderRadius: 12,
-  color: COLORS.textPrimary,
-  fontFamily: FONTS.sans,
-  ...extra,
-});
-
-export const pillButtonStyle = (
-  active = false,
-  _accentColor = COLORS.amber,
-  extra?: React.CSSProperties
-): React.CSSProperties => ({
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: 6,
-  height: 28,
-  padding: '0 10px',
-  borderRadius: 6,
-  fontSize: 12,
-  fontWeight: 500,
-  fontFamily: FONTS.sans,
-  cursor: 'pointer',
-  border: `1px solid ${active ? 'rgba(255,255,255,0.2)' : COLORS.borderSubtle}`,
-  background: active ? '#282c32' : 'transparent',
-  color: active ? COLORS.textPrimary : COLORS.textSecondary,
-  ...extra,
-});
 
 export function formatTod(tod: number): string {
   const clamped = Math.max(0, Math.min(24, tod));

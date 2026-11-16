@@ -63,7 +63,6 @@ class Events:
                                 "events": events, "tags": tags})  # fmt: skip
         return out
 
-
     def languages(self, wavs: list[np.ndarray], batch: int = 16, max_s: float = 20.0) -> list[str]:
         """SenseVoice's language tag of each clip (zh, en, yue, ja, ko, or nospeech), from at most
         its first ``max_s``."""

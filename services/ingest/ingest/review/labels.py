@@ -457,7 +457,9 @@ CATEGORY = re.compile(r"[a-z][a-z0-9 &/_-]{0,31}")
 UNSET = object()
 
 
-def correct(vault: Vault, key: str, *, category: Any = UNSET, project: Any = UNSET, clear: bool = False) -> Record | None:
+def correct(
+    vault: Vault, key: str, *, category: Any = UNSET, project: Any = UNSET, clear: bool = False
+) -> Record | None:
     """Correct what a window or page (``page:<url>``, ``app:<program>|<title>``) or a whole site or
     app (``site:<domain>``, ``app:<program>``) is, in ``vault/label-corrections.json``; returns
     its corrections. ``category``: a category name; ``project``: a name, or None for no project;
@@ -466,7 +468,11 @@ def correct(vault: Vault, key: str, *, category: Any = UNSET, project: Any = UNS
         raise ValueError("A label key is page:<url>, site:<domain>, app:<program> or app:<program>|<title>")
     if category is not UNSET and (not isinstance(category, str) or not CATEGORY.fullmatch(category)):
         raise ValueError("A category is a lower-case name of up to 32 letters, digits, spaces, &, /, _ or -")
-    if project is not UNSET and project is not None and (not isinstance(project, str) or not 0 < len(project.strip()) <= 80):
+    if (
+        project is not UNSET
+        and project is not None
+        and (not isinstance(project, str) or not 0 < len(project.strip()) <= 80)
+    ):
         raise ValueError("A project is a name of 1 to 80 characters, or null for none")
     path = vault.root / CORRECTIONS_FILE
     with vault.lock:
@@ -526,7 +532,9 @@ def llm_labeler(choice: str) -> tuple[Labeler | None, str]:
         return None, why
 
     def label(items: list[Record], categories: list[str]) -> dict[str, str]:
-        answer = json_answer(model.complete(CATEGORY_PROMPT, json.dumps({"categories": categories, "items": items}), 2000))
+        answer = json_answer(
+            model.complete(CATEGORY_PROMPT, json.dumps({"categories": categories, "items": items}), 2000)
+        )
         return {str(k): v for k, v in answer.items() if isinstance(v, str)}
 
     return label, why

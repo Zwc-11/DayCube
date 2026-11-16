@@ -463,7 +463,9 @@ def _overlay(pc: list[Piece], phone: list[Piece], talks: list[Talk]) -> list[Pie
             talk = next((t for t in talks if t.t0 <= mid < t.t1), None)
             if talk is None:
                 continue
-            piece = Piece(talk.t0, talk.t1, "unknown", talk.title, (talk.evidence,), "phone", talk.fidelity, kind="talk")
+            piece = Piece(
+                talk.t0, talk.t1, "unknown", talk.title, (talk.evidence,), "phone", talk.fidelity, kind="talk"
+            )
             now = (id(talk),)
         if out and origin == now and out[-1].t1 == a:
             out[-1].t1 = b

@@ -76,8 +76,8 @@ TASKS: dict[tuple[str, str | None], list[Thing]] = {
         app("code.exe", "● labels.py - DAYCUBE - Visual Studio Code"),
         app("windowsterminal.exe", "E:\\DAYCUBE"),
         page(
-            "https://github.com/caesar/daycube/pull/12",
-            "Add the day timeline by caesar · Pull Request #12 · caesar/daycube",
+            "https://github.com/casper/daycube/pull/12",
+            "Add the day timeline by casper · Pull Request #12 · casper/daycube",
         ),
     ],
     ("studying", "CS 136"): [
@@ -92,7 +92,7 @@ TASKS: dict[tuple[str, str | None], list[Thing]] = {
     ],
     ("ai", None): [app("claude.exe", "Claude"), page("https://chatgpt.com/c/1", "ChatGPT")],
     ("messaging", None): [
-        page("https://mail.google.com/mail/u/0/#inbox", "Inbox (3) - caesar@example.com - Gmail"),
+        page("https://mail.google.com/mail/u/0/#inbox", "Inbox (3) - casper@example.com - Gmail"),
         app("discord.exe", "#general | Hack Club - Discord"),
         app("weixin.exe", "微信"),
     ],

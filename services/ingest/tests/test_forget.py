@@ -163,7 +163,9 @@ def test_sensor_rows_in_the_span_go_from_a_csv_and_a_zip(tmp_path: Path) -> None
         )
 
 
-def test_the_last_hour_is_deleted_a_day_at_a_time(vault: Vault, api: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_the_last_hour_is_deleted_a_day_at_a_time(
+    vault: Vault, api: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
     import datetime as dt
 
     import ingest.api
@@ -173,7 +175,7 @@ def test_the_last_hour_is_deleted_a_day_at_a_time(vault: Vault, api: TestClient,
         def now(cls, tz: dt.tzinfo | None = None) -> dt.datetime:
             return dt.datetime(2026, 10, 23, 0, 20, tzinfo=tz)
 
-    monkeypatch.setattr(ingest.api, "datetime", Clock)
+    monkeypatch.setattr(ingest.api.deps, "datetime", Clock)
     response = api.request("DELETE", "/recent", params={"minutes": 60})
     assert response.status_code == 200, response.text
     spans = [(d["date"], d["t0"][11:16], d["t1"][11:16]) for d in response.json()["deleted"]]

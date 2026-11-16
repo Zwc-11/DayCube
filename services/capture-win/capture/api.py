@@ -240,8 +240,10 @@ class Receiver:
             "display": {"gaze_ring": self.ring, "native": self.native_ring()},
             "screen": self.screen_state(),
             "inputs": self.inputs_state(),
-            "doing": {**(self.doing.state() if self.doing is not None else {"running": False}),
-                      "last": self.last.get("doing")},
+            "doing": {
+                **(self.doing.state() if self.doing is not None else {"running": False}),
+                "last": self.last.get("doing"),
+            },
             "update": self.updater.state() if self.updater is not None else {"running": False},
             "capabilities": ["browser", "gaze", "attention"] + (["screen"] if self.screen is not None else []),
         }
@@ -406,7 +408,12 @@ class Receiver:
         if not text:
             return None
         moment = (t or datetime.now(UTC)).astimezone(self.zone)
-        record = {"t": moment.isoformat(timespec="seconds"), "id": uuid.uuid4().hex[:12], "text": text, "source": source}
+        record = {
+            "t": moment.isoformat(timespec="seconds"),
+            "id": uuid.uuid4().hex[:12],
+            "text": text,
+            "source": source,
+        }
         with self.lock:
             if self.paused:
                 return None

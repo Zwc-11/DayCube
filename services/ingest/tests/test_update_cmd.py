@@ -42,7 +42,14 @@ def crlf(text: str) -> bytes:
 
 
 def run(
-    root: Path, *, speech: bool = True, recon: bool = False, pull: int = 0, diff: int = 1, sync: int = 0, canary: int = 0,
+    root: Path,
+    *,
+    speech: bool = True,
+    recon: bool = False,
+    pull: int = 0,
+    diff: int = 1,
+    sync: int = 0,
+    canary: int = 0,
     npm: int = 0,
 ) -> tuple[list[str], str]:
     (root / "bin").mkdir(parents=True)

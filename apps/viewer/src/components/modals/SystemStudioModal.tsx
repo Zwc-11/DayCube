@@ -33,8 +33,6 @@ export type SettingsSection =
   | 'pipeline'
   | 'eval'
   | 'performance';
-/** @deprecated kept for older imports */
-export type StudioTab = SettingsSection;
 
 interface SettingsProps {
   date: string;

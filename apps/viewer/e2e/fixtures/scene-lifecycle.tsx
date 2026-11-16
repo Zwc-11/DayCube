@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import * as THREE from 'three';
-import { MeshView } from '../../src/components/modals/MeshView';
-import { SplatView } from '../../src/components/modals/SplatView';
+import MeshView from '../../src/components/modals/MeshView';
+import SplatView from '../../src/components/modals/SplatView';
 import '../../src/styles/app.css';
 
 const counters = { created: 0, disposed: 0, renders: 0, geometriesDisposed: 0 };

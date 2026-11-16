@@ -38,7 +38,7 @@ export interface CityWorldProps {
 
 type State = 'loading' | 'ready' | 'failed';
 
-export const CityWorld: React.FC<CityWorldProps> = ({ world, onClose }) => {
+const CityWorld: React.FC<CityWorldProps> = ({ world, onClose }) => {
   const stage = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<State>('loading');
   const [layers, setLayers] = useState<Layers>(savedLayers);

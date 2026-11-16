@@ -17,7 +17,7 @@ interface MemoriesPageProps {
 }
 
 /** Photos you can step into: newest first, each opening as its 3D scene. */
-export const MemoriesPage: React.FC<MemoriesPageProps> = ({ open, film, onOpen, onHome, onGraph }) => {
+const MemoriesPage: React.FC<MemoriesPageProps> = ({ open, film, onOpen, onHome, onGraph }) => {
   const [memories, setMemories] = useState<Memory[] | null | undefined>(undefined);
   useEffect(() => {
     const abort = new AbortController();

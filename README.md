@@ -51,6 +51,11 @@ too. `npm run build && npm run media` makes them again.
   the passers-by taken out. Around it stand OpenStreetMap's buildings, and, with your own Google
   Maps key, Google's live 3D city: streamed behind your footage, never stored. What was filled in
   is labelled imagined ([worlds](docs/world.md)).
+- **Your memory for AI agents.** `daycube mcp` lets Claude, Cursor and other MCP clients search
+  your days, read a day's review, timeline and notes, read-only and on your computer; a policy
+  file says what they may see ([mcp](docs/mcp.md)).
+- **Items.** The things in a scan or a video are found, named and placed in 3D, so you can ask
+  where something was and when you last saw it ([items](docs/items.md)).
 - **Training.** Models trained on this PC, each metric charted against the step
   ([training](docs/training.md)).
 
@@ -85,7 +90,7 @@ connection**, paste `vault\.token` (`Get-Content -Raw .\vault\.token | Set-Clipb
 ```text
 apps/viewer/            The interface: React, three.js (days in 3D, notes graph, Ask, settings)
 apps/desktop/           The Windows app: Tauri 2 shell, bundled Python, installer (docs/desktop.md)
-packages/schemas/       Twelve JSON Schema contracts; generated Pydantic, TypeScript and validators
+packages/schemas/       Twelve JSON Schema contracts; generated TypeScript types and validators
 packages/api-client/    Typed client for the API, responses validated
 services/ingest/        Vault, API (FastAPI), search, notes, timeline and review, phone import, 3D jobs
 services/capture-win/   Capture receiver: browser and screen records, gaze, input counts, jobs
@@ -106,20 +111,23 @@ docs/                   Every part in detail; start with architecture.md
 - Memories use Apple's SHARP, whose research licence allows evaluation only.
 - Speech and 3D need an NVIDIA GPU (an RTX 5070 here).
 
-Exact boundaries: [implementation status](docs/implementation-status.md).
-
 ## Commands
 
 ```powershell
 npm run check                  # lint, Python and contract tests, eye tracker, extension, build
+npm run format                 # Ruff: fix and format the Python
 npm run test:e2e:viewer        # the interface in a real browser, on the sample vault
 npm run schemas                # regenerate the contracts after changing a schema
 uv run daycube index --all     # rebuild the search database from the vault's files
 uv run daycube doctor          # check the vault
+uv run daycube mcp --print-config   # the lines an MCP client needs to reach your memory
 .\capture doctor               # check capture on this PC
 npm run media                  # remake the README's screenshots and video (after npm run build)
 ```
 
-Engineering: measured changes only, recorded with their benchmarks
-([engineering](docs/engineering.md), [efficiency](docs/efficiency-review.md),
-[performance](docs/performance.md)).
+## Contributing and licence
+
+[CONTRIBUTING.md](CONTRIBUTING.md) has the checks and the code rules; measured numbers and how to
+reproduce them are in [performance](docs/performance.md). DayCube is licensed under
+[Apache-2.0](LICENSE); the models and libraries it uses keep their own licences
+([dependencies](docs/dependencies.md)).

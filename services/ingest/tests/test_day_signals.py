@@ -241,7 +241,12 @@ def test_phone_sessions_pickups_and_desk_time(vault: Vault) -> None:
     n = f.numbers
     assert n["phone"].display == "1 h 30 min" and n["pickups"].value == 3  # TikTok to Instagram: one pickup
     assert n["phone_desk"].value == 900 + 280 + 900  # Instagram 09:10-09:25, WeChat, Instagram 11:20-11:35
-    assert [(a.name, a.seconds) for a in f.apps] == [("Instagram", 2700), ("Maps", 1800), ("TikTok", 600), ("WeChat", 280)]
+    assert [(a.name, a.seconds) for a in f.apps] == [
+        ("Instagram", 2700),
+        ("Maps", 1800),
+        ("TikTok", 600),
+        ("WeChat", 280),
+    ]
     assert f.evidence["phone:e8"]["fidelity"] == "estimated"  # Maps: no closing seen
     words = summary.template(f)
     said = next(s for s in words.sentences if s["text"].startswith("On the phone"))
@@ -274,13 +279,16 @@ def test_the_phone_posts_app_events_once_each(vault: Vault) -> None:
         (vault.root / "capture" / "paused").write_text("", encoding="utf-8")
         assert client.post("/phone/events", json=event | {"t": at("10:00:00")}, headers=auth).json()["paused"] is True
     lines = (vault.root / "capture" / DAY / "phone-events.jsonl").read_text(encoding="utf-8").splitlines()
-    assert [(json.loads(x)["event"], json.loads(x)["t"][11:16]) for x in lines] == [("opened", "09:10"), ("closed", "09:25")]
+    assert [(json.loads(x)["event"], json.loads(x)["t"][11:16]) for x in lines] == [
+        ("opened", "09:10"),
+        ("closed", "09:25"),
+    ]
 
 
 # -- commits -------------------------------------------------------------------------------------------------
 
 
-def git(folder: Path, *args: str, when: str | None = None, email: str = "caesar@example.com", name: str = "A") -> None:
+def git(folder: Path, *args: str, when: str | None = None, email: str = "casper@example.com", name: str = "A") -> None:
     keep = {k: v for k, v in os.environ.items() if not k.startswith("GIT_") or k.startswith("GIT_CONFIG")}
     env = keep | {"GIT_AUTHOR_DATE": when or "", "GIT_COMMITTER_DATE": when or "", "GIT_AUTHOR_EMAIL": email,
                   "GIT_COMMITTER_EMAIL": email, "GIT_AUTHOR_NAME": name, "GIT_COMMITTER_NAME": name,
@@ -304,12 +312,12 @@ def test_commits_in_the_day_are_counted_as_done_yours_apart_from_others(vault: V
     repo = tmp_path / "DAYCUBE"
     repo.mkdir()
     git(repo, "init", "-q")
-    git(repo, "config", "user.email", "caesar@example.com")
-    for clock, subject, email, name in [("08:00:00", "before the day? no: after 04:00", "caesar@example.com", "A"),
-                                        ("09:40:00", "feat(review): phone apps", "caesar@example.com", "A"),
+    git(repo, "config", "user.email", "casper@example.com")
+    for clock, subject, email, name in [("08:00:00", "before the day? no: after 04:00", "casper@example.com", "A"),
+                                        ("09:40:00", "feat(review): phone apps", "casper@example.com", "A"),
                                         ("10:00:00", "fix(viewer): an agent's fix", "noreply@anthropic.com", "Claude"),
                                         ("10:30:00", "another", "noreply@anthropic.com", "Claude"),
-                                        ("03:00:00", "the night before 04:00", "caesar@example.com", "A")]:  # fmt: skip
+                                        ("03:00:00", "the night before 04:00", "casper@example.com", "A")]:  # fmt: skip
         (repo / f"{clock[:2]}{clock[3:5]}.txt").write_text(subject, encoding="utf-8")
         git(repo, "add", "-A")
         git(repo, "commit", "-q", "-m", subject, when=at(clock), email=email, name=name)
@@ -419,5 +427,7 @@ def test_the_box_runs_in_its_own_process_and_its_answer_comes_back(monkeypatch: 
     monkeypatch.setattr(doingnow.subprocess, "run", run)
     assert doingnow.ask_apart() == "reviewing PR #12"
     assert calls[0][1:] == ["-m", "capture.doingnow", "ask"]
-    monkeypatch.setattr(doingnow.subprocess, "run", lambda c, **o: subprocess.CompletedProcess(c, 0, '{"text": null}\n', ""))
+    monkeypatch.setattr(
+        doingnow.subprocess, "run", lambda c, **o: subprocess.CompletedProcess(c, 0, '{"text": null}\n', "")
+    )
     assert doingnow.ask_apart() is None  # Escape, or no answer in time

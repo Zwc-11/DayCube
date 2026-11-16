@@ -250,7 +250,9 @@ def calendar_blocks(vault: Vault, start: datetime, stop: datetime, tz: ZoneInfo)
     return blocks, errors
 
 
-def planned(vault: Vault, note: Path | None, day: str, start: datetime, stop: datetime) -> tuple[list[Block], list[str]]:
+def planned(
+    vault: Vault, note: Path | None, day: str, start: datetime, stop: datetime
+) -> tuple[list[Block], list[str]]:
     """The day's blocks from its daily note and the calendar files, in time order, in the window."""
     tz = start.tzinfo if isinstance(start.tzinfo, ZoneInfo) else ZoneInfo(str(start.tzinfo))
     blocks: list[Block] = []

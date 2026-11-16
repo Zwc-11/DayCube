@@ -73,7 +73,7 @@ async function photoGradient(url: string): Promise<[string, string] | null> {
   }
 }
 
-export const MemoryView: React.FC<MemoryViewProps> = ({ memory, others = [], onClose, onSwitch, onFilm }) => {
+const MemoryView: React.FC<MemoryViewProps> = ({ memory, others = [], onClose, onSwitch, onFilm }) => {
   const root = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'failed'>('loading');
   const [progress, setProgress] = useState(0);

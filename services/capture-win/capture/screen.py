@@ -103,6 +103,11 @@ PRIVATE_TITLES = ("inprivate", "incognito", "private browsing", "private window"
 OWN_TITLES = ("daycube gaze ring", "daycube calibration")
 
 
+class WindowChanged(OSError):
+    """The window under the gaze changed (moved, retitled, covered, closed) while it was being
+    captured. Expected several times an hour: that round is skipped, not logged as a failure."""
+
+
 @dataclass(frozen=True)
 class Window:
     hwnd: int
@@ -354,6 +359,7 @@ class ScreenReader(threading.Thread):
         self.skipped: str | None = None  # why the window under the gaze is not read
         self.reads: deque[tuple[float, float, str]] = deque(maxlen=2000)  # (time, ms, app) of OCR runs
         self.error: str | None = None
+        self.changed = 0  # rounds skipped because the window changed while it was captured
         self.delivery_error: str | None = None
         self._options: tuple[bool, frozenset[str]] | None = None
         self._options_stamp: tuple[int, int] | None = None
@@ -384,6 +390,9 @@ class ScreenReader(threading.Thread):
             try:
                 self.step()
                 self.error = None
+            except WindowChanged:
+                self.skipped = "window changed"  # the next round reads it again
+                self.changed += 1
             except Exception as error:  # noqa: BLE001 - logged; the next round tries again
                 message = f"{type(error).__name__}: {error}"[:200]
                 if self.error != message:
@@ -418,6 +427,7 @@ class ScreenReader(threading.Thread):
             "reading": None if current is None else {"app": current.window.app, "title": current.window.title[:120]},
             "skipped": self.skipped,
             "away": self.away,
+            "window_changed": self.changed,
             "reads_10min": len(recent),
             "apps_10min": sorted({app for _, _, app in recent}),
             "ocr_ms": round(float(np.median([ms for _, ms, _ in recent]))) if recent else None,
@@ -1051,7 +1061,7 @@ class Win32System:
         """Rectangles above this window, clipped to the image (left, top, right, bottom). Refuse
         a stale selection rather than reading whatever now occupies its old rectangle."""
         if self.describe(window.hwnd) != window:
-            raise OSError("selected window changed before capture completed")
+            raise WindowChanged("selected window changed before capture completed")
         covers = []
         hwnd = self.user32.GetTopWindow(None)
         for _ in range(5000):
@@ -1067,7 +1077,7 @@ class Win32System:
                 if left < right and top < bottom:
                     covers.append((left - rect[0], top - rect[1], right - rect[0], bottom - rect[1]))
             hwnd = self.user32.GetWindow(hwnd, 2)  # GW_HWNDNEXT
-        raise OSError("selected window changed before capture completed")
+        raise WindowChanged("selected window changed before capture completed")
 
     def capture(self, rect: tuple[int, int, int, int], window: Window) -> np.ndarray:
         """Visible pixels belonging to the selected window, BGRA. Whiten covering windows before

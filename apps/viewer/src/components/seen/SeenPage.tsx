@@ -110,7 +110,7 @@ const PageCard: React.FC<{ page: Page; focused: boolean }> = ({ page, focused })
   );
 };
 
-export const SeenPage: React.FC<SeenPageProps> = ({ date, days, onDate, onHome, onGraph }) => {
+const SeenPage: React.FC<SeenPageProps> = ({ date, days, onDate, onHome, onGraph }) => {
   const [seen, setSeen] = useState<Seen | null | undefined>(undefined);
   const [focus, setFocus] = useState<string | null>(null);
   useEffect(() => {

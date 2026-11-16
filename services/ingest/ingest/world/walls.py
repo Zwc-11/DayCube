@@ -39,6 +39,7 @@ class Seen:
 
 ANY = Seen(1.0, 0.0, 0.0)  # before the shot is measured: every wall with an open sidewalk
 
+
 @dataclass(frozen=True)
 class Wall:
     a: tuple[float, float]  # lat, lon: where the walk came from, the building on its right
@@ -51,7 +52,9 @@ class Wall:
 def outer_rings(geojson: Record | None) -> list[np.ndarray]:
     """A GeoJSON Polygon's or MultiPolygon's outer rings, as (lon, lat) arrays."""
     kind = (geojson or {}).get("type")
-    polygons = [geojson["coordinates"]] if kind == "Polygon" else geojson["coordinates"] if kind == "MultiPolygon" else []
+    polygons = (
+        [geojson["coordinates"]] if kind == "Polygon" else geojson["coordinates"] if kind == "MultiPolygon" else []
+    )
     return [np.asarray(polygon[0], float) for polygon in polygons if polygon and len(polygon[0]) >= 4]
 
 
@@ -129,13 +132,21 @@ def walls(landmark: list[np.ndarray], others: list[np.ndarray], streets: list[tu
             free = starts[~blocked.reshape(len(starts), -1).any(1)]
             if not len(free):
                 continue
-            faced = sorted((off, name) for name, line in roads if (off := _facing(line, p, t, out, length, seen.distance)) is not None)
+            faced = sorted(
+                (off, name)
+                for name, line in roads
+                if (off := _facing(line, p, t, out, length, seen.distance)) is not None
+            )
             a, b = lat_lon_from_local(*origin, *p), lat_lon_from_local(*origin, *q)
-            found.append(Wall(a, b, round(length, 1), faced[0][1] if faced else None, (float(free[0]), float(free[-1]))))
+            found.append(
+                Wall(a, b, round(length, 1), faced[0][1] if faced else None, (float(free[0]), float(free[-1])))
+            )
     return sorted(found, key=lambda w: (w.street is None, -w.length))
 
 
-def _facing(line: np.ndarray, p: np.ndarray, t: np.ndarray, out: np.ndarray, length: float, distance: float) -> float | None:
+def _facing(
+    line: np.ndarray, p: np.ndarray, t: np.ndarray, out: np.ndarray, length: float, distance: float
+) -> float | None:
     """How far out from the wall (``p`` along ``t``, ``length`` long) the street ``line`` runs
     beside it, parallel and beyond the camera; None where it does not."""
     nearest = None
@@ -165,7 +176,9 @@ def landmark_walls(place: Record, buildings: Record, streets: Record, seen: Seen
     the Overpass streets around it. The landmark's outline is its own footprint among the
     buildings, else Nominatim's, else the building the place's point is in."""
     point = np.array([[place["lon"], place["lat"]]])
-    shapes = [(f["properties"]["id"], ring) for f in buildings.get("features") or [] for ring in outer_rings(f["geometry"])]
+    shapes = [
+        (f["properties"]["id"], ring) for f in buildings.get("features") or [] for ring in outer_rings(f["geometry"])
+    ]
     own = {ident for ident, _ in shapes if ident == place.get("osm")}
     landmark = [ring for ident, ring in shapes if ident in own] or outer_rings(place.get("geojson"))
     if not landmark:

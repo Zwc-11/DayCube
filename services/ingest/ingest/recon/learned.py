@@ -56,7 +56,9 @@ class Features:
 
         self.torch, self.KF = torch, KF
         self.device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.aliked = KF.ALIKED.from_pretrained("aliked-n16", max_num_keypoints=max_keypoints, device=self.device).eval()
+        self.aliked = KF.ALIKED.from_pretrained(
+            "aliked-n16", max_num_keypoints=max_keypoints, device=self.device
+        ).eval()
         self.matcher = KF.LightGlueMatcher("aliked").eval().to(self.device)
 
     def detect(self, image: np.ndarray) -> tuple:

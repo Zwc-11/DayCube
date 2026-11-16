@@ -33,5 +33,10 @@ class NominatimAdapter:
         if not found:
             raise LookupError(f"No place called {name!r}")
         top = found[0]
-        return {"lat": float(top["lat"]), "lon": float(top["lon"]), "name": top.get("display_name") or name,
-                "osm": f"{top.get('osm_type')}/{top.get('osm_id')}", "geojson": top.get("geojson")}
+        return {
+            "lat": float(top["lat"]),
+            "lon": float(top["lon"]),
+            "name": top.get("display_name") or name,
+            "osm": f"{top.get('osm_type')}/{top.get('osm_id')}",
+            "geojson": top.get("geojson"),
+        }

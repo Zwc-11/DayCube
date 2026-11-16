@@ -184,5 +184,3 @@ export const ScanStage: React.FC<ScanStageProps> = ({ date, momentId, tod, playi
     </div>
   );
 };
-
-export default ScanStage;

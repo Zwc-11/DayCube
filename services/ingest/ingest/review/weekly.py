@@ -88,7 +88,9 @@ def collect(vault: Vault, store: LifeStore | None, day: str, zone: str) -> Recor
     totals = {f: total(rows, f) for f in ("desk_s", "focus", "focus_s")}
     totals |= {k: (total(rows, k) if any(r[k] is not None for r in rows) else None) for k in REVIEW_KEYS}
     totals["days_recorded"] = sum(1 for r in rows if r["desk_s"] > 0)
-    previous = {f: total(before, f) for f in ("desk_s", "focus", "focus_s")} if any(r["desk_s"] for r in before) else None
+    previous = (
+        {f: total(before, f) for f in ("desk_s", "focus", "focus_s")} if any(r["desk_s"] for r in before) else None
+    )
     hours = plan.best_hours(vault, days[-1], tz, days=7)
     upcoming = []
     if store is not None and store.path.exists():

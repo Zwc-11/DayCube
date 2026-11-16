@@ -76,7 +76,11 @@ def main() -> None:
             print(f"{method}: {r['error']}")
             continue
         cells = [f"{d} m: {a['psnr']} dB on {a['coverage']} (flat {a['psnr_flat']})" for d, a in r["ahead"].items()]
-        print(f"{method}: " + "; ".join(cells) + (f"; depth vs LiDAR {r['depth_vs_lidar']}" if "depth_vs_lidar" in r else ""))
+        print(
+            f"{method}: "
+            + "; ".join(cells)
+            + (f"; depth vs LiDAR {r['depth_vs_lidar']}" if "depth_vs_lidar" in r else "")
+        )
     located = report.get("locate") or {}
     if located:
         print(f"locate: placed {located.get('placed')}/{located.get('photos')}, median {located.get('median_position_m')} m, "

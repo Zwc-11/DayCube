@@ -14,7 +14,7 @@ interface WorldPageProps {
 }
 
 /** Videos made into worlds: newest first, each opening as its islands in the city. */
-export const WorldPage: React.FC<WorldPageProps> = ({ open, onOpen, onHome, onGraph }) => {
+const WorldPage: React.FC<WorldPageProps> = ({ open, onOpen, onHome, onGraph }) => {
   const [worlds, setWorlds] = useState<WorldSummary[] | null | undefined>(undefined);
   const [world, setWorld] = useState<World | null>(null);
   useEffect(() => {

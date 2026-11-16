@@ -9,9 +9,9 @@ Node or Python on the PC. Built with Tauri 2 (Rust, Edge WebView2).
 
 1. Run `DayCube_<version>_x64-setup.exe` (per user, no administrator rights). CI builds it on every
    push that touches the app (workflow **DayCube for Windows**, artifact `daycube-windows`).
-2. The first start asks for the vault. An existing vault (`E:\DAYCUBE\vault`, ...) is found and used
+2. The first start asks for the vault. An existing vault (`C:\DAYCUBE\vault`, ...) is found and used
    as it is; otherwise one is created in `Documents\DayCube\vault`. The `.env` beside the vault
-   (`E:\DAYCUBE\.env`) is read as before.
+   (`C:\DAYCUBE\.env`) is read as before.
 3. The app replaces the `DayCube capture` sign-in entry that `capture.cmd install-autostart` wrote,
    and stops a receiver started from the checkout, so one receiver runs on 127.0.0.1:7700. To go back
    to the checkout: tools window, untick **Run capture** and **Start at sign-in**, then
@@ -101,7 +101,7 @@ uv run --no-project --python 3.11 python apps/desktop/scripts/bundle-runtimes.py
 npm run build --workspace @daycube/desktop                      # NSIS installer in src-tauri\target\release\bundle\nsis
 ```
 
-Development against a checkout's own environments: `DAYCUBE_DEV_ROOT=E:\DAYCUBE` then
+Development against a checkout's own environments: `DAYCUBE_DEV_ROOT=C:\DAYCUBE` then
 `npm run tauri dev --workspace @daycube/desktop`. `DAYCUBE_RESOURCES=<folder>` runs a bundle made by
 `bundle-runtimes.py` without installing it.
 

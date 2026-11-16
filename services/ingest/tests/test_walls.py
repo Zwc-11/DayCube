@@ -24,14 +24,23 @@ def building(ident: str, *xz: tuple[float, float]) -> dict:
 
 
 def street(name: str, *xz: tuple[float, float]) -> dict:
-    return {"type": "way", "tags": {"name": name}, "geometry": [dict(zip(("lat", "lon"), lat_lon_from_local(*ORIGIN, x, z), strict=True)) for x, z in xz]}
+    return {
+        "type": "way",
+        "tags": {"name": name},
+        "geometry": [dict(zip(("lat", "lon"), lat_lon_from_local(*ORIGIN, x, z), strict=True)) for x, z in xz],
+    }
 
 
 # A station 60 m east-west by 20 m, Front St 12 m north of it; a kiosk on Front St's sidewalk.
 STATION = building("way/1", (0, 0), (60, 0), (60, 20), (0, 20))
 KIOSK = building("way/2", (40, -4), (46, -4), (46, -1), (40, -1))
 FRONT = street("Front Street West", (-50, -12), (110, -12))
-PLACE = {"lat": lat_lon_from_local(*ORIGIN, 30, 10)[0], "lon": lat_lon_from_local(*ORIGIN, 30, 10)[1], "osm": "way/1", "name": "Station"}
+PLACE = {
+    "lat": lat_lon_from_local(*ORIGIN, 30, 10)[0],
+    "lon": lat_lon_from_local(*ORIGIN, 30, 10)[1],
+    "osm": "way/1",
+    "name": "Station",
+}
 
 
 def local(wall_end: tuple[float, float]) -> tuple[float, float]:
@@ -78,7 +87,9 @@ def test_either_winding_gives_the_same_walls() -> None:
 def test_a_symmetric_building_is_never_guessed() -> None:
     # Two wings on the same street: both fit, so both are listed and the user picks.
     wings = building("way/1", (0, 0), (40, 0), (40, -8), (80, -8), (80, 0), (120, 0), (120, 20), (0, 20))
-    found = landmark_walls(PLACE, {"features": [wings]}, {"elements": [street("Front Street West", (-50, -20), (170, -20))]}, ANY)
+    found = landmark_walls(
+        PLACE, {"features": [wings]}, {"elements": [street("Front Street West", (-50, -20), (170, -20))]}, ANY
+    )
     asked = choose(found, "front", None)
     assert isinstance(asked, str) and asked.startswith("3 walls fit") and "--pick" in asked
     picked = choose(found, "front", 2)

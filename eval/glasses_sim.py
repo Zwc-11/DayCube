@@ -48,7 +48,9 @@ def day_fixes(vault: Vault, date: str, t0: float, t1: float) -> tuple[list[Fix],
     """The phone's GPS from ``t0`` to ``t1`` (epoch seconds), 10 minutes either side: from the kept
     Sensor Logger recordings, else from the day's skeleton (a day imported before recordings were
     kept, as 2026-10-24 was, has its fixes only there)."""
-    recordings = sensor_logger.join([sensor_logger.parse(p) for p in sources.sensors_between(vault, t0 - 600, t1 + 600)])
+    recordings = sensor_logger.join(
+        [sensor_logger.parse(p) for p in sources.sensors_between(vault, t0 - 600, t1 + 600)]
+    )
     fixes = sorted((f for r in recordings for f in r.fixes), key=lambda f: f.t)
     if fixes:
         return fixes, "sources/sensors"
@@ -84,8 +86,12 @@ def main() -> None:
     parser.add_argument("--train", action="store_true", help="Train Brush on each mode (the GPU, ~10 min each)")
     parser.add_argument("--steps", type=int, default=7000)
     parser.add_argument("--mapper", choices=["incremental", "global"], default="incremental")
-    parser.add_argument("--features", choices=["sift", "aliked"], default="sift",
-                        help="aliked: ALIKED + LightGlue (needs services/recon's environment, PyTorch)")
+    parser.add_argument(
+        "--features",
+        choices=["sift", "aliked"],
+        default="sift",
+        help="aliked: ALIKED + LightGlue (needs services/recon's environment, PyTorch)",
+    )
     parser.add_argument("--out", type=Path, help="Report (default vault/logs/glasses-sim.json)")
     args = parser.parse_args()
     vault = Vault(Settings().vault_root)
@@ -102,7 +108,9 @@ def main() -> None:
     t0 = datetime.fromisoformat(meta["t0"]).timestamp()
     duration = float(meta.get("duration_s") or 600)
     fixes, fixes_from = day_fixes(vault, args.date, t0, t0 + duration)
-    out = args.out or vault.root / "logs" / ("glasses-sim.json" if args.features == "sift" else f"glasses-sim-{args.features}.json")
+    out = args.out or vault.root / "logs" / (
+        "glasses-sim.json" if args.features == "sift" else f"glasses-sim-{args.features}.json"
+    )
     out.parent.mkdir(parents=True, exist_ok=True)
     work = vault.root / "derived" / "glasses-sim" / args.date / moment_id / args.features
     header = {"date": args.date, "moment": moment_id, "started": datetime.now().astimezone().isoformat(timespec="seconds"),

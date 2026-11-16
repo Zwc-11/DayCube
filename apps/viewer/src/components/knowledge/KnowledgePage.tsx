@@ -108,7 +108,7 @@ const wide = () => typeof window !== 'undefined' && window.innerWidth >= WIDE;
  * it. Opening a note anywhere (the graph, the list, a link, a result) shows it on the right and
  * brings it into view on the graph.
  */
-export const KnowledgePage: React.FC<KnowledgePageProps> = ({ note, date, days, onOpenNote, onOpenDate, onOpenDays, onOpenDayPage, onOpenTraining, onOpenSeen }) => {
+const KnowledgePage: React.FC<KnowledgePageProps> = ({ note, date, days, onOpenNote, onOpenDate, onOpenDays, onOpenDayPage, onOpenTraining, onOpenSeen }) => {
   const [model, setModel] = useState<GraphModel | null>(null);
   // What I saw opens on the day whose note is open, else the newest day with computer capture.
   const seenDay = date ?? [...(days ?? [])].reverse().find((d) => d.capture)?.date ?? null;

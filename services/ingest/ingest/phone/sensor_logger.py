@@ -200,7 +200,12 @@ def join(recordings: list[Recording], *, max_gap_s: float = 600.0) -> list[Recor
     out: list[Recording] = []
     for recording in sorted((r for r in recordings if r.fixes or r.altitude), key=lambda r: r.t0):
         last = out[-1] if out else None
-        if last is None or last.device != recording.device or last.tz != recording.tz or recording.t0 - last.t1 > max_gap_s:
+        if (
+            last is None
+            or last.device != recording.device
+            or last.tz != recording.tz
+            or recording.t0 - last.t1 > max_gap_s
+        ):
             out.append(Recording(recording.tz, recording.name, recording.device, list(recording.fixes),
                                  list(recording.altitude), list(recording.steps), list(recording.activity)))  # fmt: skip
             continue

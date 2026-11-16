@@ -330,7 +330,9 @@ def validate(answer: object, f: Facts, minimum: int = SENTENCES[0]) -> list[str]
     problems: list[str] = []
     forms = f.forms()
     names = "\n".join(sorted(f.names))
-    metric_keys = set(f.numbers) | {f"category:{c.name}" for c in f.categories} | {f"project:{p.name}" for p in f.projects}
+    metric_keys = (
+        set(f.numbers) | {f"category:{c.name}" for c in f.categories} | {f"project:{p.name}" for p in f.projects}
+    )
 
     def check(where: str, text: object, ids: object, *, cites: bool) -> None:
         if not isinstance(text, str) or not text.strip():
@@ -359,7 +361,7 @@ def validate(answer: object, f: Facts, minimum: int = SENTENCES[0]) -> list[str]
             problems.append(f"{where}: the number {number} is not in the facts")
         for match in CAPITAL.finditer(text):
             before = text[: match.start()].rstrip()
-            if not before or before[-1] in ".!?:;“\"(":
+            if not before or before[-1] in '.!?:;“"(':
                 continue  # the start of a sentence
             token = re.sub(r"(?:['’]s|[.'’-])+$", "", match.group())
             if token and token not in COMMON and not _found(token, haystack):
@@ -564,7 +566,6 @@ def view(vault: Vault, day: str, zone: str, *, now: datetime, writers: Record) -
     }  # fmt: skip
 
 
-
 def review_command(vault: Vault, settings: object, which: str, *, check: bool = False) -> Record:
     """``daycube review --date``: write the review of a day now (``today`` and ``yesterday`` are
     review days, which start at 04:00), refresh its daily note, and say what it says. ``check``:
@@ -612,7 +613,11 @@ def review_command(vault: Vault, settings: object, which: str, *, check: bool = 
         built = timeline.build(vault, day, settings.timezone, now=now if now < timeline.window(day, zone)[1] else None)  # type: ignore[attr-defined]
         facts = metrics.collect(vault, store, built)
         took["facts_ms"] = round((perf_counter() - started) * 1000)
-        answer = {"headline": review["headline"], "sentences": review["sentences"], "improvements": review["improvements"]}
+        answer = {
+            "headline": review["headline"],
+            "sentences": review["sentences"],
+            "improvements": review["improvements"],
+        }
         report = out["timeline"]
         result["check"] = {
             "problems": validate(answer, facts, min(SENTENCES[0], max(1, len(review["sentences"])))),

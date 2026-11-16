@@ -88,9 +88,9 @@ Projects: a correction; `vault/projects.yaml`
 ```yaml
 projects:
   DayCube:
-    folders: ['E:\DAYCUBE']   # its name in an editor's title, its path in a terminal's
+    folders: ['C:\DAYCUBE']   # its name in an editor's title, its path in a terminal's
     keywords: [daycube]       # in a title or address
-    sites: [github.com/caesar/daycube]
+    sites: [github.com/casper/daycube]
     courses: []               # course codes that belong to this project
 ```
 

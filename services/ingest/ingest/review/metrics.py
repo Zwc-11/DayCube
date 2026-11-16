@@ -67,7 +67,7 @@ def normal(token: str) -> str | None:
 
 
 def duration(seconds: float) -> str:
-    """"45 s", "12 min", "1 h 5 min", "3 h"."""
+    """ "45 s", "12 min", "1 h 5 min", "3 h"."""
     if seconds < 60:
         return f"{round(seconds)} s"
     minutes = round(seconds / 60)
@@ -78,10 +78,17 @@ def duration(seconds: float) -> str:
 
 
 def duration_forms(seconds: float) -> set[str]:
-    """"2 h 5 min", "125 min", "2.1 hours", "about 2 hours", "125" written any of those ways."""
+    """ "2 h 5 min", "125 min", "2.1 hours", "about 2 hours", "125" written any of those ways."""
     minutes = round(seconds / 60)
     hours = seconds / 3600
-    forms = {str(minutes), str(minutes // 60), str(minutes % 60), str(round(seconds)), str(round(hours)), str(int(hours))}
+    forms = {
+        str(minutes),
+        str(minutes // 60),
+        str(minutes % 60),
+        str(round(seconds)),
+        str(round(hours)),
+        str(int(hours)),
+    }
     forms |= {normal(f"{hours:.1f}"), normal(f"{hours:.2f}")}  # type: ignore[arg-type]
     return {f for f in forms if f}
 
@@ -508,7 +515,9 @@ def collect(vault: Vault, store: LifeStore, built: Built) -> Facts:
         top["site"] = [h.id for h in hits][-CITED_PER_TYPE:]
         add("sites", "Finished on websites", len(hits), str(len(hits)), [h.id for h in hits][-3:],
             {str(len(hits))} | {str(len(g)) for g in by_site.values()})  # fmt: skip
-        numbers["sites"].parts = {"sites": [(name, label, len(g), [h.id for h in g][-3:]) for (name, label), g in by_site.items()]}
+        numbers["sites"].parts = {
+            "sites": [(name, label, len(g), [h.id for h in g][-3:]) for (name, label), g in by_site.items()]
+        }
 
     # What got done: time per project, commits, things finished on websites, and pages read with care.
     done: list[Record] = []

@@ -57,7 +57,9 @@ def send(settings: Any, title: str, text: str, opener: Callable[[Request], bytes
                        headers={"Title": title.encode("ascii", "replace").decode(), "Tags": "calendar"}))  # fmt: skip
         return "ntfy"
     if kind == "telegram":
-        token = settings.telegram_token.get_secret_value() if hasattr(settings.telegram_token, "get_secret_value") else ""
+        token = (
+            settings.telegram_token.get_secret_value() if hasattr(settings.telegram_token, "get_secret_value") else ""
+        )
         chat = getattr(settings, "telegram_chat", "")
         if not token or not chat:
             raise ValueError("DAYCUBE_TELEGRAM_TOKEN and DAYCUBE_TELEGRAM_CHAT are needed")
@@ -87,12 +89,14 @@ def due(vault: Vault, settings: Any, now: datetime, zone: str) -> tuple[str, Rec
         at = time(8, 0)
     if local.time() < at:
         return None
-    day = (local.date() - timedelta(days=1) if local.time() >= time(4, 0) else local.date() - timedelta(days=2))
+    day = local.date() - timedelta(days=1) if local.time() >= time(4, 0) else local.date() - timedelta(days=2)
     review = read_review(vault, day.isoformat())
     return (day.isoformat(), review) if review is not None and review["kind"] == "final" else None
 
 
-def step(vault: Vault, settings: Any, now: datetime, zone: str, opener: Callable[[Request], bytes] = _open) -> Record | None:
+def step(
+    vault: Vault, settings: Any, now: datetime, zone: str, opener: Callable[[Request], bytes] = _open
+) -> Record | None:
     """Send yesterday's review if it is due; returns what happened, or None when nothing was due."""
     if not (getattr(settings, "summary_push", "") or "").strip() or (found := due(vault, settings, now, zone)) is None:
         return None
@@ -105,7 +109,11 @@ def step(vault: Vault, settings: Any, now: datetime, zone: str, opener: Callable
     title, text = message(review)
     try:
         channel = send(settings, title, text, opener)
-        entry = {"sent": local.isoformat(timespec="seconds"), "channel": channel, "attempts": entry.get("attempts", 0) + 1}
+        entry = {
+            "sent": local.isoformat(timespec="seconds"),
+            "channel": channel,
+            "attempts": entry.get("attempts", 0) + 1,
+        }
     except Exception as error:  # noqa: BLE001 - reported, tried again next round
         entry = {"attempts": entry.get("attempts", 0) + 1, "error": f"{type(error).__name__}: {error}"[:200]}
     keep = {k: v for k, v in state.items() if k >= (date.fromisoformat(key) - timedelta(days=30)).isoformat()}

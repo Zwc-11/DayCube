@@ -70,7 +70,9 @@ class Plane:
         return (p - self.point) @ self.normal
 
 
-def ransac_plane(points: np.ndarray, accept: Callable[[np.ndarray], bool], tolerance: float, rounds: int = 600, seed: int = 0) -> tuple[Plane, int]:
+def ransac_plane(
+    points: np.ndarray, accept: Callable[[np.ndarray], bool], tolerance: float, rounds: int = 600, seed: int = 0
+) -> tuple[Plane, int]:
     """The plane through the most ``points`` within ``tolerance``, among those whose normal
     ``accept``s (a function of the unit normal)."""
     rng = np.random.default_rng(seed)
@@ -132,7 +134,7 @@ def facade_span(points: np.ndarray, normal: np.ndarray, distance: float) -> tupl
     along = np.cross(normal, [0.0, 1.0, 0.0])
     if along[2] > 0:
         along = -along  # ahead is -z
-    on =points[(np.abs(points @ normal + distance) < 0.3) & (points[:, 1] > 0.5)] @ along
+    on = points[(np.abs(points @ normal + distance) < 0.3) & (points[:, 1] > 0.5)] @ along
     return float(np.percentile(on, 2)), float(np.percentile(on, 98))
 
 
@@ -146,8 +148,9 @@ def crop(points: np.ndarray, rgb: np.ndarray, camera_height: float = CAMERA_M) -
     return (far < KEEP_M) & ~sky & (points[:, 1] < 15) & ~across & (points[:, 0] > -6)
 
 
-def place_on_wall(a: tuple[float, float], b: tuple[float, float], along: float, normal: np.ndarray,
-                  distance: float, side: float = 1.0) -> tuple[float, float, np.ndarray]:
+def place_on_wall(
+    a: tuple[float, float], b: tuple[float, float], along: float, normal: np.ndarray, distance: float, side: float = 1.0
+) -> tuple[float, float, np.ndarray]:
     """Where the camera's foot is (lat, lon) and the rotation (3 x 3) from the island's axes to the
     world's (x east, y up, z south), with the island's facade ``normal`` laid on the wall from
     ``a`` to ``b`` (lat, lon, in the walking direction): the camera ``along`` metres from ``a``
@@ -188,7 +191,9 @@ def keyframe(video: Path, t0: float, t1: float, fps: float = 8.0) -> tuple[np.nd
         ok, bgr = capture.read()
         if ok:
             rgb = bgr[:, :, ::-1].copy()
-            score = cv2.Laplacian(cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY), cv2.CV_64F).var() * (1 - 2.5 * moving(rgb).mean())
+            score = cv2.Laplacian(cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY), cv2.CV_64F).var() * (
+                1 - 2.5 * moving(rgb).mean()
+            )
             if score > best[0]:
                 best = (score, rgb, t)
         t += 1 / fps
@@ -282,8 +287,14 @@ def build(rgb: np.ndarray, f: float) -> tuple[list[tuple[bytes, int, np.ndarray]
     gone = hole(moving(rgb, labels))
     d = depth(rgb)
     count, parts, stats, _ = cv2.connectedComponentsWithStats((labels == PERSON).astype(np.uint8))
-    whole = [k for k in range(1, count) if stats[k][4] > 4000 and stats[k][1] > 2 and stats[k][1] + stats[k][3] < h - 2
-             and stats[k][3] / max(stats[k][2], 1) > 1.8]  # standing and not cut by the frame
+    whole = [
+        k
+        for k in range(1, count)
+        if stats[k][4] > 4000
+        and stats[k][1] > 2
+        and stats[k][1] + stats[k][3] < h - 2
+        and stats[k][3] / max(stats[k][2], 1) > 1.8
+    ]  # standing and not cut by the frame
     by_people = people_ruler([float(stats[k][3]) for k in whole], [float(np.median(d[parts == k])) for k in whole], f)
     v, u = np.mgrid[0:h:2, 0:w:2]
 
@@ -315,9 +326,16 @@ def build(rgb: np.ndarray, f: float) -> tuple[list[tuple[bytes, int, np.ndarray]
         size = np.maximum(0.012, 2 * np.linalg.norm(pts - np.array([0.0, CAMERA_M, 0.0]), axis=1) / f)
         islands.append((splat_records(pts, col, size), len(pts), pts))
     span = facade_span(islands[0][2], normal, distance)
-    notes = {"scale": round(scale, 3), "scale_by_people": by_people and round(by_people, 3),
-             "scale_by_ground": round(by_ground, 3), "people": len(whole), "facade_m": round(distance, 2),
-             "facade_seen_m": [round(s, 1) for s in span], "points": islands[0][1], "imagined_points": islands[1][1]}
+    notes = {
+        "scale": round(scale, 3),
+        "scale_by_people": by_people and round(by_people, 3),
+        "scale_by_ground": round(by_ground, 3),
+        "people": len(whole),
+        "facade_m": round(distance, 2),
+        "facade_seen_m": [round(s, 1) for s in span],
+        "points": islands[0][1],
+        "imagined_points": islands[1][1],
+    }
     return islands, {"normal": normal, "distance": distance, "span": span, "notes": notes}
 
 
@@ -355,10 +373,16 @@ def where(args: argparse.Namespace, maps: Path) -> tuple[Wall | str, Callable[[S
     wall = choose(landmark_walls(place, buildings, streets, ANY), args.street, args.pick)
     if isinstance(wall, str):
         return wall, lambda seen: None, math.nan
-    at = wall.a if math.hypot(*geo.local_from_lat_lon(place["lat"], place["lon"], *wall.a)) > 50 else (place["lat"], place["lon"])
+    at = (
+        wall.a
+        if math.hypot(*geo.local_from_lat_lon(place["lat"], place["lon"], *wall.a)) > 50
+        else (place["lat"], place["lon"])
+    )
 
     def fitted(seen: Seen) -> Wall | None:
-        return next((w for w in landmark_walls(place, buildings, streets, seen) if (w.a, w.b) == (wall.a, wall.b)), None)
+        return next(
+            (w for w in landmark_walls(place, buildings, streets, seen) if (w.a, w.b) == (wall.a, wall.b)), None
+        )
 
     return wall, fitted, retried(lambda: geo.ground_height(*at, maps))
 
@@ -392,13 +416,28 @@ def main() -> None:
     p.add_argument("--date", required=True)
     p.add_argument("--shot", nargs=2, type=float, required=True, metavar=("T0", "T1"))
     on = p.add_mutually_exclusive_group(required=True)
-    on.add_argument("--wall", nargs=2, metavar=("LAT,LON", "LAT,LON"), help="the footprint wall beside the walk, from where the walk starts")
-    on.add_argument("--at", metavar="LANDMARK", help="the building the shot was filmed beside, e.g. \"Union Station, Toronto\"")
+    on.add_argument(
+        "--wall",
+        nargs=2,
+        metavar=("LAT,LON", "LAT,LON"),
+        help="the footprint wall beside the walk, from where the walk starts",
+    )
+    on.add_argument(
+        "--at", metavar="LANDMARK", help='the building the shot was filmed beside, e.g. "Union Station, Toronto"'
+    )
     p.add_argument("--street", help="with --at: the street the walk was on")
     p.add_argument("--pick", type=int, help="with --at: which of the walls it lists")
-    p.add_argument("--along", type=float, help="metres from the wall's first corner where the shot starts (with --at: the middle of where it fits)")
-    p.add_argument("--speed", type=float, default=WALK, help="walking speed, m/s: the keyframe is this far on per second")
-    p.add_argument("--focal", type=float, default=1.45, help="focal length over the frame's width (iPhone main camera, 3:4 crop)")
+    p.add_argument(
+        "--along",
+        type=float,
+        help="metres from the wall's first corner where the shot starts (with --at: the middle of where it fits)",
+    )
+    p.add_argument(
+        "--speed", type=float, default=WALK, help="walking speed, m/s: the keyframe is this far on per second"
+    )
+    p.add_argument(
+        "--focal", type=float, default=1.45, help="focal length over the frame's width (iPhone main camera, 3:4 crop)"
+    )
     p.add_argument("--title", default="")
     p.add_argument("--error-m", type=float, default=15.0)
     p.add_argument("--vault", type=Path)
@@ -415,7 +454,10 @@ def main() -> None:
     islands, found = build(rgb, args.focal * rgb.shape[1])
     seen_by = Seen(found["distance"], *found["span"])
     if (wall := fitted(seen_by)) is None:
-        p.exit(2, f"The facade seen ({seen_by.start:.0f} to {seen_by.end:.0f} m ahead) does not fit that wall, or its sidewalk is built on\n")
+        p.exit(
+            2,
+            f"The facade seen ({seen_by.start:.0f} to {seen_by.end:.0f} m ahead) does not fit that wall, or its sidewalk is built on\n",
+        )
     if args.along is not None:
         along, error = args.along + args.speed * (t - args.shot[0]), args.error_m
     else:  # anywhere it fits: the middle, the error widened to cover the rest
@@ -426,22 +468,45 @@ def main() -> None:
 
     def island(n: int, pts: np.ndarray, count: int, kind: str) -> dict:
         placed = pts @ rotation.T
-        return {"id": f"is_{n:02d}", "splat": f"is_{n:02d}.splat", "points": count, "enu": enu.round(6).tolist(),
-                "bounds": {"min": placed.min(0).round(2).tolist(), "max": placed.max(0).round(2).tolist()},
-                "located_by": "landmark+footprints", "error_m": round(error, 1), "kind": kind, "shots": [list(args.shot)]}
+        return {
+            "id": f"is_{n:02d}",
+            "splat": f"is_{n:02d}.splat",
+            "points": count,
+            "enu": enu.round(6).tolist(),
+            "bounds": {"min": placed.min(0).round(2).tolist(), "max": placed.max(0).round(2).tolist()},
+            "located_by": "landmark+footprints",
+            "error_m": round(error, 1),
+            "kind": kind,
+            "shots": [list(args.shot)],
+        }
 
     seen = island(1, islands[0][2], islands[0][1], "seen")
-    seen["view"] = {"eye": (rotation @ [0.0, CAMERA_M, 0.0]).round(3).tolist(),
-                    "look": (rotation @ [0.0, CAMERA_M, -10.0]).round(3).tolist()}
+    seen["view"] = {
+        "eye": (rotation @ [0.0, CAMERA_M, 0.0]).round(3).tolist(),
+        "look": (rotation @ [0.0, CAMERA_M, -10.0]).round(3).tolist(),
+    }
     world = {
-        "id": store.new_id(), "date": args.date, "title": args.title or args.video.stem,
+        "id": store.new_id(),
+        "date": args.date,
+        "title": args.title or args.video.stem,
         "made": datetime.now().astimezone().isoformat(timespec="seconds"),
         "source": {"file": args.video.name, "t0_s": args.shot[0], "t1_s": args.shot[1]},
         "origin": {"lat": lat, "lon": lon, "ground_m": round(ground, 2)},
         "islands": [seen] + ([island(2, islands[1][2], islands[1][1], "imagined")] if islands[1][1] else []),
     }
-    path = store.save(vault, args.date, world, {i["splat"]: data for i, (data, _, _) in zip(world["islands"], islands, strict=False)})
-    print(path, {"keyframe_s": round(t, 2), "wall": [wall.a, wall.b], "street": wall.street, "along_m": round(along, 1), **found["notes"]})
+    path = store.save(
+        vault, args.date, world, {i["splat"]: data for i, (data, _, _) in zip(world["islands"], islands, strict=False)}
+    )
+    print(
+        path,
+        {
+            "keyframe_s": round(t, 2),
+            "wall": [wall.a, wall.b],
+            "street": wall.street,
+            "along_m": round(along, 1),
+            **found["notes"],
+        },
+    )
 
 
 if __name__ == "__main__":

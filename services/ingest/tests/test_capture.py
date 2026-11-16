@@ -608,7 +608,9 @@ def test_no_face_in_view_is_not_taken_for_an_old_tracker(vault: Vault, monkeypat
     def rows(face: float) -> dict:
         gaze = {"tracking": True, "fps": 28.6, "target_fps": 30.0, "face": face, "coverage": None, "noise_px": None}
         status = {"paused": False, "browser": {"last": now.isoformat()}, "reading": None, "gaze": gaze}
-        return {name: (v, d) for v, name, d in doctor.checks(status, vault.root, ZoneInfo("America/Toronto"), now, None)}
+        return {
+            name: (v, d) for v, name, d in doctor.checks(status, vault.root, ZoneInfo("America/Toronto"), now, None)
+        }
 
     away = rows(0.07)
     assert "tracker code" not in away and away["face found"][0] == doctor.FAIL

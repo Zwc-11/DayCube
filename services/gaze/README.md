@@ -75,15 +75,14 @@ ever-older FIFO of target observations when the backend supports that reader. Ga
 250 ms restart smoothing; shorter blinks retain its normal response. Looking off-screen ends an
 open fixation. RGB conversion scratch is reused and released with the camera, while each MediaPipe
 image owns its pixels.
-The [tracking review](../../docs/gaze-tracking-review-2026-10-24.md) records measurements and limits.
 
 Blink gating checks each eye, excludes closing/closed observations from its learned reference,
 and waits 100 ms after the last rejected blink frame for reopening landmarks to settle. Brief
 blinks preserve filter position without emitting held gaze samples; long closures reacquire
-afresh. The [blink review](../../docs/blink-guard-2026-10-24.md) records replay results and tradeoffs.
+afresh.
 The open-eye reference follows the iris's height in the eye, because the upper lid follows the
 eye down: with one fixed reference, looking at the bottom of the screen read as a blink and the
-gaze stopped around the middle ([below](../../docs/blink-guard-2026-10-24.md#looking-down-is-not-blinking)).
+gaze stopped around the middle (`eval/blink_downgaze.py`, measured on MPIIFaceGaze).
 
 Tests: `cd services/gaze; uv run pytest` (the head-aware model on synthetic faces posed in front
 of a camera, fixations, smoothing, calibration fitting, the tracking loop with a scripted camera,
