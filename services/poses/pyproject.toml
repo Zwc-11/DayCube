@@ -1,0 +1,48 @@
+[project]
+name = "daycube-poses"
+version = "0.1.0"
+description = "The camera's poses through a video's shot, by Depth Anything 3: services/ingest/ingest/items/poses.py, run as a child process by ingest.items (docs/items.md)"
+requires-python = ">=3.11,<3.13"
+# Its own environment: depth-anything-3 needs numpy 1 and OpenCV 4, the other environments numpy 2
+# and OpenCV 5. The same torch as services/recon and services/speech, so uv links it from its cache.
+dependencies = [
+  "depth-anything-3==0.1.1",  # code and the DA3-SMALL weights: Apache-2.0
+  "addict>=2.4,<3",           # imported by the package, missing from its requirements
+  "torch==2.9.1",
+  "torchvision==0.24.1+cu128 ; sys_platform == 'win32'",
+  "torchvision==0.24.1+cpu ; sys_platform != 'win32'",
+]
+
+[tool.uv]
+package = false
+# Requirements of the package that poses.py never imports (its viewer, its server, 3D export).
+override-dependencies = [
+  "open3d ; sys_platform == 'never'",
+  "e3nn ; sys_platform == 'never'",
+  "xformers ; sys_platform == 'never'",
+  "fastapi ; sys_platform == 'never'",
+  "uvicorn ; sys_platform == 'never'",
+  "typer ; sys_platform == 'never'",
+  "pillow-heif ; sys_platform == 'never'",
+  "pre-commit ; sys_platform == 'never'",
+]
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cu128", marker = "sys_platform == 'win32'" },
+  { index = "pytorch-cpu", marker = "sys_platform != 'win32'" },
+]
+torchvision = [
+  { index = "pytorch-cu128", marker = "sys_platform == 'win32'" },
+  { index = "pytorch-cpu", marker = "sys_platform != 'win32'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true

@@ -9,6 +9,7 @@ a point not yet sent when the next arrives is replaced by it."""
 from __future__ import annotations
 
 import json
+import math
 import threading
 import time
 import uuid
@@ -47,12 +48,24 @@ class Receiver:
         self._wake = threading.Condition()
         self._sender: threading.Thread | None = None
         self.live_ms: deque[float] = deque(maxlen=300)  # round trips of recent live posts, for the state
+        self.lines: deque[dict] = deque(maxlen=2000)  # reading-line labels from the receiver (``take_lines``)
+        self.reading: dict | None = None  # the line the receiver's decoder has the eyes on now (``_reading``)
 
-    def add(self, fixation: Fixation) -> None:
+    def add(self, fixation: Fixation) -> str:
+        """Queue a fixation; returns its id (the receiver names it again in a line label)."""
+        fixation_id = uuid.uuid4().hex
         self.queue.append({
-            "id": uuid.uuid4().hex, "t": iso(fixation.start), "t_end": iso(fixation.end),
+            "id": fixation_id, "t": iso(fixation.start), "t_end": iso(fixation.end),
             "x": round(fixation.x, 5), "y": round(fixation.y, 5), "samples": fixation.samples,
         })  # fmt: skip
+        return fixation_id
+
+    def take_lines(self) -> list[dict]:
+        """Line labels the receiver sent since the last call: the fixation's id, and the line's
+        middle height and horizontal extent as monitor fractions."""
+        out = list(self.lines)
+        self.lines.clear()
+        return out
 
     def send(self, state: dict) -> str:
         """POST /gaze. Returns ok, paused (the queue is dropped: nothing is kept while paused),
@@ -73,6 +86,7 @@ class Receiver:
                 body = response.read()
         except HTTPError as error:
             self.live = self.ring = False
+            self.reading = None
             if error.code == 409:
                 self.queue.clear()
                 return "paused"
@@ -84,17 +98,29 @@ class Receiver:
             return "refused"
         except (URLError, OSError):
             self.live = self.ring = False
+            self.reading = None
             return "offline"
+        try:
+            answer = json.loads(body)
+            counts = [answer.get(key) for key in ("accepted", "duplicates", "stale")]
+            if not all(type(n) is int and n >= 0 for n in counts) or sum(counts) != len(batch):
+                raise ValueError("invalid fixation acknowledgement")
+        except (ValueError, AttributeError, TypeError):
+            self.live = self.ring = False
+            self.offset_grid = self.reading = None
+            self.refusal = "invalid fixation acknowledgement"
+            return "refused"
         for _ in batch:
             self.queue.popleft()
         self.token = token
         try:
-            answer = json.loads(body)
             self.live, self.ring = bool(answer.get("live")), bool(answer.get("ring"))
             self.offset_grid = _grid(answer.get("offset_grid"))
+            self.lines.extend(_lines(answer.get("lines")))
+            self.reading = _reading(answer.get("reading"))
         except (ValueError, AttributeError):
             self.live = self.ring = False
-            self.offset_grid = None
+            self.offset_grid = self.reading = None
         return "ok"
 
     def send_live(self, t: float, x: float, y: float) -> None:
@@ -200,3 +226,30 @@ def corrected(grid: dict | None, fx: float, fy: float) -> tuple[float, float]:
         return (1 - u) * (1 - v) * a + u * (1 - v) * b + (1 - u) * v * c + u * v * d
 
     return fx - at(grid["dx"]), fy - at(grid["dy"])
+
+
+def _lines(value: object) -> list[dict]:
+    """Well-formed line labels of a /gaze answer: id, and y, x0, x1 in monitor fractions."""
+    out = []
+    for item in value if isinstance(value, list) else []:
+        try:
+            label = {"id": str(item["id"]), "y": float(item["y"]), "x0": float(item["x0"]), "x1": float(item["x1"])}
+        except (KeyError, TypeError, ValueError):
+            continue
+        if all(-0.5 <= label[k] <= 1.5 for k in ("y", "x0", "x1")):
+            out.append(label)
+    return out
+
+
+def _reading(value: object) -> dict | None:
+    """The line being read, from a /gaze answer: when (epoch s, the fixation's end), its middle
+    height and extent (monitor fractions) and the decoder's probability; None if absent or bad."""
+    if not isinstance(value, dict):
+        return None
+    try:
+        line = {k: float(value[k]) for k in ("t", "y", "x0", "x1", "p")}
+    except (KeyError, TypeError, ValueError):
+        return None
+    if not all(math.isfinite(v) for v in line.values()) or not all(-0.5 <= line[k] <= 1.5 for k in ("y", "x0", "x1")):
+        return None
+    return line

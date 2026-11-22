@@ -18,7 +18,7 @@ from collections.abc import Hashable, Mapping, Sequence
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from ..store import LifeStore
+from ..store import LifeStore, cjk
 from ..time import tod
 from ..vault import DaySnapshot, Record
 from .query import Query, parse
@@ -41,8 +41,10 @@ def terms(question: str) -> list[str]:
 
 
 def _words(text: str) -> list[str]:
-    words = re.findall(r"[^\W_]+", text.casefold(), flags=re.UNICODE)
-    return [w for w in words if len(w) > 1 and w not in STOP_WORDS]
+    """Words of two letters or more that are not stop words; Chinese, Japanese and Korean runs as
+    pairs of characters (store/cjk.py), a lone character as itself."""
+    words = [part for word in re.findall(r"[^\W_]+", text.casefold(), flags=re.UNICODE) for part in cjk.split(word)]
+    return [w for w in words if (len(w) > 1 or cjk.RUN.fullmatch(w)) and w not in STOP_WORDS]
 
 
 def retrieve(
@@ -78,8 +80,9 @@ def retrieve(
             if not query_terms and not store.vectors:
                 return []
             # Quote every token: user punctuation can never become an FTS operator.
-            expression = " OR ".join(f'"{w}"' for w in query_terms)
-            keyword = store.keyword(expression, **filters, k=CANDIDATES) if query_terms else []
+            expression = " OR ".join(f'"{w}"' for w in query_terms if not cjk.RUN.fullmatch(w))
+            apart = cjk.expression(query_terms)
+            keyword = store.keyword(expression, cjk_expression=apart, **filters, k=CANDIDATES) if query_terms else []
             scope = {"day": day, "since": since, "until": until, "k": CANDIDATES, "db": db}
             # Meaning search reads the question without its filter words, and filters kinds and sites after.
             meaning = [
@@ -91,7 +94,7 @@ def retrieve(
             # The person's own notes have no time, kind or site: searched only for unfiltered questions.
             unscoped = day is None and since is None and until is None and not q.types and not q.site
             notes = (
-                [("note", c) for c in store.note_keyword(expression, k=CANDIDATES, db=db)]
+                [("note", c) for c in store.note_keyword(expression, cjk_expression=apart, k=CANDIDATES, db=db)]
                 if query_terms and unscoped
                 else []
             )

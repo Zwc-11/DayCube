@@ -1,14 +1,16 @@
-import Ajv2020 from 'ajv/dist/2020.js';
-import addFormats from 'ajv-formats';
-import contracts from './contracts.json' with { type: 'json' };
+// Validation of the canonical contracts (*.schema.json) in the browser and in Node. The validators
+// are compiled ahead of time (validators.mjs, from scripts/generate-contracts.mjs) with the same
+// ajv and options the contracts were checked with before, so nothing is compiled at page load.
+import * as validators from './validators.mjs';
 
-const ajv = new Ajv2020({ allErrors: true, strict: false });
-addFormats(ajv);
-const validators = new Map(Object.entries(contracts).map(([name, contract]) => [name, ajv.compile(contract)]));
+/** ajv's errorsText: `data<path> <message>`, joined by ", ". */
+function errorsText(errors) {
+  return (errors ?? []).map(e => `data${e.instancePath} ${e.message}`).join(', ');
+}
 
 export function validateContract(name, value) {
-  const validate = validators.get(name);
+  const validate = Object.hasOwn(validators, name) ? validators[name] : undefined;
   if (!validate) throw new Error(`Unknown contract: ${name}`);
-  if (!validate(value)) throw new Error(`${name}: ${ajv.errorsText(validate.errors)}`);
+  if (!validate(value)) throw new Error(`${name}: ${errorsText(validate.errors)}`);
   return value;
 }

@@ -38,7 +38,7 @@ test('the knowledge graph shows the vault and opens an entity', async ({ page })
 });
 
 test('the calendar opens the data center before any day', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?view=days');
   await page.getByRole('button', { name: 'Your data' }).click();
   await expect(page.getByTestId('sources')).toContainText('Vault days');
   await page.getByRole('dialog').getByRole('button', { name: 'Knowledge graph', exact: true }).click();

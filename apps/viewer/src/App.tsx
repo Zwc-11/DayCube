@@ -7,12 +7,14 @@ import {
   type SceneCameraApi,
 } from './components/diorama/DioramaCanvas3D';
 import { DioramaCanvas2D } from './components/diorama/DioramaCanvas2D';
+import { ScanStage, advanceOverScan } from './components/diorama/ScanStage';
 import { EvidenceCardPanel } from './components/panels/EvidenceCardPanel';
 import type { SettingsSection } from './components/modals/SystemStudioModal';
 import { type ApiCallLog, backendBridge } from './lib/backendBridge';
 import { usePageVisible } from './lib/usePageVisible';
 import { makeLayerLookup } from './lib/timeIndex';
-import { PLAYBACK_TICK_MS, advancePlayhead, daySchedule } from './lib/walkRoute';
+import { instantOn, toAudit } from './lib/deletions';
+import { PLAYBACK_TICK_MS, daySchedule } from './lib/walkRoute';
 import { type DaySummary, type LoadedDay, SAMPLE_DATE, refreshDay } from './lib/days';
 import { TopBar, type ViewMode } from './components/shell/TopBar';
 import { Itinerary } from './components/shell/Itinerary';
@@ -26,6 +28,9 @@ const AskBarModal = lazy(() =>
 const MomentPortalModal = lazy(() =>
   import('./components/modals/MomentPortalModal').then((m) => ({ default: m.MomentPortalModal }))
 );
+const RecordedMomentModal = lazy(() =>
+  import('./components/modals/RecordedMomentModal').then((m) => ({ default: m.RecordedMomentModal }))
+);
 const MindGazeInspectorModal = lazy(() =>
   import('./components/modals/MindGazeInspectorModal').then((m) => ({
     default: m.MindGazeInspectorModal,
@@ -36,6 +41,10 @@ const SystemStudioModal = lazy(() =>
 );
 
 const SPEEDS = [1, 4, 12];
+// Moments a phone import recorded (services/ingest/ingest/phone): opened with their own media.
+const RECORDED_MOMENT = /^mo_(voice|scan)_/;
+// A scan made at a place: its 3D world replaces the place's diorama (components/diorama/ScanStage).
+const SCAN_MOMENT = /^mo_scan_/;
 const NO_TRANSITS: typeof SAMPLE_TRANSITS = [];
 
 function longDate(iso: string): string {
@@ -55,8 +64,15 @@ function shiftDate(iso: string, delta: number): string {
   return new Date(Date.UTC(year, month - 1, day + delta)).toISOString().slice(0, 10);
 }
 
-/** Where a day opens: golden hour at home for the sample day, else the last place visited. */
-function initialFocus(date: string, layers: Layer[]): { index: number; tod: number; pin: EventPin | null } {
+/** Where a day opens: at the hour asked for (the place visited then, or the nearest one); else
+ *  golden hour at home for the sample day, else the last place visited. */
+function initialFocus(date: string, layers: Layer[], at?: number): { index: number; tod: number; pin: EventPin | null } {
+  if (at !== undefined && layers.length > 0) {
+    const gap = (layer: Layer) => (at < layer.t0 ? layer.t0 - at : at > layer.t1 ? at - layer.t1 : 0);
+    const index = layers.reduce((best, layer, i) => (gap(layer) < gap(layers[best]) ? i : best), 0);
+    const tod = Math.min(layers[index].t1, Math.max(layers[index].t0, at));
+    return { index, tod, pin: layers[index].events.find((e) => !e.deleted && e.t >= tod) ?? null };
+  }
   if (date === SAMPLE_DATE && layers.length > 4) return { index: 4, tod: 17.8, pin: layers[4].events[0] ?? null };
   const index = Math.max(0, layers.length - 1);
   const layer = layers[index];
@@ -69,10 +85,16 @@ interface AppProps {
   day: LoadedDay;
   /** Recorded days, oldest first; null while loading. */
   days: DaySummary[] | null;
-  /** Open another day, or the calendar with null. */
+  /** The hour of the day to open at (13.5 = 13:30); the day's usual start without it. */
+  at?: number;
+  /** Open another day, or the graph of notes with null. */
   onOpenDate: (date: string | null) => void;
   /** Show this day as its notes (the knowledge page). */
   onOpenNotes?: () => void;
+  /** The DayCube logo: the newest day's page. */
+  onHome?: () => void;
+  /** The calendar of every day. */
+  onOpenDays?: () => void;
 }
 
 function isTypingTarget(target: EventTarget | null): boolean {
@@ -81,9 +103,9 @@ function isTypingTarget(target: EventTarget | null): boolean {
   return el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName);
 }
 
-export const App: React.FC<AppProps> = ({ date, day, days, onOpenDate, onOpenNotes }) => {
+const App: React.FC<AppProps> = ({ date, day, days, at, onOpenDate, onOpenNotes, onHome, onOpenDays }) => {
   const pageVisible = usePageVisible();
-  const [focus] = useState(() => initialFocus(date, day.layers));
+  const [focus] = useState(() => initialFocus(date, day.layers, at));
   const [layers, setLayers] = useState<Layer[]>(day.layers);
   const [dataSource, setDataSource] = useState<'vault' | 'sample'>(day.fromBackend ? 'vault' : 'sample');
   const [activeLayerIndex, setActiveLayerIndex] = useState<number>(focus.index);
@@ -105,6 +127,16 @@ export const App: React.FC<AppProps> = ({ date, day, days, onOpenDate, onOpenNot
   });
 
   const [selectedPin, setSelectedPin] = useState<EventPin | null>(focus.pin);
+  // A visit with a scan shows the scan's 3D world unless the diorama is chosen; scans found to
+  // have no 3D scene fall back to the diorama.
+  const [sceneChoice, setSceneChoice] = useState<'scan' | 'diorama'>('scan');
+  const [noScene, setNoScene] = useState<ReadonlySet<string>>(() => new Set());
+  // The span of the scan on the stage (hours), while one is shown: playback runs at the walk's own
+  // speed over it (components/diorama/ScanStage.tsx).
+  const scanSpanRef = useRef<[number, number] | null>(null);
+  const setScanSpan = useCallback((span: [number, number] | null) => {
+    scanSpanRef.current = span;
+  }, []);
   const [askOpen, setAskOpen] = useState(false);
   const [activeMomentId, setActiveMomentId] = useState<string | null>(null);
   const [activeScreenShotId, setActiveScreenShotId] = useState<string | null>(null);
@@ -114,7 +146,7 @@ export const App: React.FC<AppProps> = ({ date, day, days, onOpenDate, onOpenNot
 
   const [speakerOverrides, setSpeakerOverrides] = useState<Record<string, string>>({});
   const [capturePaused, setCapturePaused] = useState(false);
-  const [deletions] = useState<DeletionAudit[]>([]);
+  const [deletions, setDeletions] = useState<DeletionAudit[]>([]);
   const [mutationError, setMutationError] = useState<string | null>(null);
 
   const [backendOnline, setBackendOnline] = useState(false);
@@ -228,7 +260,7 @@ export const App: React.FC<AppProps> = ({ date, day, days, onOpenDate, onOpenNot
     if (!playing || suspended) return;
     const interval = window.setInterval(() => {
       setTod((prev) => {
-        const next = advancePlayhead(walks, prev, PLAYBACK_TICK_MS / 1000, playSpeed);
+        const next = advanceOverScan(walks, prev, PLAYBACK_TICK_MS / 1000, playSpeed, scanSpanRef.current);
         return next > dayEnd ? dayStart : next;
       });
     }, PLAYBACK_TICK_MS);
@@ -328,12 +360,35 @@ export const App: React.FC<AppProps> = ({ date, day, days, onOpenDate, onOpenNot
   const togglePlay = useCallback(() => setPlaying((p) => !p), []);
   const cycleSpeed = useCallback(() => setPlaySpeed((s) => SPEEDS[(SPEEDS.indexOf(s) + 1) % SPEEDS.length]), []);
 
-  const handleDeleteHours = () => {
-    setMutationError('Deleting a time range is not supported by the local API yet. No records were deleted.');
-  };
+  useEffect(() => {
+    let live = true;
+    backendBridge.deletions(date).then((list) => live && setDeletions(list.map(toAudit)));
+    return () => {
+      live = false;
+    };
+  }, [date]);
+
+  const handleDeleteHours = useCallback(
+    async (from: number, to: number, reason: string) => {
+      try {
+        await backendBridge.deleteHours(date, instantOn(date, from), instantOn(date, to), reason);
+        setDeletions((await backendBridge.deletions(date)).map(toAudit));
+        await syncWithBackend();
+      } catch (error) {
+        setMutationError(error instanceof Error ? error.message : 'The time range could not be deleted.');
+      }
+    },
+    [date, syncWithBackend]
+  );
 
   const activeLayer = layers[activeLayerIndex] || layers[0];
   const transits = dataSource === 'sample' ? SAMPLE_TRANSITS : NO_TRANSITS;
+  const scanId =
+    dataSource === 'vault' && engineMode === 'three' && viewMode === 'layer'
+      ? activeLayer.moments.find((id) => SCAN_MOMENT.test(id) && !noScene.has(id)) ?? null
+      : null;
+  const showScan = scanId !== null && sceneChoice === 'scan';
+  const markNoScene = useCallback((id: string) => setNoScene((prev) => new Set(prev).add(id)), []);
 
   // Neighbouring recorded days and the week ending today, from the calendar's list.
   const neighbours = useMemo(() => {
@@ -349,7 +404,8 @@ export const App: React.FC<AppProps> = ({ date, day, days, onOpenDate, onOpenNot
       return { date: d, recorded: recorded.has(d), isCurrent: d === date };
     });
   }, [days, date]);
-  const goHome = useCallback(() => onOpenDate(null), [onOpenDate]);
+  const goHome = useCallback(() => (onHome ? onHome() : onOpenDate(null)), [onHome, onOpenDate]);
+  const goDays = useCallback(() => (onOpenDays ? onOpenDays() : onOpenDate(null)), [onOpenDays, onOpenDate]);
   const goPrev = useMemo(() => (neighbours.prev ? () => onOpenDate(neighbours.prev) : null), [neighbours.prev, onOpenDate]);
   const goNext = useMemo(() => (neighbours.next ? () => onOpenDate(neighbours.next) : null), [neighbours.next, onOpenDate]);
 
@@ -373,7 +429,7 @@ export const App: React.FC<AppProps> = ({ date, day, days, onOpenDate, onOpenNot
 
       <Itinerary
         dayTitle={shortDate(date)}
-        onHome={goHome}
+        onHome={goDays}
         onPrevDay={goPrev}
         onNextDay={goNext}
         layers={layers}
@@ -383,11 +439,21 @@ export const App: React.FC<AppProps> = ({ date, day, days, onOpenDate, onOpenNot
         dataSource={dataSource}
         onSelectLayer={selectLayer}
         onSelectEvent={selectEvent}
+        date={date}
+        onSeek={handleScrubTod}
       />
 
       <main className="stage app__stage" aria-label="Diorama">
         <div className="stage__canvas">
-          {engineMode === 'three' ? (
+          {showScan ? (
+            // One splat scene on the GPU at a time: none here while a moment's own view is open.
+            activeMomentId ? (
+              <div className="scan-stage" aria-hidden />
+            ) : (
+              <ScanStage date={date} momentId={scanId} tod={tod} playing={playing && !suspended} speed={playSpeed} layers={layers}
+                         onNoScene={markNoScene} onOpen={setActiveMomentId} onSpan={setScanSpan} />
+            )
+          ) : engineMode === 'three' ? (
             <DioramaCanvas3D
               playing={playing}
               playSpeed={playSpeed}
@@ -434,7 +500,18 @@ export const App: React.FC<AppProps> = ({ date, day, days, onOpenDate, onOpenNot
           </>
         )}
 
-        <StageControls
+        {scanId !== null && (
+          <div className="seg seg--sm stage__scene" role="group" aria-label="Scene">
+            <button type="button" className="seg__item" aria-pressed={showScan} onClick={() => setSceneChoice('scan')}>
+              3D scan
+            </button>
+            <button type="button" className="seg__item" aria-pressed={!showScan} onClick={() => setSceneChoice('diorama')}>
+              Diorama
+            </button>
+          </div>
+        )}
+
+        {!showScan && <StageControls
           viewMode={engineMode === 'canvas2d' ? 'layer' : viewMode}
           floors={activeLayer.floors}
           activeFloor={activeFloorFilter}
@@ -445,7 +522,7 @@ export const App: React.FC<AppProps> = ({ date, day, days, onOpenDate, onOpenNot
           onZoomIn={zoomIn}
           onZoomOut={zoomOut}
           onResetView={resetView}
-        />
+        />}
       </main>
 
       <EvidenceCardPanel
@@ -502,7 +579,16 @@ export const App: React.FC<AppProps> = ({ date, day, days, onOpenDate, onOpenNot
           />
         )}
 
-        {activeMomentId && (
+        {activeMomentId && RECORDED_MOMENT.test(activeMomentId) && (
+          <RecordedMomentModal
+            date={date}
+            momentId={activeMomentId}
+            placeName={layers.find((l) => l.moments.includes(activeMomentId))?.name}
+            onClose={() => setActiveMomentId(null)}
+          />
+        )}
+
+        {activeMomentId && !RECORDED_MOMENT.test(activeMomentId) && (
           <MomentPortalModal
             momentId={activeMomentId}
             onClose={() => setActiveMomentId(null)}

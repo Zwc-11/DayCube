@@ -29,6 +29,7 @@ from typing import Any, Protocol
 
 import numpy as np
 
+from .drift import DriftProbe
 from .fixations import FixationDetector, Smoother
 from .receiver import Receiver, corrected
 from .stabilize import Stabilizer
@@ -189,6 +190,11 @@ def open_camera_thread(opener: Callable[[], Camera], first_s: float = 8.0) -> Ca
     return opener()
 
 
+# The ring snaps to the line being read while the decoder's line is this fresh and this sure, and
+# the gaze within this far of it (monitor px).
+SNAP_S, SNAP_P, SNAP_PX = 1.2, 0.6, 120.0
+
+
 class Tracker:
     def __init__(
         self,
@@ -226,6 +232,8 @@ class Tracker:
         self.detector = FixationDetector(self.width, self.height)
         self.smoother = Smoother()  # the gaze fixations are made of
         self.stabilizer = Stabilizer(self.width)  # the gaze the ring and live points show
+        self.drift = DriftProbe(self.width, on_stare=self._stare)  # what slides with the gaze during long stares
+        self.snapped: tuple[float, float] | None = None  # (line time, ring fixation) the ring last sat on a line in
         self.camera: Camera | None = None
         self.hold: str | None = None  # why the camera is off on purpose
         self.problem: str | None = None  # why it is off against our wishes
@@ -240,7 +248,9 @@ class Tracker:
         self.live_at = -1e9
         self.offline_since: float | None = None
         self.last_face = clock()
-        self.frames: deque[tuple[float, bool]] = deque()  # (time, had a face) over the last 10 s
+        # (time, had a face, what came of it: None without one, "closed" (a blink or its settling),
+        # "missed" (the gaze ray met no screen) or "gaze") over the last 10 s
+        self.frames: deque[tuple[float, bool, str | None]] = deque()
         self.samples: deque[float] = deque()  # gaze samples given to the detector over the last 30 s
         self.fixated: deque[tuple[float, int]] = deque()  # (time, samples) of fixations over the last 30 s
         self.heads: deque[tuple[float, float, float]] = deque()  # (time, mm, degrees) from calibration, 10 s
@@ -250,7 +260,9 @@ class Tracker:
         self.overlay: Any = None
         # Learning from clicks (gaze.learn): the frames before each click, and the click.
         self.learner = learner
-        self._model_version = getattr(getattr(estimator, "model", None), "version", None)
+        # None, not the model's version: an update loaded at start (gaze.learn) is recorded as
+        # applied on the first frame too, or doctor waits for one until the next fit.
+        self._model_version: int | None = None
 
     # -- state -------------------------------------------------------------------------------------
 
@@ -265,7 +277,10 @@ class Tracker:
             "monitor": [self.width, self.height],
             "fps": round((frames - 1) / span, 1) if span > 0 else None,
             "target_fps": self.target_fps,
-            "face": round(sum(face for _, face in self.frames) / frames, 2) if frames else None,
+            "face": round(sum(face for _, face, _ in self.frames) / frames, 2) if frames else None,
+            # Of the frames with a face, those read as eyes closed and those whose gaze met no
+            # screen: with the face found, either one high is why no gaze (and no ring) comes.
+            **self._outcomes(),
             # How much of the gaze becomes fixations: low means the detector is splitting looks.
             "coverage": round(min(1.0, (sum(n for _, n in self.fixated) + self._open()) / len(self.samples)), 2)
             if len(self.samples) >= 30
@@ -280,6 +295,19 @@ class Tracker:
             "camera_fps": self.camera.rate() if hasattr(self.camera, "rate") else None,
             "camera_mode": _describe(self.calibration.get("camera_mode")),
             "learning": self._learning(),
+            "drift": self.drift.state(),
+        }
+
+    def _outcomes(self) -> dict:
+        """Shares of the last 10 s's frames with a face that were read as eyes closed, and whose
+        gaze met no screen (None with fewer than 15 such frames), and how many times the blink test
+        has dropped a stuck open-eye reference since the tracker started."""
+        seen = [outcome for _, face, outcome in self.frames if face]
+        blinks = getattr(self.estimator, "_blinks", None)
+        return {
+            "eyes_closed": round(seen.count("closed") / len(seen), 2) if len(seen) >= 15 else None,
+            "ray_missed": round(seen.count("missed") / len(seen), 2) if len(seen) >= 15 else None,
+            "blink_resets": getattr(blinks, "resets", None),
         }
 
     def _learning(self) -> dict | None:
@@ -316,6 +344,51 @@ class Tracker:
             except Exception:  # noqa: BLE001 - learning must never stop tracking
                 log.exception("recording a learned update failed")
 
+    def _stare(self, t: float, A: np.ndarray, B: np.ndarray, seconds: float) -> None:
+        """A long stare (``gaze.drift``): a label for the learner that the gaze must not move."""
+        if self.learner is not None:
+            try:
+                self.learner.add_stare(t, A, B, seconds)
+            except Exception:  # noqa: BLE001 - learning must never stop tracking
+                log.exception("adding a stare failed")
+
+    def _snap(self, now: float, x: float, y: float) -> tuple[float, float]:
+        """While the receiver's line decoder has the eyes on a line of text, the ring sits on that
+        line: its height from the page (exact), across it the gaze held to the line's extent. One
+        fixation alone cannot resolve a line at webcam error; reading as a sequence can.
+
+        The decoder hears of a fixation when it ends, so during a long look at one spot its line
+        grows old while the eyes are still on it: the ring stays on the line for as long as the
+        ring filter holds the fixation it was on when the line was fresh (no jump since), unless
+        the gaze drifts farther than ``SNAP_PX`` from it."""
+        line = getattr(self.receiver, "reading", None)
+        if not line or line["p"] < SNAP_P:
+            return x, y
+        fixation = self.stabilizer.since
+        if now - line["t"] <= SNAP_S:
+            self.snapped = (line["t"], fixation)
+        elif self.snapped != (line["t"], fixation):
+            return x, y  # the line is old and the eyes have moved since
+        held = min(max(x, line["x0"]), line["x1"])
+        if abs(y - line["y"]) * self.height > SNAP_PX or abs(x - held) * self.width > SNAP_PX:
+            return x, y  # the gaze has left the line
+        return held, line["y"]
+
+    def _lines(self) -> None:
+        """Lines the receiver decoded the eyes reading: labels for the learner."""
+        take = getattr(self.receiver, "take_lines", None)
+        labels = take() if take is not None else []
+        if self.learner is None:
+            return
+        for label in labels:
+            try:
+                self.learner.line(
+                    label["id"], label["y"] * self.height, label["x0"] * self.width, label["x1"] * self.width
+                )
+            except Exception:  # noqa: BLE001 - learning must never stop tracking
+                log.exception("learning from a read line failed")
+                return
+
     def _timing(self) -> dict | None:
         """Median milliseconds per frame in each stage over the last 10 s, the frame's processing
         in all (camera wait excluded), and a live point's round trip on its own thread."""
@@ -336,7 +409,9 @@ class Tracker:
 
     def _fixations(self, now: float, found: list) -> None:
         for fixation in found:
-            self.receiver.add(fixation)
+            fixation_id = self.receiver.add(fixation)
+            if self.learner is not None and fixation_id is not None:
+                self.learner.fixation(fixation_id, fixation.start, fixation.end)  # its look, for a line label
             self.fixated.append((now, fixation.samples))
             self.pending = True
         while self.fixated and now - self.fixated[0][0] > 30:
@@ -417,6 +492,7 @@ class Tracker:
             return
         self.reported_at, self.pending = now, False
         result = self.receiver.send(self.state())
+        self._lines()
         self._ring()  # the ring switched off or on: act now, not at the next face
         if result in ("ok", "paused"):  # only an answer from the receiver changes the pause state
             if result == "ok":
@@ -441,6 +517,11 @@ class Tracker:
         now = self.clock()
         if now - self.checked_at >= CHECK_EVERY_S:
             self.checked_at = now
+            if self.learner is not None:
+                try:
+                    self.learner.maybe_tune(now)  # its own process, at idle priority
+                except Exception:  # noqa: BLE001 - tuning must never stop tracking
+                    log.exception("starting tuning failed")
             reason = self._reason(now)
             if reason != self.hold:
                 log.info("tracking %s", f"held: {reason}" if reason else "resumed")
@@ -479,9 +560,7 @@ class Tracker:
         features, blink = self.estimator.extract_features(frame)
         extracted = self.timer()
         face = features is not None
-        self.frames.append((started, face))
-        while self.frames and started - self.frames[0][0] > 10:
-            self.frames.popleft()
+        outcome = "closed" if face else None
         if face:
             self.last_face = now
             moved = getattr(self.estimator, "moved", None)
@@ -519,11 +598,18 @@ class Tracker:
             self._applied(now)
             # A gaze ray that never meets the screen's plane (a bad frame's landmarks) is nan,
             # which must not reach the smoother: its state would stay nan.
+            outcome = "missed"
             if math.isfinite(x) and math.isfinite(y):
+                outcome = "gaze"
                 if self.learner is not None:
                     self.learner.frame(now, values, x, y)
                 self._gaze(now, x, y)
+                if values.ndim == 1:
+                    self.drift.add(now, self.stabilizer.since, x, y, values)
             tracked = self.timer()
+        self.frames.append((started, face, outcome))
+        while self.frames and started - self.frames[0][0] > 10:
+            self.frames.popleft()
         self._click(now)
         self._report(now)
         if face:
@@ -562,7 +648,9 @@ class Tracker:
         fx, fy = x / self.width, y / self.height
         ring = self._ring()
         if ring is not None:  # in memory, every frame; off the monitor it waits at the edge
-            ring.push(*corrected(getattr(self.receiver, "offset_grid", None), sx, sy))
+            # Click-corrected as fixations are placed, then on the line being read, if any (the
+            # line's place is exact: no correction on top of it).
+            ring.push(*self._snap(now, *corrected(getattr(self.receiver, "offset_grid", None), sx, sy)))
         if -0.05 <= fx <= 1.05 and -0.05 <= fy <= 1.05:  # off-screen samples end the fixation
             if getattr(self.receiver, "live", False) and now - self.live_at >= LIVE_EVERY_S:
                 self.live_at = now

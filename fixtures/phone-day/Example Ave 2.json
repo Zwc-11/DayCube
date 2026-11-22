@@ -1,0 +1,133 @@
+{
+ "segments": [
+  {
+   "start": 2.0,
+   "end": 4.0,
+   "text": " Almost home now.",
+   "words": [
+    {
+     "start": 2.0,
+     "end": 2.67,
+     "word": " Almost",
+     "p": 0.9
+    },
+    {
+     "start": 2.67,
+     "end": 3.33,
+     "word": " home",
+     "p": 0.9
+    },
+    {
+     "start": 3.33,
+     "end": 4.0,
+     "word": " now.",
+     "p": 0.9
+    }
+   ]
+  },
+  {
+   "start": 9.0,
+   "end": 12.5,
+   "text": " The park was quiet, the bridge was closed.",
+   "words": [
+    {
+     "start": 9.0,
+     "end": 9.44,
+     "word": " The",
+     "p": 0.9
+    },
+    {
+     "start": 9.44,
+     "end": 9.88,
+     "word": " park",
+     "p": 0.9
+    },
+    {
+     "start": 9.88,
+     "end": 10.31,
+     "word": " was",
+     "p": 0.9
+    },
+    {
+     "start": 10.31,
+     "end": 10.75,
+     "word": " quiet,",
+     "p": 0.9
+    },
+    {
+     "start": 10.75,
+     "end": 11.19,
+     "word": " the",
+     "p": 0.9
+    },
+    {
+     "start": 11.19,
+     "end": 11.62,
+     "word": " bridge",
+     "p": 0.9
+    },
+    {
+     "start": 11.62,
+     "end": 12.06,
+     "word": " was",
+     "p": 0.9
+    },
+    {
+     "start": 12.06,
+     "end": 12.5,
+     "word": " closed.",
+     "p": 0.9
+    }
+   ]
+  },
+  {
+   "start": 20.0,
+   "end": 23.0,
+   "text": " Remind me to send the photos tonight.",
+   "words": [
+    {
+     "start": 20.0,
+     "end": 20.43,
+     "word": " Remind",
+     "p": 0.9
+    },
+    {
+     "start": 20.43,
+     "end": 20.86,
+     "word": " me",
+     "p": 0.9
+    },
+    {
+     "start": 20.86,
+     "end": 21.29,
+     "word": " to",
+     "p": 0.9
+    },
+    {
+     "start": 21.29,
+     "end": 21.71,
+     "word": " send",
+     "p": 0.9
+    },
+    {
+     "start": 21.71,
+     "end": 22.14,
+     "word": " the",
+     "p": 0.9
+    },
+    {
+     "start": 22.14,
+     "end": 22.57,
+     "word": " photos",
+     "p": 0.9
+    },
+    {
+     "start": 22.57,
+     "end": 23.0,
+     "word": " tonight.",
+     "p": 0.9
+    }
+   ]
+  }
+ ]
+}

@@ -8,22 +8,43 @@ function daycubeNodeEphemeralPlugin(): Plugin {
       server.middlewares.use((req, res, next) => {
         const request = req as unknown as { url?: string; method?: string };
         const pathname = request.url?.split('?')[0];
-        const health = request.method === 'GET' && pathname === '/api/node-health';
-        const deletion = request.method === 'POST' && pathname === '/api/delete-hours';
-        if (!health && !deletion) return next();
+        if (request.method !== 'GET' || pathname !== '/api/node-health') return next();
         res.setHeader('Cache-Control', 'no-store');
         res.setHeader('Content-Type', 'application/json; charset=utf-8');
-        res.statusCode = deletion ? 501 : 200;
-        res.end(JSON.stringify(deletion
-          ? { detail: 'Hour deletion is not implemented. No records were deleted.' }
-          : { status: 'ok', mode: 'standalone-sim' }));
+        res.statusCode = 200;
+        res.end(JSON.stringify({ status: 'ok', mode: 'standalone-sim' }));
       });
     },
   };
 }
 
+// DRACOLoader names two decoder builds at load time, so both ship (about 1 MB); the world uses
+// only the glTF build (DRACO_GLTF_CONFIG). Build only: the dev server pre-bundles it untouched.
+function dracoGltfOnly(): Plugin {
+  const full = /new URL\( '\.\.\/libs\/draco\/draco_\w+\.(?:js|wasm)', import\.meta\.url \)\.toString\(\)/g;
+  return {
+    name: 'daycube-draco-gltf-only',
+    apply: 'build',
+    transform(code, id) {
+      if (!/three[\\/]examples[\\/]jsm[\\/]loaders[\\/]DRACOLoader\.js$/.test(id)) return;
+      const found = code.match(full)?.length ?? 0;
+      if (found !== 3) this.error(`DRACOLoader changed: expected 3 full-decoder URLs, found ${found}`);
+      return { code: code.replace(full, "''"), map: null };
+    },
+  };
+}
+
 export default defineConfig(({ mode }) => ({
-  plugins: [react(), daycubeNodeEphemeralPlugin()],
+  plugins: [react(), daycubeNodeEphemeralPlugin(), dracoGltfOnly()],
+  // Imported only when a scan's mesh or a world opens: bundled up front, or the dev server finds
+  // them on that first open and reloads the page.
+  optimizeDeps: {
+    include: [
+      'three/examples/jsm/loaders/GLTFLoader.js', 'three/examples/jsm/controls/OrbitControls.js', '@sparkjsdev/spark',
+      'three/examples/jsm/loaders/DRACOLoader.js', 'three/examples/jsm/utils/BufferGeometryUtils.js',
+      '3d-tiles-renderer/three', '3d-tiles-renderer/three/plugins', '3d-tiles-renderer/core/plugins',
+    ],
+  },
   build: {
     rollupOptions: {
       output: {
@@ -33,6 +54,8 @@ export default defineConfig(({ mode }) => ({
           // Vite's dynamic-import helper is shared by the entry and drei; left alone it lands in
           // the three.js chunk and drags that chunk into the entry.
           if (id.includes('vite/preload-helper')) return 'vendor-react';
+          // Only a world opens these: left to the world's own chunk, not every 3D page's.
+          if (/three[\\/]examples[\\/]jsm[\\/](loaders[\\/]DRACOLoader|utils[\\/]BufferGeometryUtils)/.test(id)) return undefined;
           if (/[\\/]node_modules[\\/](three|@react-three)[\\/]/.test(id)) return 'vendor-three';
           if (/[\\/]node_modules[\\/](react|react-dom|scheduler|framer-motion)[\\/]/.test(id)) return 'vendor-react';
         },

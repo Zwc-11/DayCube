@@ -1,30 +1,31 @@
 # Libraries and accounts
 
-The default setup installs the backend and starter-viewer libraries into `.venv` and
+The default setup installs the backend and viewer libraries into `.venv` and
 `node_modules`. Exact resolved versions are committed in `uv.lock` and `package-lock.json`.
 It does not install GPU model weights or create external accounts.
 
 | Area | Libraries | State |
 | --- | --- | --- |
 | Local API | FastAPI, Uvicorn, Pydantic, pydantic-settings, HTTPX | Installed; API tested |
-| Contracts | JSON Schema, jsonschema, generated Pydantic/TS, Ajv, Zod | Installed; cross-language checks pass |
+| Contracts | JSON Schema; jsonschema-rs in Python, generated TypeScript types and Ajv validators | Cross-language checks in `npm run check` |
 | Search | Python sqlite3 + FTS5, NumPy | One vault database across days ([search.md](search.md)) |
-| Viewer | Preserved React 18, Vite 6, Three, R3F, drei | Separate frontend prototype |
+| Viewer | React 18, Vite 6, three.js, React Three Fiber, drei | `apps/viewer` |
 | Development | uv, pytest, Ruff, datamodel-code-generator, Playwright | Installed; Chromium smoke tests supported |
 | AI adapter | Anthropic SDK | Optional `ai` extra; requires API key and model id |
 | Semantic search | FastEmbed (optional `vector` extra), NumPy | bge-small embeddings stored as int8 in the vault database; searched in two passes in NumPy ([search.md](search.md)) |
 | Skeleton inference | NumPy, scikit-learn | Optional `skeleton` extra; GPX parsing already uses stdlib |
 | Local scene helpers | Pillow, trimesh, NumPy | Optional `moments` extra; GLB generation still planned |
-| Cloud jobs | Modal SDK | Optional `modal` extra; separate account; no jobs deployed |
 | Capture receiver | Shared FastAPI/Pydantic libraries, PyYAML | Separate `services/capture-win` environment ([capture.md](capture.md)) |
 | Native capture | pywin32, psutil, mss, Pillow, pystray, pynput | Separate capture project, optional `windows` extra |
 | OCR | RapidOCR ONNX, RapidFuzz | Separate capture project, optional `ocr` extra |
 | Gaze | EyeTrax 0.4.0 (MIT), which brings MediaPipe, OpenCV, scikit-learn and numpy<2 | Separate `services/gaze` environment, because of numpy<2 |
+| Recon | PyTorch, torchvision, kornia, transformers, pycolmap, OpenCV 5 (headless; its DNN runs LaMa's ONNX for the islands' fill), RapidOCR ONNX (the writing in a video's frames; its `opencv-python` requirement is overridden, it runs on the headless OpenCV 5) | Separate `services/recon` environment, on the PC's GPU ([world.md](world.md)) |
+| Poses | depth-anything-3 0.1.1 (Apache-2.0, as are the DA3-SMALL weights it loads), which brings numpy<2 and OpenCV 4; its viewer, server and 3D-export requirements are overridden away | Separate, optional `services/poses` environment, because of numpy<2: a video's camera poses for [items](items.md) |
 
 Install optional backend groups only when working on those integrations:
 
 ```powershell
-uv sync --extra ai --extra modal
+uv sync --extra ai
 uv sync --extra vector
 uv sync --extra skeleton --extra moments
 ```
@@ -41,6 +42,8 @@ No external credentials are needed for the sample demo. Anthropic needs `ANTHROP
 `DAYCUBE_ANTHROPIC_MODEL` in your local environment or `.env`. Modal uses its own authenticated
 CLI setup. Hugging Face tokens are reserved for a future consented diarization pipeline.
 Overpass is a keyless lookup but sends coordinates to the configured endpoint when called.
+Nominatim (the islands' `--at`) is keyless too and sends the place name; each answer is kept in
+`vault/maps/places`, so a name is sent once.
 
 The frontend dependency manifest is maintained separately. The current synchronized npm lockfile
 reports zero audit vulnerabilities. The Python API and tests do not use the frontend build-tool
@@ -49,6 +52,5 @@ dependency chain.
 Primary implementation references: [FastAPI testing](https://fastapi.tiangolo.com/tutorial/testing/),
 [uv workspaces](https://docs.astral.sh/uv/concepts/projects/workspaces/),
 [Claude Python API](https://platform.claude.com/docs/en/api/python),
-[Modal app definitions](https://modal.com/docs/guide/apps),
 [faster-whisper](https://github.com/SYSTRAN/faster-whisper),
 [Depth Anything V2 Small model](https://huggingface.co/depth-anything/Depth-Anything-V2-Small-hf).

@@ -42,17 +42,28 @@ test('live search and empty results stay separate from prototype evidence', asyn
 });
 
 test('the calendar lists recorded days and opens them', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?view=days');
   const day = page.getByRole('button', { name: /Tuesday, October 20/ });
   await expect(day).toBeVisible();
   await expect(page.locator('.cal__day--empty').first()).toBeVisible();
   await day.click();
   await expect(page).toHaveURL(/\?date=2026-10-20$/);
   await expect(page.locator('canvas')).toBeVisible();
-  await page.getByRole('button', { name: 'All days', exact: true }).click();
-  await expect(page).toHaveURL(/\/$/);
-  await page.goBack();
+  // The logo goes to a day's page: on a day, the newest day with places.
+  await page.getByRole('button', { name: 'Day pages', exact: true }).click();
+  await expect(page).toHaveURL(/\?date=2026-10-21$/);
   await expect(page.locator('canvas')).toBeVisible();
+  // From the graph of notes and from the calendar, back to the day last shown.
+  await page.getByRole('button', { name: 'Notes', exact: true }).click();
+  await expect(page.getByTestId('graph')).toBeVisible();
+  await page.getByRole('button', { name: 'Day pages', exact: true }).click();
+  await expect(page).toHaveURL(/\?date=2026-10-21$/);
+  await page.getByRole('button', { name: /All days/ }).click(); // the date in the itinerary
+  await expect(page).toHaveURL(/\?view=days$/);
+  await page.getByRole('button', { name: 'Day pages', exact: true }).click();
+  await expect(page).toHaveURL(/\?date=2026-10-21$/);
+  await page.goBack();
+  await expect(page).toHaveURL(/\?view=days$/);
 });
 
 test('asking and rebuilding use the open day rather than the bundled sample date', async ({ page }) => {
@@ -112,24 +123,18 @@ test('failed live name writes remain failures and leave the displayed place unch
   await expect(heading).toHaveText(name);
 });
 
-test('unsupported deletion does not hide evidence or create a success audit', async ({ page }) => {
+test('deleting without the vault token changes nothing and says why', async ({ page }) => {
   await page.goto('/?date=2026-10-20');
   await expect(page.locator('canvas')).toBeVisible();
   const before = await page.locator('.track__tick').count();
   expect(before).toBeGreaterThan(0);
-  const rejected = await page.evaluate(async () => {
-    const response = await fetch('/api/delete-hours', { method: 'POST', body: '{}' });
-    return { status: response.status, body: await response.json() };
-  });
-  expect(rejected.status).toBe(501);
-  expect(rejected.body.detail).toContain('No records were deleted');
   let requests = 0;
-  await page.route('**/api/delete-hours', route => { requests++; return route.abort(); });
+  await page.route('**/api/day/*/hours', route => { requests++; return route.abort(); });
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByLabel('From', { exact: true }).fill('10:00');
   await page.getByRole('button', { name: /^Delete \d/ }).click();
   await page.getByRole('button', { name: 'Delete', exact: true }).click();
-  await expect(page.getByRole('alert')).toContainText('No records were deleted');
+  await expect(page.getByRole('alert')).toContainText('Connect your vault token');
   await page.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(page.getByText('Nothing has been deleted from this day.')).toBeVisible();
   expect(requests).toBe(0);

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { validateContract } from './runtime.mjs';
-import type { Day, Event, Graph, Moment, Ocr, Skeleton, Transcript, Venue } from './types';
+import type { Day, Event, Graph, Moment, Ocr, Review, Skeleton, TimelineSegment, TrainingRun, Transcript, Venue } from './types';
 
 export * from './types';
 export type Fidelity = 'known' | 'estimated' | 'illustrative';
@@ -25,6 +25,34 @@ export const ocrSchema = contract<Ocr>('ocr');
 export const skeletonSchema = contract<Skeleton>('skeleton');
 export const transcriptSchema = contract<Transcript>('transcript');
 export const venueSchema = contract<Venue>('venue');
+export const reviewSchema = contract<Review>('review');
+export const timelineSegmentSchema = contract<TimelineSegment>('timeline');
+export const trainingRunSchema = contract<TrainingRun>('training');
+
+// Training runs (GET /training: every run, each with its last line and whether it stalled;
+// GET /training/{id}: one run, its measurements as columns).
+const measurement = z.record(z.string(), z.number().or(z.string()));
+export const trainingListSchema = z.array(z.unknown().transform((input) => {
+  const { last, stalled, ...run } = z.object({ last: measurement.nullable(), stalled: z.boolean() }).passthrough().parse(input);
+  return { ...trainingRunSchema.parse(run), last, stalled };
+}));
+export type TrainingListed = z.infer<typeof trainingListSchema>[number];
+export const trainingSeriesSchema = z.object({
+  run: trainingRunSchema, stalled: z.boolean(), steps: z.array(z.number().int()),
+  values: z.record(z.string(), z.array(z.number().nullable())),
+});
+export type TrainingSeries = z.infer<typeof trainingSeriesSchema>;
+
+// A day's end-of-day review and timeline (GET /day/{date}/review; POST /day/{date}/review writes the
+// review now, POST /labels corrects a category or project, both returning the same view).
+export const dayReviewSchema = z.object({
+  date: z.string(), zone: z.string(), window: z.object({ t0: z.string(), t1: z.string() }),
+  current: z.boolean(), review: reviewSchema.nullable(), segments: z.array(timelineSegmentSchema),
+  categories: z.array(z.string()), writers: z.object({ summary: z.string(), categories: z.string() }),
+  result: z.object({ written: z.boolean(), why: z.string() }).optional(),
+});
+export type DayReview = z.infer<typeof dayReviewSchema>;
+export type ReviewEvidence = Review['evidence'][string];
 
 const pinSchema = z.unknown().transform(input => {
   const { tod, ...event } = z.object({ tod: z.number() }).passthrough().parse(input);
@@ -35,7 +63,7 @@ export const layerSchema = z.object({
   index: z.number().int().nonnegative(), placeId: z.string(), name: z.string(),
   kind: z.enum(['house', 'cafe', 'venue', 'outdoor']), t0: z.number(), t1: z.number(),
   floors: z.array(z.number().int()), floorHeight: z.number().positive(),
-  frame: z.object({ lat: z.number().nullable(), lon: z.number().nullable(), axisDeg: z.number(), size: z.tuple([z.number(), z.number()]) }),
+  frame: z.object({ lat: z.number().nullable(), lon: z.number().nullable(), axisDeg: z.number(), size: z.tuple([z.number(), z.number()]), scale: z.number().positive().optional() }),
   geometry: z.object({ fidelity: z.enum(['known', 'estimated', 'illustrative']), footprint: z.array(z.tuple([z.number(), z.number()])), levels: z.array(z.unknown()) }),
   path: z.array(z.object({ t: z.number(), x: z.number().nullable(), y: z.number().nullable(), floor: z.number().nullable(), pos_conf: z.number(), fidelity: z.enum(['known', 'estimated', 'illustrative']) })),
   events: z.array(pinSchema),
@@ -137,11 +165,20 @@ const num = z.number().nullable();
 const fitEventSchema = z.object({
   event: z.literal('fit'), t: z.string(), version: z.number().int(), accepted: z.boolean(),
   clicks: z.number().int(), held_out: z.number().int(), penalty: z.number().nullable(),
-  head_terms: z.boolean().optional(),
+  head_terms: z.boolean().optional(), lines: z.number().int().optional(),
   error_px: z.object({ calibration: z.number(), in_use: z.number(), learned: z.number(), fixed_guess: z.number() }),
 });
 const appliedEventSchema = z.object({
   event: z.literal('applied'), t: z.string(), version: z.number().int(), after_ms: num,
+});
+const tunedEventSchema = z.object({
+  event: z.literal('tuned'), t: z.string(), accepted: z.boolean().nullable(),
+  clicks: z.number().int().nullable(), lines: z.number().int().nullable(),
+  replay: z.object({
+    held_out_px: z.object({ in_use: z.number(), best: z.number() }).nullable(),
+    held_out_clicks: z.number().int().nullable(), trials: z.number().int().nullable(), seconds: z.number().nullable(),
+  }),
+  changed: z.record(z.string(), z.tuple([z.number(), z.number()])).nullable(),
 });
 export const gazeLearningSchema = z.union([
   z.object({ calibrated: z.literal(false) }),
@@ -165,11 +202,15 @@ export const gazeLearningSchema = z.union([
     }),
     fits: z.array(fitEventSchema),
     applied: z.array(appliedEventSchema),
+    lines: z.object({ labels: z.number().int(), used: z.number().int() }),
+    tunings: z.array(tunedEventSchema),
+    settings: z.record(z.string(), z.number()).nullable(),
     files: z.record(z.string(), z.boolean()),
   }),
 ]);
 export type GazeLearning = z.infer<typeof gazeLearningSchema>;
 export type GazeFit = z.infer<typeof fitEventSchema>;
+export type GazeTuning = z.infer<typeof tunedEventSchema>;
 
 // A day's knowledge base (GET /day/{date}/notes), one note (GET /note) and search as you type
 // (GET /search).
@@ -195,11 +236,20 @@ export const noteSchema = z.object({
   backlinks: z.array(z.object({ path: z.string(), title: z.string() })),
   file: z.string(), modified: z.string(),
 });
+// Every note in vault/notes and every [[link]] between them (GET /notes/graph). An edge is
+// [a, b, count]: a indexes notes; b indexes notes, or missing (links to notes not written yet)
+// after them.
+export const noteGraphSchema = z.object({
+  notes: z.array(z.object({ path: z.string(), kind: z.enum(['daily', 'source', 'course', 'note']) })),
+  missing: z.array(z.string()),
+  edges: z.array(z.tuple([z.number().int(), z.number().int(), z.number().int()])),
+});
 export const searchResultSchema = askResultSchema.extend({
   evidence: z.array(evidenceSchema.extend({ note: z.string().nullable(), match: z.string() })),
   took_ms: z.number(),
 });
 export type DayNotes = z.infer<typeof dayNotesSchema>;
 export type Note = z.infer<typeof noteSchema>;
+export type NoteGraph = z.infer<typeof noteGraphSchema>;
 export type SearchResult = z.infer<typeof searchResultSchema>;
 export type SearchEvidence = SearchResult['evidence'][number];

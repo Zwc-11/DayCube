@@ -109,3 +109,20 @@ def test_reset_starts_from_the_next_sample_and_a_blink_does_not_count_as_watched
     x_resumed, _ = resumed(29 / FPS + 0.3, 960.0, 300.0)
     x_plain, _ = plain(29 / FPS + 0.3, 960.0, 300.0)
     assert x_resumed - 900 < 0.5 * (x_plain - 900)  # one frame's pull, not 0.3 s worth
+
+
+def test_once_a_look_has_settled_the_ring_holds_its_height_more_firmly_than_its_place_across() -> None:
+    """Resting eyes with webcam noise: after the fixation has settled, the ring's height wanders
+    less than with the horizontal time constant (text runs across, so up and down is mostly
+    noise), and across it is unchanged."""
+
+    def spread(axis: int, **options: float) -> float:
+        rng = random.Random(9)
+        stabilizer = Stabilizer(WIDTH, **options)
+        shown = [stabilizer(k / FPS, *noisy(rng, 1200.0, 700.0, sd=20.0)) for k in range(150)][int(0.5 * FPS) :]
+        values = [p[axis] for p in shown]
+        mean = sum(values) / len(values)
+        return math.sqrt(sum((v - mean) ** 2 for v in values) / len(values))
+
+    assert spread(1) < 0.75 * spread(1, tau_y_s=None)
+    assert spread(0) == spread(0, tau_y_s=None)

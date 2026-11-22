@@ -162,26 +162,6 @@ class Poser:
         R, _ = cv2.Rodrigues(rvec)
         return R, tvec.ravel()
 
-    def on_planes(self, pixels: np.ndarray, R: np.ndarray, t: np.ndarray, depths: np.ndarray) -> np.ndarray:
-        """Image points carried along their camera rays onto head-frame planes z = depth (planes
-        facing out of the face), returned in head coordinates. A landmark met at its own
-        canonical depth lands where it is in the head however the head is turned."""
-        rays = self.camera.rays(pixels)  # camera frame, z = 1
-        normal = R[:, 2]  # the head's z axis in camera coordinates
-        k = (t @ normal + depths) / (rays @ normal)
-        return (rays * k[:, None] - t) @ R  # R.T @ (hit - t) for each row
-
-    def on_eyeball(self, pixel: np.ndarray, R: np.ndarray, t: np.ndarray, centre: np.ndarray) -> np.ndarray:
-        """The unit direction, in head coordinates, from an eyeball's centre to where the iris
-        centre's camera ray meets the eyeball's front (or comes closest to it)."""
-        ray = self.camera.rays(pixel)
-        ray /= np.linalg.norm(ray)
-        c = R @ centre + t
-        along = ray @ c
-        k = along - math.sqrt(max(along**2 - c @ c + self.eyeball_mm**2, 0.0))
-        g = R.T @ (ray * k - c)
-        return g / np.linalg.norm(g)
-
     def measure(self, face: Face) -> Head:
         points = face.points
         R, t = self.pose(points)
@@ -365,7 +345,6 @@ def pose_terms(R: np.ndarray, eyes: np.ndarray, ref: tuple[np.ndarray, np.ndarra
 # A frame travels through the tracker and calibration as one flat vector, like EyeTrax features:
 # rotation (9), position (3), both eyeball centres (6), both eyes' measurements (2 x FEATURES).
 FEATURES = 4
-VECTOR = 9 + 3 + 6 + 2 * FEATURES
 
 
 def pack(head: Head) -> np.ndarray:
@@ -398,6 +377,13 @@ class Blinks:
     ``deep`` of the open average whatever the eye's direction. Closed frames never lower an
     established reference, and one eye cannot hide the other's closure. The tracker separately
     waits for reopening landmarks to settle before prediction.
+
+    That makes a wrong reference permanent: two seconds of apertures twice the usual (landmarks
+    off while leaning or turning) and every open eye after is under ``deep`` of it, so no frame is
+    accepted and nothing lowers it again. On the PC this stopped the gaze for 30 hours from
+    2026-10-30 10:35 with the face found in every frame. So ``stuck_s`` of unbroken closure with
+    the landmarks present drops the reference and learns it again from the next frames; eyes that
+    really are shut (under 0.1, the bootstrap's floor) are still never learned as open.
     """
 
     def __init__(
@@ -408,14 +394,24 @@ class Blinks:
         deep: float = 0.5,
         shallow_s: float = 0.3,
         slope_history: int = 900,
+        stuck_s: float = 3.0,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self.history: deque[tuple[float, float, float, float]] = deque(maxlen=history)  # (a_r, a_l, v_r, v_l)
+        self.slope_history = slope_history
+        self.ratio, self.minimum, self.deep, self.shallow_s, self.clock = ratio, minimum, deep, shallow_s, clock
+        self.stuck_s = stuck_s
+        self.resets = 0  # references dropped after ``stuck_s`` of unbroken closure
+        self.closed_since: float | None = None  # first frame of the current run of closed frames
+        self._forget()
+
+    def _forget(self) -> None:
+        """No open-eye reference: the next frames build one, as at the start."""
+        self.history.clear()
         self.total = [0.0, 0.0, 0.0, 0.0]
-        self.slopes = (_Slope(slope_history), _Slope(slope_history))
+        self.slopes = (_Slope(self.slope_history), _Slope(self.slope_history))
         self.previous: tuple[float, float] | None = None
         self.previous_height: tuple[float, float] = (0.0, 0.0)
-        self.ratio, self.minimum, self.deep, self.shallow_s, self.clock = ratio, minimum, deep, shallow_s, clock
         self.narrow_since: float | None = None  # when the eyes last became narrower than expected
         self.deep_at = -math.inf  # the last frame with the lids (nearly) shut
 
@@ -509,6 +505,15 @@ class Blinks:
         elif learn:
             for e in range(2):
                 self.slopes[e].add(height[e], ear[e])
+        if blink and ready:
+            if self.closed_since is None:
+                self.closed_since = now
+            elif now - self.closed_since >= self.stuck_s:
+                self._forget()  # this frame stays a blink; the next ones learn the reference again
+                self.resets += 1
+                self.closed_since = None
+        else:
+            self.closed_since = None
         return blink
 
 

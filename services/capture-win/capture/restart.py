@@ -4,12 +4,16 @@ The receiver started at sign-in keeps running the code it started with until it 
 after ``git pull`` it runs older code than the checkout. ``python -m capture restart`` stops it and
 its eye tracker and starts the sign-in command again; ``install-autostart`` does the same when the
 running receiver's code differs from the checkout's. ``/status`` reports a stamp of the code the
-receiver loaded (``code``), compared with the stamp of the files on disk.
+receiver loaded (``code``), compared with the stamp of the files on disk: this package and the
+ingest and gaze packages it runs (the librarian's review, the eye tracker it starts), so a change to
+any of them is a change to the receiver. ``update.py`` restarts on new code by itself when you are
+away.
 """
 
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -27,12 +31,34 @@ TRACKER = re.compile(r"(?:^|\s)-m\s+gaze\s+track\b.*\s--supervised\b")
 NO_WINDOW = 0x08000000
 
 
-def code_stamp(folder: Path = PACKAGE) -> str:
-    """A stamp of the receiver's code: its Python files' names and contents."""
+def code_folders() -> list[Path]:
+    """The receiver's code: this package, and the ingest and gaze packages it runs (where they are
+    imported from, else beside this checkout's ``services/capture-win``)."""
+    folders = [PACKAGE]
+    for name in ("ingest", "gaze"):
+        try:
+            spec = importlib.util.find_spec(name)
+        except (ImportError, ValueError):
+            spec = None
+        found = [Path(p) for p in (spec.submodule_search_locations or [])] if spec else []
+        beside = PACKAGE.parents[1] / name / name
+        folders += found or ([beside] if beside.is_dir() else [])
+    return folders
+
+
+def code_stamp(*folders: Path) -> str:
+    """A stamp of the receiver's code (``code_folders`` unless given): its Python files' paths and
+    contents, line endings aside."""
     digest = hashlib.blake2b(digest_size=6)
-    for path in sorted(folder.glob("*.py")):
-        digest.update(path.name.encode())
-        digest.update(path.read_bytes().replace(b"\r\n", b"\n"))
+    for folder in folders or code_folders():
+        for path in sorted(folder.rglob("*.py")):
+            if "__pycache__" in path.parts:
+                continue
+            digest.update(f"{folder.name}/{path.relative_to(folder).as_posix()}".encode())
+            try:
+                digest.update(path.read_bytes().replace(b"\r\n", b"\n"))
+            except OSError:  # removed while being read: the next stamp sees it
+                digest.update(b"?")
     return digest.hexdigest()
 
 

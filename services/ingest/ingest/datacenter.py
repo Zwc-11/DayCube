@@ -44,7 +44,8 @@ def report(store: LifeStore) -> Record:
     sources.append({
         "name": "Vault days", "path": "<date>/", "kind": "source", "files": files, "bytes": size,
         "days": len(store.vault.list_days()), "updated": _iso(newest),
-        "holds": "places, events, fixes, on-screen text, moments (day.json, events.jsonl, skeleton.geojson, screens/, moments/)",
+        "holds": "places, events, fixes, on-screen text, moments (day.json, events.jsonl, skeleton.geojson, screens/, "
+                 "moments/), and each day's timeline and review (timeline.jsonl, review.json)",
     })  # fmt: skip
     capture = root / "capture"
     by_log: dict[str, list[Path]] = defaultdict(list)

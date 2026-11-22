@@ -1,0 +1,11 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "resources": {
+      "../build/resources/runtime/": "runtime/",
+      "../build/resources/src/": "src/",
+      "../build/resources/viewer/": "viewer/",
+      "../build/resources/extension/": "extension/"
+    }
+  }
+}

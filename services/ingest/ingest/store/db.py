@@ -18,20 +18,23 @@ import hashlib
 import json
 import os
 import sqlite3
+import threading
 from collections.abc import Iterable, Iterator, Sequence
 from contextlib import contextmanager, suppress
 from datetime import datetime, timedelta
+from itertools import zip_longest
 from pathlib import Path
 from time import monotonic
 from zoneinfo import ZoneInfo
 
 from ..capture import capture_days, capture_stamp, capture_units, read_capture
-from ..capture.synthesize import LOGS
+from ..capture.synthesize import LOGS, has_capture_day
 from ..graph import Graph, extract
 from ..index.build import UNIT_COLUMNS, collect_units, source_stamp
 from ..index.embed import Embedder
 from ..time import instant
 from ..vault import Record, Vault, stored
+from . import cjk
 from . import notes as note_index
 from .graph import entity_view, graph_view
 from .vectors import VectorIndex, sign_bits
@@ -43,8 +46,9 @@ FULL_CHECK_S = 2.0  # how often a search across days re-checks every day's files
 # when it changes, every day and note is read again on the next use, keeping the stored vectors
 # (they are found again by text). 2: readable deadline names, note links from the person's text only.
 # 3: every note link kept with its resolution (outgoing links and backlinks). 4: note links keep
-# the target's file name (the table is rebuilt).
-DERIVED_VERSION = "4"
+# the target's file name (the table is rebuilt). 5: Chinese, Japanese and Korean text is indexed
+# character by character as well (store/cjk.py).
+DERIVED_VERSION = "5"
 SCHEMA_VERSION = 4  # 1: sqlite-vec vectors and per-row triggers, never released; 2: no graph; 3: no notes
 # A query may embed this many new texts before it answers (a few seconds on CPU); a day with
 # more waits for `daycube index`, and is searched by keywords until then.
@@ -116,6 +120,7 @@ CREATE INDEX IF NOT EXISTS mentions_unit ON mentions(unit_id);
 CREATE INDEX IF NOT EXISTS notes_identity ON notes(identity);
 CREATE INDEX IF NOT EXISTS units_ts ON units(ts);
 """
+    + (cjk.DDL if cjk.AVAILABLE else "")
 )
 
 
@@ -150,6 +155,7 @@ class LifeStore:
         self.fresh = vault.fresh_index
         self.index = VectorIndex()
         self._ready = False
+        self._migrating = threading.Lock()  # the warm-up and the first request open it together
         self.notes_root = vault.root / "notes"
         self._notes: dict[str, tuple[int, int]] | None = None  # the notes folder as last synced
         self._everything_at = -FULL_CHECK_S  # when every day's files were last checked (monotonic)
@@ -169,7 +175,9 @@ class LifeStore:
             db.row_factory = sqlite3.Row
             db.execute("PRAGMA synchronous = NORMAL")  # WAL + NORMAL: safe for a rebuildable cache
             if not self._ready:
-                self._migrate(db)
+                with self._migrating:
+                    if not self._ready:
+                        self._migrate(db)
             yield db
 
     @contextmanager
@@ -230,6 +238,8 @@ class LifeStore:
                 _script(db, note_index.LINKS_DDL)
                 db.execute("UPDATE days SET stamp = ''")  # every day is extracted again
                 db.execute("INSERT INTO note_chunks_fts(note_chunks_fts) VALUES ('delete-all')")
+                if cjk.AVAILABLE:
+                    db.execute("DELETE FROM note_chunks_cjk")
                 db.execute("DELETE FROM note_chunks")
                 db.execute("DELETE FROM notes")
                 db.execute("DELETE FROM links WHERE day = ''")
@@ -337,12 +347,43 @@ class LifeStore:
             row = known.get(day)
             changed = row is None or row["stamp"] != stamp
             # Vectors missing after an append, or after search was switched on: fill them now
-            # if that is quick; a day with more waits for `daycube index`.
+            # if that is quick; a day with more waits for fill_backlog (the API runs it).
             fill = self.vectors and row is not None and 0 < row["unembedded"] <= INLINE_EMBED_LIMIT
             if changed or fill:
                 self.update(day, embed_limit=INLINE_EMBED_LIMIT)
             else:
                 self.fresh.put_metadata(day, key)
+
+    def fill_backlog(self, stop: threading.Event | None = None) -> int:
+        """Embed what the days were stored without (more new texts than a request embeds inline,
+        or search switched on later), newest day first, a day at a time; ``stop`` ends it between
+        days. Returns how many texts gained vectors."""
+        if not self.vectors:
+            return 0
+        with self.read() as db:
+            days = [row[0] for row in db.execute("SELECT day FROM days WHERE unembedded > 0 ORDER BY day DESC")]
+        filled = 0
+        for day in days:
+            if stop is not None and stop.is_set():
+                break
+            with suppress(FileNotFoundError):  # removed since: the next ensure() drops it
+                before = self._unembedded(day)
+                filled += before - self.update(day)["unembedded"]
+        return filled
+
+    def purge(self) -> None:
+        """After a deletion: fold the keyword indexes' deleted entries away and rewrite the file, so
+        no page of it still holds deleted text, then empty the write-ahead log."""
+        with self.vault.lock, self.connect() as db:
+            for table in ("units_fts", "note_chunks_fts"):
+                db.execute(f"INSERT INTO {table}({table}) VALUES ('optimize')")
+            db.execute("VACUUM")
+            db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+
+    def _unembedded(self, day: str) -> int:
+        with self.read() as db:
+            row = db.execute("SELECT unembedded FROM days WHERE day = ?", (day,)).fetchone()
+        return row[0] if row else 0
 
     def update(self, day: str, *, embed_limit: int | None = None) -> Record:
         """Replace the day's rows from its files. ``embed_limit`` caps how many new texts this
@@ -359,7 +400,7 @@ class LifeStore:
                     events = snapshot.events.records
                     renamed = self.vault.place_names()
                     places = {p["id"]: renamed.get(p["id"], p["name"]) for p in snapshot.day["places"]}
-                elif day in capture_days(self.vault):
+                elif has_capture_day(self.vault, day):
                     units, zone = [], self.zone
                 else:
                     raise FileNotFoundError(f"No vault day or capture for {day}")
@@ -424,6 +465,9 @@ class LifeStore:
             ),
         )
         db.execute("INSERT INTO units_fts(rowid, text) SELECT id, text FROM units WHERE day = ?", (day,))
+        if cjk.AVAILABLE:
+            apart = ((first + i, cjk.spaced(unit["text"])) for i, unit in enumerate(units))
+            db.executemany("INSERT INTO units_cjk(rowid, text) VALUES (?, ?)", (row for row in apart if row[1]))
         rows = [(first + i, *vectors[h]) for i, h in enumerate(hashes) if h in vectors]
         db.executemany("INSERT INTO vectors VALUES (?, ?, ?)", rows)
         embedded = len(rows)
@@ -457,6 +501,8 @@ class LifeStore:
         db.execute(
             "INSERT INTO units_fts(units_fts, rowid, text) SELECT 'delete', id, text FROM units WHERE day = ?", (day,)
         )
+        if cjk.AVAILABLE:
+            db.execute("DELETE FROM units_cjk WHERE rowid IN (SELECT id FROM units WHERE day = ?)", (day,))
         db.execute("DELETE FROM vectors WHERE id IN (SELECT id FROM units WHERE day = ?)", (day,))
         db.execute("DELETE FROM units WHERE day = ?", (day,))
         db.execute("DELETE FROM days WHERE day = ?", (day,))
@@ -494,16 +540,22 @@ class LifeStore:
         types: Sequence[str] | None = None,
         site: str | None = None,
         k: int,
+        cjk_expression: str = "",
         db: sqlite3.Connection | None = None,
     ) -> list[int]:
-        """Unit ids matching an FTS5 expression, best BM25 first."""
+        """Unit ids matching an FTS5 expression, best BM25 first. ``cjk_expression`` is matched
+        against the character index (store/cjk.py); with both, their rankings alternate."""
         clauses, values = self._filters(day, since, until, types, site)
-        sql = (
-            "SELECT u.id FROM units_fts JOIN units u ON u.id = units_fts.rowid "
-            f"WHERE units_fts MATCH ?{clauses} ORDER BY bm25(units_fts), u.ts LIMIT ?"
-        )
+        ranked = []
         with self.read(db) as connection:
-            return [row[0] for row in connection.execute(sql, (expression, *values, k))]
+            for table, match in (("units_fts", expression), ("units_cjk", cjk_expression if cjk.AVAILABLE else "")):
+                if match:
+                    sql = (
+                        f"SELECT u.id FROM {table} JOIN units u ON u.id = {table}.rowid "
+                        f"WHERE {table} MATCH ?{clauses} ORDER BY bm25({table}), u.ts LIMIT ?"
+                    )
+                    ranked.append([row[0] for row in connection.execute(sql, (match, *values, k))])
+        return _alternate(ranked)[:k]
 
     def listing(
         self,
@@ -566,14 +618,20 @@ class LifeStore:
                 connection, query, k, days=None if day is None else [day], since=since, until=until
             )
 
-    def note_keyword(self, expression: str, *, k: int, db: sqlite3.Connection | None = None) -> list[int]:
-        """Note chunk ids matching an FTS5 expression, best BM25 first."""
-        sql = (
-            "SELECT c.id FROM note_chunks_fts JOIN note_chunks c ON c.id = note_chunks_fts.rowid "
-            "WHERE note_chunks_fts MATCH ? ORDER BY bm25(note_chunks_fts) LIMIT ?"
-        )
+    def note_keyword(
+        self, expression: str, *, k: int, cjk_expression: str = "", db: sqlite3.Connection | None = None
+    ) -> list[int]:
+        """Note chunk ids matching an FTS5 expression, best BM25 first; ``cjk_expression`` as in ``keyword``."""
+        ranked = []
         with self.read(db) as connection:
-            return [row[0] for row in connection.execute(sql, (expression, k))]
+            for table, match in (
+                ("note_chunks_fts", expression),
+                ("note_chunks_cjk", cjk_expression if cjk.AVAILABLE else ""),
+            ):
+                if match:
+                    sql = f"SELECT rowid FROM {table} WHERE {table} MATCH ? ORDER BY bm25({table}) LIMIT ?"
+                    ranked.append([row[0] for row in connection.execute(sql, (match, k))])
+        return _alternate(ranked)[:k]
 
     def note_rows(self, ids: Sequence[int], *, db: sqlite3.Connection | None = None) -> dict[int, Record]:
         found: dict[int, Record] = {}
@@ -605,6 +663,28 @@ class LifeStore:
             # their file still exists; the next query can rank the new text.
             found = {key: row for key, row in found.items() if row["path"] not in stale}
         return found
+
+    def window_units(self, since: float, until: float, types: Sequence[str]) -> list[Record]:
+        """Units of ``types`` that start in [since, until) (epoch seconds), in time order, across
+        however many days the window spans. The caller brings those days up to date first."""
+        marks = ",".join("?" for _ in types)
+        with self.read() as db:
+            return [dict(r) for r in db.execute(
+                "SELECT day, t, t_end, type, text, evidence_id, attention, fidelity, confidence, moment_id, place, ts "
+                f"FROM units WHERE ts >= ? AND ts < ? AND type IN ({marks}) ORDER BY ts, evidence_id",
+                (since, until, *types))]  # fmt: skip
+
+    def deadlines(self, first: str, last: str, seen_until: str) -> list[Record]:
+        """Deadlines due from ``first`` to ``last`` (ISO dates, inclusive) that a record on a day up
+        to ``seen_until`` showed, the latest such record first for each."""
+        with self.read() as db:
+            return [dict(r) for r in db.execute(
+                "SELECT d.key, d.name, l.day, l.evidence_id, u.t, u.text, u.type, u.fidelity "
+                "FROM entities d JOIN links l ON l.dst = d.id "
+                "LEFT JOIN units u ON u.day = l.day AND u.evidence_id = l.evidence_id "
+                "WHERE d.kind = 'deadline' AND d.key >= ? AND d.key < ? AND l.kind = 'due' AND l.day <= ? "
+                "ORDER BY d.key, l.day DESC, u.ts DESC",
+                (first, last + "\uffff", seen_until))]  # fmt: skip
 
     def rows(self, ids: Sequence[int], *, db: sqlite3.Connection | None = None) -> dict[int, Record]:
         found: dict[int, Record] = {}
@@ -711,6 +791,11 @@ def _drop_orphans(db: sqlite3.Connection) -> None:
         "DELETE FROM entities WHERE NOT EXISTS (SELECT 1 FROM mentions WHERE entity_id = entities.id) "
         "AND NOT EXISTS (SELECT 1 FROM links WHERE src = entities.id OR dst = entities.id)"
     )
+
+
+def _alternate(ranked: list[list[int]]) -> list[int]:
+    """Rankings merged by taking from each in turn, an id once: the best of each stays at the top."""
+    return list(dict.fromkeys(i for group in zip_longest(*ranked) for i in group if i is not None))
 
 
 def _drop_all(db: sqlite3.Connection) -> None:

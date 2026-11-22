@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { Bike, Car, ChevronLeft, ChevronRight, Footprints } from 'lucide-react';
 import type { EventPin, Layer, TransitSegment } from '../../types/daycube';
 import { formatDuration, formatTod, splitPlaceName } from '../../styles/theme';
+import { DayReview } from '../review/DayReview';
 import { CategoryIcon } from '../ui';
 
 interface ItineraryProps {
@@ -18,6 +19,9 @@ interface ItineraryProps {
   dataSource: 'vault' | 'sample';
   onSelectLayer: (index: number) => void;
   onSelectEvent: (layerIndex: number, event: EventPin) => void;
+  /** The day's date, for its review at the top (vault days only), and moving the playhead from it. */
+  date?: string;
+  onSeek?: (tod: number) => void;
 }
 
 const MODE: Record<TransitSegment['mode'], { icon: typeof Footprints; label: string }> = {
@@ -39,6 +43,8 @@ export const Itinerary = React.memo(function Itinerary({
   dataSource,
   onSelectLayer,
   onSelectEvent,
+  date,
+  onSeek,
 }: ItineraryProps) {
   const activeRef = useRef<HTMLLIElement>(null);
 
@@ -79,7 +85,9 @@ export const Itinerary = React.memo(function Itinerary({
         </button>
       </div>
 
-      <ol className="itin panel__body scroll">
+      <div className="panel__body scroll itin-scroll">
+      {date && dataSource === 'vault' && <DayReview date={date} variant="side" onSeek={onSeek} />}
+      <ol className="itin">
         {layers.map((layer, i) => {
           const isActive = layer.index === activeLayerIndex;
           const events = layer.events.filter((e) => !e.deleted);
@@ -136,6 +144,7 @@ export const Itinerary = React.memo(function Itinerary({
           );
         })}
       </ol>
+      </div>
     </nav>
   );
 });
