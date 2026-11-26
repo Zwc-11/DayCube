@@ -6,6 +6,8 @@ plain files you own: a 3D day you can replay, linked Markdown notes Obsidian ope
 that cite the records they came from. It runs on your own computer; nothing leaves it unless you
 turn on an option that sends it (a language model, the morning summary pushed to your phone).
 
+**[Walk through the sample day in 3D](https://zwc-11.github.io/DayCube/)**, the product page ([source](site)).
+
 ![DayCube: a day replayed in 3D, the character walks into Engineering Hall and climbs to floor 2; a question answered with its sources; the day's notes and summary; the Training page](docs/media/daycube-demo.gif)
 
 ▶ [Watch the demo (MP4, 22 s)](docs/media/daycube-demo.mp4)
@@ -106,6 +108,7 @@ services/recon/         Photo and scan to 3D (SHARP, COLMAP), its own environmen
 services/poses/         A video's camera poses (Depth Anything 3), its own environment
 extensions/chrome/      DayCube Capture extension (Opera, Chrome, Edge)
 fixtures/               Fictional sample day, phone day and capture morning
+site/                   The product page (GitHub Pages), its own dependencies
 eval/                   Simulations, benchmarks and their recorded results
 docs/                   Every part in detail; start with architecture.md
 ```
