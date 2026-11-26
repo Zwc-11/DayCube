@@ -1,0 +1,52 @@
+name: Product page
+
+# Builds site/ and publishes it with GitHub Pages (Settings › Pages › Source: GitHub Actions).
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - 'docs/media/**'
+      - 'apps/viewer/src/assets/fonts/**'
+      - '.github/workflows/site.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+# Build and deploy are separate jobs, as in GitHub's Pages template, so the artifact is registered
+# before the deploy asks for it.
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - run: npm ci
+        working-directory: site
+      - run: npm run build
+        working-directory: site
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: site/dist
+
+  deploy:
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
